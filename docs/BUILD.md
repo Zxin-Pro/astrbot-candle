@@ -47,13 +47,13 @@
 
 把所有路径变量改成你自己机器上的实际路径（脚本里是硬编码的）：
 
-- `out\ui-only.ps1` 第 2~3 行的 `$JDK` / `$ROOT`；
-- `build-apk.ps1` 第 6~7 行的 `$ROOT` / `$JAVA`。
+- `build-ui.ps1` 里标注了 `EDIT THIS LINE` 的那一行 `$JDK`（改成你自己的 JDK 21 `bin` 目录）；
+- `build-apk.ps1` 里同样位置的 `$JDK`（`$ROOT` 已由 `$PSScriptRoot` 自动定位，不用改）。
 
-### 1. 先构建界面（ui-only）
+### 1. 先构建界面（build-ui）
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File C:\Users\zjh19\DSH\qqbot-sandbox\out\ui-only.ps1
+powershell -ExecutionPolicy Bypass -File .\build-ui.ps1
 ```
 
 这一步依次做四件事：
@@ -81,8 +81,10 @@ powershell -ExecutionPolicy Bypass -File C:\Users\zjh19\DSH\qqbot-sandbox\build-
 
 把 `out\signed\termux-qqbot-aligned-debugSigned.apk` 重命名为 `AstrBot.apk` 发布。
 
-> **两个脚本必须串行执行**：`out\ui-only.ps1` 与 `build-apk.ps1` **都会写 `out\termux-ui-unsigned.apk`**，
-> 并行跑会互相覆盖，产物不可预测。**永远先 ui-only，再 build-apk。**
+> **两个脚本必须串行执行**：`build-ui.ps1` 会**写出** `out\termux-ui-unsigned.apk`，`build-apk.ps1` 会**读取并覆盖**它，
+> 并行跑会互相踩踏，产物不可预测。**永远先 build-ui，再 build-apk。**
+>
+> 也可以直接跑 `out\rebuild-all.ps1`（如果本地有的话），它按顺序调用这两个脚本。
 
 ---
 
@@ -146,7 +148,7 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
    脚本里的非 ASCII 字面量会变成乱码，轻则提示文案错乱，重则**解析报错直接跑不起来**。
    需要中文提示时，优先放进 `.sh` 或前端 HTML 里。
 2. **两个构建脚本必须串行。**
-   `out\ui-only.ps1` 和 `build-apk.ps1` 都写 `out\termux-ui-unsigned.apk`，并行会互相覆盖。
+   `build-ui.ps1` 和 `build-apk.ps1` 都动 `out\termux-ui-unsigned.apk`，并行会互相覆盖。
 3. **注入偏移是硬编码的。**
    `build-apk.ps1` 里的 `$PREFIX_OFF = 1328` 与 `$SECTION = 29388903` 只对**这一版**的上游 Termux bootstrap 成立。
    换上游 Termux 版本时，必须先重新测量这两个值（以及文件总长 29392992），否则会写出损坏的 `.so`。
@@ -154,8 +156,9 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
    签名与官方 Termux 不同，装过官方 Termux（或旧签名版本）的设备**必须先卸载**再装，否则会报「应用未安装 / 签名冲突」。
 5. **`build/` 下新增或改名文件后不需要改脚本。**
    `build-apk.ps1` 是递归扫描 `build/` 的，加文件自动带上；但如果新文件需要新的 `--drop` 前缀腾空间，要手动加到 `$dropPrefixes` 里。
-6. **`out\ui-only.ps1` 目前放在 `out\` 下，而 `out/` 已被 `.gitignore` 排除。**
-   对外发布源码时，需要把它挪到仓库根目录或 `build\` 下再提交，否则别人 clone 下来没有这个脚本。
+6. **构建脚本都在仓库根目录，`$ROOT` 自动定位。**
+   `build-ui.ps1` 与 `build-apk.ps1` 都用 `$PSScriptRoot` 取仓库根目录，所以从任何工作目录调用都不会找错路径；
+   只有 `$JDK` 那一行需要按你自己的机器改。
 7. **不要提交构建产物。**
    `_research/`、`_sdk/`、`out/`、`_apkwork/`、`ui\classes\`、`ui\dex\`、`ui\smali\` 以及 `*.apk` / `*.dex` / `*.jar` / `*.so` 全部已被忽略。
 8. **首次构建较慢。**
