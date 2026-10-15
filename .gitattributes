@@ -1,0 +1,33 @@
+# =====================================================================
+# 统一换行符与二进制判定
+# ---------------------------------------------------------------------
+# 仓库内一律以 LF 存储：Windows 用户 clone 后不会把 shell 脚本变成 CRLF，
+# 否则 build/opt/qqbot/*.sh 在 Termux / 沙盒里会报 bad interpreter。
+# =====================================================================
+
+* text=auto eol=lf
+
+# 二进制文件不做任何换行符转换
+*.apk    binary
+*.so     binary
+*.dex    binary
+*.class  binary
+*.jar    binary
+*.zip    binary
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.ttf    binary
+*.xz     binary
+*.deb    binary
+
+# 语言标注（GitHub 语言统计用）
+*.sh       text eol=lf
+*.java     text eol=lf
+*.html     text eol=lf
+*.js       text eol=lf
+*.css      text eol=lf
+*.md       text eol=lf
+*.ps1      text eol=lf
