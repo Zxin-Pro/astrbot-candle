@@ -305,14 +305,20 @@ qqbot-sandbox/
 │  ├─ BUILD.md                  # 从源码构建
 │  ├─ 功能候选-200.md
 │  └─ 性能优化.md
-├─ build-apk.ps1                # 主构建脚本：注入 → 换 .so → 重新签名
+├─ build-ui.ps1                 # 构建第一步：编译原生控制台（javac → d8 → smali → apktool b）
+├─ build-apk.ps1                # 构建第二步：注入脚本 → 换 .so → 对齐 → 重新签名
+├─ dev/                         # 开发期的探索 / 校验脚本，不参与构建（见 dev/README.md）
 ├─ CHANGELOG.md                 # 更新日志
 ├─ LICENSE                      # GPL-3.0 全文
 ├─ README.md                    # 本文件
+├─ 使用说明.md                   # 面向使用者的完整说明书
+├─ .gitattributes               # 换行符统一为 LF（保证 .sh 在设备上可执行）
 └─ .gitignore
 ```
 
 > 目录 `_research/`（上游 Termux APK、uber-apk-signer）、`_sdk/`（android.jar、apktool.jar、d8）、`_apkwork/`（apktool 工作区）、`out/`（构建产物）都不入库，见 [.gitignore](.gitignore)。
+
+想从源码自己构建一个 APK，请看 [**docs/BUILD.md**](docs/BUILD.md) —— 里面写了需要准备哪些工具、两个脚本的执行顺序，以及 bootstrap 注入的偏移数学。
 
 ---
 
