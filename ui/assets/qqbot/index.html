@@ -1,0 +1,2189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>AstrBot烛版</title>
+<style>
+/* ==========================================================================
+   AstrBot烛版 烛之控制台 · 设计系统
+   分层：令牌 → 基础 → 背景 → 顶栏 → 内容 → 控件 → 组件 → 动效
+   材质原则：单层玻璃 + 1px 描边 + 顶部高光 + 单一环境阴影，不做多重叠加。
+   ========================================================================== */
+:root{
+  /* 玻璃 */
+  --glassBlur:24px;
+  /* 圆角阶梯 */
+  --r-xs:9px; --r-sm:12px; --r-md:16px; --r-lg:20px; --r-xl:26px; --r-full:999px;
+  /* 间距阶梯（8 的倍数节奏） */
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp5:20px; --sp6:24px;
+  /* 文字 */
+  --txt:#eef1f7; --txt-2:#a8b2c6; --txt-3:#7f889b;
+  /* 描边与面 */
+  --line:rgba(255,255,255,.085);
+  --line-2:rgba(255,255,255,.135);
+  --line-3:rgba(255,255,255,.20);
+  --surface:rgba(255,255,255,.055);
+  --surface-2:rgba(255,255,255,.09);
+  /* 语义色 */
+  --accent:#6f9dff; --accent-2:#8b6cff;
+  --ok:#5ee6a8; --warn:#ffcb5c; --bad:#ff8494;
+  /* 阴影：只用两级，避免每层都在发光 */
+  --sh-1:inset 0 1px 0 rgba(255,255,255,.055), 0 10px 28px rgba(0,0,0,.34);
+  --sh-2:0 2px 8px rgba(0,0,0,.34), 0 20px 48px rgba(0,0,0,.46);
+  /* 动效 */
+  --ease:cubic-bezier(.22,.9,.3,1);
+  --ease-pop:cubic-bezier(.34,1.32,.5,1);
+  --dur:.18s;
+  --dur-2:.26s;
+  --font:-apple-system,"SF Pro Text","PingFang SC","HarmonyOS Sans SC","Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Roboto Mono","Courier New",monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  min-height:100vh;padding-bottom:108px;
+  background:#05060a;color:var(--txt);
+  font-family:var(--font);font-size:15px;line-height:1.55;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  overscroll-behavior-y:none;
+}
+h1,h2,h3,p{margin:0}
+b,strong{font-weight:600}
+
+/* ===== 背景层 ===== */
+#bgLayer{position:fixed;inset:0;z-index:-2;background-color:#05060a;background-size:cover;background-position:center;background-repeat:no-repeat}
+#bgMask{
+  position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(128% 78% at 50% -12%, rgba(110,145,255,.15), rgba(0,0,0,0) 62%),
+    radial-gradient(120% 72% at 50% 114%, rgba(146,108,255,.12), rgba(0,0,0,0) 64%),
+    linear-gradient(180deg, rgba(0,0,0,.40), rgba(0,0,0,.46));
+}
+/* 自定义图片背景：加深遮罩，保证亮照片上的文字对比度 */
+body.hasimg #bgMask{
+  background:
+    radial-gradient(128% 78% at 50% -12%, rgba(110,145,255,.13), rgba(0,0,0,0) 62%),
+    radial-gradient(120% 72% at 50% 114%, rgba(146,108,255,.11), rgba(0,0,0,0) 64%),
+    linear-gradient(180deg, rgba(0,0,0,.60), rgba(0,0,0,.60));
+}
+body.hasimg h1,body.hasimg .sub,body.hasimg .k,body.hasimg .v,body.hasimg .hint,
+body.hasimg .swname,body.hasimg .field label,body.hasimg .tile .tt{text-shadow:0 1px 3px rgba(0,0,0,.82)}
+body.hasimg .hint,body.hasimg .k,body.hasimg .sub,body.hasimg .field label,body.hasimg .tile .tt{color:#b3bdd2}
+body.hasimg input::placeholder{color:#7d8697}
+
+/* ===== 顶栏 ===== */
+header{
+  position:sticky;top:0;z-index:30;padding:13px 16px 11px;
+  background:linear-gradient(180deg, rgba(17,20,28,.66), rgba(11,13,20,.50));
+  -webkit-backdrop-filter:blur(var(--glassBlur)) saturate(180%);
+  backdrop-filter:blur(var(--glassBlur)) saturate(180%);
+  border-bottom:1px solid var(--line);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07), 0 10px 30px rgba(0,0,0,.30);
+}
+.hdrow{display:flex;align-items:center;gap:var(--sp3)}
+.hdmain{flex:1;min-width:0}
+.brand{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.mark{
+  flex:0 0 auto;width:30px;height:30px;border-radius:10px;display:grid;place-items:center;
+  background:linear-gradient(145deg,#7ba7ff,#5d55e8 78%);
+  box-shadow:0 4px 14px rgba(86,110,240,.42), inset 0 1px 0 rgba(255,255,255,.42);
+  color:#fff;
+}
+.mark svg{width:17px;height:17px;display:block}
+h1{
+  margin:0;font-size:18px;font-weight:650;letter-spacing:-.02em;
+  color:#f2f5fc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.sub{color:var(--txt-3);font-size:12px;margin-top:2px;letter-spacing:.005em}
+.iconbtn{
+  flex:0 0 auto;width:38px;height:38px;padding:0;border-radius:var(--r-sm);
+  display:grid;place-items:center;color:var(--txt-2);
+}
+.iconbtn svg{width:19px;height:19px;display:block}
+#btnSettings.on{
+  color:#dbe7ff;border-color:rgba(111,157,255,.55);
+  background:linear-gradient(180deg, rgba(111,157,255,.28), rgba(80,110,230,.14));
+}
+.pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+
+/* ===== 状态胶囊 ===== */
+.pill{
+  display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:500;
+  padding:3px 10px 3px 9px;border-radius:var(--r-full);color:#c3cbdc;
+  background:linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.035));
+  border:1px solid var(--line-2);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.10);
+  -webkit-backdrop-filter:blur(10px) saturate(160%);backdrop-filter:blur(10px) saturate(160%);
+}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:0 0 auto;box-shadow:0 0 6px currentColor}
+.pill.ok{color:var(--ok);border-color:rgba(94,230,168,.34);background:linear-gradient(180deg, rgba(94,230,168,.15), rgba(94,230,168,.045))}
+.pill.bad{color:var(--bad);border-color:rgba(255,132,148,.34);background:linear-gradient(180deg, rgba(255,132,148,.15), rgba(255,132,148,.045))}
+.pill.warn{color:var(--warn);border-color:rgba(255,203,92,.32);background:linear-gradient(180deg, rgba(255,203,92,.14), rgba(255,203,92,.045))}
+/* 无限脉冲动画必须自带合成层：.pill / .card 上都有 backdrop-filter，
+   动画元素若与祖先同层，每帧都会让祖先的毛玻璃重新栅格化（实测占满一个核）*/
+.pill.ok::before{animation:breathe 2.4s ease-in-out infinite;will-change:opacity}
+
+main{padding:var(--sp3) var(--sp3) var(--sp2)}
+
+/* ===== 玻璃卡片 ===== */
+.card{
+  position:relative;margin-bottom:10px;padding:var(--sp4);
+  border-radius:var(--r-lg);
+  background:linear-gradient(180deg, rgba(255,255,255,.062), rgba(255,255,255,.028));
+  border:1px solid var(--line);
+  box-shadow:var(--sh-1);
+  -webkit-backdrop-filter:blur(var(--glassBlur)) saturate(180%);
+  backdrop-filter:blur(var(--glassBlur)) saturate(180%);
+}
+.card::before{
+  content:"";position:absolute;left:var(--sp4);right:var(--sp4);top:0;height:1px;pointer-events:none;
+  background:linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.22), rgba(255,255,255,0));
+}
+.card h2{
+  margin:0 0 10px;font-size:13.5px;font-weight:600;color:#dde4f1;
+  letter-spacing:.005em;display:flex;align-items:center;gap:var(--sp2);line-height:1.4;
+}
+.dot{width:7px;height:7px;border-radius:50%;background:#5b6376;flex:0 0 auto;box-shadow:0 0 0 3px rgba(255,255,255,.05)}
+.dot.ok{background:#34d399;box-shadow:0 0 9px rgba(52,211,153,.7)}
+.dot.bad{background:#f87171;box-shadow:0 0 9px rgba(248,113,113,.65)}
+.dot.warn{background:#fbbf24;box-shadow:0 0 9px rgba(251,191,36,.65)}
+.dot.ok,.dot.warn{animation:breathe 2.6s ease-in-out infinite;will-change:opacity}
+
+/* ===== 键值行 ===== */
+.row{
+  display:flex;justify-content:space-between;align-items:baseline;gap:var(--sp3);
+  padding:9px 0;border-bottom:1px solid var(--line);
+}
+.row:last-child{border-bottom:none}
+.k{color:var(--txt-2);font-size:12.5px;flex:0 0 auto}
+.v{color:#e9edf6;font-size:13px;text-align:right;word-break:break-all;font-weight:500}
+.mono{font-family:var(--mono);font-size:12.5px;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+
+/* ===== 状态磁贴 ===== */
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp2);margin-top:2px}
+.tile{
+  padding:11px 12px;border-radius:var(--r-sm);
+  background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+  border:1px solid var(--line);
+}
+.tile .tt{font-size:11.5px;color:var(--txt-3);display:flex;align-items:center;gap:6px;letter-spacing:.01em}
+.tile .tv{font-size:15px;font-weight:650;margin-top:5px;letter-spacing:-.01em;font-variant-numeric:tabular-nums;color:#cfd6e4}
+.tile.ok .tv{color:var(--ok)}
+.tile.bad .tv{color:var(--bad)}
+.tile.warn .tv{color:var(--warn)}
+.tile .tp{font-size:11px;color:var(--txt-3);margin-top:2px;font-family:var(--mono)}
+
+/* ===== 按钮 ===== */
+button{
+  font-family:inherit;font-size:13.5px;font-weight:500;
+  min-height:40px;padding:9px 15px;border-radius:var(--r-sm);
+  color:var(--txt);cursor:pointer;
+  background:linear-gradient(180deg, rgba(255,255,255,.095), rgba(255,255,255,.04));
+  border:1px solid var(--line-2);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 4px 14px rgba(0,0,0,.22);
+  transition:transform var(--dur) var(--ease), background var(--dur) var(--ease),
+             box-shadow var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+button *{pointer-events:none}
+button:active{transform:scale(.975);opacity:.9}
+button:disabled{opacity:.42;transform:none}
+button:focus-visible{outline:2px solid rgba(111,157,255,.75);outline-offset:2px}
+button.primary{
+  color:#fff;border-color:rgba(255,255,255,.22);
+  background:linear-gradient(180deg,#749fff,#4a6fe4);
+  box-shadow:0 6px 20px rgba(74,111,228,.40), inset 0 1px 0 rgba(255,255,255,.30);
+}
+button.ok{
+  color:#dcffee;border-color:rgba(52,211,153,.40);
+  background:linear-gradient(180deg, rgba(52,211,153,.30), rgba(16,120,80,.40));
+}
+button.danger{
+  color:#ffd9de;border-color:rgba(255,110,130,.38);
+  background:linear-gradient(180deg, rgba(255,90,110,.24), rgba(140,24,40,.36));
+}
+button.small{min-height:36px;padding:7px 13px;font-size:12.5px;border-radius:var(--r-xs)}
+button.tiny{min-height:0;padding:4px 10px;font-size:11.5px;border-radius:var(--r-xs)}
+.btns{display:flex;gap:var(--sp2);flex-wrap:wrap}
+.btns.grid button{flex:1 1 30%}
+.mini{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.xdel{
+  margin-left:auto;min-height:0;padding:1px 9px;font-size:14px;line-height:1.55;
+  border-radius:var(--r-xs);background:transparent;border:1px solid var(--line-2);
+  color:var(--txt-3);box-shadow:none;
+}
+.xdel:active{background:rgba(255,255,255,.08)}
+.dtgl{
+  margin-left:auto;min-height:0;padding:2px 10px;font-size:11.5px;line-height:1.7;
+  border-radius:var(--r-xs);background:transparent;border:1px solid var(--line-2);
+  color:var(--txt-3);box-shadow:none;font-weight:500;
+}
+.dtgl:active{background:rgba(255,255,255,.08)}
+
+/* ===== Token 展示框 ===== */
+.tokbox{
+  display:flex;gap:var(--sp2);align-items:center;margin-top:var(--sp2);
+  padding:9px 11px;border-radius:var(--r-md);
+  background:rgba(255,255,255,.045);
+  border:1px dashed var(--line-3);
+  box-shadow:inset 0 2px 10px rgba(0,0,0,.32);
+}
+.tokbox code{flex:1;font-family:var(--mono);font-size:13.5px;color:#ffd479;word-break:break-all;letter-spacing:.01em}
+
+/* ===== 底部导航 ===== */
+nav{
+  position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;gap:4px;
+  padding:8px 10px 10px;padding-bottom:calc(10px + env(safe-area-inset-bottom));
+  background:linear-gradient(180deg, rgba(13,15,23,.62), rgba(8,10,16,.80));
+  -webkit-backdrop-filter:blur(var(--glassBlur)) saturate(180%);
+  backdrop-filter:blur(var(--glassBlur)) saturate(180%);
+  border-top:1px solid var(--line);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+}
+nav button{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;
+  min-height:0;padding:8px 0 7px;font-size:11px;font-weight:500;color:var(--txt-3);
+  background:none;border:1px solid transparent;border-radius:var(--r-sm);
+  box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;
+  transition:color var(--dur) var(--ease), background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+nav button.on{
+  color:#fff;border-color:rgba(255,255,255,.14);
+  background:linear-gradient(180deg, rgba(111,157,255,.30), rgba(80,110,230,.16));
+  box-shadow:0 0 20px rgba(96,140,255,.26), inset 0 1px 0 rgba(255,255,255,.22);
+}
+nav .ic{width:21px;height:21px;display:block;color:inherit}
+
+/* ===== 页签 ===== */
+.tab{display:none}
+.tab.on{display:block;animation:tabIn var(--dur-2) var(--ease)}
+
+/* ===== 日志区 ===== */
+pre{
+  margin:var(--sp2) 0 0;padding:11px;max-height:56vh;overflow:auto;
+  border-radius:var(--r-md);
+  background:linear-gradient(180deg, rgba(5,7,12,.74), rgba(5,7,12,.58));
+  border:1px solid var(--line);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.045);
+  font-family:var(--mono);font-size:11.5px;line-height:1.6;color:#c2cbdb;
+  white-space:pre-wrap;word-break:break-all;
+}
+
+/* ===== 表单 ===== */
+select,input{
+  width:100%;padding:10px 12px;border-radius:var(--r-sm);
+  font-family:inherit;font-size:14px;color:var(--txt);
+  background:rgba(255,255,255,.045);border:1px solid var(--line-2);
+  box-shadow:inset 0 2px 8px rgba(0,0,0,.40);
+}
+select:focus,input:focus{outline:none;border-color:rgba(111,157,255,.62);box-shadow:inset 0 2px 8px rgba(0,0,0,.40), 0 0 0 3px rgba(111,157,255,.16)}
+input::placeholder{color:#5f6879}
+.field{margin-bottom:10px}
+.field label{display:block;font-size:12px;color:var(--txt-2);margin-bottom:6px}
+.hint{font-size:11.5px;color:var(--txt-3);line-height:1.6;margin-top:7px}
+.hint b{color:#9fb0d8;font-weight:600}
+
+/* ===== 实例卡 ===== */
+.bot{
+  margin-bottom:9px;padding:12px 13px;border-radius:var(--r-md);
+  background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.018));
+  border:1px solid var(--line);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.075), 0 6px 20px rgba(0,0,0,.24);
+}
+.bot.active{border-color:rgba(111,157,255,.48);box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 10px 26px rgba(60,100,220,.24)}
+.bot .bh{display:flex;justify-content:space-between;align-items:center;gap:var(--sp2);margin-bottom:6px}
+.bot .bn{font-weight:600;font-size:14px;letter-spacing:-.01em}
+.bh-r{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.tag{
+  font-size:11px;padding:3px 9px;border-radius:var(--r-full);color:#c3cbdc;
+  background:linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.035));
+  border:1px solid var(--line-2);
+}
+.tag.on{color:#9fc3ff;border-color:rgba(111,157,255,.40);background:linear-gradient(180deg, rgba(111,157,255,.20), rgba(111,157,255,.07))}
+.empty{color:var(--txt-3);text-align:center;padding:26px 0;font-size:13px}
+
+/* ===== 两步确认 ===== */
+.confirm{
+  margin-top:var(--sp3);padding:var(--sp3);border-radius:var(--r-md);
+  border:1px solid rgba(255,110,130,.38);
+  background:linear-gradient(180deg, rgba(255,90,110,.16), rgba(140,20,36,.18));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 10px 24px rgba(0,0,0,.28);
+  animation:popIn .18s var(--ease);
+}
+.confirm .ct{font-size:12.5px;color:#ffd9de;line-height:1.6;margin-bottom:10px}
+
+/* ===== 进度与步骤 ===== */
+.bar{
+  height:6px;margin-top:10px;border-radius:var(--r-full);overflow:hidden;
+  background:rgba(0,0,0,.38);border:1px solid var(--line);
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.5);
+}
+.bar i{display:block;height:100%;width:0;border-radius:var(--r-full);background:linear-gradient(90deg,#6f9dff,#34d399);box-shadow:0 0 14px rgba(111,157,255,.45);transition:width .4s var(--ease)}
+.step{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;padding:3px 0;color:var(--txt-3);line-height:1.5}
+.step.done{color:var(--ok)}
+.step .mk{width:14px;flex:0 0 auto;text-align:center}
+.dsum{font-size:13px;color:#9fb0d8;line-height:1.5}
+
+/* ===== 并排日志 ===== */
+.duo{display:flex;gap:var(--sp3);flex-wrap:wrap;margin-top:var(--sp3)}
+.duo-col{flex:1 1 300px;min-width:0}
+.duo-h{font-size:12px;color:var(--txt-2);margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;gap:6px}
+.duo-col pre{max-height:44vh;margin-top:0}
+.duo-h .hh{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.duo-h .tiny{margin-left:6px;padding:2px 9px;font-size:11px;line-height:1.7;border-radius:var(--r-xs)}
+
+/* ===== 二维码 ===== */
+.qrow{display:flex;gap:var(--sp4);align-items:flex-start;flex-wrap:wrap}
+.qimg{flex:0 0 auto}
+.qimg img{display:block;width:250px;max-width:62vw;background:#fff;border-radius:var(--r-md);padding:10px;box-shadow:0 14px 34px rgba(0,0,0,.46);animation:tabIn .3s var(--ease)}
+.qside{flex:1 1 260px;min-width:240px}
+
+/* ===== 外观卡 ===== */
+.fxrow{display:flex;align-items:center;justify-content:space-between;gap:var(--sp3);padding:9px 0;border-bottom:1px solid var(--line)}
+.fxrow:last-child{border-bottom:none}
+.fxlabel{color:var(--txt-2);font-size:13px;flex:0 0 auto}
+.swatches{display:flex;gap:13px;flex-wrap:wrap;padding:4px 0 2px}
+.swwrap{display:flex;flex-direction:column;align-items:center;gap:5px}
+.sw{
+  width:44px;height:44px;min-height:0;padding:0;border-radius:var(--r-sm);
+  border:1px solid var(--line-3);
+  background-image:linear-gradient(180deg,#333,#111);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.20), 0 6px 14px rgba(0,0,0,.28);
+  backdrop-filter:none;-webkit-backdrop-filter:none;
+  transition:box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.sw.on{border-color:rgba(255,255,255,.52);box-shadow:0 0 0 2px var(--accent), 0 0 18px rgba(111,157,255,.5), inset 0 1px 0 rgba(255,255,255,.22)}
+.swname{font-size:10.5px;color:var(--txt-3);letter-spacing:.02em}
+.seg{
+  display:flex;border-radius:var(--r-sm);overflow:hidden;
+  border:1px solid var(--line-2);background:rgba(255,255,255,.045);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+}
+.seg button{
+  flex:1;min-height:0;padding:9px 15px;font-size:12.5px;border:none;border-radius:0;
+  background:none;box-shadow:none;color:#9aa4b8;backdrop-filter:none;-webkit-backdrop-filter:none;
+}
+.seg button + button{border-left:1px solid var(--line)}
+.seg button.on{color:#fff;background:linear-gradient(180deg, rgba(111,157,255,.38), rgba(80,110,230,.20));box-shadow:inset 0 1px 0 rgba(255,255,255,.22)}
+
+/* ===== 组件开关 ===== */
+.swrow{display:flex;align-items:center;gap:var(--sp3);padding:10px 0;border-bottom:1px solid var(--line)}
+.swrow:last-child{border-bottom:none}
+.swinfo{flex:1;min-width:0}
+.swname{font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:8px;letter-spacing:-.01em}
+.swdesc{font-size:11.5px;color:var(--txt-3);margin-top:3px;line-height:1.5}
+.swtag{
+  font-size:10.5px;padding:1px 8px;border-radius:var(--r-full);font-weight:500;
+  border:1px solid var(--line-2);color:#c3cbdc;
+  background:linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.035));white-space:nowrap;
+}
+.swtag.on{color:var(--ok);border-color:rgba(94,230,168,.34);background:linear-gradient(180deg,rgba(94,230,168,.15),rgba(94,230,168,.045))}
+.swtag.off{color:var(--bad);border-color:rgba(255,132,148,.34);background:linear-gradient(180deg,rgba(255,132,148,.15),rgba(255,132,148,.045))}
+.swtag.wait{color:var(--warn);border-color:rgba(255,203,92,.32);background:linear-gradient(180deg,rgba(255,203,92,.14),rgba(255,203,92,.045))}
+.tgl{
+  position:relative;flex:0 0 auto;width:54px;height:31px;min-height:0;padding:0;border-radius:var(--r-full);
+  border:1px solid var(--line-2);
+  background:linear-gradient(180deg,rgba(18,22,32,.74),rgba(10,13,19,.84));
+  box-shadow:inset 0 2px 7px rgba(0,0,0,.55);
+  transition:background var(--dur-2) var(--ease),border-color var(--dur-2) var(--ease),box-shadow var(--dur-2) var(--ease);
+}
+.tgl::after{
+  content:"";position:absolute;top:3px;left:3px;width:23px;height:23px;border-radius:50%;
+  background:linear-gradient(180deg,#eef2fa,#b9c2d4);
+  box-shadow:0 2px 8px rgba(0,0,0,.5);
+  transition:left var(--dur-2) var(--ease-pop),background var(--dur-2) var(--ease);
+}
+.tgl.on{
+  background:linear-gradient(180deg,rgba(52,211,153,.92),rgba(16,140,100,.90));
+  border-color:rgba(94,230,168,.46);
+  box-shadow:0 0 20px rgba(52,211,153,.34),inset 0 1px 0 rgba(255,255,255,.36);
+}
+.tgl.on::after{left:26px;background:#fff}
+
+/* ===== 端口输入 ===== */
+.portrow{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap;padding:9px 0;border-bottom:1px solid var(--line)}
+.portrow:last-child{border-bottom:none}
+.prn{flex:1 1 100%;font-size:12.5px;color:#dfe5f2;font-weight:500}
+.prid{font-size:11px;color:var(--txt-3);margin-left:6px;font-family:var(--mono)}
+.prl{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--txt-2)}
+.pin{flex:0 0 auto;width:86px;min-height:36px;padding:6px 8px;font-size:12.5px;border-radius:var(--r-xs);text-align:center;font-variant-numeric:tabular-nums}
+input[type=number]{-webkit-appearance:none;appearance:none;margin:0}
+input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+
+/* ===== 链接行（官网 / 交流群） ===== */
+.lkrow{
+  display:flex;align-items:center;gap:var(--sp3);
+  padding:11px 0;border-bottom:1px solid var(--line);
+}
+.lkrow:last-child{border-bottom:none}
+.lkic{
+  flex:0 0 auto;width:34px;height:34px;border-radius:var(--r-xs);display:grid;place-items:center;
+  background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.04));
+  border:1px solid var(--line-2);color:#b9c6e2;
+}
+.lkic svg{width:17px;height:17px;display:block}
+.lkbd{flex:1;min-width:0}
+.lkt{font-size:13.5px;font-weight:600;letter-spacing:-.01em}
+.lkv{font-size:11.5px;color:var(--txt-3);margin-top:2px;font-family:var(--mono);word-break:break-all}
+.lkbtns{display:flex;gap:6px;flex:0 0 auto}
+
+/* ===== 应用内弹窗（免责声明等） ===== */
+.dlgmask{
+  position:fixed;inset:0;z-index:60;display:none;
+  align-items:center;justify-content:center;padding:var(--sp4);
+  background:rgba(4,6,11,.62);
+  -webkit-backdrop-filter:blur(12px) saturate(140%);backdrop-filter:blur(12px) saturate(140%);
+  animation:fadeIn .2s var(--ease);
+}
+.dlgmask.on{display:flex}
+.dlg{
+  width:100%;max-width:520px;max-height:86vh;overflow:auto;
+  padding:var(--sp5);border-radius:var(--r-xl);
+  background:linear-gradient(180deg, rgba(24,28,40,.94), rgba(15,18,27,.94));
+  border:1px solid var(--line-3);
+  box-shadow:var(--sh-2), inset 0 1px 0 rgba(255,255,255,.10);
+  animation:dlgIn .26s var(--ease-pop);
+}
+.dlg h3{font-size:16.5px;font-weight:650;letter-spacing:-.015em;margin-bottom:var(--sp2);display:flex;align-items:center;gap:9px}
+.dlg .dbody{font-size:12.5px;line-height:1.72;color:#c4cddd}
+.dlg .dbody p{margin:0 0 9px}
+.dlg .dbody ul{margin:0 0 10px;padding-left:18px}
+.dlg .dbody li{margin-bottom:5px}
+.dlg .dbody b{color:#e6ecf8}
+.dlg .dfoot{display:flex;gap:var(--sp2);margin-top:var(--sp5)}
+
+/* ===== 观感与动效 ===== */
+@keyframes breathe{0%,100%{opacity:1}50%{opacity:.38}}
+@keyframes tabIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+@keyframes popIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes dlgIn{from{opacity:0;transform:translateY(14px) scale(.975)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
+}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:linear-gradient(180deg,rgba(255,255,255,.20),rgba(255,255,255,.10));border-radius:var(--r-full)}
+::-webkit-scrollbar-thumb:active{background:rgba(255,255,255,.30)}
+
+/* ===== 不支持 backdrop-filter 的旧 WebView：退回不透明底 ===== */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))){
+  header{background:linear-gradient(180deg, rgba(14,17,24,.97), rgba(10,12,18,.94))}
+  nav{background:linear-gradient(180deg, rgba(14,16,24,.98), rgba(9,11,17,.97))}
+  .card{background:linear-gradient(180deg, rgba(22,26,36,.95), rgba(15,18,26,.92))}
+  button{background:linear-gradient(180deg, rgba(44,50,66,.96), rgba(28,32,44,.94))}
+  .pill{background:rgba(32,36,48,.95)}
+  pre{background:rgba(6,8,14,.95)}
+  .dlg{background:linear-gradient(180deg,#1a1e2a,#11141d)}
+}
+</style>
+</head>
+<body>
+<div id="bgLayer"></div>
+<div id="bgMask"></div>
+<header>
+  <div class="hdrow">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.4A7.4 7.4 0 0 1 11.4 4h1.2A7.4 7.4 0 0 1 20 11.4v1.2a7.4 7.4 0 0 1-7.4 7.4H8.6L4.7 23v-4.3A7.4 7.4 0 0 1 4 12.6z"/></svg></span>
+      <div class="hdmain">
+        <h1>烛之控制台</h1>
+        <div class="sub" id="hdrSub">正在读取状态…</div>
+      </div>
+    </div>
+    <button class="iconbtn" id="btnSettings" data-act="settings" title="设置" aria-label="设置"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.1"/><path d="M19.5 14.6a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-2.8-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H3a2 2 0 1 1 0-4h.2a1.6 1.6 0 0 0 1.1-2.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 2.7-1.1V3a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.3 1.1z"/></svg></button>
+  </div>
+  <div class="pills" id="pills"></div>
+</header>
+<main>
+
+  <section class="tab on" id="tab-home">
+    <div class="card" id="deployCard">
+      <h2><span class="dot" id="d-deploying"></span>自动部署<button class="dtgl" id="btnDeployToggle" data-act="deploytoggle" style="display:none">展开</button></h2>
+      <div class="dsum" id="deploySum" style="display:none"></div>
+      <div class="hint" style="margin-top:0" id="deployHint">正在读取部署状态…</div>
+      <div class="bar" id="deployBarWrap"><i id="deployBar"></i></div>
+      <div id="stepList" style="margin-top:10px"></div>
+      <div class="btns" style="margin-top:10px" id="deployBtns">
+        <button class="primary" style="flex:1" data-act="deploy" id="btnDeploy">开始部署</button>
+        <button class="danger" data-act="stopdeploy" id="btnStopDeploy" style="display:none">停止</button>
+      </div>
+      <pre id="deployLog" style="max-height:26vh">（暂无部署日志）</pre>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot" id="d-deploy"></span>运行状态</h2>
+      <div class="tiles">
+        <div class="tile" id="t-deploy"><div class="tt">部署</div><div class="tv" id="v-deploy">-</div><div class="tp" id="p-deploy"></div></div>
+        <div class="tile" id="t-sup"><div class="tt">后台服务</div><div class="tv" id="v-sup">-</div><div class="tp" id="p-sup"></div></div>
+        <div class="tile" id="t-napcat"><div class="tt">NapCat</div><div class="tv" id="v-napcat">-</div><div class="tp" id="p-napcat"></div></div>
+        <div class="tile" id="t-astrbot"><div class="tt">AstrBot</div><div class="tv" id="v-astrbot">-</div><div class="tp" id="p-astrbot"></div></div>
+        <div class="tile" id="t-onebot" style="grid-column:1 / -1"><div class="tt">OneBot 通道</div><div class="tv" id="v-onebot">-</div><div class="tp" id="p-onebot"></div></div>
+      </div>
+      <div class="btns" style="margin-top:12px">
+        <button class="primary" style="flex:1" data-act="showlogs">查看日志</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot" id="d-svc"></span>组件开关</h2>
+      <div class="hint" style="margin-top:0">两个容器可以单独开关：关掉 NapCat 只停 QQ 协议端，关掉 AstrBot 只停机器人框架，另一个不受影响。开关存在手机里，重启应用、重启容器都保留。</div>
+      <div id="swList" style="margin-top:10px"></div>
+      <div class="btns" style="margin-top:10px">
+        <button class="small ok" data-act="svcallon" style="flex:1">两个都打开</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>机器人连接</h2>
+      <div class="hint" style="margin-top:0">每个 NapCat 实例各自独立登录、各自独立端口。扫码要在另一台设备上打开对应的「登录地址」。</div>
+      <div id="homeBots" style="margin-top:10px"></div>
+      <div class="btns" style="margin-top:10px">
+        <button class="small" data-act="addbot" style="flex:1">新增实例</button>
+        <button class="small" data-act="link" style="flex:1">全部对接 AstrBot</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>访问地址</h2>
+      <div class="row"><span class="k">WebUI 地址</span><span class="v mono" id="v-napurl">http://127.0.0.1:6099</span></div>
+      <div class="row"><span class="k">登录 Token</span><span class="v mono" id="v-token">-</span></div>
+      <div class="tokbox">
+        <code id="tokText">zhuxin</code>
+        <button class="small ok" data-act="copytoken">复制</button>
+      </div>
+      <div class="row"><span class="k">AstrBot 地址</span><span class="v mono" id="v-astrurl">http://127.0.0.1:6185</span></div>
+      <div class="row"><span class="k">账号</span><span class="v mono">astrbot</span></div>
+      <div class="row"><span class="k">密码</span><span class="v mono">Astrbot123</span></div>
+      <div class="btns" style="margin-top:10px">
+        <button class="small primary" style="flex:1" data-act="openpanel" id="btnNapPanel" data-arg="">应用内打开 NapCat 面板</button>
+      </div>
+      <div class="btns" style="margin-top:8px">
+        <button class="small" data-act="copyuser">复制账号</button>
+        <button class="small" data-act="copypass">复制密码</button>
+        <button class="small primary" style="flex:1" data-act="openpanel" id="btnAstrPanel" data-arg="http://127.0.0.1:6185">应用内打开 AstrBot 控制台</button>
+      </div>
+      <div class="hint">二维码需要另一台设备扫：手机与电脑连同一个 Wi-Fi，用电脑浏览器打开 <b>http://手机IP:6099</b>，再用手机 QQ 扫码。也可以直接点上面的按钮，在应用内打开 NapCat 面板扫码。首次登录 AstrBot 后请立即修改密码。</div>
+    </div>
+
+  </section>
+
+  <section class="tab" id="tab-bots">
+    <div class="card">
+      <h2>NapCat 实例</h2>
+      <div class="hint" style="margin-top:0">可配置多个 NapCat 实例（多个 QQ 号）。每个实例使用独立的 WebUI 端口与 OneBot 端口。</div>
+      <div id="botList" style="margin-top:12px"></div>
+      <div class="btns" style="margin-top:6px">
+        <button class="primary" style="flex:1" data-act="addbot">新增实例</button>
+      </div>
+    </div>
+    <div class="card" id="botEditCard" style="display:none">
+      <h2 id="botEditTitle">编辑实例</h2>
+      <div class="field"><label>名称</label><input id="f-name" placeholder="例如：主号"></div>
+      <div class="field"><label>QQ 号（可留空）</label><input id="f-qq" inputmode="numeric" placeholder="10001"></div>
+      <div class="field"><label>登录 Token</label><input id="f-token" placeholder="zhuxin"></div>
+      <div class="field"><label>NapCat WebUI 端口</label><input id="f-napcatPort" inputmode="numeric" placeholder="6099"></div>
+      <div class="field"><label>OneBot 端口（对接 AstrBot）</label><input id="f-onebotPort" inputmode="numeric" placeholder="6199"></div>
+      <div class="btns" style="margin-top:6px">
+        <button class="primary" style="flex:1" data-act="savebot">保存</button>
+        <button data-act="cancelbot">取消</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-logs">
+    <div class="card" id="logCardQr">
+      <h2><span class="dot" id="d-qr"></span>扫码登录二维码</h2>
+      <div class="hint" style="margin-top:0">NapCat 登录 QQ 用的二维码。用<b>另一台设备</b>的 QQ「扫一扫」扫这张图；登录成功后二维码会消失。</div>
+      <div class="qrow">
+        <div class="qimg">
+          <img id="qrImg" alt="登录二维码" style="display:none">
+          <div id="qrNone" class="hint">暂时没有二维码。<br>等 NapCat 启动并请求登录后会出现（每个实例的二维码不同）。</div>
+        </div>
+        <div class="qside">
+          <div class="field">
+            <label>实例</label>
+            <select id="qrSel"></select>
+          </div>
+          <div class="hint" id="qrMeta" style="margin-top:8px"></div>
+          <div class="btns" style="margin-top:10px">
+            <button class="small primary" data-act="qrrefresh">刷新二维码</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="logCardDuo">
+      <h2><span class="dot" id="d-log2"></span>NapCat / AstrBot 实时日志</h2>
+      <div class="hint" style="margin-top:0">两个容器的输出并排显示，每 2 秒自动刷新，自动滚到最新一行。清空＝留着文件继续记；删除＝连文件一起删掉。</div>
+      <div class="duo">
+        <div class="duo-col">
+          <div class="duo-h"><span>NapCat</span><span class="hh"></span><span class="mono" id="duoNapName">qq.log</span>
+            <button class="tiny" data-act="clearlog" data-arg="nap">清空</button>
+            <button class="tiny" data-act="rmlog" data-arg="nap">删除</button></div>
+          <pre id="logNap">（暂无内容）</pre>
+        </div>
+        <div class="duo-col">
+          <div class="duo-h"><span>AstrBot</span><span class="hh"></span><span class="mono">astrbot.log</span>
+            <button class="tiny" data-act="clearlog" data-arg="astr">清空</button>
+            <button class="tiny" data-act="rmlog" data-arg="astr">删除</button></div>
+          <pre id="logAstr">（暂无内容）</pre>
+        </div>
+      </div>
+      <div class="btns" style="margin-top:10px">
+        <button class="small" data-act="copynap">复制 NapCat 日志</button>
+        <button class="small" data-act="copyastr">复制 AstrBot 日志</button>
+        <button class="small primary" data-act="reload">立即刷新</button>
+        <button class="small" data-act="slim" id="btnSlim">精简模式：开</button>
+      </div>
+    </div>
+
+    <div class="card" id="logCardFiles">
+      <h2><span class="dot" id="d-log"></span>其它日志文件<button class="xdel" data-act="rmcard" data-arg="files" title="从页面上移除这个框">×</button></h2>
+      <div class="field" style="margin-bottom:8px">
+        <label>选择日志</label>
+        <select id="logSel"></select>
+      </div>
+      <div class="btns">
+        <button class="small primary" id="btnAuto" data-act="auto">自动刷新：开</button>
+        <button class="small" data-act="reload">立即刷新</button>
+        <button class="small" data-act="copylog">复制全部</button>
+        <button class="small" data-act="clearlog" data-arg="sel">清空该日志</button>
+        <button class="small" data-act="rmlog" data-arg="sel">删除该日志</button>
+      </div>
+      <pre id="logBox">（选择日志后显示）</pre>
+    </div>
+
+    <div class="hint" id="logCardsTip" style="display:none">日志框都收起来了。要看日志请回「主页 → 运行状态 → 查看日志」，点一下就会全部恢复。</div>
+  </section>
+
+  <section class="tab" id="tab-more">
+    <div class="card">
+      <h2>关于与支持</h2>
+      <div class="lkrow">
+        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.6"/><path d="M3.4 12h17.2"/><path d="M12 3.4c2.3 2.4 3.5 5.4 3.5 8.6S14.3 18.2 12 20.6c-2.3-2.4-3.5-5.4-3.5-8.6S9.7 5.8 12 3.4z"/></svg></span>
+        <div class="lkbd"><div class="lkt">官方网站</div><div class="lkv">烛心.xyz</div></div>
+        <div class="lkbtns">
+          <button class="small" data-act="copyurl" data-arg="https://xn--15t839a.xyz">复制</button>
+          <button class="small primary" data-act="openurl" data-arg="https://xn--15t839a.xyz">打开</button>
+        </div>
+      </div>
+      <div class="lkrow">
+        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9.2" cy="8.4" r="3.3"/><path d="M3.2 20c0-3.3 2.7-5.6 6-5.6s6 2.3 6 5.6"/><path d="M16.4 5.6a3.2 3.2 0 0 1 0 6.3"/><path d="M17.6 14.9c2.2.5 3.7 2.3 3.7 4.6"/></svg></span>
+        <div class="lkbd"><div class="lkt">本软件官方群</div><div class="lkv">1127997343</div></div>
+        <div class="lkbtns">
+          <button class="small" data-act="copytext" data-arg="1127997343">复制</button>
+          <button class="small primary" data-act="openqq" data-arg="1127997343">加群</button>
+        </div>
+      </div>
+      <div class="hint">当前版本 <b id="v-appver">-</b></div>
+      <div class="hint">本软件官方群 <b>1127997343</b>，发现 bug 及时反馈。</div>
+    </div>
+
+    <div class="card" id="guardCard">
+      <h2><span class="dot" id="d-guard"></span>后台守护</h2>
+      <div class="hint">Android 在内存紧张时会冻结甚至杀掉后台应用，沙盒里的 NapCat 与 AstrBot 就会「进程还在、但完全没有反应」。开启下面的常驻守护后，本应用会保留一条常驻通知以维持前台优先级，并每分钟自检一次沙盒，掉线就自动拉起。</div>
+      <div id="guardList" style="margin-top:10px"></div>
+      <div class="btns" style="margin-top:10px">
+        <button class="small" data-act="battery" style="flex:1">申请电池优化白名单</button>
+      </div>
+      <div class="hint" id="guardNote">—</div>
+    </div>
+
+    <div class="card" id="appearanceCard">
+      <h2>外观</h2>
+      <div class="fxrow">
+        <span class="fxlabel">背景</span>
+        <div class="btns">
+          <button class="small primary" data-act="pickbg">选择本机图片</button>
+          <button class="small" data-act="clearbg">恢复默认</button>
+        </div>
+      </div>
+      <div class="fxrow" style="flex-wrap:wrap">
+        <span class="fxlabel">预设</span>
+        <div class="swatches" id="swatches"></div>
+      </div>
+      <div class="fxrow">
+        <span class="fxlabel">玻璃强度</span>
+        <div class="seg" id="glassSeg">
+          <button data-act="glass" data-arg="thin">薄</button>
+          <button data-act="glass" data-arg="mid" class="on">中</button>
+          <button data-act="glass" data-arg="thick">厚</button>
+        </div>
+      </div>
+      <div class="hint">背景图片保存在本机，仅作显示，不上传。玻璃强度越厚越朦胧，低配机型建议选「薄」。</div>
+    </div>
+
+    <div class="card">
+      <h2>终端</h2>
+      <div class="hint" style="margin-top:0">需要手动执行命令时可切到 Termux 终端。常用：qqbot-start / qqbot-stop / qqbot-status / qqbot-shell。</div>
+      <div class="btns" style="margin-top:10px">
+        <button class="primary" style="flex:1" data-act="terminal">打开终端</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-settings">
+    <div class="btns" style="margin-bottom:12px">
+      <button class="small" data-act="backhome">← 返回主页</button>
+    </div>
+
+    <div class="card">
+      <h2>组件重装</h2>
+      <div class="hint" style="margin-top:0">重装会先停掉对应容器、删掉已安装的文件再重新下载安装，耗时几分钟，期间那个容器不可用。端口与登录数据保留。进度见日志页「其它日志文件」里的 reinstall.log。</div>
+      <div class="btns" style="margin-top:10px">
+        <button class="small" data-act="reinstall" data-arg="napcat">重装 NapCat</button>
+        <button class="small" data-act="reinstall" data-arg="astrbot">重装 AstrBot</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>端口设置</h2>
+      <div class="hint" style="margin-top:0">留空表示自动分配。改完端口请点下面的「保存并重启服务」让容器用新端口重新启动。</div>
+      <div class="row"><span class="k" style="flex:1">AstrBot 控制台</span><input type="number" inputmode="numeric" class="pin" id="inAstrPort" placeholder="自动"></div>
+      <div id="portList"></div>
+      <div class="btns" style="margin-top:10px">
+        <button class="small" data-act="portsauto">自动分配空闲端口</button>
+        <button class="small primary" id="btnPortsSave" data-act="portssave">保存并重启服务</button>
+      </div>
+      <div class="hint">端口留空＝自动分配。WebUI 与 OneBot 端口必须同机唯一；改动后需要重新生成对接配置，点「保存并重启服务」会连同 AstrBot 平台配置一起重建。</div>
+    </div>
+
+    <div class="card">
+      <h2>下载代理</h2>
+      <div class="hint" style="margin-top:0">直连 GitHub / 腾讯下载慢或失败时，可以在这里填一个代理。留空表示直连。支持 <b>http://</b>、<b>https://</b>、<b>socks5://</b>，例如 <b>http://127.0.0.1:7890</b>。保存后，重新部署、重装组件、安装依赖都会走这个代理。</div>
+      <div class="field" style="margin-top:12px">
+        <label>代理地址</label>
+        <input id="inProxy" placeholder="留空 = 直连" autocomplete="off" spellcheck="false" autocapitalize="off">
+      </div>
+      <div class="btns">
+        <button class="small primary" data-act="saveproxy" id="btnProxySave">保存代理</button>
+        <button class="small" data-act="clearproxy">清空（改回直连）</button>
+        <button class="small" data-act="testproxy" id="btnProxyTest">测试代理</button>
+      </div>
+      <div class="hint" id="proxyTestOut" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card">
+      <h2>维护</h2>
+      <div class="btns">
+        <button class="small" data-act="deploy">重新部署</button>
+        <button class="small" data-act="status">查看状态</button>
+        <button class="small danger" data-act="resetdeploy">重置部署标记</button>
+      </div>
+      <pre id="cmdOut" style="max-height:30vh"></pre>
+    </div>
+
+    <div class="card">
+      <h2>关于</h2>
+      <div class="row"><span class="k">Termux</span><span class="v mono">v0.118.3</span></div>
+      <div class="row"><span class="k">Ubuntu</span><span class="v mono">24.04.5</span></div>
+      <div class="row"><span class="k">Linux QQ</span><span class="v mono">3.2.34-53644</span></div>
+      <div class="row"><span class="k">NapCat</span><span class="v mono">v4.18.38</span></div>
+      <div class="row"><span class="k">AstrBot</span><span class="v mono">v4.28.2</span></div>
+      <div class="row"><span class="k">PREFIX</span><span class="v mono" id="v-prefix">-</span></div>
+    </div>
+  </section>
+
+</main>
+
+<div class="dlgmask" id="dlgDisclaimer">
+  <div class="dlg">
+    <h3>免责声明</h3>
+    <div class="dbody">
+      <p>感谢使用 <b>AstrBot烛版</b>。请在继续之前阅读以下条款，继续使用即表示你已理解并同意：</p>
+      <ul>
+        <li>本软件只是一个<b>本地运行环境管理器</b>：它在你的手机上创建一个 Linux 沙盒，并在其中安装 <b>NapCat</b> 与 <b>AstrBot</b> 两个第三方开源项目。这两个项目由各自作者独立开发维护，本软件不对其功能、稳定性与后续更新作任何保证。</li>
+        <li>本软件<b>不是腾讯官方产品</b>，与腾讯公司及 QQ 团队无任何关联，也未获得其授权或认可。</li>
+        <li>使用第三方客户端登录可能<b>违反平台服务条款</b>，存在账号被限制或封禁的风险。你需要为自己账号的使用行为负责，请自行评估并承担后果。</li>
+        <li>本软件<b>不收集、不上传</b>你的任何数据。QQ 登录凭据、聊天记录、配置与日志全部只保存在本机，随时可由你自行删除。</li>
+        <li>本软件按「现状」提供，不附带任何明示或暗示的担保。因使用或无法使用本软件造成的任何直接或间接损失，作者不承担责任。</li>
+        <li>请勿将本软件用于任何违法违规用途。</li>
+      </ul>
+      <p>继续即代表你已完整阅读、理解并同意上述全部内容。</p>
+    </div>
+    <div class="dfoot">
+      <button class="small" data-act="copydisc">复制全文</button>
+      <button class="primary" style="flex:1" data-act="dlgagree">我已阅读并同意</button>
+    </div>
+  </div>
+</div>
+
+<nav>
+  <button class="on" data-tab="home"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.6 12 4l8 6.6V19a1 1 0 0 1-1 1h-4.2v-5.6H9.2V20H5a1 1 0 0 1-1-1z"/></svg>主页</button>
+  <button data-tab="bots"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6" width="17" height="12.5" rx="3.4"/><path d="M9.5 6V4.6h5V6"/><circle cx="9.2" cy="11.4" r="1.1" fill="currentColor" stroke="none"/><circle cx="14.8" cy="11.4" r="1.1" fill="currentColor" stroke="none"/><path d="M9.4 15h5.2"/></svg>机器人</button>
+  <button data-tab="logs"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3.5" width="16" height="17" rx="3.2"/><path d="M8 8.6h8M8 12h8M8 15.4h5"/></svg>日志</button>
+  <button data-tab="more"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h16M4 16h16"/><circle cx="9.6" cy="8" r="2.2" fill="#0b0d13"/><circle cx="14.4" cy="16" r="2.2" fill="#0b0d13"/></svg>更多</button>
+</nav>
+
+<script>
+var S = { bots: { active: "", bots: [] }, editing: null, auto: true, prefix: "", lanIp: "", logFiles: [], linked: false, deployDone: false, supAlive: false, slim: true, delAsk: null, glass: "mid", bgImg: "" , bgPreset: "space", hiddenCards: {}, logAsk: null, reAsk: null };
+
+/* ---------- 外观：背景预设、毛玻璃强度、自定义图片 ---------- */
+var BG_PRESETS = [
+  { id: "space",  name: "深空",   css: "radial-gradient(120% 100% at 18% 0%, rgba(96,140,255,.30), rgba(0,0,0,0) 58%),radial-gradient(110% 90% at 85% 100%, rgba(160,110,255,.22), rgba(0,0,0,0) 60%),linear-gradient(160deg,#070a13,#0d1424 45%,#05070d)" },
+  { id: "aurora", name: "极光",   css: "radial-gradient(110% 80% at 20% 8%, rgba(46,230,200,.34), rgba(0,0,0,0) 58%),radial-gradient(120% 90% at 90% 92%, rgba(96,120,255,.30), rgba(0,0,0,0) 62%),linear-gradient(165deg,#03101a,#06262c 46%,#0a1730)" },
+  { id: "silver", name: "液态银", css: "radial-gradient(120% 90% at 25% 5%, rgba(255,255,255,.30), rgba(0,0,0,0) 55%),radial-gradient(110% 90% at 85% 95%, rgba(150,170,200,.28), rgba(0,0,0,0) 58%),linear-gradient(160deg,#232833,#5b6475 48%,#1b1f28)" },
+  { id: "gold",   name: "熔金",   css: "radial-gradient(115% 85% at 22% 6%, rgba(255,196,92,.34), rgba(0,0,0,0) 55%),radial-gradient(110% 90% at 88% 96%, rgba(190,110,40,.26), rgba(0,0,0,0) 60%),linear-gradient(160deg,#150f06,#4a3412 48%,#20160a)" },
+  { id: "tundra", name: "苔原",   css: "radial-gradient(110% 85% at 18% 5%, rgba(126,214,180,.24), rgba(0,0,0,0) 58%),radial-gradient(115% 90% at 88% 96%, rgba(70,140,160,.26), rgba(0,0,0,0) 60%),linear-gradient(160deg,#08130f,#17332b 48%,#0a1a20)" },
+  { id: "sunset", name: "霞光",   css: "radial-gradient(120% 90% at 15% 8%, rgba(255,140,110,.34), rgba(0,0,0,0) 58%),radial-gradient(115% 90% at 90% 92%, rgba(160,80,200,.28), rgba(0,0,0,0) 62%),linear-gradient(160deg,#190b18,#4c1c33 46%,#24102e)" }
+];
+
+function lsGet(k, dflt){
+  try { var v = localStorage.getItem(k); return (v === null || v === undefined) ? dflt : v; } catch (e) { return dflt; }
+}
+function lsSet(k, v){ try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
+function lsDel(k){ try { localStorage.removeItem(k); } catch (e) {} }
+
+function presetCss(id){
+  for (var i = 0; i < BG_PRESETS.length; i++) if (BG_PRESETS[i].id === id) return BG_PRESETS[i].css;
+  return BG_PRESETS[0].css;
+}
+
+/* 背景：优先自定义图片，否则用预设渐变 */
+function applyBg(){
+  var lay = el("bgLayer");
+  if (!lay) return;
+  var img = S.bgImg || lsGet("qqbot.bgimg", "");
+  if (img) {
+    lay.style.backgroundImage = "url(" + img + ")";
+    lay.style.backgroundColor = "#06070b";
+  } else {
+    S.bgPreset = lsGet("qqbot.bgpreset", "space");
+    lay.style.backgroundImage = presetCss(S.bgPreset);
+    lay.style.backgroundColor = "#06070b";
+  }
+  // 照片有亮有暗，预设渐变都是深色；亮照片上浅色文字会糊掉，
+  // 所以用图片时给整页加深遮罩并补文字阴影（CSS 见 body.hasimg 那几条）。
+  try { document.body.classList.toggle("hasimg", !!img); } catch (e) {}
+}
+
+/* 只在需要时调用：Android.bgImage() 会读文件做 base64，开销大 */
+function syncBgFromAndroid(){
+  var r = null;
+  try { r = JSON.parse(Android.bgImage()); } catch (e) { r = null; }
+  if (r && r.ok && r.data) {
+    S.bgImg = r.data;
+    // 图片已由 Java 侧缩到长边 1600 并转 JPEG，正常只有几百 KB；
+    // 万一还是很大就别写 localStorage（配额约 5MB，超了会静默失败）。
+    if (r.data.length < 2000000) lsSet("qqbot.bgimg", r.data); else lsDel("qqbot.bgimg");
+  } else if (r && r.ok === false) {
+    S.bgImg = "";
+    lsDel("qqbot.bgimg");
+  }
+  applyBg();
+  renderPresets();
+}
+
+/* 六宫格预设色块 */
+function renderPresets(){
+  var box = el("swatches");
+  if (!box) return;
+  var hasImg = !!S.bgImg;
+  var cur = lsGet("qqbot.bgpreset", "space");
+  S.bgPreset = cur;
+  var h = [];
+  for (var i = 0; i < BG_PRESETS.length; i++) {
+    var p = BG_PRESETS[i];
+    h.push('<div class="swwrap"><button class="sw' + ((!hasImg && cur === p.id) ? " on" : "") + '" data-act="bgpreset" data-arg="' + p.id + '" aria-label="' + esc(p.name) + '"></button><span class="swname">' + esc(p.name) + '</span></div>');
+  }
+  setHtml(box, h.join(""));
+  var kids = box.querySelectorAll("button.sw");
+  for (var j = 0; j < kids.length; j++) {
+    var pid = kids[j].getAttribute("data-arg");
+    for (var k = 0; k < BG_PRESETS.length; k++) {
+      if (BG_PRESETS[k].id === pid) { kids[j].style.backgroundImage = BG_PRESETS[k].css; break; }
+    }
+  }
+}
+
+function setPreset(id){
+  S.bgImg = "";
+  S.bgPreset = id;
+  lsSet("qqbot.bgpreset", id);
+  lsDel("qqbot.bgimg");
+  // 只清内存和 localStorage 不够：磁盘上的 bg.img 还在，下次启动
+  // syncBgFromAndroid() 会把它读回来顶掉刚选的预设，用户看到的是「选了没用」。
+  try { Android.clearBg(); } catch (e) {}
+  applyBg();
+  renderPresets();
+}
+
+function applyGlass(mode){
+  var px = (mode === "thin") ? 10 : (mode === "thick" ? 40 : 24);
+  try { document.documentElement.style.setProperty("--glassBlur", px + "px"); } catch (e) {}
+  var seg = el("glassSeg");
+  if (seg) {
+    var bs = seg.querySelectorAll("button");
+    for (var i = 0; i < bs.length; i++) bs[i].classList.toggle("on", bs[i].getAttribute("data-arg") === mode);
+  }
+}
+
+function setGlass(mode){
+  if (mode !== "thin" && mode !== "mid" && mode !== "thick") mode = "mid";
+  S.glass = mode;
+  lsSet("qqbot.glass", mode);
+  applyGlass(mode);
+}
+
+function initAppearance(){
+  S.glass = lsGet("qqbot.glass", "mid");
+  applyGlass(S.glass);
+  renderPresets();
+  syncBgFromAndroid();
+}
+
+/* ---------- 工具 ---------- */
+/* 日志清洗：去掉 ANSI 颜色转义；精简模式下再丢掉两类噪声：
+   1) NapCat 打印的 64 位十六进制哈希；
+   2) 登录二维码的字符画（用方块字符拼的，窄栏里必被折行截断、根本扫不出来，
+      真要扫码请看页面顶部「扫码登录二维码」卡里的 PNG，或复制下面的解码 URL）。 */
+function cleanLog(s, slim){
+  var t = String(s == null ? "" : s).replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "").replace(/\u001b\][^\u0007]*\u0007/g, "");
+  if (!slim) return t;
+  var lines = t.split("\n");
+  var out = [];
+  for (var i = 0; i < lines.length; i++) {
+    if (/^[0-9a-f]{64}\s*$/i.test(lines[i])) continue;
+    var blk = lines[i].match(/[\u2580-\u259f]/g);
+    if (blk && blk.length >= 8) continue;
+    out.push(lines[i]);
+  }
+  return out.join("\n");
+}
+
+function el(id){ return document.getElementById(id); }
+function esc(s){ return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+
+/* ---------- 日志页那几个框：清空内容 / 删除文件 / 把框从页面上移除 ---------- */
+var LOG_CARDS = { qr: "logCardQr", duo: "logCardDuo", files: "logCardFiles" };
+
+/* 这两张框不给「移除」按钮：主页「运行状态 → 查看日志」要靠它们，收起来就找不回来了。
+   老版本允许收起，localStorage 里可能还留着记录，启动时由 clearFixedCardHidden() 清掉。 */
+var LOG_CARDS_FIXED = { qr: 1, duo: 1 };
+
+function loadHiddenCards(){
+  S.hiddenCards = {};
+  var raw = lsGet("qqbot.hiddenCards", "");
+  if (!raw) return;
+  try { var o = JSON.parse(raw); if (o && typeof o === "object") S.hiddenCards = o; } catch (e) {}
+}
+
+function saveHiddenCards(){ lsSet("qqbot.hiddenCards", JSON.stringify(S.hiddenCards || {})); }
+
+/* 老版本把二维码/实时日志也存过收起状态，现在它们没有 × 可以恢复，
+   所以启动时删掉这两个键，免得一进日志页就是空的。 */
+function clearFixedCardHidden(){
+  var changed = false;
+  for (var k in LOG_CARDS_FIXED) {
+    if (S.hiddenCards && S.hiddenCards[k]) { delete S.hiddenCards[k]; changed = true; }
+  }
+  if (changed) saveHiddenCards();
+  applyCards();
+}
+
+function applyCards(){
+  var anyHidden = false;
+  for (var k in LOG_CARDS) {
+    var node = el(LOG_CARDS[k]);
+    if (!node) continue;
+    var hidden = !LOG_CARDS_FIXED[k] && !!S.hiddenCards[k];
+    node.style.display = hidden ? "none" : "";
+    if (hidden) anyHidden = true;
+  }
+  var tip = el("logCardsTip");
+  if (tip) tip.style.display = anyHidden ? "" : "none";
+}
+
+function rmCard(k){
+  if (!LOG_CARDS[k] || LOG_CARDS_FIXED[k]) return;
+  S.hiddenCards[k] = 1;
+  saveHiddenCards();
+  applyCards();
+  Android.toast("已移除这个框，要从主页「查看日志」才能再打开");
+}
+
+/* 主页的「查看日志」：把移除过的框全部恢复出来，再切到日志页 */
+function showLogCards(){
+  S.hiddenCards = {};
+  saveHiddenCards();
+  applyCards();
+}
+
+/* 清空/删除针对当前正在看的那个文件：NapCat 看的是当前实例的 qq-<id>.log */
+function curLogName(arg){
+  if (arg === "nap") return napLogName();
+  if (arg === "astr") return "astrbot.log";
+  return el("logSel") ? el("logSel").value : "";
+}
+
+/* 清空和删除都会丢数据，用「点两次」代替系统弹窗（WebView 里 confirm 不一定被实现） */
+function paintLogAsk(){
+  var bs = document.querySelectorAll('[data-act="clearlog"],[data-act="rmlog"]');
+  for (var i = 0; i < bs.length; i++) {
+    var a = bs[i].getAttribute("data-arg");
+    var kind = bs[i].getAttribute("data-act") === "rmlog" ? "rm" : "clear";
+    var on = S.logAsk && S.logAsk.kind === kind && S.logAsk.arg === a;
+    var base = kind === "rm" ? (a === "sel" ? "删除该日志" : "删除") : (a === "sel" ? "清空该日志" : "清空");
+    bs[i].textContent = on ? (kind === "rm" ? "确认删除" : "确认清空") : base;
+    bs[i].className = on ? "tiny danger" : "tiny";
+  }
+}
+
+function askLogOnce(kind, arg){
+  var n = curLogName(arg);
+  if (!n) { Android.toast("没有可操作的日志文件"); return null; }
+  if (!S.logAsk || S.logAsk.kind !== kind || S.logAsk.arg !== arg || S.logAsk.name !== n) {
+    S.logAsk = { kind: kind, arg: arg, name: n };
+    paintLogAsk();
+    Android.toast("再点一次「确认" + (kind === "rm" ? "删除" : "清空") + "」就会对 " + n + " 生效");
+    setTimeout(function(){
+      if (S.logAsk && S.logAsk.kind === kind && S.logAsk.arg === arg) { S.logAsk = null; paintLogAsk(); }
+    }, 6000);
+    return null;
+  }
+  S.logAsk = null;
+  paintLogAsk();
+  return n;
+}
+
+function doClearLog(arg){
+  var n = askLogOnce("clear", arg);
+  if (!n) return;
+  var r;
+  try { r = Android.clearLog(n); } catch (e) { r = "清空失败：" + e; }
+  Android.toast(r);
+  dropLogCache(n);   /* 内容已变，缓存必须立刻作废 */
+  loadLog(); loadDuo();
+}
+
+function doRmLog(arg){
+  var n = askLogOnce("rm", arg);
+  if (!n) return;
+  var r;
+  try { r = Android.rmLog(n); } catch (e) { r = "删除失败：" + e; }
+  Android.toast(r);
+  dropLogCache(n);   /* 文件已删，缓存必须立刻作废 */
+  loadLog(); loadDuo();
+  setTimeout(refresh, 900);
+}
+
+function showTab(t){
+  var tabs = document.querySelectorAll(".tab");
+  for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove("on");
+  el("tab-" + t).classList.add("on");
+  var bs = document.querySelectorAll("nav button");
+  for (var j = 0; j < bs.length; j++) bs[j].classList.toggle("on", bs[j].getAttribute("data-tab") === t);
+  /* 设置页不在底部导航里，用顶栏那个「设置」按钮高亮表示当前在设置页；
+     nav 的 .on 逻辑不动（t === "settings" 时上面那个循环会清掉全部 nav 高亮）。 */
+  var sb = el("btnSettings");
+  if (sb) sb.classList.toggle("on", t === "settings");
+  /* 页面滚动是四个页签共用的，不重置的话从滚到一半的主页切到日志页会落在页面中间 */
+  window.scrollTo(0, 0);
+  if (t === "logs") { fillQrSelect(); loadQr(); loadLog(); loadDuo(); }
+}
+
+function pill(txt, cls){ return '<span class="pill ' + (cls || "") + '">' + esc(txt) + '</span>'; }
+
+/* 状态磁贴：只改 class 与副标题文本，值节点沿用 #v-* id（refresh 里照旧写 textContent）。
+   每次都比较再写，避免 4 秒轮询里做无意义的 DOM 变更。 */
+function setTile(id, cls, sub){
+  var t = el(id);
+  if (t) { var want = "tile" + (cls ? " " + cls : ""); if (t.className !== want) t.className = want; }
+  var pn = el("p-" + String(id).slice(2));
+  if (pn) { var s = sub || ""; if (pn.textContent !== s) pn.textContent = s; }
+}
+
+function refresh(){
+  var st;
+  try { st = JSON.parse(Android.state()); } catch (e) { el("hdrSub").textContent = "读取状态失败"; return; }
+  if (st.error) { el("hdrSub").textContent = "错误：" + st.error; return; }
+  S.bots = st.bots || { active: "", bots: [] };
+  S.prefix = st.prefix || "";
+  S.lanIp = st.lanIp || "";
+  S.logFiles = st.logFiles || [];
+  S.deployDone = !!st.deployDone;
+  S.supAlive = !!st.supervisorAlive;
+  S.st = st;   /* 组件开关点一下要按当前状态取反，得记住最近一次 state */
+  el("v-napurl").textContent = "http://" + (S.lanIp || "127.0.0.1") + ":" + st.napcatPort;
+  /* AstrBot 控制台端口可以在设置页改，这两处地址跟着实际端口走（自动分配时是 6185） */
+  el("v-astrurl").textContent = "http://127.0.0.1:" + (st.astrbotPort || 6185);
+  var ab = el("btnAstrPanel");
+  if (ab) ab.setAttribute("data-arg", "http://127.0.0.1:" + (st.astrbotPort || 6185));
+  el("v-prefix").textContent = st.prefix || "-";
+  var av = el("v-appver");
+  if (av) av.textContent = st.appVersion || "-";
+  el("v-deploy").textContent = st.deployDone ? "已完成" : "未完成";
+  el("d-deploy").className = "dot " + (st.deployDone ? "ok" : "warn");
+  setTile("t-deploy", st.deployDone ? "ok" : "warn", st.deployDone ? "8/8 步" : "");
+  el("v-sup").textContent = st.supervisorAlive ? "运行中" : "未运行";
+  setTile("t-sup", st.supervisorAlive ? "ok" : "bad", "");
+  /* 端口不通有两种原因：用户用组件开关关掉了，或者服务崩了。界面上必须区分开，
+     否则关掉 NapCat 会显示成刺眼的「离线」，像是出故障了。 */
+  el("v-napcat").textContent = st.napcatOff ? "已关闭" : (st.napcatUp ? "在线" : "离线");
+  setTile("t-napcat", st.napcatOff ? "warn" : (st.napcatUp ? "ok" : "bad"), "端口 " + st.napcatPort);
+  el("v-astrbot").textContent = st.astrbotOff ? "已关闭" : (st.astrbotUp ? "在线" : "离线");
+  setTile("t-astrbot", st.astrbotOff ? "warn" : (st.astrbotUp ? "ok" : "bad"), "端口 " + st.astrbotPort);
+  /* 6199 是 AstrBot 的 aiocqhttp 反向 WS 监听口，跟 NapCat 在不在线无关：
+     AstrBot 关着时这一行必须说「已停止」，否则两处状态自相矛盾。 */
+  var obTxt, obCls;
+  if (st.astrbotOff) { obTxt = "已停止"; obCls = "warn"; }
+  else if (st.napcatOff) { obTxt = st.onebotUp ? "端口在听，NapCat 关着" : "未连接"; obCls = st.onebotUp ? "warn" : "bad"; }
+  else { obTxt = st.onebotUp ? "已连接" : "未连接"; obCls = st.onebotUp ? "ok" : "bad"; }
+  el("v-onebot").textContent = obTxt;
+  setTile("t-onebot", obCls, "端口 " + st.onebotPort);
+  var tok = "zhuxin";
+  var napPort = st.napcatPort || 6099;
+  var bs = S.bots.bots || [];
+  for (var i = 0; i < bs.length; i++) if (bs[i].id === S.bots.active) { tok = bs[i].token || "zhuxin"; napPort = bs[i].napcatPort || 6099; }
+  el("v-token").textContent = tok;
+  el("tokText").textContent = tok;
+  el("btnNapPanel").setAttribute("data-arg", "http://127.0.0.1:" + napPort + "/webui?token=" + encodeURIComponent(tok));
+  var p = [];
+  p.push(pill(st.deployDone ? "已部署" : "待部署", st.deployDone ? "ok" : "warn"));
+  p.push(pill(st.supervisorAlive ? "服务运行中" : "服务已停止", st.supervisorAlive ? "ok" : "bad"));
+  p.push(pill("NapCat " + (st.napcatOff ? "已关闭" : (st.napcatUp ? "在线" : "离线")), st.napcatOff ? "warn" : (st.napcatUp ? "ok" : "bad")));
+  p.push(pill("AstrBot " + (st.astrbotOff ? "已关闭" : (st.astrbotUp ? "在线" : "离线")), st.astrbotOff ? "warn" : (st.astrbotUp ? "ok" : "bad")));
+  setHtml(el("pills"), p.join(""));
+  el("hdrSub").textContent = bs.length + " 个 NapCat 实例  ·  当前：" + (S.bots.active || "-");
+  /* 全关是用户主动做的，不是故障，所以一律用中性的 warn，不要刺眼报警的 bad。 */
+  el("d-svc").className = "dot " + ((st.napcatOff || st.astrbotOff) ? "warn" : "ok");
+  renderBots();
+  renderHomeBots();
+  renderSvc(st);
+  renderGuard(st);
+  fillLogSelect(S.logFiles);
+  syncAstrPortInput();
+  renderPorts();
+  refreshDeploy();
+  autoLink();
+}
+
+/* 主页自动把 NapCat 与 AstrBot 连起来：部署完成且服务在跑时自动跑一次 link.sh（幂等）。 */
+function autoLink(){
+  if (S.linked) return;
+  if (!S.deployDone || !S.supAlive) return;
+  if (!S.prefix) return;
+  S.linked = true;
+  setTimeout(function(){
+    try { Android.exec("bash " + S.prefix + "/opt/qqbot/link.sh"); } catch (e) {}
+    setTimeout(refresh, 1500);
+  }, 1200);
+}
+
+function refreshDeploy(){
+  var d;
+  try { d = JSON.parse(Android.deployInfo()); } catch (e) { return; }
+  if (!d || d.error) return;
+  var pct = d.total ? Math.round(d.doneCount * 100 / d.total) : 0;
+  if (d.done) pct = 100;
+  el("deployBar").style.width = pct + "%";
+  el("d-deploying").className = "dot " + (d.done ? "ok" : (d.running ? "warn" : "bad"));
+  var h = [];
+  for (var i = 0; i < d.steps.length; i++) {
+    var s = d.steps[i];
+    h.push('<div class="step' + (s.done ? " done" : "") + '"><span class="mk">' + (s.done ? "✓" : "○") + '</span><span>' + esc(s.label) + '</span></div>');
+  }
+  setHtml(el("stepList"), h.join(""));
+  if (d.done) el("deployHint").textContent = "部署已完成，可以开始扫码登录 QQ 了。";
+  else if (d.running) el("deployHint").textContent = "正在部署中…（已完成 " + d.doneCount + "/" + d.total + " 步）请保持应用在前台、屏幕不要熄灭。";
+  else if (d.doneCount > 0) el("deployHint").textContent = "部署中断于第 " + (d.doneCount + 1) + " 步，点下面按钮继续（已完成 " + d.doneCount + "/" + d.total + " 步）。";
+  else el("deployHint").textContent = "首次使用需要自动部署一次：下载约 250MB，耗时 20~60 分钟，请保持应用在前台。";
+  el("btnDeploy").textContent = d.done ? "重新部署" : (d.running ? "部署进行中…" : (d.doneCount > 0 ? "继续部署" : "开始部署"));
+  el("btnDeploy").disabled = !!d.running;
+  el("btnStopDeploy").style.display = d.running ? "" : "none";
+  if (d.logTail) el("deployLog").textContent = d.logTail;
+  paintDeploy(d);
+}
+
+/* ---------- 部署台展开 / 收起 ----------
+   没部署完时永远展开、也不显示折叠按钮（部署过程要看得见）。
+   部署完默认收起，用户手动展开的选择存 localStorage，refresh 不覆盖。 */
+function deployOpenPref(){ return lsGet("qqbot.deployOpen", "0") === "1"; }
+
+function paintDeploy(d){
+  var done = !!d.done;
+  if (done) S.deployDone = true;   /* deployInfo 比 state() 新，先本地纠正，免得刚部署完点不动按钮 */
+  var open = done ? deployOpenPref() : true;
+  var tog = el("btnDeployToggle");
+  if (tog) {
+    tog.style.display = done ? "" : "none";
+    tog.textContent = open ? "收起" : "展开";
+  }
+  var sum = el("deploySum");
+  if (sum) {
+    sum.style.display = (done && !open) ? "" : "none";
+    sum.textContent = "部署已完成 · " + d.doneCount + "/" + d.total + " 步";
+  }
+  var hide = done && !open;
+  var ids = ["deployHint", "deployBarWrap", "stepList", "deployBtns", "deployLog"];
+  for (var i = 0; i < ids.length; i++) {
+    var n = el(ids[i]);
+    if (n) n.style.display = hide ? "none" : "";
+  }
+}
+
+function toggleDeploy(){
+  if (!S.deployDone) { Android.toast("部署还没完成，暂时不能收起"); return; }
+  lsSet("qqbot.deployOpen", deployOpenPref() ? "0" : "1");
+  refreshDeploy();
+}
+
+function fillLogSelect(files){
+  var sel = el("logSel");
+  var cur = sel.value;
+  var want = [];
+  var known = ["qq.log", "astrbot.log", "supervisor.log", "deploy.log"];
+  for (var i = 0; i < files.length; i++) want.push(files[i].name);
+  for (var j = 0; j < known.length; j++) if (want.indexOf(known[j]) < 0) want.push(known[j]);
+  var opts = [];
+  for (var k = 0; k < want.length; k++) opts.push('<option value="' + esc(want[k]) + '">' + esc(want[k]) + '</option>');
+  setHtml(sel, opts.join(""));
+  if (cur) sel.value = cur;
+  if (!sel.value && want.length) sel.value = want[0];
+}
+
+/* 两步删除的确认行（S.delAsk 存当前展开的实例 id） */
+function delConfirmHtml(id){
+  if (S.delAsk !== id) return "";
+  return '<div class="confirm"><div class="ct">确认删除该实例？它的 QQ 登录数据与配置会一起删除。</div>'
+    + '<div class="btns"><button class="small danger" data-act="delok" data-arg="' + esc(id) + '">确认删除</button>'
+    + '<button class="small" data-act="delno">取消</button></div></div>';
+}
+
+/* 容器开关按钮：enable 为真时显示「停止容器」 */
+function toggleBtnHtml(b){
+  var on = (b.enable !== false);
+  return '<button class="small' + (on ? "" : " ok") + '" data-act="togglebot" data-arg="' + esc(b.id) + '">' + (on ? "停止容器" : "启动容器") + '</button>';
+}
+
+function renderBots(){
+  var list = el("botList");
+  var bs = S.bots.bots || [];
+  if (!bs.length) { setHtml(list, '<div class="empty">还没有实例，点下面新增</div>'); return; }
+  var h = [];
+  for (var i = 0; i < bs.length; i++) {
+    var b = bs[i];
+    var act = (b.id === S.bots.active);
+    var on = (b.enable !== false);
+    h.push('<div class="bot' + (act ? " active" : "") + '">');
+    h.push('<div class="bh"><span class="bn">' + esc(b.name || b.id) + '</span><span class="bh-r">' + pill(on ? "容器运行中" : "容器已停止", on ? "ok" : "bad") + '<span class="tag' + (act ? " on" : "") + '">' + (act ? "当前使用" : "备用") + '</span></span></div>');
+    h.push('<div class="row"><span class="k">QQ</span><span class="v mono">' + esc(b.qq || "未填写") + '</span></div>');
+    h.push('<div class="row"><span class="k">Token</span><span class="v mono">' + esc(b.token || "zhuxin") + '</span></div>');
+    h.push('<div class="row"><span class="k">端口</span><span class="v mono">WebUI ' + esc(b.napcatPort) + ' / OneBot ' + esc(b.onebotPort) + '</span></div>');
+    h.push('<div class="btns" style="margin-top:10px">');
+    h.push('<button class="small ok" data-act="copytok" data-arg="' + esc(b.token || "zhuxin") + '">复制 Token</button>');
+    h.push(toggleBtnHtml(b));
+    h.push('<button class="small" data-act="usebot" data-arg="' + esc(b.id) + '">设为当前</button>');
+    h.push('<button class="small" data-act="editbot" data-arg="' + esc(b.id) + '">编辑</button>');
+    h.push('<button class="small danger" data-act="delbot" data-arg="' + esc(b.id) + '">删除</button>');
+    h.push('</div>');
+    h.push(delConfirmHtml(b.id));
+    h.push('</div>');
+  }
+  setHtml(list, h.join(""));
+}
+
+/* refresh() 每 4 秒跑一次，如果每次都整体重写 innerHTML，点击正好落在替换瞬间时
+   目标元素会被换掉，touchend 不再触发 click（按钮像是"没反应"）。所以内容没变就不重写。 */
+function setHtml(node, html){
+  if (!node) return;
+  if (node._lastHtml === html) return;
+  node._lastHtml = html;
+  node.innerHTML = html;
+}
+
+/* 组件开关：两个容器分别开关。状态就是沙盒里的标记文件（/qqbot-cache/svc/<name>.off），
+   state() 报出来的 napcatOff / astrbotOff 直接对应它。写标记不需要开 proot，
+   沙盒内的 run-all.sh 守护循环 3 秒内就会停掉/拉起对应服务。 */
+function renderSvc(st){
+  var rows = [
+    { n: "napcat", label: "NapCat",
+      desc: "QQ 协议端 · WebUI " + (st.napcatPort || 6099) + " · OneBot " + (st.onebotPort || 6199),
+      off: !!st.napcatOff, up: !!st.napcatUp },
+    { n: "astrbot", label: "AstrBot",
+      desc: "机器人框架 · 控制台 " + (st.astrbotPort || 6185),
+      off: !!st.astrbotOff, up: !!st.astrbotUp }
+  ];
+  var h = [];
+  for (var i = 0; i < rows.length; i++){
+    var r = rows[i];
+    /* 标记文件落下后沙盒还要最多十几秒才真的停/起（守护循环 3 秒轮询 + 停止最多等 10 秒），
+       这段窗口里显示「已关闭」是假的：端口还开着。改成如实说「正在关闭…」。 */
+    var closing = r.off && r.up;
+    var tag = r.off ? (closing ? "wait" : "off") : (r.up ? "on" : "wait");
+    var txt = r.off ? (closing ? "正在关闭…" : "已关闭") : (r.up ? "运行中" : "启动中");
+    h.push('<div class="swrow"><div class="swinfo">'
+      + '<div class="swname">' + esc(r.label) + '<span class="swtag ' + tag + '">' + txt + '</span></div>'
+      + '<div class="swdesc">' + esc(r.desc) + '</div></div>'
+      + '<button class="tgl' + (r.off ? "" : " on") + '" data-act="svc" data-arg="' + r.n
+      + '" title="' + (r.off ? "点一下打开 " : "点一下关闭 ") + esc(r.label) + '"></button></div>');
+  }
+  setHtml(el("swList"), h.join(""));
+}
+
+/* 后台守护：Android 侧的常驻前台服务。它和沙盒内的 supervisor、Termux 侧的
+   watchdog 组成三层防护——这三层任何一层单独都不够：应用进程被系统冻结时，
+   沙盒里那两个进程其实还活着，只是没人叫它们干活。 */
+function renderGuard(st){
+  var box = el("guardList");
+  if (!box) return;
+  st = st || {};
+  var rows = [
+    { n: "guard", label: "常驻后台守护", desc: "前台常驻通知 + 每分钟自检沙盒，进程消失自动拉起", on: !!st.guardOn },
+    { n: "wake", label: "息屏保持运行", desc: "持有 CPU 唤醒锁，息屏后 NapCat 才能继续维持 QQ 长连接", on: !!st.guardWake }
+  ];
+  var h = [];
+  for (var i = 0; i < rows.length; i++){
+    var r = rows[i];
+    h.push('<div class="swrow"><div class="swinfo"><div class="swname">' + esc(r.label) +
+      '<span class="swtag ' + (r.on ? "on" : "off") + '">' + (r.on ? "已开启" : "已关闭") + '</span></div>' +
+      '<div class="swdesc">' + esc(r.desc) + '</div></div>' +
+      '<button class="tgl' + (r.on ? " on" : "") + '" data-act="guardset" data-arg="' + r.n + '" title="点击切换"></button></div>');
+  }
+  setHtml(box, h.join(""));
+  var d = el("d-guard");
+  if (d) d.className = "dot " + (st.guardOn ? "ok" : "warn");
+  var nt = el("guardNote");
+  if (nt) nt.textContent = st.guardNote || (st.guardOn ? "守护运行中" : "守护已关闭");
+}
+
+function doGuard(arg){
+  /* 跟组件开关同样的道理：S.st 最长 4 秒前，点完立刻本地翻转，否则连点会被旧值吞掉。 */
+  var st = S.st || {};
+  var on = arg === "wake" ? !!st.guardWake : !!st.guardOn;
+  var r = Android.action("guard:" + arg + ":" + (on ? "off" : "on"));
+  Android.toast(r);
+  if (arg === "wake") st.guardWake = !on; else st.guardOn = !on;
+  renderGuard(st);
+  setTimeout(refresh, 1500);
+}
+function doSvc(arg){
+  /* S.st 只在 refresh 里赋值，最长 4 秒前，所以点完必须立刻本地翻转：
+     否则「关掉→马上再点开」的第二下还在拿旧值取反，又发一条 off，用户的意图被吞。 */
+  function flip(n, offNow){
+    if (!S.st) return;
+    if (n === "napcat") S.st.napcatOff = !offNow; else S.st.astrbotOff = !offNow;
+  }
+  if (arg === "all-on"){
+    var r1 = Android.action("svc:napcat:on");
+    var r2 = Android.action("svc:astrbot:on");
+    Android.toast(r1 + " ／ " + r2);
+    if (S.st) { S.st.napcatOff = false; S.st.astrbotOff = false; renderSvc(S.st); }
+    setTimeout(refresh, 1200);
+    return;
+  }
+  if (arg !== "napcat" && arg !== "astrbot") return;
+  var st = S.st || {};
+  var off = arg === "napcat" ? !!st.napcatOff : !!st.astrbotOff;
+  var r = Android.action("svc:" + arg + ":" + (off ? "on" : "off"));
+  Android.toast(r);
+  /* 只要不是写盘失败，就立刻把本地状态翻过来（容器在跑时返回的是「正在启动…」，
+     没跑时才返回「已记下…」，两种都必须翻，否则 4 秒内连点仍会被吞）。 */
+  if (r && r.indexOf("失败") < 0) { flip(arg, off); renderSvc(S.st); }
+  setTimeout(refresh, 1200);
+}
+function renderHomeBots(){
+  var box = el("homeBots");
+  var bs = S.bots.bots || [];
+  if (!bs.length) { setHtml(box, '<div class="empty">还没有实例，点下面「新增实例」</div>'); return; }
+  var ip = S.lanIp || "127.0.0.1";
+  var h = [];
+  for (var i = 0; i < bs.length; i++) {
+    var b = bs[i];
+    var act = (b.id === S.bots.active);
+    var on = (b.enable !== false);
+    var port = b.napcatPort || 6099;
+    var url = "http://" + ip + ":" + port;
+    h.push('<div class="bot' + (act ? " active" : "") + '">');
+    h.push('<div class="bh"><span class="bn">' + esc(b.name || b.id) + '</span><span class="bh-r">' + pill(on ? "容器运行中" : "容器已停止", on ? "ok" : "bad") + pill(b.up ? "端口在线" : "端口离线", b.up ? "ok" : "bad") + '</span></div>');
+    h.push('<div class="row"><span class="k">QQ</span><span class="v mono">' + esc(b.qq || "未登录") + '</span></div>');
+    h.push('<div class="row"><span class="k">登录地址</span><span class="v mono">' + esc(url) + '</span></div>');
+    h.push('<div class="row"><span class="k">Token</span><span class="v mono">' + esc(b.token || "zhuxin") + '</span></div>');
+    h.push('<div class="row"><span class="k">OneBot</span><span class="v mono">ws://127.0.0.1:' + esc(b.onebotPort || 6199) + '/ws</span></div>');
+    h.push('<div class="btns" style="margin-top:10px">');
+    h.push('<button class="small primary" data-act="copyurl" data-arg="' + esc(url) + '">复制登录地址</button>');
+    h.push('<button class="small ok" data-act="copytok" data-arg="' + esc(b.token || "zhuxin") + '">复制 Token</button>');
+    h.push('<button class="small" data-act="link">对接 AstrBot</button>');
+    h.push(toggleBtnHtml(b));
+    h.push('<button class="small" data-act="showqr" data-arg="' + esc(b.id) + '">显示二维码</button>');
+    if (!act) h.push('<button class="small" data-act="usebot" data-arg="' + esc(b.id) + '">设为当前</button>');
+    h.push('<button class="small danger" data-act="delask" data-arg="' + esc(b.id) + '">删除</button>');
+    h.push('</div>');
+    h.push(delConfirmHtml(b.id));
+    h.push('</div>');
+  }
+  setHtml(box, h.join(""));
+}
+
+function doAction(a){
+  var r = Android.action(a);
+  Android.toast(a + " -> " + r);
+  setTimeout(refresh, 1500);
+}
+
+/* 主页一键对接：重新写各实例的 OneBot 配置 + AstrBot 平台列表，并重启沙盒让配置立刻生效 */
+function linkBots(){
+  var n = (S.bots.bots || []).length;
+  Android.toast("正在对接 " + n + " 个实例并重启服务…");
+  var r = Android.action("relink");
+  el("cmdOut").textContent = "relink -> " + r;
+  S.linked = true;
+  setTimeout(refresh, 6000);
+}
+
+function runCmd(c){
+  el("cmdOut").textContent = "> " + c + "\n" + Android.exec(c);
+}
+
+/* 给新实例挑一对没人用的端口。约定沿用主号：WebUI 从 6099 往下找空的，
+   OneBot 固定为 WebUI + 100（6099/6199、6098/6198…）。
+   以前这里硬编码 6099/6199，加第二个实例必然和主号撞端口，第二个 NapCat
+   的 WebUI 就再也绑不上端口了。 */
+function nextFreePorts(){
+  var used = {};
+  var bs = (S.bots && S.bots.bots) || [];
+  for (var i = 0; i < bs.length; i++) {
+    used[parseInt(bs[i].napcatPort, 10) || 0] = 1;
+    used[parseInt(bs[i].onebotPort, 10) || 0] = 1;
+  }
+  var p = 6099;
+  while (p > 6000 && (used[p] || used[p + 100] || p === 6185 || p + 100 === 6185)) p--;
+  return { napcatPort: p, onebotPort: p + 100 };
+}
+
+/* 实例 id 会变成沙盒里的目录名（/opt/qqbot-inst/<id>）和日志名（qq-<id>.log），
+   所以用 bot2、bot3 这种短名字，别用带时间戳的一长串 */
+function nextBotId(){
+  var used = {};
+  var bs = (S.bots && S.bots.bots) || [];
+  for (var i = 0; i < bs.length; i++) used[bs[i].id] = 1;
+  var n = 2;
+  while (used["bot" + n]) n++;
+  return "bot" + n;
+}
+
+function addBot(){
+  S.editing = blankBot();
+  openEditor("新增实例");
+}
+
+function editBot(id){
+  var bs = S.bots.bots || [], hit = null;
+  for (var i = 0; i < bs.length; i++) if (bs[i].id === id) hit = bs[i];
+  /* 列表被刷新过时 data-arg 可能是过期 id，这里必须挡住，
+     否则 S.editing 还是 null，openEditor 读 name 直接抛异常、卡片静默不出现 */
+  if (!hit) { Android.toast("实例已变化，请刷新后重试"); refresh(); return; }
+  S.editing = JSON.parse(JSON.stringify(hit));
+  openEditor("编辑实例");
+}
+
+/* 新增实例的默认值（端口取当前空闲的一对） */
+function blankBot(){
+  var fp = nextFreePorts();
+  var n = (S.bots.bots || []).length + 1;
+  return { id: nextBotId(), name: "", qq: "", token: "zhuxin" + (n > 1 ? String(n) : ""),
+           napcatPort: fp.napcatPort, onebotPort: fp.onebotPort, enable: true };
+}
+
+function openEditor(title){
+  /* 编辑卡（#botEditCard）在「机器人」页签里，而 .tab 是 display:none：
+     主页的「新增实例」如果只把卡片自身设成 block，父级页签仍隐藏 → 看起来像没反应；
+     而且元素不可见时 getBoundingClientRect() 全是 0，滚动会算成负值把页面拽回顶部。
+     所以先切到卡片所在的页签，再用真实头部高度算滚动位置。 */
+  if (!S.editing || typeof S.editing !== "object") S.editing = blankBot();
+  var host = el("botEditCard");
+  while (host && !(host.className || "").match(/(^|\s)tab(\s|$)/)) host = host.parentNode;
+  if (host && host.id && !(host.className || "").match(/(^|\s)on(\s|$)/)) showTab(host.id.replace("tab-", ""));
+  el("botEditTitle").textContent = title;
+  el("f-name").value = S.editing.name || "";
+  el("f-qq").value = S.editing.qq || "";
+  el("f-token").value = S.editing.token || "zhuxin";
+  el("f-napcatPort").value = S.editing.napcatPort || 6099;
+  el("f-onebotPort").value = S.editing.onebotPort || 6199;
+  el("botEditCard").style.display = "block";
+  /* 卡片在实例列表下面，屏幕上看不到，不滚过去的话点了会像没反应。
+     顶部是 sticky header，按它当前的真实高度减，别再写死魔数。 */
+  setTimeout(function(){
+    var c = el("botEditCard");
+    if (!c || c.style.display === "none") return;
+    var hd = document.querySelector("header");
+    var off = (hd ? hd.offsetHeight : 0) + 12;
+    var y = c.getBoundingClientRect().top + window.scrollY - off;
+    if (y < 0) y = 0;
+    window.scrollTo(0, y);
+  }, 60);
+}
+
+function cancelBot(){ S.editing = null; el("botEditCard").style.display = "none"; }
+
+function saveBot(){
+  if (!S.editing) return;
+  S.editing.name = el("f-name").value.trim() || "未命名";
+  S.editing.qq = el("f-qq").value.trim();
+  S.editing.token = el("f-token").value.trim() || "zhuxin";
+  S.editing.napcatPort = parseInt(el("f-napcatPort").value, 10) || 6099;
+  S.editing.onebotPort = parseInt(el("f-onebotPort").value, 10) || 6199;
+  var bs = S.bots.bots || [];
+  /* 手填的端口如果和别的实例撞了，就地改成空闲端口：
+     两个实例共用一个 WebUI 端口时，后启动的那个会绑不上端口，
+     界面上看起来「在线」其实根本连不上。 */
+  var clash = false;
+  for (var j = 0; j < bs.length; j++) {
+    if (bs[j].id === S.editing.id) continue;
+    if (parseInt(bs[j].napcatPort, 10) === S.editing.napcatPort
+        || parseInt(bs[j].onebotPort, 10) === S.editing.onebotPort) clash = true;
+  }
+  if (clash) {
+    var fp2 = nextFreePorts();
+    S.editing.napcatPort = fp2.napcatPort;
+    S.editing.onebotPort = fp2.onebotPort;
+    Android.toast("端口与其它实例冲突，已改为 " + fp2.napcatPort + " / " + fp2.onebotPort);
+  }
+  var found = false;
+  for (var i = 0; i < bs.length; i++) if (bs[i].id === S.editing.id) { bs[i] = S.editing; found = true; }
+  if (!found) bs.push(S.editing);
+  S.bots.bots = bs;
+  if (!S.bots.active) S.bots.active = S.editing.id;
+  /* writeBots 会在「这次保存会丢掉已有实例」时拒绝写盘，所以必须看它的返回值：
+     被拒就别再去对接/重启，否则界面会谎报成功而磁盘上没变 */
+  var saveMsg = "已保存";
+  try { saveMsg = String(Android.saveBots(JSON.stringify(S.bots))); } catch (e) { saveMsg = "保存失败"; }
+  cancelBot();
+  refresh();
+  if (saveMsg.indexOf("忽略") >= 0 || saveMsg.indexOf("失败") >= 0) {
+    Android.toast(saveMsg);
+    return;
+  }
+  Android.toast(saveMsg + "，正在自动对接并重启服务…");
+  setTimeout(linkBots, 300);
+}
+
+/* ---------- 容器开关 / 两步删除 ---------- */
+
+/* 启停容器：成功后立刻翻转本地 enable 让界面立即响应，再拉真实状态 */
+function toggleBot(id){
+  var bs = S.bots.bots || [];
+  var b = null;
+  for (var i = 0; i < bs.length; i++) if (bs[i].id === id) b = bs[i];
+  if (!b) return;
+  var r = null;
+  try { r = JSON.parse(Android.toggleBot(id)); } catch (e) { r = null; }
+  if (!r || !r.ok) {
+    Android.toast("操作失败：" + ((r && r.error) ? r.error : "未收到有效返回"));
+    return;
+  }
+  var nowOn = (typeof r.enable === "boolean") ? r.enable : (b.enable === false);
+  b.enable = nowOn;
+  Android.toast(nowOn ? "已启动容器，约需 30 秒" : "已停止容器，约 5 秒内生效");
+  renderHomeBots();
+  renderBots();
+  S.linked = false;
+  setTimeout(refresh, 2500);
+  setTimeout(refresh, 9000);
+}
+
+/* 展开删除确认行 */
+function askDelBot(id){
+  S.delAsk = id || null;
+  renderHomeBots();
+  renderBots();
+}
+
+function cancelDelBot(){
+  S.delAsk = null;
+  renderHomeBots();
+  renderBots();
+}
+
+/* 真正删除：Android.removeBot 是异步的，delbot.sh 要先开 proot 沙盒（十几秒）才改 bots.json，
+   固定等 6 秒太短，会先把卡片拉回来（看起来像「删不掉」），所以按阶梯多轮询几次收敛 */
+function doDelBot(id){
+  S.delAsk = null;
+  if (S.bots.bots) {
+    var out = [];
+    var bs = S.bots.bots;
+    for (var i = 0; i < bs.length; i++) if (bs[i].id !== id) out.push(bs[i]);
+    S.bots.bots = out;
+    if (S.bots.active === id) S.bots.active = out.length ? out[0].id : "";
+  }
+  renderHomeBots();
+  renderBots();
+  var msg = "";
+  try { msg = String(Android.removeBot(id)); } catch (e) { msg = "删除已提交"; }
+  Android.toast(msg);
+  setTimeout(refresh, 3000);
+  setTimeout(refresh, 9000);
+  setTimeout(refresh, 18000);
+  setTimeout(refresh, 28000);
+}
+
+/* 兼容旧调用名 */
+function delBot(id){ doDelBot(id); }
+
+function useBot(id){
+  S.bots.active = id;
+  var msg = "已切换到该实例";
+  try { if (String(Android.saveBots(JSON.stringify(S.bots))).indexOf("忽略") >= 0) msg = "切换失败，请刷新页面重试"; } catch (e) { msg = "切换失败"; }
+  Android.toast(msg);
+  refresh();
+}
+
+/* 同一次心跳里 loadLog() 读 400 行、loadDuo() 又读同一个 NapCat 日志的 200 行：
+   2 秒一次的心跳里同一个文件被读两遍、整段解码两遍。1.2 秒内复用同一份结果，
+   第二次直接从内存里切末尾若干行。清空 / 删除日志时立刻作废，不会显示旧内容。 */
+var _logCache = {};
+
+function dropLogCache(name){
+  if (!name) { _logCache = {}; return; }
+  if (_logCache[name]) delete _logCache[name];
+}
+
+function readLogShared(name, lines){
+  var now = Date.now();
+  var c = _logCache[name];
+  if (!c || (now - c.t) > 1200) {
+    var t;
+    try { t = Android.readLog(name, 400); } catch (e) { t = "读取失败：" + e; }
+    c = { t: now, full: t };
+    _logCache[name] = c;
+  }
+  if (!lines || lines >= 400) return c.full;
+  var arr = c.full.split("\n");
+  if (arr.length <= lines) return c.full;
+  return arr.slice(arr.length - lines).join("\n");
+}
+
+function loadLog(){
+  var name = el("logSel").value;
+  if (!name) { el("logBox").textContent = "（没有可显示的日志）"; return; }
+  var t = readLogShared(name, 400);
+  t = cleanLog(t, S.slim);
+  if (!t) t = "（" + name + " 暂无内容）";
+  var box = el("logBox");
+  /* 内容没变就不要重写 textContent：与 setPre() 一样，避免每 2 秒白做一次整块文本重排 */
+  if (box.textContent === t) return;
+  var atBottom = (box.scrollTop + box.clientHeight + 40 >= box.scrollHeight);
+  box.textContent = t;
+  if (atBottom) box.scrollTop = box.scrollHeight;
+}
+
+/* 当前活动实例对应的 NapCat 日志文件名（多实例时是 qq-<id>.log） */
+function napLogName(){
+  var id = S.bots ? S.bots.active : "";
+  var want = "qq-" + id + ".log";
+  var fs = S.logFiles || [];
+  for (var i = 0; i < fs.length; i++) if (fs[i].name === want) return want;
+  return "qq.log";
+}
+
+function setPre(id, txt, name){
+  var box = el(id);
+  txt = cleanLog(txt, S.slim);
+  if (!txt) txt = "（" + name + " 暂无内容）";
+  if (box.textContent === txt) return;
+  var atBottom = (box.scrollTop + box.clientHeight + 40 >= box.scrollHeight);
+  box.textContent = txt;
+  if (atBottom) box.scrollTop = box.scrollHeight;
+}
+
+/* 日志页：同时显示 NapCat 与 AstrBot 两个容器的输出 */
+function loadDuo(){
+  var n = napLogName();
+  el("duoNapName").textContent = n;
+  /* 走同一份缓存：loadLog() 刚读过同一个文件时这里不再跨界读第二遍 */
+  var t1 = readLogShared(n, 200);
+  var t2 = readLogShared("astrbot.log", 200);
+  setPre("logNap", t1, n);
+  setPre("logAstr", t2, "astrbot.log");
+  var ok = !!(t1 || t2);
+  el("d-log2").className = "dot " + (ok ? "ok" : "warn");
+}
+
+/* 二维码：显示某个实例的登录二维码图片 */
+function fillQrSelect(){
+  var sel = el("qrSel");
+  var cur = sel.value;
+  var bs = (S.bots && S.bots.bots) ? S.bots.bots : [];
+  var opts = [];
+  for (var i = 0; i < bs.length; i++) {
+    opts.push('<option value="' + esc(bs[i].id) + '">' + esc(bs[i].name || bs[i].id) + '（' + esc(bs[i].id) + '）</option>');
+  }
+  setHtml(sel, opts.join(""));
+  if (cur) sel.value = cur;
+  if (!sel.value && S.bots) sel.value = S.bots.active || "";
+}
+
+function loadQr(){
+  var id = el("qrSel").value;
+  var r;
+  try { r = JSON.parse(Android.qr(id)); } catch (e) { r = { ok: false }; }
+  var img = el("qrImg"), none = el("qrNone");
+  if (r && r.ok) {
+    img.src = r.data;
+    img.style.display = "";
+    none.style.display = "none";
+    var age = Math.max(0, Math.round((Date.now() - r.mtime) / 1000));
+    el("qrMeta").textContent = "实例 " + r.id + " · 二维码 " + (age < 90 ? age + " 秒前更新" : Math.round(age / 60) + " 分钟前更新");
+    el("d-qr").className = "dot ok";
+  } else {
+    img.style.display = "none";
+    none.style.display = "";
+    el("qrMeta").textContent = "";
+    el("d-qr").className = "dot warn";
+  }
+}
+
+function toggleSlim(){
+  S.slim = !S.slim;
+  el("btnSlim").textContent = "精简模式：" + (S.slim ? "开" : "关");
+  loadLog(); loadDuo();
+}
+
+function toggleAuto(){
+  S.auto = !S.auto;
+  el("btnAuto").textContent = "自动刷新：" + (S.auto ? "开" : "关");
+  el("btnAuto").className = "small" + (S.auto ? " primary" : "");
+}
+
+document.addEventListener("click", function(ev){
+  var t = ev.target;
+  while (t && t !== document.body && !t.getAttribute) t = t.parentNode;
+  if (!t || t === document.body) return;
+  var tab = t.getAttribute("data-tab");
+  if (tab) { showTab(tab); return; }
+  var act = t.getAttribute("data-act");
+  if (!act) return;
+  var arg = t.getAttribute("data-arg");
+  if (act === "start" || act === "stop" || act === "restart") doAction(act);
+  else if (act === "deploy") { var r = Android.action("deploy"); Android.toast("部署：" + r); refreshDeploy(); }
+  else if (act === "stopdeploy") { Android.action("stopdeploy"); Android.toast("已停止部署"); setTimeout(refreshDeploy, 1200); }
+  else if (act === "link") linkBots();
+  else if (act === "svc") doSvc(arg);
+  else if (act === "svcallon") doSvc("all-on");
+      else if (act === "guardset") doGuard(arg);
+      else if (act === "battery") { Android.toast(Android.action("battery")); setTimeout(refresh, 1500); }
+  else if (act === "copytoken") Android.copy(el("tokText").textContent);
+  else if (act === "copytok") Android.copy(arg || "");
+  else if (act === "copyurl") Android.copy(arg || "");
+  else if (act === "copyuser") Android.copy("astrbot");
+  else if (act === "copypass") Android.copy("Astrbot123");
+  else if (act === "copylog") Android.copy(el("logBox").textContent);
+  else if (act === "copynap") Android.copy(el("logNap").textContent);
+  else if (act === "copyastr") Android.copy(el("logAstr").textContent);
+  else if (act === "openpanel") Android.openPanel(arg || "");
+  else if (act === "reload") { loadLog(); loadDuo(); }
+  else if (act === "qrrefresh") { loadQr(); Android.toast("已刷新二维码"); }
+  else if (act === "showqr") { showTab("logs"); fillQrSelect(); el("qrSel").value = arg || ""; loadQr(); }
+  else if (act === "showlogs") { showLogCards(); showTab("logs"); Android.toast("日志框已恢复"); }
+  else if (act === "rmcard") rmCard(arg);
+  else if (act === "clearlog") doClearLog(arg);
+  else if (act === "rmlog") doRmLog(arg);
+  else if (act === "auto") toggleAuto();
+  else if (act === "slim") toggleSlim();
+  else if (act === "terminal") Android.openTerminal();
+  else if (act === "openurl") openExternal(arg || "");
+  else if (act === "openqq") openQqGroup(arg || "");
+  else if (act === "copytext") Android.copy(arg || "");
+  else if (act === "saveproxy") saveProxy();
+  else if (act === "clearproxy") { if (el("inProxy")) el("inProxy").value = ""; saveProxy(); }
+  else if (act === "testproxy") testProxy();
+  else if (act === "copydisc") Android.copy(discText());
+  else if (act === "dlgagree") { try { Android.disclaimerAck(); } catch (e) {} hideDisclaimer(); }
+  else if (act === "addbot") addBot();
+  else if (act === "editbot") editBot(arg);
+  else if (act === "delbot" || act === "delask") askDelBot(arg);
+  else if (act === "delno") cancelDelBot();
+  else if (act === "delok") doDelBot(arg);
+  else if (act === "togglebot") toggleBot(arg);
+  else if (act === "usebot") useBot(arg);
+  else if (act === "savebot") saveBot();
+  else if (act === "cancelbot") cancelBot();
+  else if (act === "pickbg") { Android.toast("请在系统图库里选择图片…"); Android.pickBg(); }
+  else if (act === "clearbg") {
+    try { Android.clearBg(); } catch (e) {}
+    S.bgImg = "";
+    lsDel("qqbot.bgimg");
+    applyBg();
+    renderPresets();
+    Android.toast("已删掉自定义图片，改回上次选的预设背景");
+  }
+  else if (act === "bgpreset") { setPreset(arg || "space"); Android.toast("已切换背景：" + presetName(arg)); }
+  else if (act === "glass") { setGlass(arg || "mid"); Android.toast("玻璃强度：" + glassName(arg)); }
+  else if (act === "status") runCmd("qqbot-status");
+  else if (act === "resetdeploy") {
+    /* 必须走桥：QqbotBridge 的 resetdeploy 分支会同时删掉 deploy.done 与 deploy.pid。
+       前端只删 deploy.done 的话，残留的陈旧 deploy.pid 会被 stopdeploy 读走，
+       可能去杀一个无关的 pid。 */
+    var rd = "";
+    try { rd = String(Android.action("resetdeploy")); } catch (e) { rd = "重置失败：" + e; }
+    el("cmdOut").textContent = "resetdeploy -> " + rd;
+    Android.toast(rd.indexOf("失败") >= 0 ? rd : "已重置部署标记");
+  }
+  /* ---- 设置页 ---- */
+  else if (act === "settings") showTab("settings");
+  else if (act === "backhome") showTab("home");
+  else if (act === "reinstall") doReinstall(arg);
+  else if (act === "portsauto") autoPorts();
+  else if (act === "portssave") savePorts();
+  else if (act === "deploytoggle") toggleDeploy();
+});
+
+/* ---------- 设置页：组件重装 ---------- */
+
+/* 重装会删掉容器里已安装的文件重新下载，破坏性大，所以照抄日志页的两步确认：
+   WebView 里 confirm 不一定被实现，用「点两次」代替系统弹窗。 */
+var RE_LABEL = { napcat: "重装 NapCat", astrbot: "重装 AstrBot" };
+
+function paintReAsk(){
+  var bs = document.querySelectorAll('[data-act="reinstall"]');
+  for (var i = 0; i < bs.length; i++) {
+    var a = bs[i].getAttribute("data-arg");
+    var base = RE_LABEL[a] || "重装";
+    var on = (S.reAsk === a);
+    bs[i].textContent = on ? ("确认" + base) : base;
+    bs[i].className = on ? "small danger" : "small";
+  }
+}
+
+function askReinstall(arg){
+  if (!RE_LABEL[arg]) return null;
+  if (S.reAsk !== arg) {
+    S.reAsk = arg;
+    paintReAsk();
+    Android.toast("再点一次「确认" + RE_LABEL[arg] + "」就会开始重装");
+    setTimeout(function(){
+      if (S.reAsk === arg) { S.reAsk = null; paintReAsk(); }
+    }, 6000);
+    return null;
+  }
+  S.reAsk = null;
+  paintReAsk();
+  return arg;
+}
+
+function doReinstall(arg){
+  var a = askReinstall(arg);
+  if (!a) return;
+  var r;
+  try { r = String(Android.action("reinstall:" + a)); } catch (e) { r = "重装失败：" + e; }
+  Android.toast(r);
+  /* 重装是后台跑的（日志写进 cache/logs/reinstall.log），过几秒刷一次让日志列表跟上 */
+  setTimeout(refresh, 3000);
+}
+
+/* ---------- 设置页：端口设置 ---------- */
+
+/* 空串、0、非数字、越界都当「自动」，交给后端挑空闲端口 */
+function portValOf(v){
+  var n = parseInt(v, 10);
+  return (n > 0 && n < 65536) ? String(n) : "";
+}
+
+function portInputHtml(kind, id, val){
+  var v = portValOf(val);
+  return '<input type="number" inputmode="numeric" class="pin" placeholder="自动" data-port="' + kind + '" data-id="' + esc(id) + '"'
+    + (v ? ' value="' + v + '"' : '') + '>';
+}
+
+/* 用户改过但还没保存的值优先：否则每 4 秒一次的 refresh 会把输入框冲回服务器上的旧值 */
+function dirtyPort(box, kind, id, stateVal){
+  var d = box ? box._portDirty : null;
+  if (d) {
+    var k = kind + "|" + id;
+    if (d[k] !== undefined) return d[k];
+  }
+  return stateVal;
+}
+
+function renderPorts(){
+  var box = el("portList");
+  if (!box) return;
+  /* 正在这个容器里打字就跳过这次重绘：innerHTML 一换，焦点和已敲的字就没了 */
+  var ae = document.activeElement;
+  if (ae && box.contains && box.contains(ae)) return;
+  var bs = (S.bots && S.bots.bots) || [];
+  var h = [];
+  if (!bs.length) h.push('<div class="empty">还没有实例，去「机器人」页新增</div>');
+  for (var i = 0; i < bs.length; i++) {
+    var b = bs[i];
+    h.push('<div class="portrow">');
+    h.push('<div class="prn">' + esc(b.name || b.id) + '<span class="prid">' + esc(b.id) + '</span></div>');
+    h.push('<label class="prl"><span>NapCat WebUI</span>' + portInputHtml("napcat", b.id, dirtyPort(box, "napcat", b.id, b.napcatPort)) + '</label>');
+    h.push('<label class="prl"><span>OneBot</span>' + portInputHtml("onebot", b.id, dirtyPort(box, "onebot", b.id, b.onebotPort)) + '</label>');
+    h.push('</div>');
+  }
+  /* 必须走 setHtml：内容没变就不重写 innerHTML，避免按钮点下去的瞬间节点被换掉 */
+  setHtml(box, h.join(""));
+}
+
+function onPortTyping(ev){
+  var t = ev.target;
+  if (!t || !t.getAttribute) return;
+  var kind = t.getAttribute("data-port");
+  var id = t.getAttribute("data-id");
+  if (!kind || id === null) return;
+  var box = el("portList");
+  if (!box) return;
+  if (!box._portDirty) box._portDirty = {};
+  box._portDirty[kind + "|" + id] = t.value;
+}
+
+/* AstrBot 控制台端口：bots.json 里 0/缺失 = 自动（输入框留空），
+   只有后端明确说「不是自动」时才拿实际端口回填。 */
+function astrPortValue(){
+  var raw = 0;
+  try { raw = parseInt((S.bots && S.bots.astrbotPort) || 0, 10) || 0; } catch (e) { raw = 0; }
+  if (raw > 0) return String(raw);
+  if (S.st && S.st.astrbotPortAuto === false && S.st.astrbotPort) return String(S.st.astrbotPort);
+  return "";
+}
+
+function syncAstrPortInput(){
+  var inp = el("inAstrPort");
+  if (!inp) return;
+  if (inp._dirty || inp === document.activeElement) return;
+  var v = astrPortValue();
+  if (inp.value !== v) inp.value = v;
+}
+
+function readPortVal(inp){
+  if (!inp) return 0;
+  var n = parseInt(inp.value, 10);
+  return (n > 0 && n < 65536) ? n : 0;
+}
+
+function setPortsSaveBusy(on){
+  var b = el("btnPortsSave");
+  if (!b) return;
+  b.disabled = !!on;
+  b.textContent = on ? "正在重启…" : "保存并重启服务";
+}
+
+/* 在给定的占用表之外挑一对空闲端口：WebUI 从 6099 往下，OneBot 固定 WebUI + 100
+   （沿用 nextFreePorts 的约定），6185 永远留给 AstrBot 控制台。
+   下界 p > 6000 保证搜索一定会终止，不会死循环。 */
+function nextFreePortsIn(taken){
+  var p = 6099;
+  while (p > 6000 && (taken[p] || taken[p + 100] || p === 6185 || p + 100 === 6185)) p--;
+  return { napcatPort: p, onebotPort: p + 100 };
+}
+
+function savePorts(){
+  var ap = el("inAstrPort");
+  var astrVal = ap ? readPortVal(ap) : 0;
+  var box = el("portList");
+  var bs = S.bots.bots || [];
+  if (box) {
+    var inps = box.querySelectorAll("input.pin");
+    for (var i = 0; i < inps.length; i++) {
+      var kind = inps[i].getAttribute("data-port");
+      var id = inps[i].getAttribute("data-id");
+      var v = readPortVal(inps[i]);
+      for (var j = 0; j < bs.length; j++) {
+        if (String(bs[j].id) !== String(id)) continue;
+        if (kind === "napcat") bs[j].napcatPort = v;
+        else if (kind === "onebot") bs[j].onebotPort = v;
+      }
+    }
+  }
+  /* 端口冲突检测：6185 是 AstrBot 控制台的固定口，输入框留空＝自动时它实际也占着
+     6185，所以无条件先占位（显式填了值的那个也占）；再让各实例按顺序认领自己的一对
+     端口，与已占用集合撞了（或留空＝0 表示自动）就地改成空闲端口。
+     不查的话，「两实例填同一个端口」和「实例占用 6185」都会静默落盘，
+     后启动的容器绑不上端口，界面上却看着像「在线」。 */
+  var taken = {};
+  taken[6185] = 1;
+  if (astrVal > 0) taken[astrVal] = 1;
+  var notes = [];
+  for (var k = 0; k < bs.length; k++) {
+    var b = bs[k];
+    var np = parseInt(b.napcatPort, 10) || 0;
+    var op = parseInt(b.onebotPort, 10) || 0;
+    if (np > 0 && op > 0 && np !== op && !taken[np] && !taken[op]) {
+      taken[np] = 1;
+      taken[op] = 1;
+      continue;
+    }
+    var fp = nextFreePortsIn(taken);
+    taken[fp.napcatPort] = 1;
+    taken[fp.onebotPort] = 1;
+    notes.push((b.name || b.id) + " 的 WebUI/OneBot 改成 " + fp.napcatPort + "/" + fp.onebotPort);
+    b.napcatPort = fp.napcatPort;
+    b.onebotPort = fp.onebotPort;
+  }
+  if (ap) S.bots.astrbotPort = astrVal;
+  var msg = "已保存";
+  try { msg = String(Android.saveBots(JSON.stringify(S.bots))); } catch (e) { msg = "保存失败：" + e; }
+  /* 写盘被拒（writeBots 返回含「忽略」）时绝不能清 dirty：这两处输入既没落盘，
+     下一次 refresh 又会把输入框冲回旧值，用户刚敲的端口就等于被静默丢弃。 */
+  if (msg.indexOf("忽略") >= 0 || msg.indexOf("失败") >= 0) { Android.toast(msg); return; }
+  if (ap) ap._dirty = false;
+  if (box) box._portDirty = {};
+  if (notes.length) {
+    var nt = notes.length > 3 ? (notes.slice(0, 3).join("；") + "；等 " + notes.length + " 个实例") : notes.join("；");
+    Android.toast("端口冲突，已自动避让：" + nt);
+  }
+  /* 端口变了必须重新生成 OneBot / AstrBot 两边的对接配置，光 restart 会对接不上，
+     所以走 relink（它内部重新生成配置再停服务、重新拉起），后台执行，十几秒后才生效。 */
+  setPortsSaveBusy(true);
+  Android.toast("端口已保存，正在重启服务…（约 15 秒后生效）");
+  var r;
+  try { r = String(Android.action("relink")); } catch (e) { r = ""; }
+  if (r) Android.toast(r);
+  setTimeout(function(){ setPortsSaveBusy(false); }, 20000);
+  setTimeout(refresh, 3000);
+  setTimeout(refresh, 12000);
+  setTimeout(refresh, 20000);
+}
+
+function autoPorts(){
+  var r;
+  try { r = String(Android.action("ports:auto")); } catch (e) { r = "端口分配失败：" + e; }
+  /* 分配失败（没写盘）时不能清 dirty、也不能说「点保存生效」：用户改过还没保存的
+     输入会被静默丢弃，界面还谎报成功。 */
+  if (r.indexOf("失败") >= 0) { Android.toast(r); return; }
+  /* ports:auto 直接写盘，但只分配不重启；用户改过没保存的脏值必须丢掉，否则界面显示的是旧的 */
+  var box = el("portList");
+  if (box) box._portDirty = {};
+  var ap = el("inAstrPort");
+  if (ap) ap._dirty = false;
+  Android.toast(r + "。点「保存并重启服务」生效");
+  setTimeout(refresh, 600);
+}
+
+/* ---------- 免责声明 / 官网 / 交流群 / 下载代理 ---------- */
+function discText(){
+  var b = document.querySelector("#dlgDisclaimer .dbody");
+  if (!b) return "";
+  return String(b.textContent).replace(/[ \t]+/g, " ").replace(/\n\s*\n\s*\n+/g, "\n\n").trim();
+}
+function showDisclaimer(){ var d = el("dlgDisclaimer"); if (d) d.classList.add("on"); }
+function hideDisclaimer(){ var d = el("dlgDisclaimer"); if (d) d.classList.remove("on"); }
+
+function openExternal(u){
+  if (!u) return;
+  try {
+    var r = String(Android.openUrl(u));
+    if (r && r !== "ok") Android.toast(r);
+  } catch (e) {
+    Android.copy(u);
+    Android.toast("已复制链接，请到浏览器打开");
+  }
+}
+function openQqGroup(g){
+  g = String(g || "").trim();
+  if (!/^[0-9]{5,12}$/.test(g)) { Android.toast("群号无效"); return; }
+  var r = "fail";
+  try { r = String(Android.openQqGroup(g)); } catch (e) { r = "fail"; }
+  if (r === "ok") return;
+  Android.copy(g);
+  Android.toast("已复制群号 " + g + "，请在 QQ 里搜索加群");
+}
+
+function loadProxy(){
+  var v = "";
+  try { v = String(Android.proxyGet() || ""); } catch (e) { v = ""; }
+  S.proxy = v;
+  if (el("inProxy")) el("inProxy").value = v;
+}
+function saveProxy(){
+  var v = el("inProxy") ? el("inProxy").value.trim() : "";
+  var r = "fail";
+  try { r = String(Android.proxySet(v)); } catch (e) { r = "fail"; }
+  if (r === "ok") {
+    S.proxy = v;
+    Android.toast(v ? ("代理已保存：" + v + "，重新部署或重装时生效") : "已改回直连（不使用代理）");
+  } else {
+    Android.toast("代理地址无效，请用 http:// https:// 或 socks5:// 开头");
+  }
+}
+
+/* 代理测速：复用桥的 exec（它跑的就是 Termux 里的 bash + curl）。
+   先写「测试中」再 setTimeout，让 DOM 有机会画出来——exec 是同步阻塞调用，
+   WebView 的 JS 线程会被卡住直到 curl 返回。 */
+function testProxy(){
+  var out = el("proxyTestOut");
+  var v = el("inProxy") ? el("inProxy").value.trim() : "";
+  if (out) out.textContent = "正在测试" + (v ? "（走 " + v + "）" : "（直连）") + "…最多 20 秒，这段时间界面会卡住";
+  setTimeout(function(){ doTestProxy(v); }, 50);
+}
+function doTestProxy(v){
+  var out = el("proxyTestOut");
+  /* 单引号包裹后只剩撇号能越狱，直接剥掉；顺手去掉换行防止命令被截断 */
+  var safe = String(v || "").replace(/['\r\n]/g, "");
+  var opt = safe ? ("-x '" + safe + "' ") : "";
+  var cmd = "command -v curl >/dev/null 2>&1 || { echo NO_CURL; exit 0; }; " +
+            "curl " + opt + "-sS -o /dev/null -L --max-time 20 " +
+            "-w 'code=%{http_code} time=%{time_total}s' " +
+            "https://github.com/NapNeko/NapCatQQ/releases/latest 2>&1";
+  var r = "";
+  try { r = String(Android.exec(cmd) || ""); } catch (e) { r = "调用失败：" + e; }
+  r = r.replace(/\s+$/, "");
+  var msg;
+  if (r.indexOf("NO_CURL") >= 0) {
+    msg = "Termux 里还没装 curl（首次部署完成后才有），暂时测不了。";
+  } else {
+    var m = r.match(/code=(\d{3})\s+time=([0-9.]+)s/);
+    if (m) {
+      var code = m[1], sec = m[2];
+      if (code === "200") msg = "✅ 可用：HTTP 200，用时 " + sec + " 秒（" + (safe ? "下载会走这个代理" : "当前是直连") + "）。";
+      else if (code === "000") msg = "❌ 连不上，用时 " + sec + " 秒。地址、端口或代理开关可能不对。";
+      else msg = "⚠️ 通了，但返回 HTTP " + code + "，用时 " + sec + " 秒。";
+    } else {
+      msg = "拿不到结果：" + (r || "没有任何输出");
+    }
+  }
+  if (out) out.textContent = msg;
+  Android.toast(msg.length > 40 ? msg.slice(0, 40) + "…" : msg);
+}
+
+function presetName(id){
+  for (var i = 0; i < BG_PRESETS.length; i++) if (BG_PRESETS[i].id === id) return BG_PRESETS[i].name;
+  return id || "";
+}
+function glassName(id){ return id === "thin" ? "薄" : (id === "thick" ? "厚" : "中"); }
+
+setInterval(function(){
+  if (S.auto && !document.hidden && el("tab-logs").classList.contains("on")) { loadLog(); loadDuo(); }
+}, 2000);
+
+/* 二维码变化不快，10 秒刷一次就够，避免每 2 秒重编码图片 */
+setInterval(function(){
+  if (document.hidden || !el("tab-logs").classList.contains("on")) return;
+  var bs = (S.bots && S.bots.bots) ? S.bots.bots : [];
+  if (el("qrSel").options.length !== bs.length) fillQrSelect();
+  loadQr();
+}, 10000);
+
+/* 这里原来还有一条 2 秒一次的 refreshDeploy()，与下面 4 秒一次的 refresh() 里那次重复：
+   停在主页时 Android.deployInfo() 会被调用 0.75 次/秒。部署进度本身变化很慢，
+   4 秒一次足够，去掉重复的那条后降到 0.25 次/秒。 */
+
+el("qrSel").addEventListener("change", loadQr);
+
+/* 端口输入：记下用户敲过的值，4 秒一次的 refresh 不覆盖没保存的输入 */
+if (el("portList")) el("portList").addEventListener("input", onPortTyping);
+if (el("inAstrPort")) el("inAstrPort").addEventListener("input", function(){ el("inAstrPort")._dirty = true; });
+
+setInterval(function(){ if (!document.hidden) refresh(); }, 4000);
+
+/* 从后台切回前台立刻刷一次，不用干等下一轮轮询 */
+document.addEventListener("visibilitychange", function(){
+  if (document.hidden) return;
+  refresh();
+  if (el("tab-logs").classList.contains("on")) { loadLog(); loadDuo(); loadQr(); }
+  /* refresh() 上面已经调过，里面就带 refreshDeploy()，不必再来一次 */
+});
+
+initAppearance();
+loadHiddenCards();
+clearFixedCardHidden();
+applyCards();
+loadProxy();
+refresh();
+/* 首次启动弹免责声明；同意后写入标记，以后不再弹 */
+try { if (String(Android.disclaimerSeen()) !== "1") showDisclaimer(); } catch (e) {}
+</script>
+</body>
+</html>

@@ -1,0 +1,329 @@
+# AstrBot烛版
+
+> **一个把 Linux QQ + NapCat + AstrBot 装进 Android 手机的开箱即用包。**
+> 装上 APK、打开、等它自己跑完，手机里就有了一台 7×24 在线的 QQ 机器人服务器 —— 全程不需要输入任何命令，也不需要 root。
+
+[![Release](https://img.shields.io/github/v/release/Zxin-Pro/astrbot-candle?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC)](https://github.com/Zxin-Pro/astrbot-candle/releases/latest)
+[![License](https://img.shields.io/github/license/Zxin-Pro/astrbot-candle?label=GPL-3.0)](LICENSE)
+[![Downloads](https://img.shields.io/github/downloads/Zxin-Pro/astrbot-candle/total?label=%E4%B8%8B%E8%BD%BD)](https://github.com/Zxin-Pro/astrbot-candle/releases)
+
+| 项目 | 值 |
+| --- | --- |
+| 应用名 | **AstrBot烛版** |
+| 控制台标题 | **烛之控制台** |
+| 安装包 | `AstrBot.apk` |
+| 包名 | `com.termux` |
+| 当前版本 | **v1.0.0**（versionCode `10000`） |
+| 项目地址 | [github.com/Zxin-Pro/astrbot-candle](https://github.com/Zxin-Pro/astrbot-candle) |
+| 下载安装包 | [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 里的 `AstrBot.apk` |
+| 官方网站 | [烛心.xyz](https://烛心.xyz) |
+| 官方 QQ 群 | **1127997343** |
+
+---
+
+## 一、项目简介
+
+**AstrBot烛版** 是一个 Android 应用，它把一整套「QQ 机器人运行环境」打包成了一次安装：
+
+- 打开应用 → 自动在手机里建立一个 **Ubuntu 24.04 的 proot 沙盒**（无需 root、无需刷机、无需 Termux 命令行）；
+- 在沙盒里自动部署 **Linux QQ 3.2.34-53644** + **NapCat v4.18.38** + **AstrBot v4.28.2**；
+- 三者**出厂即预接线**：NapCat 通过反向 WebSocket 连到 AstrBot 的 aiocqhttp 平台（`ws://127.0.0.1:6199/ws`）；
+- 用户界面是一个**本地 HTML 控制台**（WebView 加载 `file:///android_asset/qqbot/index.html`），有 **主页 / 机器人 / 日志 / 更多** 四个页签，扫码、开关服务、看日志、改端口全在界面里点。
+
+首次部署需要下载约 **250 MB**，耗时约 **20~60 分钟**（取决于网速）。之后每次打开都是秒进，机器人会自动拉起。
+
+---
+
+## 二、它到底做了什么
+
+这个仓库**不是**从零写的 Android 应用，而是一条「**重新打包开源 Termux APK**」的流水线：
+
+1. **基底**：取开源的 Termux APK（包名 `com.termux`，本版本对应 Termux v0.118.3）。选择复用 Termux 是因为它已经把 Android 上运行 Linux 所需的那一套（`libtermux-bootstrap.so`、`TermuxInstaller`、`$PREFIX` 目录布局）都做好了。
+2. **注入脚本**：Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 是一个 **ELF 头 + 内嵌 ZIP 段** 的混合体（ELF 头 1328 字节，内嵌 ZIP 段 29388903 字节，文件总长 29392992 字节）。我们用一个**自己写的 Java 工具** `RepackBootstrap` 打开这个内嵌 ZIP，把 `build/` 目录下的沙盒脚本（部署流程、启停脚本、守护循环、`profile.d` 钩子）作为新条目塞进去，再按原布局写回。
+   - 内嵌 ZIP 段在原始包里是**填满的**，所以要塞进新文件就必须删掉一些用不到的条目（man/info/doc 文档、C 头文件、测试二进制等），这些被删的条目部署流程永远不会执行，安全。
+3. **换回 APK**：用 `ApkReplace` 把重新打包好的 `.so` 换回 APK 的 `lib/arm64-v8a/` 下。
+4. **重新签名**：用 [uber-apk-signer](https://github.com/patrickfav/uber-apk-signer) 重新签名，产出可安装的 `AstrBot.apk`。
+5. **原生控制台**：`ui/src/` 下的 Java 源码（`com.termux.qqbot.*`）编译成 dex、转成 smali、和 `ui/assets/qqbot/index.html` 一起由 apktool 打进 APK。
+
+装到手机上以后：
+
+- 首次打开 → 应用把内嵌 ZIP 里的脚本解到 Termux 的 `$PREFIX` 下 → 运行部署流程 → 下载并解开 Ubuntu 24.04 根文件系统 → 在沙盒里依次装好依赖、Linux QQ、NapCat、AstrBot → 自动接线 → 拉起服务；
+- 沙盒内有一个常驻的守护循环 `run-all.sh` 看护 NapCat 与 AstrBot，Termux 侧有 `watchdog.sh`，Android 侧有前台服务 `QqbotGuardService`，**三层防掉线**；
+- 沙盒时区**跟随 Android 系统时区**（不再固定 UTC，日志时间不会差 8 小时）。
+
+---
+
+## 三、系统要求
+
+| 项目 | 要求 |
+| --- | --- |
+| 系统版本 | **Android 8.0 及以上** |
+| CPU 架构 | **arm64-v8a**（绝大多数真机） |
+| 存储空间 | 建议预留 **3 GB** 以上（Ubuntu 根文件系统 + QQ + NapCat + AstrBot + 依赖） |
+| 内存 | 建议 **4 GB** 以上；每多开一个 QQ 实例都要多占一份 Linux QQ 进程的内存 |
+| 网络 | 首次部署需要能访问 Ubuntu 镜像源、腾讯下载站与 GitHub（慢的话可在「设置 → 下载代理」里填代理） |
+| Root | **不需要**（基于 proot 的用户态沙盒） |
+
+> 本版本只打包了 **arm64-v8a** 的 bootstrap 与界面 dex，因此只支持 arm64 设备。x86_64 模拟器不在支持范围内。
+
+---
+
+## 四、安装步骤
+
+1. **先卸载官方 Termux**。
+   本应用的包名同样是 `com.termux`，和官方版 / 应用商店版 / F-Droid 版 Termux **不能共存**，不卸载会直接安装失败或互相覆盖。
+   > 卸载 Termux 会一并删掉它原有的 `$PREFIX` 数据。如果你在里面有重要东西，先备份。
+2. 从 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 下载 `AstrBot.apk`，传到手机，点击安装。
+3. 安装时系统会提示「**未知来源应用**」，需要允许安装。
+4. 打开应用，**先读完免责声明弹窗并点「我已阅读并同意」**（确认状态会存在手机里，以后不再弹）。
+5. 看到「烛之控制台」即安装成功。**首次启动会自动开始部署**（见下一节）。
+
+---
+
+## 五、首次使用
+
+首次打开应用会**自动开始部署**，主页最上面的「自动部署」卡里会显示进度条、八步清单和实时日志：
+
+| 步骤 | 内容 | 大致下载量 |
+| --- | --- | --- |
+| 1 | 准备 Termux 工具（proot / tar / xz / curl） | 很小 |
+| 2 | 下载并解包 Ubuntu 24.04 根文件系统 | 约 29 MB |
+| 3 | 在沙盒内安装运行依赖（Python / 图形库） | 视镜像源而定 |
+| 4 | 安装 Linux QQ | 约 198 MB |
+| 5 | 安装 NapCat 并注入 QQ | 约 34 MB |
+| 6 | 安装 AstrBot 与 WebUI | 约 9 MB |
+| 7 | 把 NapCat 与 AstrBot 对接起来 | 无 |
+| 8 | 安装 `qqbot-*` 命令 | 无 |
+
+**注意事项**
+
+- 部署期间请**把应用保持在前台、屏幕不要熄灭**，也不要从后台划掉。
+- 整个过程下载量约 **250 MB**，耗时 **20~60 分钟**。
+- **中途出错、退出、断电都可以重来**：每完成一步都会在手机里留下完成标记，重新打开应用会自动从没做完的那一步接着跑，**不会从头下载**。
+- 部署全部完成后，应用会**自动把 NapCat 和 AstrBot 拉起来**，首次启动需要几分钟。
+- 部署完成后就可以去**扫码登录 QQ** 了（见「八、常见问题」）。
+
+---
+
+## 六、四大页签说明
+
+界面底部四个页签，右上角还有一个常驻的**设置齿轮**。
+
+### 1. 主页
+
+从上到下依次是：
+
+- **顶部标题栏**：「烛之控制台」+ 四枚状态 pill（已部署 / 服务运行中 / NapCat 在线 / AstrBot 在线）。
+- **自动部署卡**：进度条、八步清单、实时部署日志，以及「开始部署 / 继续部署 / 停止 / 重新部署」按钮。部署完成后会折叠成一行「部署已完成 · 8/8 步」。
+- **运行状态卡**：五个格子 —— 部署进度、后台服务、NapCat（端口 6099）、AstrBot（端口 6185）、OneBot 通道（端口 6199）。格子下面是一个整宽的「**查看日志**」按钮，点一下跳到日志页。
+- **组件开关卡**：两个**互相独立**的开关，可以单独开关 NapCat 和 AstrBot，旁边有「运行中 / 启动中 / 已停止」状态胶囊。**关掉不是卸载**：重新打开后 QQ 登录状态、机器人配置原样还在，不用重新扫码。
+- **访问地址卡**：列出当前实例的 NapCat WebUI 地址、登录 Token（可一键复制）、AstrBot 地址（`http://127.0.0.1:6185`）与账号密码。
+- **机器人连接卡**：每个实例一张小卡（与「机器人」页同一份内容）。
+
+### 2. 机器人
+
+每个 QQ 号就是一个「**实例**」，一个实例一张卡片。卡片上显示 QQ 号、Token、登录地址、OneBot 地址，按钮有：
+
+| 按钮 | 作用 |
+| --- | --- |
+| **复制 Token** | 复制这个实例的登录 Token |
+| **停止容器 / 启动容器** | 单独关掉或拉起这个实例的容器（停止约 5 秒生效，启动约需 30 秒） |
+| **设为当前** | 把这个实例设为「当前实例」 |
+| **编辑** | 展开表单，改名称、QQ 号、Token、端口 |
+| **删除** | 删除这个实例（两步确认） |
+
+页面底部是一个整宽的「**新增实例**」按钮。
+
+### 3. 日志
+
+三张卡片：
+
+| 卡片 | 内容 |
+| --- | --- |
+| **扫码登录二维码** | QQ 登录二维码**图片**、实例下拉框、「刷新二维码」、二维码更新时间 |
+| **NapCat / AstrBot 实时日志** | 两个容器的输出**左右并排**显示，每 2 秒自动刷新；支持「精简模式」（去掉颜色转义码、滤掉 NapCat 的十六进制噪声行） |
+| **其它日志文件** | 下拉选择任意日志文件查看（`qq.log`、`astrbot.log`、`supervisor.log`、`deploy.log`、按实例分的 `qq-bot1.log` 等） |
+
+- 「清空」与「删除」都是**两步确认**（第一次点变成「确认清空 / 确认删除」，6 秒内再点一次才执行）。
+- 日志文件不会无限膨胀：单个日志超过 20 MB 时会被自动截断成末尾 2 MB。
+- 日志框被「×」收起来后，回主页点「运行状态 → 查看日志」可以一次性全部恢复。
+
+### 4. 更多
+
+- **关于与支持**：版本信息、官方网站、官方群。
+- **外观**：控制台的外观选项。
+- **终端**：进入沙盒终端的入口（给想自己敲命令的高级用户）。
+
+### 设置（右上角齿轮）
+
+卡片依次是：**组件重装**（单独重装 NapCat 或 AstrBot，两步确认，端口与登录数据保留）、**端口设置**（留空＝自动分配；改完点「保存并重启服务」约 15 秒生效）、**下载代理**（支持 `http://` / `https://` / `socks5://`，留空＝直连）、**维护**（重新部署 / 查看状态 / 重置部署标记）、**关于**（各组件版本与安装路径前缀）。
+
+---
+
+## 七、端口一览
+
+| 项目 | 端口 |
+| --- | --- |
+| NapCat WebUI（第 1 个实例） | **6099** |
+| NapCat OneBot / aiocqhttp（第 1 个实例） | **6199** |
+| AstrBot 控制台 | **6185** |
+| 第 2 个实例 | WebUI **6098** / OneBot **6198**，以此类推 |
+
+- **OneBot 端口恒等于同实例的 WebUI 端口 + 100。**
+- 端口**留空表示自动分配**，自动分配时会主动避开已被占用的端口（包括 AstrBot 的 6185）。
+- 想改端口：「设置 → 端口设置」，改完点「保存并重启服务」。
+- **默认 Token**：第 1 个实例的 NapCat WebUI 登录 Token 是 **`zhuxin`**；第 2 个实例 `zhuxin2`，第 3 个 `zhuxin3`，以此类推。
+  > 从老版本升级上来的 `qqbot` / `qqbot2` 会自动迁移成 `zhuxin` / `zhuxin2`，不需要手动改。
+
+---
+
+## 八、多实例说明
+
+想用多个 QQ 号当机器人，就在「机器人」页多建几个实例。
+
+- **每个实例的登录数据、配置、端口都是独立的**，互不干扰，扫码登录时各扫各的。
+- 新增实例时会**自动挑一对空闲端口**；如果手填的端口和别的实例冲突，界面会自动改成一对空闲端口并提示「端口与其它实例冲突，已改为 X / Y」。
+- **每个实例都是一个完整的 Linux QQ 进程，内存占用较大**。手机内存不大的话，建议只开 1~2 个。
+- 「当前实例」是主页「访问地址」卡、查询二维码、实时日志列头默认跟随的那个实例，用实例卡上的「设为当前」切换。
+- 删除实例是**两步确认**，会把这个实例的 QQ 登录数据、配置和日志一起清掉。
+
+---
+
+## 九、常见问题（FAQ）
+
+### Q1：首次部署很慢，是不是卡住了？
+
+不是。首次部署要下载约 **250 MB**（其中 Linux QQ 就占约 198 MB），耗时 **20~60 分钟**都很正常，取决于你的网速和到腾讯 / GitHub 的连通性。
+
+- 进度可以在「主页 → 自动部署」卡里实时看到，也可以到「日志」页看 `deploy.log`。
+- 如果卡在下载不动，去「**设置 → 下载代理**」填一个代理（例如 `http://127.0.0.1:7890`），保存后重新部署。
+- 中途退出 / 断电都没关系，**重新打开会自动从断掉的那一步接着跑，不会重新下载已完成的步骤**。
+
+### Q2：扫码登录 QQ 时，手机扫自己屏幕上的二维码没反应？
+
+**二维码必须用另一台设备的 QQ 来扫**，手机自己扫自己屏幕上显示的二维码是不行的。
+
+最省事的做法：
+
+1. 手机和电脑连**同一个 Wi-Fi**；
+2. 在「主页 → 访问地址」卡里拿到形如 `http://192.168.1.23:6099` 的 WebUI 地址，并点 Token 右边的「复制」拿到登录 Token（默认 `zhuxin`）；
+3. 在电脑浏览器打开那个地址，填入 Token，页面里就会出现 QQ 登录二维码；
+4. 用**要当机器人的那个 QQ**（在另一台设备上）扫码并确认登录。
+
+也可以直接在「日志」页最上面的「扫码登录二维码」卡里看二维码图片，再用另一台设备扫。
+
+> 扫码设备打不开页面时，先确认两台设备确实在同一个 Wi-Fi，且路由器没有开「AP 隔离」。
+
+### Q3：AstrBot 控制台的初始账号密码是什么？
+
+- 地址：**http://127.0.0.1:6185**（主页「访问地址」卡里有「应用内打开 AstrBot 控制台」按钮）
+- 账号：`astrbot`
+- 初始密码：`Astrbot123`
+
+**首次登录后请立即修改密码。** 登录后还要在「配置」里填上大模型（OpenAI / DeepSeek / 通义千问 等）的 API Key，机器人才能回话。
+
+### Q4：NapCat WebUI 的登录 Token 是什么？
+
+默认是 **`zhuxin`**（第 2 个实例 `zhuxin2`，以此类推）。可以在「主页 → 访问地址」卡或实例卡上点「复制 Token」直接复制。
+
+### Q5：机器人不回话 / 掉线了怎么办？
+
+按顺序排查：
+
+1. 「主页 → 运行状态」卡看四个状态 pill 是否都是绿色；NapCat 或 AstrBot 离线就点「组件开关」里的开关重启一下。
+2. 看「日志」页的实时日志，NapCat 侧是否显示已登录，AstrBot 侧是否报错。
+3. 到 AstrBot 控制台确认大模型 API Key 填了、额度没超。
+4. 本版本有三层防掉线守护（沙盒内 `run-all.sh` + Termux 侧 `watchdog.sh` + Android 前台服务 `QqbotGuardService`），正常情况下进程被系统杀掉后会自动拉回；如果反复掉线，可以在「设置 → 维护 → 查看状态」里跑一次状态检查并把结果贴到 issue 里。
+
+### Q6：怎么提 issue？
+
+到本项目的 GitHub Issues 页面提交。为了让问题能被快速定位，请尽量附上：
+
+- 手机型号、Android 版本、CPU 架构；
+- 应用版本号（见「设置 → 关于」）；
+- 问题现象与复现步骤；
+- **相关日志**（「日志」页里复制对应日志，尤其是 `deploy.log` / `qq.log` / `astrbot.log`）；
+- 如果和某个第三方组件有关（NapCat / AstrBot / Linux QQ），也请说明它们的版本。
+
+> 也欢迎加入官方 QQ 群 **1127997343** 反馈。
+
+---
+
+## 十、免责声明要点
+
+首次打开应用会弹出**完整免责声明**，请先读完再点同意。要点如下：
+
+- 本软件是一个**本地运行环境管理器**：它只在你的手机本地建一个 Linux 沙盒，并在里面安装 **NapCat** 与 **AstrBot** 两个第三方开源项目。这两个项目由各自的作者独立开发与维护，**本软件不对它们的功能、稳定性与后续更新作任何保证**。
+- 本软件**不是腾讯官方产品**，与腾讯公司及 QQ 团队**没有任何关联**，也未获得其授权或认可。
+- 使用第三方客户端登录**可能违反平台服务条款**，存在**账号被限制或封禁的风险**，请自行评估并承担后果。
+- 本软件**不收集、不上传任何数据**：QQ 登录凭据、聊天记录、配置与日志**全部只保存在本机**，随时可以自行删除。
+- 本软件按「**现状**」提供，不附带任何明示或暗示的担保。
+- **请勿用于任何违法违规用途。**
+
+弹窗上两个按钮：「**复制全文**」把声明全文复制下来；「**我已阅读并同意**」同意并继续（确认状态存在 `~/.qqbot/disclaimer.ok`，之后重启应用不会再弹）。
+
+---
+
+## 十一、开源协议
+
+本项目仓库地址：[**https://github.com/Zxin-Pro/astrbot-candle**](https://github.com/Zxin-Pro/astrbot-candle)。
+
+本项目以 **GNU General Public License v3.0（GPL-3.0）** 发布，完整协议原文见仓库根目录的 [LICENSE](LICENSE)。
+
+选择 GPL-3.0 是因为本项目基于 GPL-3.0 的开源 **Termux** 重新打包，属于其衍生作品，必须沿用同一协议。
+
+> 本项目内嵌或下载的第三方组件各自遵循其原有协议：Termux（GPL-3.0）、Ubuntu 24.04 根文件系统及各 apt 包（各自的自由软件协议）、Linux QQ（腾讯，专有）、NapCat（见其仓库协议）、AstrBot（见其仓库协议）。
+
+---
+
+## 十二、目录结构说明
+
+```
+qqbot-sandbox/
+├─ build/                       # 要注入 bootstrap 的沙盒文件（解包后落在 Termux 的 $PREFIX 下）
+│  ├─ bin/proot-x86_64          # proot 本体
+│  ├─ etc/profile.d/50-qqbot-sandbox.sh
+│  └─ opt/qqbot/
+│     ├─ common.sh              # 公共函数（路径、日志、端口）
+│     ├─ deploy.sh              # 部署流程总入口
+│     ├─ link.sh                # NapCat ↔ AstrBot 对接
+│     ├─ reinstall.sh           # 组件重装
+│     ├─ delbot.sh              # 删除实例
+│     ├─ start-sandbox.sh / stop-sandbox.sh
+│     ├─ steps/                 # 部署的八步：10-termux ~ 90-summary
+│     └─ sandbox/               # 沙盒内脚本：run-all.sh（守护循环）、run-napcat.sh、run-astrbot.sh 等
+├─ ui/
+│  ├─ src/com/termux/qqbot/     # 原生控制台 Java 源码（Activity / Bridge / Task / Client）
+│  └─ assets/qqbot/index.html   # 控制台前端（WebView 加载 file:///android_asset/qqbot/index.html）
+├─ tools/                       # 自写 Java 工具与 bootstrap 扩展文件
+│  ├─ RepackBootstrap.java      # 往内嵌 ZIP 段注入 / 删除条目
+│  ├─ ApkReplace.java           # 替换 APK 内某个条目
+│  ├─ DexToSmali.java           # dex → smali
+│  ├─ VerifyBootstrap*.java     # 注入结果校验
+│  └─ ext/                      # 要覆盖进 bootstrap 的原始文件
+├─ docs/                        # 文档
+│  ├─ BUILD.md                  # 从源码构建
+│  ├─ 功能候选-200.md
+│  └─ 性能优化.md
+├─ build-apk.ps1                # 主构建脚本：注入 → 换 .so → 重新签名
+├─ CHANGELOG.md                 # 更新日志
+├─ LICENSE                      # GPL-3.0 全文
+├─ README.md                    # 本文件
+└─ .gitignore
+```
+
+> 目录 `_research/`（上游 Termux APK、uber-apk-signer）、`_sdk/`（android.jar、apktool.jar、d8）、`_apkwork/`（apktool 工作区）、`out/`（构建产物）都不入库，见 [.gitignore](.gitignore)。
+
+---
+
+## 版本号制度
+
+本项目采用 **语义化版本号**：`MAJOR.MINOR.PATCH`，对应的 Android `versionCode = MAJOR*10000 + MINOR*100 + PATCH`。
+
+| 位 | 什么时候 +1 | 例子 |
+| --- | --- | --- |
+| **MAJOR**（X.0.0） | 不兼容改动，例如换沙盒方案、需要重装 APK 才能升级 | 2.0.0 |
+| **MINOR**（0.X.0） | 新增功能 | 1.1.0 |
+| **PATCH**（0.0.X） | 修 bug、文案、性能 | 1.0.1 |
+
+当前版本：**versionName `1.0.0`，versionCode `10000`**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
