@@ -122,3 +122,14 @@ if ($LASTEXITCODE -ne 0) { throw "signing failed" }
 Write-Host ""
 Write-Host "==== artifacts ===="
 Get-ChildItem -File $SIGNEDDIR | ForEach-Object { Write-Host ("  {0}  {1} bytes" -f $_.FullName, $_.Length) }
+
+# 6) copy the signed apk to the repo root under a name that carries the version
+#    (release assets are published as AstrBot-<version>.apk so downloads are self-labelling)
+$VER = (Get-Content (Join-Path $ROOT "VERSION") -Raw).Trim()
+$SIGNED = Join-Path $SIGNEDDIR "termux-qqbot-aligned-debugSigned.apk"
+if (Test-Path $SIGNED) {
+  $REL = Join-Path $ROOT ("AstrBot-{0}.apk" -f $VER)
+  Get-ChildItem -File (Join-Path $ROOT "AstrBot-*.apk") -ErrorAction SilentlyContinue | Remove-Item -Force
+  Copy-Item -Force $SIGNED $REL
+  Write-Host ("  release copy: {0} ({1} bytes)" -f $REL, (Get-Item $REL).Length)
+}

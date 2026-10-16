@@ -1,6 +1,6 @@
 # 从源码构建 AstrBot烛版
 
-本文说明如何从本仓库的源码重新构建出可安装的 `AstrBot.apk`。
+本文说明如何从本仓库的源码重新构建出可安装的 `AstrBot-<版本号>.apk`。
 
 > 构建过程**只能在一台配好工具链的 Windows 机器上**完成（脚本是 PowerShell + 本机 JDK）。
 > 构建不联网、不跑 Gradle，也不需要 Android Studio。
@@ -14,7 +14,7 @@
 | 界面中间包 | `out\termux-ui-unsigned.apk` | apktool 重新打包的原生控制台 APK（**未签名**） |
 | 注入后的 bootstrap | `out\libtermux-bootstrap.so` | 塞进了 `build/` 下所有脚本的 `.so` |
 | 最终未签名包 | `out\termux-qqbot-unsigned.apk` | 换好 `.so`、待签名的 APK |
-| **可安装包** | `out\signed\termux-qqbot-aligned-debugSigned.apk` | uber-apk-signer 对齐 + 签名后的成品（对外发布时重命名为 `AstrBot.apk`） |
+| **可安装包** | `out\signed\termux-qqbot-aligned-debugSigned.apk` | uber-apk-signer 对齐 + 签名后的成品（发布用副本由 `build-apk.ps1` 自动按版本号复制到仓库根目录的 `AstrBot-<版本号>.apk`） |
 
 版本号（`versionCode` / `versionName`）不是写死在 APK 里的，而是由仓库根目录的 **`VERSION`** 文件决定：
 内容形如 `1.0.2`，`build-ui.ps1` 打包时换算成 `versionCode = MAJOR*10000 + MINOR*100 + PATCH` 一并写进 `_apkwork\apktool.yml`。
@@ -83,7 +83,8 @@ powershell -ExecutionPolicy Bypass -File C:\Users\zjh19\DSH\qqbot-sandbox\build-
 
 ### 3. 交付
 
-把 `out\signed\termux-qqbot-aligned-debugSigned.apk` 重命名为 `AstrBot.apk` 发布。
+`build-apk.ps1` 最后会自动把 `out\signed\termux-qqbot-aligned-debugSigned.apk` 复制到仓库根目录，
+命名为 `AstrBot-<VERSION>.apk`（`VERSION` 文件的内容就是版本号），这个文件就是发布用的安装包。
 
 > **两个脚本必须串行执行**：`build-ui.ps1` 会**写出** `out\termux-ui-unsigned.apk`，`build-apk.ps1` 会**读取并覆盖**它，
 > 并行跑会互相踩踏，产物不可预测。**永远先 build-ui，再 build-apk。**
