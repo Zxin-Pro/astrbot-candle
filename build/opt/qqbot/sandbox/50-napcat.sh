@@ -49,7 +49,7 @@ echo "[sandbox] 修改 QQ package.json 的 main 字段"
 python3 - <<'PYEOF'
 import json
 p = '/opt/QQ/resources/app/package.json'
-d = json.load(open(p, encoding='utf-8'))
+d = json.load(open(p, encoding='utf-8-sig'))
 d['main'] = './loadNapCat.js'
 json.dump(d, open(p, 'w', encoding='utf-8'), indent=2, ensure_ascii=False)
 print('[sandbox] main ->', d['main'])
@@ -182,7 +182,7 @@ def patch(path, create_ok):
         print('[napcat] %s 不存在，按权威结构创建' % path)
     else:
         try:
-            with open(path, encoding='utf-8') as fh:
+            with open(path, encoding='utf-8-sig') as fh:
                 raw = json.load(fh)
             if isinstance(raw, dict):
                 d = raw

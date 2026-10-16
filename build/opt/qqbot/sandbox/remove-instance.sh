@@ -11,7 +11,7 @@ python3 - "$ID" <<'PY'
 import json, os, sys
 drop = sys.argv[1]
 p = '/qqbot-cache/bots.json'
-d = json.load(open(p, encoding='utf-8'))
+d = json.load(open(p, encoding='utf-8-sig'))
 bs = d.get('bots') or []
 keep = [b for b in bs if str(b.get('id')) != drop]
 # 删掉的如果正是当前实例，把 active 指向剩下第一个启用实例（没有启用的就指向第一个剩下的）
