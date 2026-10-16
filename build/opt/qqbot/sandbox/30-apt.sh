@@ -90,15 +90,33 @@ for M in $QQBOT_APT_MIRRORS; do
 done
 if [ "$APT_OK" != "1" ]; then echo "[sandbox] 所有 apt 镜像均不可用"; exit 1; fi
 
+# ---------------------------------------------------------------------------
+# 自愈 + 重试。部署如果正好在 apt 装到一半时被打断（用户切走应用、手机休眠、进程被
+# 系统回收），dpkg 会留下「解包完但没配置完」的包，之后**每一次** apt-get install 都会
+# 在开头直接拒绝：
+#   E: dpkg was interrupted, you must manually run 'dpkg --configure -a' to correct the problem.
+# 用户点一百次「继续部署」都会卡在第 3 步，因为部署脚本只是无脑重跑同一行命令。
+# 所以每个安装动作之前都先跑一次自愈脚本（幂等、不联网），失败后再自愈重试一次。
+# ---------------------------------------------------------------------------
+qq_apt_install() {
+  if apt-get install -y --no-install-recommends "$@"; then return 0; fi
+  echo "[sandbox] 安装失败，先修复 dpkg 状态再重试：$*"
+  bash /qqbot-opt/sandbox/fix-dpkg.sh || true
+  apt-get install -y --no-install-recommends "$@"
+}
+
+echo "[sandbox] 检查并修复 dpkg 状态（上次部署中断可能留下半配置的包）"
+bash /qqbot-opt/sandbox/fix-dpkg.sh || true
+
 echo "[sandbox] 安装基础工具"
-apt-get install -y --no-install-recommends ca-certificates curl wget unzip zip tar xz-utils procps psmisc jq tzdata locales fontconfig
-apt-get install -y --no-install-recommends fonts-noto-cjk fonts-wqy-zenhei fonts-dejavu-core
+qq_apt_install ca-certificates curl wget unzip zip tar xz-utils procps psmisc jq tzdata locales fontconfig
+qq_apt_install fonts-noto-cjk fonts-wqy-zenhei fonts-dejavu-core
 
 echo "[sandbox] 安装 Python 运行时"
-apt-get install -y --no-install-recommends python3 python3-venv python3-pip python3-dev build-essential pkg-config libffi-dev libssl-dev libsqlite3-dev
+qq_apt_install python3 python3-venv python3-pip python3-dev build-essential pkg-config libffi-dev libssl-dev libsqlite3-dev
 
 echo "[sandbox] 安装 Electron/QQ 图形依赖"
-apt-get install -y --no-install-recommends xvfb libnss3 libgbm1 libasound2t64 libxss1 libxtst6 libxdamage1 libxrandr2 libxkbcommon0 libxkbcommon-x11-0 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libdrm2 libxcomposite1 libxfixes3 libpango-1.0-0 libcairo2 libgtk-3-0t64 libx11-xcb1 libxcb-dri3-0 libexpat1 libuuid1 libxshmfence1 libnotify4 xdg-utils libatspi2.0-0t64 libsecret-1-0
+qq_apt_install xvfb libnss3 libgbm1 libasound2t64 libxss1 libxtst6 libxdamage1 libxrandr2 libxkbcommon0 libxkbcommon-x11-0 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libdrm2 libxcomposite1 libxfixes3 libpango-1.0-0 libcairo2 libgtk-3-0t64 libx11-xcb1 libxcb-dri3-0 libexpat1 libuuid1 libxshmfence1 libnotify4 xdg-utils libatspi2.0-0t64 libsecret-1-0
 
 echo "[sandbox] 生成 locale"
 if [ -f /etc/locale.gen ]; then

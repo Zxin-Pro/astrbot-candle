@@ -520,6 +520,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       <div class="btns" style="margin-top:10px" id="deployBtns">
         <button class="primary" style="flex:1" data-act="deploy" id="btnDeploy">开始部署</button>
         <button class="danger" data-act="stopdeploy" id="btnStopDeploy" style="display:none">停止</button>
+        <button class="small" data-act="fixdpkg" id="btnFixDpkg" style="display:none">修复沙盒依赖</button>
       </div>
       <pre id="deployLog" style="max-height:26vh">（暂无部署日志）</pre>
     </div>
@@ -790,6 +791,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       <div class="btns">
         <button class="small" data-act="deploy">重新部署</button>
         <button class="small" data-act="status">查看状态</button>
+        <button class="small" data-act="fixdpkg">修复沙盒依赖</button>
         <button class="small danger" data-act="resetdeploy">重置部署标记</button>
       </div>
       <pre id="cmdOut" style="max-height:30vh"></pre>
@@ -1282,11 +1284,22 @@ function refreshDeploy(){
   setHtml(el("stepList"), h.join(""));
   if (d.done) el("deployHint").textContent = "部署已完成，可以开始扫码登录 QQ 了。";
   else if (d.running) el("deployHint").textContent = "正在部署中…（已完成 " + d.doneCount + "/" + d.total + " 步）请保持应用在前台、屏幕不要熄灭。";
-  else if (d.doneCount > 0) el("deployHint").textContent = "部署中断于第 " + (d.doneCount + 1) + " 步，点下面按钮继续（已完成 " + d.doneCount + "/" + d.total + " 步）。";
+  else if (d.doneCount > 0) {
+    /* 卡在第 3 步（30-apt）是最常见的中断：上次 apt 被打断会在 dpkg 数据库里留下半配置的包，
+       这时「继续部署」只是把同一面墙再撞一次。这里直接把急救按钮摆到按钮行里，
+       并说清要先修再继续——否则用户看到的就是「点了没用」，只能一遍遍重试。 */
+    var stuckApt = !d.done && !d.running && d.doneCount >= 2 && d.steps && d.steps[2] && !d.steps[2].done;
+    el("deployHint").textContent = stuckApt
+      ? "部署中断于沙盒依赖安装（第 3 步）。先点「修复沙盒依赖」把上次中断留下的半配置状态清掉，跑完再点「继续部署」。"
+      : "部署中断于第 " + (d.doneCount + 1) + " 步，点下面按钮继续（已完成 " + d.doneCount + "/" + d.total + " 步）。";
+  }
   else el("deployHint").textContent = "首次使用需要自动部署一次：下载约 250MB，耗时 20~60 分钟，请保持应用在前台。";
   el("btnDeploy").textContent = d.done ? "重新部署" : (d.running ? "部署进行中…" : (d.doneCount > 0 ? "继续部署" : "开始部署"));
   el("btnDeploy").disabled = !!d.running;
   el("btnStopDeploy").style.display = d.running ? "" : "none";
+  /* 只有「前两步做完了、第 3 步没完成、且当前没在跑」才需要这个按钮，
+     平时藏起来免得占位置、也免得用户误点。 */
+  el("btnFixDpkg").style.display = (!d.done && !d.running && d.doneCount >= 2 && d.steps && d.steps[2] && !d.steps[2].done) ? "" : "none";
   if (d.logTail) el("deployLog").textContent = d.logTail;
   paintDeploy(d);
 }
@@ -1976,6 +1989,17 @@ document.addEventListener("click", function(ev){
     try { rd = String(Android.action("resetdeploy")); } catch (e) { rd = "重置失败：" + e; }
     el("cmdOut").textContent = "resetdeploy -> " + rd;
     Android.toast(rd.indexOf("失败") >= 0 ? rd : "已重置部署标记");
+  }
+  else if (act === "fixdpkg") {
+    /* 第 3 步 apt 卡住时的急救按钮：让沙盒自己清掉半配置的 dpkg 状态。
+       走桥的 fixdpkg 分支（后台线程），所以这里只显示「已提交」，真正的输出在部署日志里。 */
+    var fx = "";
+    try { fx = String(Android.action("fixdpkg")); } catch (e) { fx = "提交失败：" + e; }
+    el("cmdOut").textContent = "fixdpkg -> " + fx + "\n（修复在后台跑，完成后回主页点「继续部署」）";
+    Android.toast(fx);
+    /* 按钮是从主页点的话，部署台才是用户正看着的地方；顺手刷一下，省得等下一个 4 秒周期 */
+    setTimeout(refreshDeploy, 3000);
+    setTimeout(refreshDeploy, 12000);
   }
   /* ---- 设置页 ---- */
   else if (act === "settings") showTab("settings");

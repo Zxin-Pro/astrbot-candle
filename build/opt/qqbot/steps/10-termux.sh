@@ -24,8 +24,11 @@ if ! apt-get update -y </dev/null; then
   apt-get update -y </dev/null || { qqerr "apt-get update 失败，请检查网络"; exit 1; }
 fi
 
-# 上次中断可能留下半配置状态的包，先补 configure
+# 上次中断可能留下半配置状态的包，先补 configure，再修断裂的依赖关系。
+# 只做 configure 不够：依赖关系被中断破坏时，下面那句 apt-get install 一样会硬失败，
+# 而这一步在 Termux 侧，失败信息和沙盒里的 30-apt 长得一样，很容易被当成同一处问题。
 dpkg --configure -a </dev/null >/dev/null 2>&1 || true
+DEBIAN_FRONTEND=noninteractive apt-get -f install -y </dev/null >/dev/null 2>&1 || true
 
 # arm64 用 Termux 仓库里的 proot；x86_64 模拟器上 Termux 的 proot 是 arm64 二进制，
 # 经 houdini 翻译后 ptrace 寄存器布局错配会永久挂死，所以改用随包内置的静态 x86_64 proot。

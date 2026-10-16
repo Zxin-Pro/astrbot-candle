@@ -8,16 +8,24 @@ STAMP="$QQBOT_HOME/rootfs.arch"
 CUR=""
 [ -f "$STAMP" ] && CUR="$(cat "$STAMP" 2>/dev/null)"
 
-if [ "$CUR" = "$QQBOT_ARCH" ] && [ -x "$ROOTFS/usr/bin/env" ] && [ -x "$ROOTFS/bin/bash" ]; then
+# 「已完成」的判据必须够强：只看两个可执行文件的话，tar 解到一半被杀、但 bash 已经解出来的
+# 残缺 rootfs 会被判成已完成，之后带着残缺树进 30-apt 再炸一次；
+# 而失败点显示在第 3 步、真因其实在第 2 步，极难排查。
+if [ "$CUR" = "$QQBOT_ARCH" ] && [ -x "$ROOTFS/bin/bash" ] && [ -x "$ROOTFS/usr/bin/env" ] \
+   && [ -d "$ROOTFS/var/lib/dpkg" ] && [ -d "$ROOTFS/usr/lib" ] \
+   && [ "$(ls -1 "$ROOTFS/usr/bin" 2>/dev/null | wc -l)" -gt 200 ]; then
   qqok "rootfs 已存在（$QQBOT_ARCH），跳过解压"
 else
   if [ ! -s "$TAR" ]; then
     qqlog "下载 Ubuntu 24.04 $QQBOT_ARCH 基础 rootfs（约 29 MB）"
+    # 体积下限 25 MB：rootfs 约 29 MB，低于这个数一定是错误页或被截断的残包。
+    QQBOT_DL_MIN=$((25 * 1024 * 1024))
     qq_dl_mirror "$TAR" \
       "$QQBOT_TUNA/ubuntu-cdimage/ubuntu-base/releases/24.04/release/$QQBOT_ROOTFS_TAR" \
       "https://mirrors.ustc.edu.cn/ubuntu-cdimage/ubuntu-base/releases/24.04/release/$QQBOT_ROOTFS_TAR" \
       "https://mirrors.aliyun.com/ubuntu-cdimage/ubuntu-base/releases/24.04/release/$QQBOT_ROOTFS_TAR" \
-      || { qqerr "rootfs 下载失败"; exit 1; }
+      || { qqerr "rootfs 下载失败（可能只下到一半）"; rm -f "$TAR" "$TAR.part"; QQBOT_DL_MIN=1024; exit 1; }
+    QQBOT_DL_MIN=1024
   fi
   qqlog "解压 rootfs 到 $ROOTFS"
   rm -rf "$ROOTFS"
@@ -29,8 +37,17 @@ else
   tar -xzf "$TAR" -C "$ROOTFS" --no-same-owner --exclude=dev --exclude='dev/*'
   RC=$?
   set -e
-  if [ ! -x "$ROOTFS/bin/bash" ] && [ ! -x "$ROOTFS/usr/bin/env" ]; then
+  # 这里原来是 &&（两个都不存在才算失败）—— 写反了：只要 bash 解出来就放过了残缺 rootfs。
+  if [ ! -x "$ROOTFS/bin/bash" ] || [ ! -x "$ROOTFS/usr/bin/env" ]; then
     qqerr "rootfs 解压失败（tar 返回 $RC）"
+    rm -rf "$ROOTFS"
+    exit 1
+  fi
+  # tar 非 0 大多是「个别条目被跳过」（--exclude=dev 之类）；但关键目录都没了就绝不能
+  # 让 stamp 落盘 —— 那会把一次失败的解包永久钉成「已完成」，之后每次重跑都直接跳过解压。
+  if [ "$RC" != "0" ] && { [ ! -d "$ROOTFS/var/lib/dpkg" ] || [ ! -d "$ROOTFS/usr/lib" ]; }; then
+    qqerr "rootfs 解压不完整（tar 返回 $RC），已删除残留目录，请重新部署"
+    rm -rf "$ROOTFS"
     exit 1
   fi
   [ "$RC" != "0" ] && qqwarn "tar 返回 $RC（部分条目被跳过属正常）"

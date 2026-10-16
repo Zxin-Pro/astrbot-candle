@@ -370,6 +370,16 @@ public class QqbotBridge {
             act.runShell("rm -f " + qh + "/deploy.pid; echo ok", 10);
             return "stopped";
         }
+        if ("fixdpkg".equals(what)) {
+            // 第 3 步（30-apt）最常见的卡死原因是：上次部署被打断，dpkg 留下半配置的包，
+            // 之后每一次 apt-get install 都会在开头硬失败（用户重开应用也只会一遍遍撞墙）。
+            // 这个入口让用户不用重新部署、不用重装 APK 就能就地修好。
+            // 必须丢后台线程：proot 冷启动 + dpkg --configure -a 可能要几十秒，
+            // 同步跑会把 WebView 的 JS 线程卡住，页面看起来像死了。
+            runBg("bash " + prefix + "/opt/qqbot/fix-sandbox.sh",
+                    "沙盒依赖检查完成，回主页点「继续部署」", "修复失败", 900);
+            return "已提交修复，几十秒后回主页点「继续部署」";
+        }
         if ("linkbg".equals(what)) {
             // 主页冷启动时自动对接用的轻量入口：只跑 link.sh（幂等——重写各实例的 OneBot
             // 配置与 AstrBot 的 aiocqhttp 平台列表），**不**像 relink 那样再停服务、拉起来。

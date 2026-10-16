@@ -66,8 +66,13 @@ cd /opt/AstrBot
 WANT="${_PYTHON_HOST_PLATFORM:-$(python3 -c 'import sysconfig;print(sysconfig.get_platform())')}"
 if [ -d .venv ]; then
   CUR="$(./.venv/bin/python -c 'import sysconfig;print(sysconfig.get_platform())' 2>/dev/null || echo none)"
-  if [ "$CUR" != "$WANT" ]; then
-    echo "[sandbox] 已有虚拟环境平台为 $CUR，应为 $WANT，重建"
+  # 只比平台字符串不够：python3 -m venv 是分步做的（先建目录 → 写 pyvenv.cfg → ensurepip 装 pip），
+  # 恰好在中间被打断时 .venv/bin/python 已经能跑、平台也对，会被判成健康而跳过重建，
+  # 然后炸在下面 pip --upgrade 那一行，报错形态是「pip 不存在/损坏」，跟真因毫无关系；
+  # 更糟的是这个判定每次重跑都成立，等于半截 venv 被永久钉死，只能靠用户手动删目录。
+  if [ "$CUR" != "$WANT" ] || [ ! -s .venv/pyvenv.cfg ] || [ ! -x .venv/bin/pip ] \
+     || ! ./.venv/bin/pip --version >/dev/null 2>&1; then
+    echo "[sandbox] 已有虚拟环境不可用（平台 $CUR / pip 缺失或损坏），重建"
     rm -rf .venv
   fi
 fi
@@ -117,9 +122,15 @@ case "${ONEBOT_PORT:-}" in
   ''|0|*[!0-9]*) ONEBOT_PORT=6199 ;;
 esac
 mkdir -p /opt/AstrBot/data
-if [ ! -f /opt/AstrBot/data/cmd_config.json ]; then
+# 判据是「非空且 JSON 能解析」，不是「文件存在」：写到一半被杀会留下半截 JSON，
+# 文件在、但解析不了，AstrBot 启动就报错，而重跑时这里一直判为「已存在」永不修复。
+# 写的时候先写 .tmp 再 mv（同目录 mv 是原子替换），不再制造半截文件。
+if [ -s /opt/AstrBot/data/cmd_config.json ] \
+   && python3 -c 'import json,sys;json.load(open(sys.argv[1]))' /opt/AstrBot/data/cmd_config.json 2>/dev/null; then
+  echo "[sandbox] 已存在可用的 cmd_config.json，保持不变"
+else
   # 只写 platform 段即可：AstrBot 启动时会自动补齐其余缺失键
-  cat > /opt/AstrBot/data/cmd_config.json <<JSONEOF
+  cat > /opt/AstrBot/data/cmd_config.json.tmp <<JSONEOF
 {
   "platform": [
     {
@@ -133,8 +144,7 @@ if [ ! -f /opt/AstrBot/data/cmd_config.json ]; then
   ]
 }
 JSONEOF
+  mv -f /opt/AstrBot/data/cmd_config.json.tmp /opt/AstrBot/data/cmd_config.json
   echo "[sandbox] 已生成 /opt/AstrBot/data/cmd_config.json"
-else
-  echo "[sandbox] 已存在 cmd_config.json，保持不变"
 fi
 echo "[sandbox] AstrBot 安装完成"

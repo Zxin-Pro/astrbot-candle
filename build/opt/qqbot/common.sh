@@ -272,6 +272,13 @@ qq_proxy_args() {
   printf '%s' "-x $_p"
 }
 
+# 下载完整性下限（字节）。默认 1 KB 只能挡住「0 字节 / 极短错误页」；
+# 调用方要按真实体积把 QQBOT_DL_MIN 调大（rootfs 25 MB、QQ deb 150 MB）。
+# 为什么需要：curl 在「连接被截断」时不一定会返回非 0（--max-time 到点、CDN 半包都可能退出 0），
+# 而坏文件一旦落到正式缓存路径就会被永久复用，之后每次重装都失败在「解包」那一步——
+# 报错指向解包、真因在下载，还清不掉。
+QQBOT_DL_MIN="${QQBOT_DL_MIN:-1024}"
+
 qq_dl() {
   _u="$1"
   _o="$2"
@@ -280,7 +287,25 @@ qq_dl() {
   rm -f "$_o.part"
   # $(qq_proxy_args) 不加引号：代理为空时展开成零个参数，curl 行为与改动前完全一致。
   # shellcheck disable=SC2046
-  curl -L --fail --retry 3 --retry-delay 3 --connect-timeout 20 --max-time "$_t" -A "Mozilla/5.0 (Linux; Android 13) qqbot-sandbox/1.0" $(qq_proxy_args) -o "$_o.part" "$_u" && [ -s "$_o.part" ] && mv -f "$_o.part" "$_o"
+  if ! curl -L --fail --retry 3 --retry-delay 3 --connect-timeout 20 --max-time "$_t" -A "Mozilla/5.0 (Linux; Android 13) qqbot-sandbox/1.0" $(qq_proxy_args) -o "$_o.part" "$_u"; then
+    rm -f "$_o.part"
+    return 1
+  fi
+  _sz="$(wc -c < "$_o.part" 2>/dev/null || echo 0)"
+  if [ "${_sz:-0}" -lt "${QQBOT_DL_MIN:-1024}" ]; then
+    qqwarn "下载体积异常（$_sz 字节 < ${QQBOT_DL_MIN:-1024}），丢弃重来"
+    rm -f "$_o.part"
+    return 1
+  fi
+  # 有些镜像对失败请求会返回 200 + 一个 HTML 错误页，小文件靠体积挡不住，这里再看文件头。
+  case "$(head -c 15 "$_o.part" 2>/dev/null)" in
+    '<!DOCTYPE html>'|'<html>'|'<HTML>')
+      qqwarn "下载到的是网页而不是文件，丢弃"
+      rm -f "$_o.part"
+      return 1
+      ;;
+  esac
+  mv -f "$_o.part" "$_o"
 }
 
 qq_dl_mirror() {

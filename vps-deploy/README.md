@@ -45,7 +45,7 @@
 
 | 子栏 | key | 内容 |
 | --- | --- | --- |
-| ⬇️ 下载 | `download` | 最新版 APK（GitHub 直链）、国内加速（`ghfast.top` 前缀）、所有历史版本、**SHA-256 校验值**（做成可复制卡） |
+| ⬇️ 下载 | `download` | 最新版 APK（**站内 `downloads/` 直接下载，不用跳 GitHub**；同时也给 GitHub 直链与 `ghfast.top` 国内加速）、所有历史版本、**SHA-256 校验值**（做成可复制卡） |
 | 🤖 这是什么 | `what` | 这个应用是什么、不需要服务器、装完能做什么 |
 | 📱 怎么用 | `howto` | 下载 → 等自动部署 → 扫码登录 → 开始用 |
 | 📝 更新日志 | `changelog` | 最近 6 个 release 的正文（截 1200 字） |
@@ -144,7 +144,7 @@ journalctl -u astrbot-sync.service -n 30 --no-pager
 
 1. 标题是「**AstrBot烛版**」、副标题「手机上一键跑起 AstrBot + NapCat」；
 2. 有四个子栏：下载 / 这是什么 / 怎么用 / 更新日志；
-3. 「下载」栏第一张卡的链接指向站内的 `downloads/AstrBot-<版本号>.apk`，且版本号与线上最新一致；
+3. 「下载」栏第一张卡的链接指向站内的 `downloads/AstrBot-<版本号>.apk`（当前为 `downloads/AstrBot-1.1.5.apk`），且版本号与线上最新一致；
 4. 「下载」栏最后一张「SHA-256 校验值」卡点一下能复制出 64 位十六进制串；
 5. 「更新日志」栏第一张卡是当前最新版，正文是中文、**没有乱码**。
 

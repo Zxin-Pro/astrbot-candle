@@ -53,6 +53,22 @@ sv_alive() {
   case "$_c" in *proot*run-all.sh*) return 0 ;; *) return 1 ;; esac
 }
 
+# 部署是否正在进行中。部署期间必须暂停守护，理由不是洁癖：
+# 首次部署时 supervisor 还不存在（它由部署最后一步拉起），sv_alive 必然为假，
+# 于是看门狗会判定「沙盒没起来」→ stop-sandbox.sh + start-sandbox.sh。
+# 而此刻沙盒里正跑着 apt，被硬停就会在 dpkg 数据库里留下半配置的包，
+# 之后每次重跑都撞同一句 E: dpkg was interrupted —— 用户看到的就是「第 3 步永远装不上」。
+# 判活同样要核对 cmdline：PID 会被复用，光看 /proc 里有没有是不够的。
+deploy_running() {
+  [ -f "$QQBOT_HOME/deploy.done" ] && return 1
+  [ -f "$QQBOT_HOME/deploy.pid" ] || return 1
+  _d=$(cat "$QQBOT_HOME/deploy.pid" 2>/dev/null)
+  case "$_d" in ''|*[!0-9]*) return 1 ;; esac
+  [ -d "/proc/$_d" ] || return 1
+  _dc=$(tr '\0' ' ' < "/proc/$_d/cmdline" 2>/dev/null)
+  case "$_dc" in *deploy.sh*) return 0 ;; *) return 1 ;; esac
+}
+
 # 心跳文件多少秒没更新了
 hb_age() {
   [ -f "$QQBOT_CACHE/heartbeat" ] || { echo 999999; return; }
@@ -78,6 +94,7 @@ restart_sandbox() {
 
 say "看门狗启动（pid $$，系统时区 $(qq_tz)）"
 WAS_OFF=""
+WAS_DEPLOY=""
 FAILS=0
 while true; do
   rotate
@@ -87,6 +104,13 @@ while true; do
     continue
   fi
   WAS_OFF=""
+  # 部署期间什么都别做，只等着。见 deploy_running() 上面的说明。
+  if deploy_running; then
+    if [ -z "$WAS_DEPLOY" ]; then say "部署正在进行，暂停守护（部署期间重启沙盒会打断 apt，留下半配置的包）"; WAS_DEPLOY=1; fi
+    sleep 15
+    continue
+  fi
+  if [ -n "$WAS_DEPLOY" ]; then say "部署已结束，恢复守护"; WAS_DEPLOY=""; fi
   if ! sv_alive; then
     restart_sandbox "supervisor 不存在或已退出" || FAILS=$((FAILS + 1))
     [ "$FAILS" -eq 0 ] && FAILS=0
