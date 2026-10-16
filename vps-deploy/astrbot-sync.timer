@@ -1,0 +1,14 @@
+[Unit]
+Description=每天同步一次 AstrBot烛版 下载页数据
+
+[Timer]
+# 每天 04:17 跑（错开整点，避免和其它定时任务撞在一起）
+OnCalendar=*-*-* 04:17:00
+# 服务器关机错过了就开机后补一次
+Persistent=true
+# 再加一道保险：随机延迟最多 10 分钟，避免多台机器同时打 GitHub
+RandomizedDelaySec=600
+Unit=astrbot-sync.service
+
+[Install]
+WantedBy=timers.target
