@@ -563,7 +563,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <button class="small" data-act="copypass">复制密码</button>
         <button class="small primary" style="flex:1" data-act="openpanel" id="btnAstrPanel" data-arg="http://127.0.0.1:6185">应用内打开 AstrBot 控制台</button>
       </div>
-      <div class="hint">二维码需要另一台设备扫：手机与电脑连同一个 Wi-Fi，用电脑浏览器打开 <b>http://手机IP:6099</b>，再用手机 QQ 扫码。也可以直接点上面的按钮，在应用内打开 NapCat 面板扫码。首次登录 AstrBot 后请立即修改密码。</div>
+      <div class="hint">二维码需要另一台设备扫：手机与电脑连同一个 Wi-Fi，用电脑浏览器打开 <b id="v-napurl2">http://手机IP:6099</b>，再用手机 QQ 扫码。也可以直接点上面的按钮，在应用内打开 NapCat 面板扫码。首次登录 AstrBot 后请立即修改密码。</div>
     </div>
 
   </section>
@@ -1106,6 +1106,8 @@ function refresh(){
   S.supAlive = !!st.supervisorAlive;
   S.st = st;   /* 组件开关点一下要按当前状态取反，得记住最近一次 state */
   el("v-napurl").textContent = "http://" + (S.lanIp || "127.0.0.1") + ":" + st.napcatPort;
+  /* 这行提示以前把 6099 写死了：主号实际是 6098 时，用户照着提示去连会连不上。跟着实际端口走。 */
+  el("v-napurl2").textContent = "http://手机IP:" + st.napcatPort;
   /* AstrBot 控制台端口可以在设置页改，这两处地址跟着实际端口走（自动分配时是 6185） */
   el("v-astrurl").textContent = "http://127.0.0.1:" + (st.astrbotPort || 6185);
   var ab = el("btnAstrPanel");

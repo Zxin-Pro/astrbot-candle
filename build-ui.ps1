@@ -49,6 +49,18 @@ Remove-Item "$ROOT\ui\smali" -Recurse -Force -ErrorAction SilentlyContinue
 & "$JDK\java.exe" -cp "$ROOT\_sdk\apktool.jar;$ROOT\tools" DexToSmali "$ROOT\ui\dex\classes.dex" "$ROOT\ui\smali" 34 2>$null
 Write-Host "dextosmali rc=$LASTEXITCODE"
 if (-not (Test-Path "$ROOT\_apkwork\apktool.yml")) { Write-Host 'MISSING _apkwork - run apktool d first (see docs/BUILD.md)'; exit 1 }
+
+# 3b) version stamp: the VERSION file at the repo root is the single source of truth
+#     versionCode = MAJOR*10000 + MINOR*100 + PATCH   (see CHANGELOG.md)
+$VER = '1.0.0'
+if (Test-Path "$ROOT\VERSION") { $VER = (Get-Content "$ROOT\VERSION" -Raw).Trim() }
+if ($VER -notmatch '^(\d+)\.(\d+)\.(\d+)$') { Write-Host "BAD VERSION file: $VER"; exit 1 }
+$VC = ([int]$Matches[1]) * 10000 + ([int]$Matches[2]) * 100 + ([int]$Matches[3])
+$yml = Get-Content "$ROOT\_apkwork\apktool.yml" -Raw
+$yml = $yml -replace 'versionCode: \d+', "versionCode: $VC"
+$yml = $yml -replace 'versionName: .*', "versionName: $VER"
+[System.IO.File]::WriteAllText("$ROOT\_apkwork\apktool.yml", $yml, (New-Object System.Text.UTF8Encoding($false)))
+Write-Host "version $VER ($VC)"
 Remove-Item "$ROOT\_apkwork\smali_classes30" -Recurse -Force -ErrorAction SilentlyContinue
 Copy-Item "$ROOT\ui\smali" "$ROOT\_apkwork\smali_classes30" -Recurse -Force
 New-Item -ItemType Directory -Force -Path "$ROOT\_apkwork\assets\qqbot" | Out-Null

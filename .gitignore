@@ -10,7 +10,7 @@ _sdk/
 out/
 _apkwork/
 
-# 界面（原生控制台）构建中间产物，全部由 out/ui-only.ps1 生成
+# 界面（原生控制台）构建中间产物，全部由 build-ui.ps1 生成
 ui/classes/
 ui/classes8/
 ui/dex/

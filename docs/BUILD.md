@@ -16,6 +16,10 @@
 | 最终未签名包 | `out\termux-qqbot-unsigned.apk` | 换好 `.so`、待签名的 APK |
 | **可安装包** | `out\signed\termux-qqbot-aligned-debugSigned.apk` | uber-apk-signer 对齐 + 签名后的成品（对外发布时重命名为 `AstrBot.apk`） |
 
+版本号（`versionCode` / `versionName`）不是写死在 APK 里的，而是由仓库根目录的 **`VERSION`** 文件决定：
+内容形如 `1.0.1`，`build-ui.ps1` 打包时换算成 `versionCode = MAJOR*10000 + MINOR*100 + PATCH` 一并写进 `_apkwork\apktool.yml`。
+要发新版本，改 `VERSION` 一行即可，同时记得在 [CHANGELOG.md](../CHANGELOG.md) 里补一条。
+
 ---
 
 ## 二、环境依赖
@@ -161,5 +165,9 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
    只有 `$JDK` 那一行需要按你自己的机器改。
 7. **不要提交构建产物。**
    `_research/`、`_sdk/`、`out/`、`_apkwork/`、`ui\classes\`、`ui\dex\`、`ui\smali\` 以及 `*.apk` / `*.dex` / `*.jar` / `*.so` 全部已被忽略。
-8. **首次构建较慢。**
+8. **`_apkwork/` 需要先解包一次。**
+   `build-ui.ps1` 只负责**重新打包**，不负责解包。首次构建前要先跑一次
+   `java -jar _sdk\apktool.jar d -f -o _apkwork _research\termux-arm64.apk`，否则脚本会直接报
+   `MISSING _apkwork - run apktool d first`。
+9. **首次构建较慢。**
    `javac` + `d8` + `apktool b` 加起来通常要几分钟；`apktool b` 阶段最慢，属正常现象。
