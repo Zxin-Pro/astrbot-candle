@@ -324,12 +324,15 @@ public class QqbotBridge {
         String qh = act.qqbotDir().getAbsolutePath();
         if ("start".equals(what)) {
             File pid = new File(act.qqbotDir(), "supervisor.pid");
-            if (act.pidAlive(pid)) return "already running";
+            if (act.pidAlive(pid)) return "服务已经在跑了";
             // setsid 脱离应用 shell 的进程组（runShell 结束时会按进程组 destroy 该 shell），
             // pid 由 start-sandbox.sh 自己写
             act.runShell("mkdir -p " + qh + "/logs; nohup setsid bash " + prefix + "/opt/qqbot/start-sandbox.sh > "
                     + qh + "/logs/supervisor.log 2>&1 < /dev/null & sleep 3; echo ok", 30);
-            return act.pidAlive(pid) ? "started" : "start failed";
+            if (act.pidAlive(pid)) return "服务已启动";
+            // 失败时把 supervisor.log 的最后一行带出去，别只回一句 start failed
+            String why = act.lastLogLine(act.supervisorLogFile());
+            return "启动失败" + (why.length() > 0 ? "：" + why : "：服务没有写出日志，重进应用再试一次");
         }
         if ("stop".equals(what)) {
             // 停止必须交给 stop-sandbox.sh：直接 kill -9 proot 会让它来不及清理

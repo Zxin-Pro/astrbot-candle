@@ -1538,7 +1538,9 @@ function doAction(a){
   /* 桥调用要包 try/catch：抛异常会掐断整个 click 处理（连带下面的 toast 和 refresh） */
   var r = "";
   try { r = String(Android.action(a)); } catch (e) { r = "失败：" + e; }
-  Android.toast(a + " -> " + r);
+  /* 桥里回的是完整中文句子（「服务已启动」「启动失败：<日志末行>」），直接显示；
+     以前显示的是 "start -> started" 这种只有开发者看得懂的串。 */
+  Android.toast(r.length > 0 ? r : a + " 完成");
   setTimeout(refresh, 1500);
 }
 
@@ -1908,7 +1910,7 @@ document.addEventListener("click", function(ev){
   var arg = t.getAttribute("data-arg");
   if (act === "start" || act === "stop" || act === "restart") doAction(act);
   /* 桥调用一律包 try/catch：抛异常会整段中断点击处理，界面卡在「正在…」而指令根本没发出去 */
-  else if (act === "deploy") { var r = ""; try { r = String(Android.action("deploy")); } catch (e) { r = "失败：" + e; } Android.toast("部署：" + r); refreshDeploy(); }
+  else if (act === "deploy") { var r = ""; try { r = String(Android.action("deploy")); } catch (e) { r = "失败：" + e; } Android.toast(r.indexOf("部署") >= 0 ? r : "部署：" + r); refreshDeploy(); }
   else if (act === "stopdeploy") { var r = ""; try { r = String(Android.action("stopdeploy")); } catch (e) { r = "停止部署失败：" + e; } Android.toast(r.indexOf("失败") >= 0 ? r : "已停止部署"); setTimeout(refreshDeploy, 1200); }
   else if (act === "link") linkBots();
   else if (act === "svc") doSvc(arg);
