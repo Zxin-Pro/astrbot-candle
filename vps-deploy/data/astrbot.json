@@ -2,7 +2,7 @@
   "title": "AstrBot烛版",
   "subtitle": "手机上一键跑起 AstrBot + NapCat",
   "intro": "把 AstrBot 和 NapCat 打包成一个安卓安装包，安装打开后自动在手机里建好 Linux 沙盒并部署完成，扫码登录即可用。",
-  "updated": "2026-10-16 08:41:30",
+  "updated": "2026-10-16 10:25:53",
   "tabs": [
     {
       "key": "download",
@@ -12,15 +12,15 @@
       "cards": [
         {
           "icon": "📦",
-          "title": "AstrBot烛版 1.1.0（最新版）",
+          "title": "AstrBot烛版 1.1.2（最新版）",
           "desc": "安卓安装包 · 24.0 MB · 2026-10-16\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载",
-          "link": "https://github.com/Zxin-Pro/astrbot-candle/releases/download/v1.1.0/AstrBot.apk"
+          "link": "https://github.com/Zxin-Pro/astrbot-candle/releases/download/v1.1.2/AstrBot.apk"
         },
         {
           "icon": "🚀",
           "title": "国内加速下载",
           "desc": "GitHub 直连慢或者打不开时用这个。\n内容与上面的安装包完全一样。",
-          "link": "https://ghfast.top/https://github.com/Zxin-Pro/astrbot-candle/releases/download/v1.1.0/AstrBot.apk"
+          "link": "https://ghfast.top/https://github.com/Zxin-Pro/astrbot-candle/releases/download/v1.1.2/AstrBot.apk"
         },
         {
           "icon": "🕘",
@@ -30,9 +30,9 @@
         },
         {
           "icon": "🔐",
-          "title": "SHA-256 校验值（v1.1.0）",
+          "title": "SHA-256 校验值（v1.1.2）",
           "desc": "点这张卡复制，然后和下载到的文件比对，一样就说明没被改过。",
-          "text": "113f91e1e1766841a568980db387c4f395a0d3b6a5a0c2084f17120510fff893"
+          "text": "40c07b500a7c0fc62c93a08572ba766f3b906c3315b4cc5625c1c59b51746fd1"
         }
       ]
     },
@@ -95,6 +95,13 @@
       "cards": [
         {
           "icon": "📝",
+          "title": "v1.1.2  ·  2026-10-16",
+          "desc": "### AstrBot 烛版 v1.1.2\n\n### 修复\n\n- **v1.1.1 那个补丁其实没生效，真正的原因在这里：AstrBot 把 `cmd_config.json` 写成带 UTF-8 BOM 的文件，而我们读它时按纯 UTF-8 解析，直接抛 `JSONDecodeError: Unexpected UTF-8 BOM (decode using utf-8-sig)`**（沙盒内实测报错原文）。异常被 `link.sh` 里的 `except Exception: a = {}` 吞掉，于是「当前 AstrBot 已经监听的端口」永远算成空列表，跟「需要的端口」永远对不上 → `CHANGED` 永远是 1 → 每次对接都会 `kill -TERM` 掉 AstrBot 再让守护循环拉回来（约 30 秒，期间所有 QQ 号的 OneBot 通道一起断）。表现就是：**在机器人页停掉任意一个实例，AstrBot 也跟着重启一次**。现在所有读 JSON 的地方统一改用 `utf-8-sig` 解码（它同时兼容带 BOM 和不带 BOM 的文件），比对逻辑这才真正跑起来。\n- 顺带把沙盒里所有读 JSON 的脚本都换成了 `utf-8-sig`：`link.sh`（bots.json、cmd_config.json）、`run-napcat.sh`（实例的 onebot11/webui 配置、bots.json）、`50-napcat.sh`（QQ 的 `package.json`、NapCat 配置）、`40-qq.sh`（QQ 的 `versions/config.json`）、`remove-instance.sh`（bots.json）。这些文件分别由 AstrBot、NapCat、QQ 和 App 自己写，谁加不加 BOM 不由我们决定——`utf-8-sig` 对两种情况都能读，写出去的一律不带 BOM。\n\n---",
+          "link": "https://github.com/Zxin-Pro/astrbot-candle/releases/tag/v1.1.2",
+          "text": "### AstrBot 烛版 v1.1.2\n\n### 修复\n\n- **v1.1.1 那个补丁其实没生效，真正的原因在这里：AstrBot 把 `cmd_config.json` 写成带 UTF-8 BOM 的文件，而我们读它时按纯 UTF-8 解析，直接抛 `JSONDecodeError: Unexpected UTF-8 BOM (decode using utf-8-sig)`**（沙盒内实测报错原文）。异常被 `link.sh` 里的 `except Exception: a = {}` 吞掉，于是「当前 AstrBot 已经监听的端口」永远算成空列表，跟「需要的端口」永远对不上 → `CHANGED` 永远是 1 → 每次对接都会 `kill -TERM` 掉 AstrBot 再让守护循环拉回来（约 30 秒，期间所有 QQ 号的 OneBot 通道一起断）。表现就是：**在机器人页停掉任意一个实例，AstrBot 也跟着重启一次**。现在所有读 JSON 的地方统一改用 `utf-8-sig` 解码（它同时兼容带 BOM 和不带 BOM 的文件），比对逻辑这才真正跑起来。\n- 顺带把沙盒里所有读 JSON 的脚本都换成了 `utf-8-sig`：`link.sh`（bots.json、cmd_config.json）、`run-napcat.sh`（实例的 onebot11/webui 配置、bots.json）、`50-napcat.sh`（QQ 的 `package.json`、NapCat 配置）、`40-qq.sh`（QQ 的 `versions/config.json`）、`remove-instance.sh`（bots.json）。这些文件分别由 AstrBot、NapCat、QQ 和 App 自己写，谁加不加 BOM 不由我们决定——`utf-8-sig` 对两种情况都能读，写出去的一律不带 BOM。\n\n---"
+        },
+        {
+          "icon": "📝",
           "title": "v1.1.0  ·  2026-10-16",
           "desc": "### AstrBot 烛版 v1.1.0\n\n这一版加了一个「检查更新」，并顺手把版本号推到 1.1.0。\n\n### 新增\n\n- **「更多 → 关于与支持 → 检查更新」**：以前想知道有没有新版，只能自己去 GitHub 翻 release 列表。现在应用里点一下「检查更新」，它会去 GitHub 查最新版本，直接告出「有新版本 1.x.x 可以装」，并给出「下载新版本」和「查看更新内容」两个按钮——前者把安装包交给浏览器下载，下完点开就能覆盖安装（覆盖装不会动沙盒里的 QQ 登录状态）。\n- **检查更新对国内网络做了兜底**：手机直连 `api.github.com` 经常超时，所以内置了直连 + 三个反代共四个地址，依次尝试，第一个能用的就用。四十五秒还没结果会明确说「检查超时」而不是一直转圈。\n- **启动后静默自检**：打开应用九秒后会在后台查一次（同一台设备十二小时内只查一次），有新版本才弹提示，其余情况不打扰。\n\n### 说明\n\n- 查询全程在后台线程进行，前端每 500ms 取一次结果，所以点「检查更新」不会把界面卡住——这一点和「运行命令」不同，「运行命令」卡的是命令本身。\n- 「查看更新内容」是在应用内展开的：新版说明在检查更新的同时就已经一起取回来了，点一下就地展开、再点收起，不用跳浏览器（跳过去还得自己登 GitHub，国内多半打不开）。只有那一版确实没写更新说明时才会退回打开 GitHub 页面。\n- 「下载新版本」交给系统浏览器下载，应用本身不内置下载器；如果你的手机装了多个浏览器，会由默认浏览器接管。",
           "link": "https://github.com/Zxin-Pro/astrbot-candle/releases/tag/v1.1.0",
@@ -132,3 +139,4 @@
     }
   ]
 }
+
