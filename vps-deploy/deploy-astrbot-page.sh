@@ -1,130 +1,139 @@
-#!/bin/bash
-# ---------------------------------------------------------------------------
-# AstrBot烛版 官网「下载页」一键部署（自包含版：脚本里已内嵌全部需要的文件）
+#!/usr/bin/env bash
+# ============================================================
+#  烛心站点 · AstrBot 栏「下载页」一键部署
+# ============================================================
 #
-# 它做五件事：
-#   1) 找到站点目录（该目录下同时有 assets/core.js 和 data/astrbot.json）
-#   2) 把原来的 data/astrbot.json 备份成 data/astrbot.json.bak.<时间戳>
-#   3) 铺上新的「下载页」内容，并在 /opt/astrbot-sync/ 装上同步脚本
-#   4) 立刻联网按真实线上数据同步一次
-#   5) 建 systemd timer，每天 04:17 自动爬一次 GitHub Releases 刷新它
+#  做什么：
+#    1) 把爬虫装到 <站点>/scripts/astrbot_download_sync.py
+#    2) 装 systemd 单元 zhuxin-astrbot-dl.{service,timer}（每天同步一次）
+#    3) 立刻同步一次，把 AstrBot 那一栏换成「AstrBot烛版 下载页」
 #
-# 用法（在服务器上以 root 执行）：
-#   bash deploy-astrbot-page.sh
-#   bash deploy-astrbot-page.sh --site-dir=/www/wwwroot/example.com
-#   bash deploy-astrbot-page.sh --sync-dir=/opt/astrbot-sync
-#   bash deploy-astrbot-page.sh --no-timer     # 只装文件，不建定时任务
-#   bash deploy-astrbot-page.sh --revert       # 还原成备份的那一份
+#  怎么用（在服务器上以 root 执行）：
+#    bash deploy-astrbot-page.sh
+#    bash deploy-astrbot-page.sh --site-dir=/data/www/zhuxin-site
+#    bash deploy-astrbot-page.sh --no-timer      # 只装一次，不建定时任务
+#    bash deploy-astrbot-page.sh --revert        # 后悔了，还原成本次安装前的样子
 #
-# 一行命令装完（不用先下载）：
-#   curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/Zxin-Pro/astrbot-candle/main/vps-deploy/deploy-astrbot-page.sh | sudo bash
+#  写哪些文件：
+#    <站点>/data/astrbot_content.json   母本（后台编辑器读它）
+#    <站点>/data/astrbot.json           前端 fetch 的公开那份
+#  两份一起写，所以你在后台点保存不会把下载页打回去。
+#  原文件会先备份成同目录下的 *.bak-deploy-<时间戳>。
+#  你原来写的子栏（人格分享之类）会原样保留，只有那四栏是每天重写的。
 #
-# 想还原：再跑一次加 --revert；或者脚本会打印备份文件名，cp 回去即可。
-# ---------------------------------------------------------------------------
+#  连不上 GitHub 也不会白来一趟：安装包里自带一份离线内容，会先顶上，
+#  等哪次定时任务联网成功了再自动换成真的最新版。
+# ============================================================
 set -eu
 
-SITE_DIR=""
-SYNC_DIR="/opt/astrbot-sync"
+SITE=""
 NO_TIMER=0
 REVERT=0
-TAG="[astrbot-sync]"
-REPO="https://github.com/Zxin-Pro/astrbot-candle"
+
+log() { printf "[astrbot-dl] %s\n" "$*"; }
+die() { printf "[astrbot-dl] 错误：%s\n" "$*" >&2; exit 1; }
 
 usage() {
-  cat <<'USAGE_EOF'
-AstrBot烛版 官网「下载页」一键部署
-
-  --site-dir=DIR   指定站点根目录（默认自动探测）
-  --sync-dir=DIR   同步脚本安装位置（默认 /opt/astrbot-sync）
-  --no-timer       只装文件，不建 systemd 定时任务
-  --revert         还原成最近一次备份的 data/astrbot.json
-  -h, --help       显示这段说明
-USAGE_EOF
+  sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
+  exit 0
 }
 
-for arg in "$@"; do
-  case "$arg" in
-    --site-dir=*) SITE_DIR="${arg#--site-dir=}" ;;
-    --sync-dir=*) SYNC_DIR="${arg#--sync-dir=}" ;;
+for a in "$@"; do
+  case "$a" in
+    --site-dir=*) SITE="${a#--site-dir=}" ;;
     --no-timer)   NO_TIMER=1 ;;
     --revert)     REVERT=1 ;;
-    -h|--help)    usage; exit 0 ;;
-    *) echo "$TAG 不认识的参数：$arg"; usage; exit 1 ;;
+    -h|--help)    usage ;;
+    *)            die "不认识的参数：$a（用 --help 看用法）" ;;
   esac
 done
 
-if [ "$(id -u)" != "0" ]; then
-  echo "$TAG 需要 root：请用 sudo bash deploy-astrbot-page.sh"
-  exit 1
-fi
-
-# 站点目录里必须同时有 assets/core.js 与 data/astrbot.json，
-# 这两个文件一起出现才说明是「烛心」这个站点，避免误伤别的目录。
-looks_like_site() {
-  [ -f "$1/assets/core.js" ] && [ -f "$1/data/astrbot.json" ]
-}
+command -v python3 >/dev/null 2>&1 || die "没装 python3，先 apt install python3"
 
 detect_site() {
-  find /var/www /www/wwwroot /usr/share/nginx/html /srv /home /opt /data 2>/dev/null \
-    -maxdepth 7 -type f -path '*/data/astrbot.json' -printf '%h\n' 2>/dev/null \
-  | sed 's|/data$||' | sort -u | while read -r d; do
-      if looks_like_site "$d"; then printf '%s\n' "$d"; fi
-    done
+  # 站点自己的脚本把路径写死成 /data/www/zhuxin-site，先试它
+  for d in /data/www/zhuxin-site /var/www/zhuxin-site; do
+    if [ -f "$d/data/astrbot.json" ] && [ -f "$d/assets/core.js" ]; then
+      printf "%s" "$d"; return 0
+    fi
+  done
+  # 找不到就按特征找：assets/core.js 与 data/astrbot.json 同在一个目录树里
+  for root in /data /var/www /www/wwwroot /usr/share/nginx/html /srv /home /opt; do
+    [ -d "$root" ] || continue
+    hit=$(find "$root" -maxdepth 7 -type f -name core.js -path "*/assets/*" 2>/dev/null | head -n 1 || true)
+    if [ -n "$hit" ]; then
+      d=$(dirname "$(dirname "$hit")")
+      if [ -f "$d/data/astrbot.json" ]; then printf "%s" "$d"; return 0; fi
+    fi
+  done
+  return 1
 }
 
+if [ -z "$SITE" ]; then
+  SITE=$(detect_site || true)
+  [ -n "$SITE" ] || die "没找到站点目录，请用 --site-dir=/你的/站点/根目录 指定"
+fi
+SITE="${SITE%/}"
+DATA="$SITE/data"
+SCRIPTS="$SITE/scripts"
+CFG="$DATA/astrbot_content.json"
+PUB="$DATA/astrbot.json"
+[ -d "$DATA" ] || die "$DATA 不存在，站点目录是不是写错了？"
+log "站点目录：$SITE"
+
 if [ "$REVERT" = "1" ]; then
-  if [ -z "$SITE_DIR" ]; then SITE_DIR="$(detect_site | head -n 1)" || true; fi
-  [ -n "$SITE_DIR" ] || { echo "$TAG 找不到站点目录，请用 --site-dir= 指定"; exit 1; }
-  LAST="$(ls -1t "$SITE_DIR"/data/astrbot.json.bak.* 2>/dev/null | head -n 1)" || true
-  [ -n "$LAST" ] || { echo "$TAG 没有备份可还原"; exit 1; }
-  cp -f "$LAST" "$SITE_DIR/data/astrbot.json"
-  echo "$TAG 已还原：$LAST -> $SITE_DIR/data/astrbot.json"
+  n=0
+  for f in "$CFG" "$PUB"; do
+    last=$(ls -1t "$f".bak-deploy-* 2>/dev/null | head -n 1 || true)
+    if [ -n "$last" ]; then
+      cp -p "$last" "$f"
+      log "已还原 $f <- $last"
+      n=$((n + 1))
+    fi
+  done
+  [ "$n" -gt 0 ] || die "没找到 *.bak-deploy-* 备份，可能没在本站装过"
+  log "还原完成（定时任务没动，不要了就 systemctl disable --now zhuxin-astrbot-dl.timer）"
   exit 0
 fi
 
-if [ -z "$SITE_DIR" ]; then
-  SITE_DIR="$(detect_site | head -n 1)" || true
-fi
-if [ -z "$SITE_DIR" ]; then
-  echo "$TAG 自动探测失败，请用 --site-dir=/你的站点根目录 指定（该目录下应有 assets/core.js）"
-  exit 1
-fi
-if ! looks_like_site "$SITE_DIR"; then
-  echo "$TAG $SITE_DIR 看起来不是这个站点（缺 assets/core.js 或 data/astrbot.json）"
-  exit 1
-fi
-SITE_DIR="${SITE_DIR%/}"
-echo "$TAG 站点目录：$SITE_DIR"
+mkdir -p "$SCRIPTS"
+TS=$(date +%Y%m%d-%H%M%S)
+for f in "$CFG" "$PUB"; do
+  if [ -f "$f" ]; then cp -p "$f" "$f.bak-deploy-$TS"; log "已备份 $f -> $f.bak-deploy-$TS"; fi
+done
 
-STAMP="$(date +%Y%m%d-%H%M%S)"
-
-# 1) 备份
-cp -f "$SITE_DIR/data/astrbot.json" "$SITE_DIR/data/astrbot.json.bak.$STAMP"
-echo "$TAG 已备份原文件 -> data/astrbot.json.bak.$STAMP"
-
-# 2) 装同步脚本
-install -d -m 0755 "$SYNC_DIR"
-cat > "$SYNC_DIR/astrbot_sync.py" <<'__ASTRBOT_SYNC_PY__'
+cat > "$SCRIPTS/astrbot_download_sync.py" <<'__ASTRBOT_DL_PY__'
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-把官网 data/astrbot.json 刷成「AstrBot烛版 下载页」。
+烛心站点 · AstrBot 栏「下载页」每日同步
+------------------------------------------------------------
+把站上 AstrBot 那一栏的内容，刷成「AstrBot烛版 的下载页」，并且每天自动跟着
+GitHub Releases 走：发了新版本，下载直链、版本号、体积、SHA-256 自己就变了。
 
-设计要点：
-  1) 只改 data/astrbot.json 一个文件，不碰 JS / CSS / HTML。
-     站点本身是「内容与渲染分离」的（assets/astrbot.<hash>.js 顶部注释写明了
-     data/astrbot.json 的结构就是唯一消费契约），所以改内容只要改这个 JSON。
-     不动 JS 也就不需要改 HTML 里的 ?v= 缓存指纹。
-  2) 结构校验照抄渲染器的约束，保证写出去的一定能被渲染：
-       - 子栏 key 必须匹配 ^[A-Za-z_][A-Za-z0-9_]{0,63}$ 且不重复
-       - 最多 12 个子栏、每栏最多 200 张卡
-  3) 原子写：先写 .tmp 再 os.replace，避免访客读到半截 JSON。
-  4) 纯标准库，无第三方依赖。任何一步失败都不动线上文件（exit 1），
-     线上保留上一次的好数据。
+为什么写两份文件：
+  站点本来的 AstrBot 栏是「内容与渲染分离」的，而且分母本/公开两份 ——
+    data/astrbot_content.json   母本，后台编辑器读它
+    data/astrbot.json           前端 fetch 的公开那份
+  两者由站点自己的 scripts/astrbot_content.py 的 save() 一起写（写前会备份到
+  data/astrbot_bak/，最多留 30 份）。本脚本**优先调用那个 save()**，于是：
+    · 裁剪规则、备份位置、文件权限与站点完全一致
+    · 后台编辑器里看到的也是同一份内容，不会在你下次在后台点保存时被打回去
+  万一那个脚本不在（比如站点目录被挪走），就退回自己把两份都原子写一遍。
+
+不碰 JS / CSS / HTML：assets/astrbot.<hash>.js 顶部注释写明了这个 JSON 结构就是
+唯一的消费契约，所以只改内容，不用去改 HTML 里的 ?v= 缓存指纹。
+
+结构校验照抄渲染器（assets/astrbot.js）与站点 save() 的约束，写出去的一定能被渲染：
+  · 子栏 key 必须匹配 ^[A-Za-z_][A-Za-z0-9_]{0,63}$ 且不重复
+  · 最多 12 个子栏、每栏最多 200 张卡
+  · 字段长度上限 icon 8 / title 80 / desc 2000 / link 500 / text 20000
+任何一步失败都不动线上文件（exit 1），线上保留上一次的好数据。
 
 用法：
-  python3 astrbot_sync.py              # 正常同步
-  python3 astrbot_sync.py --dry-run    # 只打印，不写文件
+  python3 astrbot_download_sync.py                  # 同步（站点目录默认 /data/www/zhuxin-site）
+  python3 astrbot_download_sync.py --dry-run        # 只打印，不写文件
+  python3 astrbot_download_sync.py --site-dir=/path # 指定站点根目录
 """
 
 import json
@@ -135,9 +144,38 @@ import time
 import urllib.request
 
 REPO = "Zxin-Pro/astrbot-candle"
-HERE = os.path.dirname(os.path.abspath(__file__))
-# 目标文件：默认是「脚本目录/data/astrbot.json」，装到别处时用环境变量指定。
-TARGET = os.environ.get("ASTRBOT_JSON") or os.path.join(HERE, "data", "astrbot.json")
+DEFAULT_SITE = "/data/www/zhuxin-site"
+
+
+def _arg(prefix):
+    for a in sys.argv[1:]:
+        if a.startswith(prefix):
+            return a.split("=", 1)[1]
+    return ""
+
+
+SITE = (_arg("--site-dir=") or os.environ.get("ZHUXIN_SITE") or DEFAULT_SITE).rstrip("/")
+DATA = os.path.join(SITE, "data")
+SCRIPTS = os.path.join(SITE, "scripts")
+CFG = os.path.join(DATA, "astrbot_content.json")   # 母本（后台编辑）
+PUB = os.path.join(DATA, "astrbot.json")           # 前端读取
+BAK_DIR = os.path.join(DATA, "astrbot_bak")
+FALLBACK = os.path.join(SCRIPTS, "astrbot_download_sync.fallback.json")
+# 这几个子栏由本脚本每天重写；其它子栏（比如你自己写的人格分享）原样保留。
+MANAGED_KEYS = ("download", "what", "howto", "changelog")
+
+RELEASES_PAGE = "https://github.com/" + REPO + "/releases"
+MIRROR_PREFIX = "https://ghfast.top/"
+
+KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+MAX_TABS = 12
+MAX_CARDS = 200
+# 站点 save() 的字段长度上限，照抄，免得写出去被它截一刀。
+MAX_LEN = {"icon": 8, "title": 80, "desc": 2000, "link": 500, "text": 20000,
+           "label": 20, "key": 40, "subtitle": 200, "intro": 4000}
+UA = "astrbot-candle-site-sync/2.0"
+NL = chr(10)
+
 GH_API = "https://api.github.com/repos/" + REPO + "/releases/latest"
 GH_ALL = "https://api.github.com/repos/" + REPO + "/releases?per_page=8"
 RELEASES_PAGE = "https://github.com/" + REPO + "/releases"
@@ -208,10 +246,16 @@ def validate(doc):
             for f in ("icon", "title", "desc", "link", "text"):
                 if not isinstance(c.get(f, ""), str):
                     return False, "tab %s card %d field %s is not a string" % (k, j, f)
+            # 站点 front 端 contentCard() 里 text 的优先级高于 link：两者同时非空时
+            # 卡片会渲染成「可复制卡」，link 静默失效。这里直接当成错误拦下来，
+            # 免得以后再写出「看着有链接、点不动」的卡片。
+            if str(c.get("text") or "").strip() and str(c.get("link") or "").strip():
+                return False, ("tab %s card %d 同时有 text 和 link：站点会按 text 渲染，"
+                               "link 会丢掉。更新说明请放 desc。") % (k, j)
     return True, ""
 
 
-def build(latest, all_rels):
+def build(latest, all_rels, extra=None):
     tag = latest.get("tag_name") or "v0.0.0"
     ver = tag.lstrip("vV")
     apk = pick_apk(latest)
@@ -314,12 +358,14 @@ def build(latest, all_rels):
         rbody = (rel.get("body") or "").strip()
         if len(rbody) > 1200:
             rbody = rbody[:1200] + "…"
+        # 这里千万不要加 text：站点的 contentCard() 判断顺序是「先看 text，再看 link」，
+        # 只要卡里有 text 就会被渲染成「可复制卡」，link 被直接丢掉 —— 用户点不进 release 页。
+        # 更新说明放进 desc（CSS 是 white-space:pre-wrap，换行照样在），整张卡都能点开。
         ch_cards.append({
             "icon": "📝",
             "title": "%s%s" % (rtag, ("  ·  " + rpub) if rpub else ""),
             "desc": rbody or "（这一版没写更新说明）",
             "link": rel.get("html_url") or RELEASES_PAGE,
-            "text": rbody,
         })
     if not ch_cards:
         ch_cards.append({
@@ -339,47 +385,200 @@ def build(latest, all_rels):
             {"key": "what",      "label": "这是什么", "icon": "🤖", "desc": "它到底装了什么",     "cards": what_cards},
             {"key": "howto",     "label": "怎么用",   "icon": "📱", "desc": "从下载到能用共四步", "cards": howto_cards},
             {"key": "changelog", "label": "更新日志", "icon": "📝", "desc": "每一版改了什么",     "cards": ch_cards},
-        ],
+        ] + list(extra or [])[:max(0, MAX_TABS - 4)],
     }
+
+def _clip(s, field, default=""):
+    """按站点的字段上限截断（站点 save() 也会截，这里先截一次，保证 --dry-run 打印的就是最终结果）。
+
+    default 与站点 astrbot_content._clip 的第三参数同义：值是 None 时用它兜底，
+    子栏的 label 就是这么兜的（没写名字就显示它的 key）。
+    """
+    s = (default if s is None else str(s)).strip()
+    n = MAX_LEN.get(field)
+    if n and len(s) > n:
+        return s[:n]
+    return s
+
+
+def load_extra_tabs():
+    """把现有内容里「不是我们管的」子栏原样捡回来。
+
+    这样每天同步只刷新下载/介绍/教程/更新日志这四栏，你之前写在里面的东西
+    （比如人格分享）不会被我覆盖掉；你在后台改它们也不会被冲掉。
+    """
+    try:
+        with open(CFG, encoding="utf-8") as f:
+            d = json.load(f)
+    except Exception:
+        return []
+    out = []
+    for t in (d.get("tabs") or []):
+        if isinstance(t, dict) and str(t.get("key") or "") not in MANAGED_KEYS:
+            out.append(t)
+    return out
+
+
+def normalize(d):
+    """按站点 save() 的规则把内容归一化。
+
+    站点 save() 会逐字段裁剪、给子栏 key 去重，字段上限见 MAX_LEN。这里先做一遍，
+    好处是 --dry-run 打印出来的就是最终会被写进文件的样子（一个字节都不差）。
+    注意：文档的 title 在站点那边是按 label 的上限（20 字）裁的，别写太长。
+    """
+    out = {
+        "title": _clip(d.get("title"), "label") or "AstrBot",
+        "subtitle": _clip(d.get("subtitle"), "subtitle"),
+        "intro": _clip(d.get("intro"), "intro"),
+        "tabs": [],
+        "updated": d.get("updated") or time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    used = set()
+    for t in (d.get("tabs") or [])[:MAX_TABS]:
+        if not isinstance(t, dict):
+            continue
+        k = re.sub(r"[^A-Za-z0-9_]", "", str(t.get("key") or ""))[:40] or "tab"
+        base, i = k, 2
+        while k in used:
+            k = "%s%d" % (base, i)
+            i += 1
+        used.add(k)
+        cards = []
+        for c in (t.get("cards") or [])[:MAX_CARDS]:
+            if not isinstance(c, dict):
+                continue
+            cards.append({
+                "icon": _clip(c.get("icon"), "icon"),
+                "title": _clip(c.get("title"), "title"),
+                "desc": _clip(c.get("desc"), "desc"),
+                "link": _clip(c.get("link"), "link"),
+                "text": _clip(c.get("text"), "text"),
+            })
+        out["tabs"].append({
+            "key": k,
+            "label": _clip(t.get("label"), "label", k) or k,
+            "icon": _clip(t.get("icon"), "icon"),
+            "desc": _clip(t.get("desc"), "desc"),
+            "cards": cards,
+        })
+    return out
+
+
+def load_fallback():
+    """安装时随包放的离线内容：万一这台机器连不上 GitHub，第一次也能有东西可看。"""
+    try:
+        with open(FALLBACK, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def site_saver():
+    """借站点自己的 scripts/astrbot_content.py 来写。
+
+    它能一起写母本 astrbot_content.json 与公开的 astrbot.json，并且按站点约定备份到
+    data/astrbot_bak/（最多 30 份）、写入时原子替换、权限 0644。拿不到就返回 None。
+    """
+    try:
+        if SCRIPTS not in sys.path:
+            sys.path.insert(0, SCRIPTS)
+        import astrbot_content as ac
+        # 万一站点装在别处，把它写死的路径改成我们探测到的
+        ac.ROOT = SITE
+        ac.DATA = DATA
+        ac.CFG = CFG
+        ac.PUB = PUB
+        ac.BAK_DIR = BAK_DIR
+        ac.MAX_TABS = MAX_TABS
+        ac.MAX_CARDS = MAX_CARDS
+        return ac
+    except Exception:
+        return None
+
+
+def write_both(doc):
+    """退路：自己把母本与公开两份都原子写一遍。"""
+    os.makedirs(DATA, exist_ok=True)
+    txt = json.dumps(doc, ensure_ascii=False, indent=2)
+    for p in (CFG, PUB):
+        tmp = p + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(txt)
+        os.replace(tmp, p)
+        try:
+            os.chmod(p, 0o644)
+        except Exception:
+            pass
 
 
 def main():
     dry = "--dry-run" in sys.argv
-    latest = http_json(GH_API)
-    try:
-        all_rels = http_json(GH_ALL)
-    except Exception as e:
-        print("warn: release list failed (%s), changelog will be thin" % e, file=sys.stderr)
-        all_rels = [latest]
-    doc = build(latest, all_rels)
-
-    ok, why = validate(doc)
-    if not ok:
-        print("refusing to write, schema check failed: %s" % why, file=sys.stderr)
+    quiet = "--quiet" in sys.argv
+    print("[astrbot-dl] 站点目录：%s" % SITE)
+    if not os.path.isdir(DATA):
+        print("[astrbot-dl] 找不到 %s" % DATA, file=sys.stderr)
+        print("[astrbot-dl] 用 --site-dir=/站点/根目录 指定，或设环境变量 ZHUXIN_SITE", file=sys.stderr)
         return 1
 
-    out = json.dumps(doc, ensure_ascii=False, indent=2) + NL
+    ver = ""
+    try:
+        latest = http_json(GH_API)
+        ver = str(latest.get("tag_name") or "")
+        try:
+            all_rels = http_json(GH_ALL)
+        except Exception as e:
+            print("[astrbot-dl] 历史版本列表拉取失败（只用最新版）：%s" % e, file=sys.stderr)
+            all_rels = [latest]
+        extra = load_extra_tabs()
+        if extra:
+            print("[astrbot-dl] 保留原有子栏：%s" % ", ".join(str(t.get("key")) for t in extra))
+        doc = build(latest, all_rels, extra)
+    except Exception as e:
+        print("[astrbot-dl] 连不上 GitHub：%s" % e, file=sys.stderr)
+        doc = load_fallback()
+        if doc is None:
+            print("[astrbot-dl] 也没有离线兜底内容，本次不写文件（线上保留上一次的好数据）", file=sys.stderr)
+            return 1
+        print("[astrbot-dl] 改用离线兜底内容：%s" % FALLBACK, file=sys.stderr)
+    doc = normalize(doc)
+    ok, why = validate(doc)
+    if not ok:
+        print("[astrbot-dl] 结构校验没过，不写文件：%s" % why, file=sys.stderr)
+        return 1
+
+    tabs = doc.get("tabs") or []
+    ncard = sum(len(t.get("cards") or []) for t in tabs)
     if dry:
-        print(out)
+        print(json.dumps(doc, ensure_ascii=False, indent=2))
+        print("[astrbot-dl] --dry-run：没有写任何文件", file=sys.stderr)
         return 0
 
-    os.makedirs(os.path.dirname(TARGET), exist_ok=True)
-    tmp = TARGET + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(out)
-    os.replace(tmp, TARGET)
-    print("wrote %s (%d bytes, %d tabs)" % (TARGET, len(out.encode("utf-8")), len(doc["tabs"])))
+    ac = site_saver()
+    try:
+        if ac is not None:
+            ac.save(doc, do_backup=True)
+            how = "站点 astrbot_content.save()"
+        else:
+            write_both(doc)
+            how = "直接写两份（站点脚本不可用）"
+    except Exception as e:
+        print("[astrbot-dl] 写入失败：%s" % e, file=sys.stderr)
+        return 1
+
+    print("[astrbot-dl] 已更新：%s 与 %s（%d 个子栏 / %d 张卡）" % (CFG, PUB, len(tabs), ncard))
+    if not quiet:
+        print("[astrbot-dl] 写入方式：%s" % how)
+        print("[astrbot-dl] 内容版本：%s（线上最新 %s）" % (doc.get("title", ""), ver or "未知"))
     return 0
 
 
 if __name__ == "__main__":
     sys.exit(main())
-__ASTRBOT_SYNC_PY__
-chmod 0755 "$SYNC_DIR/astrbot_sync.py"
-echo "$TAG 已安装 $SYNC_DIR/astrbot_sync.py"
+__ASTRBOT_DL_PY__
+chmod 755 "$SCRIPTS/astrbot_download_sync.py"
+log "爬虫已装到 $SCRIPTS/astrbot_download_sync.py"
 
-# 3) 铺新版内容（先把文件放进去，万一这台机器连不上 GitHub 也有东西看）
-cat > "$SITE_DIR/data/astrbot.json" <<'__ASTRBOT_JSON__'
+cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
 {
   "title": "AstrBot烛版",
   "subtitle": "手机上一键跑起 AstrBot + NapCat",
@@ -521,73 +720,81 @@ cat > "$SITE_DIR/data/astrbot.json" <<'__ASTRBOT_JSON__'
     }
   ]
 }
+__ASTRBOT_DL_STATIC__
+log "离线兜底内容已装到 $SCRIPTS/astrbot_download_sync.fallback.json"
 
-__ASTRBOT_JSON__
-chmod 0644 "$SITE_DIR/data/astrbot.json"
-echo "$TAG 已写入新版 data/astrbot.json"
-
-# 4) 立刻按真实线上数据同步一次（失败不算致命，保留刚铺好的静态版本）
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "$TAG 警告：这台机器没有 python3，每日同步会跑不起来（Debian/Ubuntu: apt install -y python3）"
-elif ASTRBOT_JSON="$SITE_DIR/data/astrbot.json" python3 "$SYNC_DIR/astrbot_sync.py"; then
-  echo "$TAG 首次联网同步成功"
-else
-  echo "$TAG 首次联网同步失败（多半是这台机器连不上 api.github.com）"
-  echo "$TAG 已保留刚铺好的静态版本，稍后定时任务会再试"
-fi
-
-# 5) systemd timer
 if [ "$NO_TIMER" = "1" ]; then
-  echo "$TAG 按 --no-timer 跳过定时任务"
-elif ! command -v systemctl >/dev/null 2>&1; then
-  echo "$TAG 这台机器没有 systemd。请自行加一条 cron：
-
-    17 4 * * * ASTRBOT_JSON=$SITE_DIR/data/astrbot.json /usr/bin/python3 $SYNC_DIR/astrbot_sync.py >> /var/log/astrbot-sync.log 2>&1"
-else
-  cat > /etc/systemd/system/astrbot-sync.service <<'__SVC__'
+  log "--no-timer：跳过定时任务，只做这一次同步"
+elif command -v systemctl >/dev/null 2>&1 && [ -d /etc/systemd/system ]; then
+cat > /etc/systemd/system/zhuxin-astrbot-dl.service <<'__ASTRBOT_DL_SVC__'
 [Unit]
-Description=AstrBot烛版 下载页数据同步（每日爬 GitHub Releases 刷新 data/astrbot.json）
+Description=烛心站点 · AstrBot 栏「下载页」每日同步
 Documentation=https://github.com/Zxin-Pro/astrbot-candle
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
+WorkingDirectory=__SITE__/scripts
+ExecStart=/usr/bin/python3 __SITE__/scripts/astrbot_download_sync.py --site-dir=__SITE__ --quiet
 User=root
-# 站点目录由 install.sh 自动探测后写进下面这行；也可以手动改。
-Environment=ASTRBOT_JSON=__SITE_DIR__/data/astrbot.json
-ExecStart=/usr/bin/python3 /opt/astrbot-sync/astrbot_sync.py
-# 失败就重试两次（网络抖动），仍然失败保留上一次的好数据。
-Restart=on-failure
-RestartSec=30
-StandardOutput=journal
-StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
-__SVC__
-  cat > /etc/systemd/system/astrbot-sync.timer <<'__TMR__'
+__ASTRBOT_DL_SVC__
+cat > /etc/systemd/system/zhuxin-astrbot-dl.timer <<'__ASTRBOT_DL_TMR__'
 [Unit]
-Description=每天同步一次 AstrBot烛版 下载页数据
+Description=每天同步一次 AstrBot 栏的下载页（跟着 GitHub Releases 走）
 
 [Timer]
-# 每天 04:17 跑（错开整点，避免和其它定时任务撞在一起）
-OnCalendar=*-*-* 04:17:00
-# 服务器关机错过了就开机后补一次
+OnBootSec=3min
+OnUnitActiveSec=1d
+AccuracySec=1s
 Persistent=true
-# 再加一道保险：随机延迟最多 10 分钟，避免多台机器同时打 GitHub
-RandomizedDelaySec=600
-Unit=astrbot-sync.service
+Unit=zhuxin-astrbot-dl.service
 
 [Install]
 WantedBy=timers.target
-__TMR__
-  sed -i "s|__SITE_DIR__|$SITE_DIR|g" /etc/systemd/system/astrbot-sync.service
+__ASTRBOT_DL_TMR__
+  sed -i "s|__SITE__|$SITE|g" /etc/systemd/system/zhuxin-astrbot-dl.service
   systemctl daemon-reload
-  systemctl enable --now astrbot-sync.timer >/dev/null 2>&1
-  echo "$TAG 已启用 astrbot-sync.timer（每天 04:17）"
-  systemctl list-timers astrbot-sync.timer --no-pager 2>/dev/null | head -n 3 || true
+  systemctl enable --now zhuxin-astrbot-dl.timer >/dev/null 2>&1 || true
+  log "定时任务：$(systemctl is-enabled zhuxin-astrbot-dl.timer 2>/dev/null || echo 未知) / $(systemctl is-active zhuxin-astrbot-dl.timer 2>/dev/null || echo 未知)"
+  log "下次触发：$(systemctl list-timers zhuxin-astrbot-dl.timer --no-pager 2>/dev/null | sed -n 2p | tr -s " " || true)"
+else
+  log "这台机器没有 systemd，自己加一条 cron（下面这行每天 04:17 同步一次）："
+  echo "17 4 * * * /usr/bin/python3 $SCRIPTS/astrbot_download_sync.py --site-dir=$SITE --quiet >> /var/log/astrbot-dl.log 2>&1"
 fi
 
-echo "$TAG 完成。"
-echo "$TAG 想还原就再跑一次：bash $0 --revert"
+if python3 "$SCRIPTS/astrbot_download_sync.py" --site-dir="$SITE"; then
+  log "首次同步成功"
+else
+  log "首次同步失败（多半是这台机器连不上 GitHub），先用安装包自带的离线内容顶上"
+  python3 - "$SCRIPTS/astrbot_download_sync.fallback.json" "$CFG" "$PUB" <<'__ASTRBOT_DL_OFFLINE__'
+import json, os, sys
+src, cfg, pub = sys.argv[1], sys.argv[2], sys.argv[3]
+doc = json.load(open(src, encoding="utf-8"))
+txt = json.dumps(doc, ensure_ascii=False, indent=2)
+for pth in (cfg, pub):
+    tmp = pth + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(txt)
+    os.replace(tmp, pth)
+    os.chmod(pth, 0o644)
+print("[astrbot-dl] 已写入离线内容：%s 与 %s" % (cfg, pub))
+__ASTRBOT_DL_OFFLINE__
+fi
+
+log "搞定，收个尾："
+python3 - "$PUB" <<'__ASTRBOT_DL_SUM__'
+import json, sys
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+print("[astrbot-dl] 现在这一栏：%s / %s" % (d.get("title", ""), d.get("subtitle", "")))
+for t in (d.get("tabs") or []):
+    print("[astrbot-dl]   %s %s：%d 张卡" % (t.get("icon", ""), t.get("label", ""), len(t.get("cards") or [])))
+print("[astrbot-dl] 浏览器打开站点，进「分享 → AstrBot」就能看到了")
+__ASTRBOT_DL_SUM__
+
+log "要反悔：bash $0 --revert"
+log "要看定时任务：systemctl list-timers zhuxin-astrbot-dl.timer"
+log "要立刻再同步一次：systemctl start zhuxin-astrbot-dl.service"
