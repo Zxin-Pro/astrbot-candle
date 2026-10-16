@@ -270,6 +270,10 @@ pre{
   white-space:pre-wrap;word-break:break-all;
 }
 
+/* 空的 #cmdOut（「维护」卡里那个命令回显框）初始没有内容，但 pre 自带 padding 与描边，
+   会在页面上留一条黑色空条；没输出时整块隐藏，有输出时再出现。 */
+#cmdOut:empty{display:none}
+
 /* ===== 表单 ===== */
 select,input{
   width:100%;padding:10px 12px;border-radius:var(--r-sm);
@@ -654,7 +658,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       <pre id="logBox">（选择日志后显示）</pre>
     </div>
 
-    <div class="hint" id="logCardsTip" style="display:none">日志框都收起来了。要看日志请回「主页 → 运行状态 → 查看日志」，点一下就会全部恢复。</div>
+    <div class="hint" id="logCardsTip" style="display:none">「其它日志文件」这一张已经收起来了。二维码和实时日志始终显示；想恢复请回「主页 → 运行状态 → 查看日志」点一下。</div>
   </section>
 
   <section class="tab" id="tab-more">
@@ -952,6 +956,18 @@ function cleanLog(s, slim){
   return out.join("\n");
 }
 
+/* bots.json 是外部文件（也可能被用户手改），数组里混进 null 之类的脏元素时
+   bs[i].id 会直接抛异常，之后整段渲染都不再执行；遍历前统一过滤掉。 */
+function validBots(list){
+  var out = [];
+  if (!list || !list.length) return out;
+  for (var i = 0; i < list.length; i++) {
+    var b = list[i];
+    if (b && typeof b === "object") out.push(b);
+  }
+  return out;
+}
+
 function el(id){ return document.getElementById(id); }
 function esc(s){ return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 
@@ -1094,11 +1110,33 @@ function setTile(id, cls, sub){
   if (pn) { var s = sub || ""; if (pn.textContent !== s) pn.textContent = s; }
 }
 
+/* 容器开关刚落下去、服务还没停完的那十几秒：标记文件已经有了（off 为真），
+   但端口还在听（up 为真）。这段窗口里说「已关闭」是假的，磁贴 / 胶囊 / 组件开关
+   三处都要说「正在关闭…」。判定收在这里一份，避免各写一套条件又走岔。 */
+function isClosing(off, up){ return !!off && !!up; }
+
+/* 与 isClosing 配套的磁贴值文案：正在关闭 / 已关闭 / 在线 / 离线 */
+function svcTileValue(off, up){
+  if (isClosing(off, up)) return "正在关闭…";
+  if (off) return "已关闭";
+  return up ? "在线" : "离线";
+}
+
+/* refresh() 的整体护栏：任何一处渲染抛异常（例如状态里出现意料外的脏数据）都不该让
+   这一次刷新半途中断、更不该让后面每一轮轮询跟着失效，所以整体包一层。
+   原来只有 JSON.parse 那一处 try。refreshAll() 就是原来的函数体。 */
 function refresh(){
+  try { refreshAll(); } catch (e) { try { console.log("刷新页面时出错：" + e); } catch (e2) {} }
+}
+
+function refreshAll(){
   var st;
   try { st = JSON.parse(Android.state()); } catch (e) { el("hdrSub").textContent = "读取状态失败"; return; }
   if (st.error) { el("hdrSub").textContent = "错误：" + st.error; return; }
   S.bots = st.bots || { active: "", bots: [] };
+  /* bots.json 里混进 null 之类的脏元素时，下面 bs[i].id 会抛异常、整段渲染中断，
+     所以先过滤一遍再拿去渲染 / 取当前实例。 */
+  S.bots.bots = validBots(S.bots.bots);
   S.prefix = st.prefix || "";
   S.lanIp = st.lanIp || "";
   S.logFiles = st.logFiles || [];
@@ -1117,15 +1155,14 @@ function refresh(){
   if (av) av.textContent = st.appVersion || "-";
   el("v-deploy").textContent = st.deployDone ? "已完成" : "未完成";
   el("d-deploy").className = "dot " + (st.deployDone ? "ok" : "warn");
-  setTile("t-deploy", st.deployDone ? "ok" : "warn", st.deployDone ? "8/8 步" : "");
   el("v-sup").textContent = st.supervisorAlive ? "运行中" : "未运行";
   setTile("t-sup", st.supervisorAlive ? "ok" : "bad", "");
   /* 端口不通有两种原因：用户用组件开关关掉了，或者服务崩了。界面上必须区分开，
      否则关掉 NapCat 会显示成刺眼的「离线」，像是出故障了。 */
-  el("v-napcat").textContent = st.napcatOff ? "已关闭" : (st.napcatUp ? "在线" : "离线");
-  setTile("t-napcat", st.napcatOff ? "warn" : (st.napcatUp ? "ok" : "bad"), "端口 " + st.napcatPort);
-  el("v-astrbot").textContent = st.astrbotOff ? "已关闭" : (st.astrbotUp ? "在线" : "离线");
-  setTile("t-astrbot", st.astrbotOff ? "warn" : (st.astrbotUp ? "ok" : "bad"), "端口 " + st.astrbotPort);
+  el("v-napcat").textContent = svcTileValue(st.napcatOff, st.napcatUp);
+  setTile("t-napcat", isClosing(st.napcatOff, st.napcatUp) ? "warn" : (st.napcatOff ? "warn" : (st.napcatUp ? "ok" : "bad")), "端口 " + st.napcatPort);
+  el("v-astrbot").textContent = svcTileValue(st.astrbotOff, st.astrbotUp);
+  setTile("t-astrbot", isClosing(st.astrbotOff, st.astrbotUp) ? "warn" : (st.astrbotOff ? "warn" : (st.astrbotUp ? "ok" : "bad")), "端口 " + st.astrbotPort);
   /* 6199 是 AstrBot 的 aiocqhttp 反向 WS 监听口，跟 NapCat 在不在线无关：
      AstrBot 关着时这一行必须说「已停止」，否则两处状态自相矛盾。 */
   var obTxt, obCls;
@@ -1136,7 +1173,7 @@ function refresh(){
   setTile("t-onebot", obCls, "端口 " + st.onebotPort);
   var tok = "zhuxin";
   var napPort = st.napcatPort || 6099;
-  var bs = S.bots.bots || [];
+  var bs = validBots(S.bots.bots);
   for (var i = 0; i < bs.length; i++) if (bs[i].id === S.bots.active) { tok = bs[i].token || "zhuxin"; napPort = bs[i].napcatPort || 6099; }
   el("v-token").textContent = tok;
   el("tokText").textContent = tok;
@@ -1144,8 +1181,9 @@ function refresh(){
   var p = [];
   p.push(pill(st.deployDone ? "已部署" : "待部署", st.deployDone ? "ok" : "warn"));
   p.push(pill(st.supervisorAlive ? "服务运行中" : "服务已停止", st.supervisorAlive ? "ok" : "bad"));
-  p.push(pill("NapCat " + (st.napcatOff ? "已关闭" : (st.napcatUp ? "在线" : "离线")), st.napcatOff ? "warn" : (st.napcatUp ? "ok" : "bad")));
-  p.push(pill("AstrBot " + (st.astrbotOff ? "已关闭" : (st.astrbotUp ? "在线" : "离线")), st.astrbotOff ? "warn" : (st.astrbotUp ? "ok" : "bad")));
+  /* 胶囊与磁贴共用同一套判定（isClosing / svcTileValue），关闭窗口内两处说法一致 */
+  p.push(pill("NapCat " + svcTileValue(st.napcatOff, st.napcatUp), isClosing(st.napcatOff, st.napcatUp) ? "warn" : (st.napcatOff ? "warn" : (st.napcatUp ? "ok" : "bad"))));
+  p.push(pill("AstrBot " + svcTileValue(st.astrbotOff, st.astrbotUp), isClosing(st.astrbotOff, st.astrbotUp) ? "warn" : (st.astrbotOff ? "warn" : (st.astrbotUp ? "ok" : "bad"))));
   setHtml(el("pills"), p.join(""));
   el("hdrSub").textContent = bs.length + " 个 NapCat 实例  ·  当前：" + (S.bots.active || "-");
   /* 全关是用户主动做的，不是故障，所以一律用中性的 warn，不要刺眼报警的 bad。 */
@@ -1154,22 +1192,34 @@ function refresh(){
   renderHomeBots();
   renderSvc(st);
   renderGuard(st);
+  /* #d-log 这个点以前从没人更新，永远是灰的：有日志文件就绿，一个都没有才红。 */
+  var dl = el("d-log");
+  if (dl) dl.className = "dot " + ((S.logFiles && S.logFiles.length) ? "ok" : "bad");
   fillLogSelect(S.logFiles);
   syncAstrPortInput();
   renderPorts();
   refreshDeploy();
+  /* 部署磁贴的步数不再写死「8/8 步」：refreshDeploy() 上面刚把最新的 d 缓存进
+     S.deployInfo，用它实际的 doneCount/total 拼，增删部署步骤也不会对不上。
+     放在 refreshDeploy() 之后才不会用到旧值。 */
+  var dInf = S.deployInfo;
+  setTile("t-deploy", S.deployDone ? "ok" : "warn", (S.deployDone && dInf) ? (dInf.doneCount + "/" + dInf.total + " 步") : "");
   autoLink();
 }
 
-/* 主页自动把 NapCat 与 AstrBot 连起来：部署完成且服务在跑时自动跑一次 link.sh（幂等）。 */
+/* 主页自动把 NapCat 与 AstrBot 连起来：部署完成且服务在跑时自动跑一次 link.sh（幂等）。
+   注意必须用 Android.action("linkbg")：link.sh 要开 proot 沙盒改配置，十几秒起步，
+   而 Android.exec 是同步阻塞的桥调用（Java 侧要等进程结束才返回，超时 60 秒），
+   拿它跑 link.sh 会把 WebView 的 JS 线程整段卡死。linkbg 在 Java 侧丢到后台线程，
+   立刻返回，所以下面的刷新要等后台跑完（6 秒）才有意义。 */
 function autoLink(){
   if (S.linked) return;
   if (!S.deployDone || !S.supAlive) return;
   if (!S.prefix) return;
   S.linked = true;
   setTimeout(function(){
-    try { Android.exec("bash " + S.prefix + "/opt/qqbot/link.sh"); } catch (e) {}
-    setTimeout(refresh, 1500);
+    try { Android.action("linkbg"); } catch (e) {}
+    setTimeout(refresh, 6000);
   }, 1200);
 }
 
@@ -1177,6 +1227,7 @@ function refreshDeploy(){
   var d;
   try { d = JSON.parse(Android.deployInfo()); } catch (e) { return; }
   if (!d || d.error) return;
+  S.deployInfo = d;   /* 缓存给主页部署磁贴：步数用实际数据，别再写死 */
   var pct = d.total ? Math.round(d.doneCount * 100 / d.total) : 0;
   if (d.done) pct = 100;
   el("deployBar").style.width = pct + "%";
@@ -1259,17 +1310,27 @@ function toggleBtnHtml(b){
   return '<button class="small' + (on ? "" : " ok") + '" data-act="togglebot" data-arg="' + esc(b.id) + '">' + (on ? "停止容器" : "启动容器") + '</button>';
 }
 
+/* 实例当前是否真的在跑：单实例开关 b.enable 与「组件总开关」（NapCat 关闭＝所有实例
+   的容器都停）要一起看。只看 b.enable 的话，总开关关掉时这里会显示绿色「容器运行中」，
+   与同屏的磁贴 / 胶囊自相矛盾。按钮仍按 b.enable 显示（它控制的是单实例开关）。 */
+function botPill(b){
+  var enabled = (b.enable !== false);
+  var gOff = !!(S.st && S.st.napcatOff);      /* 组件总开关：一关就停所有实例的 NapCat */
+  var running = enabled && !gOff;
+  var txt = running ? "容器运行中" : (enabled ? "已停止（组件总开关关着）" : "容器已停止");
+  return pill(txt, running ? "ok" : "bad");
+}
+
 function renderBots(){
   var list = el("botList");
-  var bs = S.bots.bots || [];
+  var bs = validBots(S.bots.bots);
   if (!bs.length) { setHtml(list, '<div class="empty">还没有实例，点下面新增</div>'); return; }
   var h = [];
   for (var i = 0; i < bs.length; i++) {
     var b = bs[i];
     var act = (b.id === S.bots.active);
-    var on = (b.enable !== false);
     h.push('<div class="bot' + (act ? " active" : "") + '">');
-    h.push('<div class="bh"><span class="bn">' + esc(b.name || b.id) + '</span><span class="bh-r">' + pill(on ? "容器运行中" : "容器已停止", on ? "ok" : "bad") + '<span class="tag' + (act ? " on" : "") + '">' + (act ? "当前使用" : "备用") + '</span></span></div>');
+    h.push('<div class="bh"><span class="bn">' + esc(b.name || b.id) + '</span><span class="bh-r">' + botPill(b) + '<span class="tag' + (act ? " on" : "") + '">' + (act ? "当前使用" : "备用") + '</span></span></div>');
     h.push('<div class="row"><span class="k">QQ</span><span class="v mono">' + esc(b.qq || "未填写") + '</span></div>');
     h.push('<div class="row"><span class="k">Token</span><span class="v mono">' + esc(b.token || "zhuxin") + '</span></div>');
     h.push('<div class="row"><span class="k">端口</span><span class="v mono">WebUI ' + esc(b.napcatPort) + ' / OneBot ' + esc(b.onebotPort) + '</span></div>');
@@ -1312,7 +1373,7 @@ function renderSvc(st){
     var r = rows[i];
     /* 标记文件落下后沙盒还要最多十几秒才真的停/起（守护循环 3 秒轮询 + 停止最多等 10 秒），
        这段窗口里显示「已关闭」是假的：端口还开着。改成如实说「正在关闭…」。 */
-    var closing = r.off && r.up;
+    var closing = isClosing(r.off, r.up);   /* 与磁贴 / 胶囊同一份判定 */
     var tag = r.off ? (closing ? "wait" : "off") : (r.up ? "on" : "wait");
     var txt = r.off ? (closing ? "正在关闭…" : "已关闭") : (r.up ? "运行中" : "启动中");
     h.push('<div class="swrow"><div class="swinfo">'
@@ -1331,21 +1392,27 @@ function renderGuard(st){
   var box = el("guardList");
   if (!box) return;
   st = st || {};
+  /* guardOn 只是「开关文件写着开」，guardRunning 才是守护服务真的在跑。
+     两者不一致时（开关开着、服务没起来）必须如实说，别让用户以为有守护。 */
+  var gRunning = !!st.guardRunning;
   var rows = [
-    { n: "guard", label: "常驻后台守护", desc: "前台常驻通知 + 每分钟自检沙盒，进程消失自动拉起", on: !!st.guardOn },
+    { n: "guard", label: "常驻后台守护", desc: "前台常驻通知 + 每分钟自检沙盒，进程消失自动拉起", on: !!st.guardOn,
+      tag: (st.guardOn && !gRunning) ? "off" : "", tagTxt: (st.guardOn && !gRunning) ? "开关已开 · 服务未运行" : "" },
     { n: "wake", label: "息屏保持运行", desc: "持有 CPU 唤醒锁，息屏后 NapCat 才能继续维持 QQ 长连接", on: !!st.guardWake }
   ];
   var h = [];
   for (var i = 0; i < rows.length; i++){
     var r = rows[i];
+    var rTag = r.tag || (r.on ? "on" : "off");
+    var rTagTxt = r.tagTxt || (r.on ? "已开启" : "已关闭");
     h.push('<div class="swrow"><div class="swinfo"><div class="swname">' + esc(r.label) +
-      '<span class="swtag ' + (r.on ? "on" : "off") + '">' + (r.on ? "已开启" : "已关闭") + '</span></div>' +
+      '<span class="swtag ' + rTag + '">' + rTagTxt + '</span></div>' +
       '<div class="swdesc">' + esc(r.desc) + '</div></div>' +
       '<button class="tgl' + (r.on ? " on" : "") + '" data-act="guardset" data-arg="' + r.n + '" title="点击切换"></button></div>');
   }
   setHtml(box, h.join(""));
   var d = el("d-guard");
-  if (d) d.className = "dot " + (st.guardOn ? "ok" : "warn");
+  if (d) d.className = "dot " + ((st.guardOn && gRunning) ? "ok" : "warn");
   var nt = el("guardNote");
   if (nt) nt.textContent = st.guardNote || (st.guardOn ? "守护运行中" : "守护已关闭");
 }
@@ -1382,23 +1449,24 @@ function doSvc(arg){
   Android.toast(r);
   /* 只要不是写盘失败，就立刻把本地状态翻过来（容器在跑时返回的是「正在启动…」，
      没跑时才返回「已记下…」，两种都必须翻，否则 4 秒内连点仍会被吞）。 */
-  if (r && r.indexOf("失败") < 0) { flip(arg, off); renderSvc(S.st); }
+  /* renderSvc 要读 st.napcatPort 等字段：S.st 还没拿到时（第一次 refresh 之前）直接传
+     undefined 会抛 TypeError，把这次点击的后续处理一起打断。跟上面「全部打开」那条一样先判空。 */
+  if (r && r.indexOf("失败") < 0) { flip(arg, off); if (S.st) renderSvc(S.st); }
   setTimeout(refresh, 1200);
 }
 function renderHomeBots(){
   var box = el("homeBots");
-  var bs = S.bots.bots || [];
+  var bs = validBots(S.bots.bots);
   if (!bs.length) { setHtml(box, '<div class="empty">还没有实例，点下面「新增实例」</div>'); return; }
   var ip = S.lanIp || "127.0.0.1";
   var h = [];
   for (var i = 0; i < bs.length; i++) {
     var b = bs[i];
     var act = (b.id === S.bots.active);
-    var on = (b.enable !== false);
     var port = b.napcatPort || 6099;
     var url = "http://" + ip + ":" + port;
     h.push('<div class="bot' + (act ? " active" : "") + '">');
-    h.push('<div class="bh"><span class="bn">' + esc(b.name || b.id) + '</span><span class="bh-r">' + pill(on ? "容器运行中" : "容器已停止", on ? "ok" : "bad") + pill(b.up ? "端口在线" : "端口离线", b.up ? "ok" : "bad") + '</span></div>');
+    h.push('<div class="bh"><span class="bn">' + esc(b.name || b.id) + '</span><span class="bh-r">' + botPill(b) + pill(b.up ? "端口在线" : "端口离线", b.up ? "ok" : "bad") + '</span></div>');
     h.push('<div class="row"><span class="k">QQ</span><span class="v mono">' + esc(b.qq || "未登录") + '</span></div>');
     h.push('<div class="row"><span class="k">登录地址</span><span class="v mono">' + esc(url) + '</span></div>');
     h.push('<div class="row"><span class="k">Token</span><span class="v mono">' + esc(b.token || "zhuxin") + '</span></div>');
@@ -1435,7 +1503,12 @@ function linkBots(){
 }
 
 function runCmd(c){
-  el("cmdOut").textContent = "> " + c + "\n" + Android.exec(c);
+  /* 先把命令和「运行中…」写进回显框，再调 Android.exec（它同步阻塞，返回后才有输出）：
+     否则整段执行期间界面上一点反馈都没有。 */
+  el("cmdOut").textContent = "> " + c + "\n（运行中…）";
+  var out = "";
+  try { out = String(Android.exec(c)); } catch (e) { out = "执行失败：" + e; }
+  el("cmdOut").textContent = "> " + c + "\n" + out;
 }
 
 /* 给新实例挑一对没人用的端口。约定沿用主号：WebUI 从 6099 往下找空的，
@@ -1536,11 +1609,21 @@ function saveBot(){
     if (parseInt(bs[j].napcatPort, 10) === S.editing.napcatPort
         || parseInt(bs[j].onebotPort, 10) === S.editing.onebotPort) clash = true;
   }
+  /* 6185 是 AstrBot 控制台端口：nextFreePorts() 和 savePorts() 都显式把它留出来，
+     手填 6185 也必须判冲突，否则会静默落盘、容器绑不上端口（界面却看着正常）。
+     控制台端口改过时（bots.json 的 astrbotPort / state() 报的实际端口）也要算进去；
+     留空＝自动时它实际占的就是 6185，所以 6185 无条件保留。 */
+  var reserved = {};
+  reserved[6185] = 1;
+  var astrPort = 0;
+  try { astrPort = parseInt((S.bots && S.bots.astrbotPort) || (S.st && S.st.astrbotPort) || 0, 10) || 0; } catch (e) { astrPort = 0; }
+  if (astrPort > 0) reserved[astrPort] = 1;
+  if (reserved[S.editing.napcatPort] || reserved[S.editing.onebotPort]) clash = true;
   if (clash) {
     var fp2 = nextFreePorts();
     S.editing.napcatPort = fp2.napcatPort;
     S.editing.onebotPort = fp2.onebotPort;
-    Android.toast("端口与其它实例冲突，已改为 " + fp2.napcatPort + " / " + fp2.onebotPort);
+    Android.toast("端口与其它实例冲突，或被 AstrBot 控制台占用（6185 这类端口），已改为 " + fp2.napcatPort + " / " + fp2.onebotPort);
   }
   var found = false;
   for (var i = 0; i < bs.length; i++) if (bs[i].id === S.editing.id) { bs[i] = S.editing; found = true; }
@@ -2128,7 +2211,11 @@ function doTestProxy(v){
   } else {
     var m = r.match(/code=(\d{3})\s+time=([0-9.]+)s/);
     if (m) {
-      var code = m[1], sec = m[2];
+      var code = m[1];
+      /* curl 的 time_total 有 6 位小数（6.804016），直接显示太丑；秒数可能是字符串，
+         先转数字再四舍五入到两位小数。 */
+      var secN = Math.round(parseFloat(m[2]) * 100) / 100;
+      var sec = isNaN(secN) ? m[2] : String(secN);
       if (code === "200") msg = "✅ 可用：HTTP 200，用时 " + sec + " 秒（" + (safe ? "下载会走这个代理" : "当前是直连") + "）。";
       else if (code === "000") msg = "❌ 连不上，用时 " + sec + " 秒。地址、端口或代理开关可能不对。";
       else msg = "⚠️ 通了，但返回 HTTP " + code + "，用时 " + sec + " 秒。";

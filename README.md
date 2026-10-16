@@ -13,7 +13,7 @@
 | 控制台标题 | **烛之控制台** |
 | 安装包 | `AstrBot.apk` |
 | 包名 | `com.termux` |
-| 当前版本 | **v1.0.1**（versionCode `10001`） |
+| 当前版本 | **v1.0.2**（versionCode `10002`） |
 | 项目地址 | [github.com/Zxin-Pro/astrbot-candle](https://github.com/Zxin-Pro/astrbot-candle) |
 | 下载安装包 | [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 里的 `AstrBot.apk` |
 | 官方网站 | [烛心.xyz](https://烛心.xyz) |
@@ -333,6 +333,6 @@ qqbot-sandbox/
 | **MINOR**（0.X.0） | 新增功能 | 1.1.0 |
 | **PATCH**（0.0.X） | 修 bug、文案、性能 | 1.0.1 |
 
-当前版本：**versionName `1.0.1`，versionCode `10001`**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本：**versionName `1.0.2`，versionCode `10002`**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
 
-版本号的唯一来源是仓库根目录的 `VERSION` 文件（内容形如 `1.0.1`），`build-ui.ps1` 打包时自动换算成 `versionCode` 写进 APK。
+版本号的唯一来源是仓库根目录的 `VERSION` 文件（内容形如 `1.0.2`），`build-ui.ps1` 打包时自动换算成 `versionCode` 写进 APK。

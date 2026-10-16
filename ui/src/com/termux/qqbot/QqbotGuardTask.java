@@ -87,7 +87,7 @@ public class QqbotGuardTask implements Runnable {
         }
         failStreak = 0;
         QqbotShell.startWatchdog(filesDir, null);
-        svc.setNote("沙盒运行中 · " + nowText());
+        svc.setNote("沙盒运行中 · 最近自检 " + nowText());
     }
 
     private String nowText() {
