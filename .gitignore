@@ -9,6 +9,7 @@ _research/
 _sdk/
 out/
 _apkwork/
+_vps/
 
 # 界面（原生控制台）构建中间产物，全部由 build-ui.ps1 生成
 ui/classes/
