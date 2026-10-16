@@ -11,11 +11,11 @@
 | --- | --- |
 | 应用名 | **AstrBot烛版** |
 | 控制台标题 | **烛之控制台** |
-| 安装包 | `AstrBot.apk` |
+| 安装包 | `AstrBot-1.1.4.apk`（文件名末尾就是版本号） |
 | 包名 | `com.termux` |
-| 当前版本 | **v1.1.3**（versionCode `10103`） |
+| 当前版本 | **v1.1.4**（versionCode `10104`） |
 | 项目地址 | [github.com/Zxin-Pro/astrbot-candle](https://github.com/Zxin-Pro/astrbot-candle) |
-| 下载安装包 | [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 里的 `AstrBot.apk` |
+| 下载安装包 | [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 里的 `AstrBot-1.1.4.apk`，或官网 [烛心.xyz](https://xn--15t839a.xyz/index.html#/astrbot) 的「下载」栏 |
 | 官方网站 | [烛心.xyz](https://烛心.xyz) |
 | 官方 QQ 群 | **1127997343** |
 
@@ -42,7 +42,7 @@
 2. **注入脚本**：Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 是一个 **ELF 头 + 内嵌 ZIP 段** 的混合体（ELF 头 1328 字节，内嵌 ZIP 段 29388903 字节，文件总长 29392992 字节）。我们用一个**自己写的 Java 工具** `RepackBootstrap` 打开这个内嵌 ZIP，把 `build/` 目录下的沙盒脚本（部署流程、启停脚本、守护循环、`profile.d` 钩子）作为新条目塞进去，再按原布局写回。
    - 内嵌 ZIP 段在原始包里是**填满的**，所以要塞进新文件就必须删掉一些用不到的条目（man/info/doc 文档、C 头文件、测试二进制等），这些被删的条目部署流程永远不会执行，安全。
 3. **换回 APK**：用 `ApkReplace` 把重新打包好的 `.so` 换回 APK 的 `lib/arm64-v8a/` 下。
-4. **重新签名**：用 [uber-apk-signer](https://github.com/patrickfav/uber-apk-signer) 重新签名，产出可安装的 `AstrBot.apk`。
+4. **重新签名**：用 [uber-apk-signer](https://github.com/patrickfav/uber-apk-signer) 重新签名，产出可安装的 `AstrBot-<版本号>.apk`。
 5. **原生控制台**：`ui/src/` 下的 Java 源码（`com.termux.qqbot.*`）编译成 dex、转成 smali、和 `ui/assets/qqbot/index.html` 一起由 apktool 打进 APK。
 
 装到手机上以后：
@@ -73,7 +73,7 @@
 1. **先卸载官方 Termux**。
    本应用的包名同样是 `com.termux`，和官方版 / 应用商店版 / F-Droid 版 Termux **不能共存**，不卸载会直接安装失败或互相覆盖。
    > 卸载 Termux 会一并删掉它原有的 `$PREFIX` 数据。如果你在里面有重要东西，先备份。
-2. 从 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 下载 `AstrBot.apk`，传到手机，点击安装。
+2. 从 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 下载 `AstrBot-1.1.4.apk`（文件名后缀就是版本号），传到手机，点击安装。
 3. 安装时系统会提示「**未知来源应用**」，需要允许安装。
 4. 打开应用，**先读完免责声明弹窗并点「我已阅读并同意」**（确认状态会存在手机里，以后不再弹）。
 5. 看到「烛之控制台」即安装成功。**首次启动会自动开始部署**（见下一节）。
@@ -333,6 +333,6 @@ qqbot-sandbox/
 | **MINOR**（0.X.0） | 新增功能 | 1.1.0 |
 | **PATCH**（0.0.X） | 修 bug、文案、性能 | 1.0.1 |
 
-当前版本：**versionName `1.1.3`，versionCode `10103`**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本：**versionName `1.1.4`，versionCode `10104`**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 版本号的唯一来源是仓库根目录的 `VERSION` 文件（内容形如 `1.0.2`），`build-ui.ps1` 打包时自动换算成 `versionCode` 写进 APK。
