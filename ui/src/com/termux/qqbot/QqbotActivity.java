@@ -73,8 +73,12 @@ public class QqbotActivity extends Activity {
             // 低配机上是卡启动甚至 OOM。
             BitmapFactory.Options bounds = new BitmapFactory.Options();
             bounds.inJustDecodeBounds = true;
-            BitmapFactory.decodeStream(in, null, bounds);
-            in.close();
+            try {
+                BitmapFactory.decodeStream(in, null, bounds);
+            } finally {
+                // 解码抛异常时也要关：这些流是 ContentResolver 给的 fd，不关会一路泄漏
+                closeQuiet(in);
+            }
             if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
                 doToast("无法读取该图片");
                 return;
@@ -90,8 +94,12 @@ public class QqbotActivity extends Activity {
                 doToast("无法读取该图片");
                 return;
             }
-            Bitmap bm = BitmapFactory.decodeStream(in2, null, opt);
-            in2.close();
+            Bitmap bm;
+            try {
+                bm = BitmapFactory.decodeStream(in2, null, opt);
+            } finally {
+                closeQuiet(in2);
+            }
             if (bm == null) {
                 doToast("无法读取该图片");
                 return;
@@ -115,9 +123,12 @@ public class QqbotActivity extends Activity {
             if (d != null && !d.isDirectory()) d.mkdirs();
             // 统一存成 JPEG：体积小、MIME 稳定，也不会再出现 HEIC/GIF 被错标成 png。
             FileOutputStream out = new FileOutputStream(f);
-            bm.compress(Bitmap.CompressFormat.JPEG, 88, out);
-            out.flush();
-            out.close();
+            try {
+                bm.compress(Bitmap.CompressFormat.JPEG, 88, out);
+                out.flush();
+            } finally {
+                closeQuiet(out);
+            }
             bm.recycle();
             doToast("背景已更新");
             // 重新加载页面，页面初始化时会重新向 Java 取背景图
@@ -289,15 +300,34 @@ public class QqbotActivity extends Activity {
         return t.result();
     }
 
+    /** 按 pid 文件名推断那个进程的 cmdline 里该出现什么字样。 */
+    private static String pidHint(File pidFile) {
+        String n = (pidFile == null) ? "" : pidFile.getName();
+        if (n.startsWith("deploy")) return "deploy.sh";
+        if (n.startsWith("supervisor")) return "proot";
+        if (n.startsWith("watchdog")) return "watchdog.sh";
+        return "";
+    }
+
     public boolean pidAlive(File pidFile) {
+        return pidAlive(pidFile, pidHint(pidFile));
+    }
+
+    /** 只看 /proc/<pid> 存不存在是不够的：pid 文件是上次没清干净的残留、或者重启后那个号
+     *  被别的进程占用了，界面就会显示「运行中」、点启动回 already running、
+     *  maybeAutoDeploy 直接 return 什么都不做。所以再核一次 cmdline；cmdline 读不到时不否认。 */
+    public boolean pidAlive(File pidFile, String hint) {
         try {
-            if (!pidFile.isFile()) return false;
+            if (pidFile == null || !pidFile.isFile()) return false;
             BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(pidFile), "UTF-8"));
             String s = br.readLine();
             br.close();
             if (s == null) return false;
             int pid = Integer.parseInt(s.trim());
-            return new File("/proc/" + pid).exists();
+            if (!new File("/proc/" + pid).exists()) return false;
+            if (hint == null || hint.length() == 0) return true;
+            if (!new File("/proc/" + pid + "/cmdline").isFile()) return true;
+            return QqbotShell.cmdlineHas(pid, hint);
         } catch (Exception e) {
             return false;
         }
@@ -380,6 +410,13 @@ public class QqbotActivity extends Activity {
                 if (nl >= 0) text = text.substring(nl + 1);
             }
             String[] all = text.split("\n", -1);
+            // split 带 -1 会保留末尾空元素：日志以 \n 结尾时请求 400 行只回 399 行，
+            // maxLines=1 时还会直接返回空串。末尾恰好一个空串时先丢掉它。
+            if (all.length > 0 && all[all.length - 1].length() == 0) {
+                String[] cut = new String[all.length - 1];
+                System.arraycopy(all, 0, cut, 0, cut.length);
+                all = cut;
+            }
             int from = Math.max(0, all.length - maxLines);
             StringBuilder sb = new StringBuilder();
             for (int i = from; i < all.length; i++) {
@@ -659,6 +696,18 @@ public class QqbotActivity extends Activity {
         }
     }
 
+    // bots.json 解析失败时 readBots() 只能回落到单实例默认值，用户在这个「假配置」上点保存
+    // 就会把真实的多实例配置覆盖掉。所以第一次解析失败时先把原文件备份一份，
+    // 并让 writeBots() 拒绝第一次写盘（再点一次保存才真的覆盖）。
+    private boolean botsCorrupt = false;
+    private boolean botsCorruptAck = false;
+
+    /** 非空字符串表示「刚发现 bots.json 损坏，已备份」，给前端换一条更准确的提示。 */
+    public String botsCorruptNote() {
+        if (!botsCorrupt || botsCorruptAck) return "";
+        return "bots.json 已损坏，原文件备份到了 bots.json.bad；再点一次「保存」就用当前内容覆盖";
+    }
+
     public String readBots() {
         File f = botsFile();
         if (!f.isFile()) return defaultBots();
@@ -672,8 +721,42 @@ public class QqbotActivity extends Activity {
             new JSONObject(s);
             return s;
         } catch (Exception e) {
+            noteBotsCorrupt(f);
             return defaultBots();
         }
+    }
+
+    private void noteBotsCorrupt(File f) {
+        if (botsCorrupt) return;
+        botsCorrupt = true;
+        try {
+            if (f.isFile() && f.length() > 0) copyFile(f, new File(f.getParentFile(), "bots.json.bad"));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 手动逐块复制：不用 Files.readAllBytes —— 那是 API 26 才有的，本应用 minSdk 24。 */
+    private static void copyFile(File src, File dst) throws Exception {
+        java.io.FileInputStream in = new java.io.FileInputStream(src);
+        try {
+            java.io.FileOutputStream out = new java.io.FileOutputStream(dst);
+            try {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                out.flush();
+            } finally {
+                closeQuiet(out);
+            }
+        } finally {
+            closeQuiet(in);
+        }
+    }
+
+    /** 静默关掉一个流：这些描述符来自 ContentResolver 与文件系统，漏关会一路泄漏。 */
+    private static void closeQuiet(java.io.Closeable c) {
+        if (c == null) return;
+        try { c.close(); } catch (Throwable ignored) {}
     }
 
     // 把早期版本遗留的 NapCat WebUI token 从 qqbot 迁到 zhuxin。
@@ -809,6 +892,12 @@ public class QqbotActivity extends Activity {
                 }
             }
             if (clean.length() == 0) return false;
+            // bots.json 损坏过、用户还没确认过的话先拒绝这一笔：此时界面上显示的是
+            // readBots() 回落出来的单实例默认值，直接写下去就把真实配置抹了。
+            if (botsCorrupt && !botsCorruptAck) {
+                botsCorruptAck = true;
+                return false;
+            }
             String act = in.optString("active", "");
             // astrbotPort 也是持久化字段，必须跟着一起落盘。默认 0 = 「自动」而不是 6185：
             // 存回来的是「自动」时不能在这里被悄悄固化成 6185。
@@ -1075,7 +1164,9 @@ public class QqbotActivity extends Activity {
             // 同 writeBots：cache 目录 = 沙盒里的 /qqbot-cache，脚本从那里读
             File cacheDir = new File(qqbotDir(), "cache");
             if (!cacheDir.isDirectory()) cacheDir.mkdirs();
-            writeFile(new File(cacheDir, "proxy.txt"), text);
+            // cache 目录 = 沙盒里的 /qqbot-cache，代理是脚本真正从那里读的：
+            // 只检查宿主侧那份，缓存写失败时界面照样报「代理已保存」而沙盒仍走直连。
+            if (!writeFile(new File(cacheDir, "proxy.txt"), text)) return false;
             return true;
         } catch (Throwable t) {
             return false;

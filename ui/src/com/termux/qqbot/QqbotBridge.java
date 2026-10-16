@@ -14,13 +14,36 @@ public class QqbotBridge {
     // 把耗时命令丢到后台线程执行，跑完再 Toast。停止/重启要等 proot 自己退出，
     // 同步等会把 WebView 的 JS 线程卡住十几秒。
     private void runBg(String cmd, String done, int timeoutSec) {
-        Thread th = new Thread(new BgTask(act, cmd, done));
+        runBg(cmd, done, null, timeoutSec);
+    }
+
+    // fail 是失败时的 toast 文案：BgTask 现在会把退出码透出来，
+    // 失败时不能再报「已完成」，否则脚本报错用户永远看不到。
+    private void runBg(String cmd, String done, String fail, int timeoutSec) {
+        Thread th = new Thread(new BgTask(act, cmd, done, fail, timeoutSec));
         th.setDaemon(true);
         th.start();
     }
 
     public QqbotBridge(QqbotActivity act) {
         this.act = act;
+    }
+
+    /** 手工拼错误 JSON：只把 " 换成 ' 是不够的，异常消息里带反斜杠或换行会让前端的
+     *  JSON.parse(Android.state()) 直接抛错，整页落到「读取状态失败」。 */
+    private static String errJson(String what, Throwable t) {
+        String m = what + "：" + String.valueOf(t);
+        StringBuilder b = new StringBuilder("{\"error\":\"");
+        for (int i = 0; i < m.length(); i++) {
+            char c = m.charAt(i);
+            if (c == '"' || c == '\\') b.append('\\').append(c);
+            else if (c == '\n') b.append("\\n");
+            else if (c == '\r') b.append("\\r");
+            else if (c == '\t') b.append("\\t");
+            else if (c < 0x20) b.append(' ');
+            else b.append(c);
+        }
+        return b.append("\"}").toString();
     }
 
     @JavascriptInterface
@@ -108,7 +131,7 @@ public class QqbotBridge {
             o.put("logFiles", files);
             return o.toString();
         } catch (Exception e) {
-            return "{\"error\":\"" + String.valueOf(e).replace("\"", "'") + "\"}";
+            return errJson("读取失败", e);
         }
     }
 
@@ -155,7 +178,7 @@ public class QqbotBridge {
             o.put("logTail", act.tail(act.deployLogFile(), 14));
             return o.toString();
         } catch (Exception e) {
-            return "{\"error\":\"" + String.valueOf(e).replace("\"", "'") + "\"}";
+            return errJson("读取失败", e);
         }
     }
 
@@ -236,7 +259,13 @@ public class QqbotBridge {
                 o.put("error", "找不到实例 " + id);
                 return o.toString();
             }
-            act.writeBots(root.toString());
+            if (!act.writeBots(root.toString())) {
+                // 原来无条件 ok=true：写盘被拒时前端照样本地翻转开关、提示已启动，
+                // 4 秒后被轮询又翻回去，看起来像开关坏了。
+                o.put("ok", false);
+                o.put("error", "写入失败，改动没有落盘");
+                return o.toString();
+            }
             o.put("ok", true);
             o.put("id", id);
             o.put("enable", now);
@@ -252,11 +281,20 @@ public class QqbotBridge {
     @JavascriptInterface
     public String removeBot(String id) {
         if (id == null || id.length() == 0) return "实例 id 为空";
+        // id 要拼进 bash 命令行，还会变成 /opt/qqbot-inst/<id> 与 qq-<id>.log 的路径，
+        // 所以只放行字母数字、下划线、连字符和点，并禁掉 ".."：杜绝参数拆分与路径穿越。
+        for (int i = 0; i < id.length(); i++) {
+            char c = id.charAt(i);
+            boolean safe = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+                    || c == '_' || c == '-' || c == '.';
+            if (!safe) return "实例 id 含非法字符，已拒绝删除：" + id;
+        }
+        if (id.indexOf("..") >= 0) return "实例 id 不合法，已拒绝删除：" + id;
         File s = new File(act.usrDir(), "opt/qqbot/delbot.sh");
         if (!s.isFile()) return "delbot.sh 缺失，请先完成部署";
         Thread th = new Thread(new BgTask(act,
                 "bash " + act.usrDir().getAbsolutePath() + "/opt/qqbot/delbot.sh " + id,
-                "实例 " + id + " 已删除"));
+                "实例 " + id + " 已删除", "删除实例 " + id + " 失败", 300));
         th.setDaemon(true);
         th.start();
         return "正在删除实例 " + id + "…";
@@ -297,14 +335,14 @@ public class QqbotBridge {
             // 停止必须交给 stop-sandbox.sh：直接 kill -9 proot 会让它来不及清理
             // --kill-on-exit  genealogy 里的子进程，留下孤儿占着端口并与日志刷 ENOSYS。
             // 该脚本会等 proot 自己退（最多 30 秒），所以不能同步等，丢后台线程。
-            runBg("bash " + prefix + "/opt/qqbot/stop-sandbox.sh", "服务已停止", 180);
+            runBg("bash " + prefix + "/opt/qqbot/stop-sandbox.sh", "服务已停止", "停止服务失败", 180);
             return "stopping";
         }
         if ("restart".equals(what)) {
             runBg("bash " + prefix + "/opt/qqbot/stop-sandbox.sh; mkdir -p " + qh + "/logs; "
                     + "nohup setsid bash " + prefix + "/opt/qqbot/start-sandbox.sh > " + qh
                     + "/logs/supervisor.log 2>&1 < /dev/null & sleep 4; echo ok",
-                    "服务已重启", 240);
+                    "服务已重启", "重启服务失败", 240);
             return "restarting";
         }
         if ("deploy".equals(what)) {
@@ -336,7 +374,7 @@ public class QqbotBridge {
             // 超时（几十秒），整段时间 WebView 的 JS 线程卡死、页面点不动，所以这里必须
             // 和 relink 一样丢到后台线程，立刻返回一句话。
             runBg("bash " + prefix + "/opt/qqbot/link.sh >/dev/null 2>&1; echo ok",
-                    "已自动对接 NapCat 与 AstrBot", 300);
+                    "已自动对接 NapCat 与 AstrBot", "自动对接失败", 300);
             return "已提交自动对接";
         }
         if ("relink".equals(what)) {
@@ -349,7 +387,7 @@ public class QqbotBridge {
                     + "bash " + prefix + "/opt/qqbot/stop-sandbox.sh; mkdir -p " + qh + "/logs; "
                     + "nohup setsid bash " + prefix + "/opt/qqbot/start-sandbox.sh > " + qh
                     + "/logs/supervisor.log 2>&1 < /dev/null & sleep 4; echo ok",
-                    "已对接并重启服务", 300);
+                    "已对接并重启服务", "对接并重启失败", 300);
             return "已提交对接，正在重启服务…";
         }
         if ("ports:auto".equals(what)) {
@@ -415,6 +453,8 @@ public class QqbotBridge {
         // writeBots 会在「这次保存会让已有实例消失」或「实例列表为空」时拒绝
         // 写盘（删除实例只走 delbot.sh），所以这里必须把结果透出去而不是无条件 ok。
         if (act.writeBots(json)) return "已保存";
+        String note = act.botsCorruptNote();
+        if (note.length() > 0) return note;
         return "保存被忽略：这次改动会丢失已有实例，请刷新页面重试";
     }
 

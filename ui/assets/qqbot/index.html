@@ -649,7 +649,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <select id="logSel"></select>
       </div>
       <div class="btns">
-        <button class="small primary" id="btnAuto" data-act="auto">自动刷新：开</button>
+        <button class="small primary" id="btnAuto" data-act="auto">日志自动刷新：开</button>
         <button class="small" data-act="reload">立即刷新</button>
         <button class="small" data-act="copylog">复制全部</button>
         <button class="small" data-act="clearlog" data-arg="sel">清空该日志</button>
@@ -938,9 +938,14 @@ function initAppearance(){
 }
 
 /* ---------- 工具 ---------- */
-/* 日志清洗：去掉 ANSI 颜色转义；精简模式下再丢掉两类噪声：
-   1) NapCat 打印的 64 位十六进制哈希；
-   2) 登录二维码的字符画（用方块字符拼的，窄栏里必被折行截断、根本扫不出来，
+/* 日志清洗：去掉 ANSI 颜色转义；精简模式下再丢掉三类噪声：
+   1) NapCat 反检测打印的十六进制哈希行。实测它和正常日志**按字节交错写在同一个文件里**，
+      长度并不固定（同一份日志里出现过 2 到 64 位的各种长度，其中 64 位占绝大多数），
+      所以只按「恰好 64 位」过滤会漏掉大量短碎片，阈值放到 10 位以上；
+   2) 被交错写入「粘」在正常日志行前面的十六进制前缀（例如
+      「6f178f2d1310-15 10:18:50 [warn] 二维码已保存到 …」，前面的十六进制是噪声、
+      后面的「MM-DD HH:MM:SS」才是真正的日志行），用正向断言把时间戳前面那一段切掉；
+   3) 登录二维码的字符画（用方块字符拼的，窄栏里必被折行截断、根本扫不出来，
       真要扫码请看页面顶部「扫码登录二维码」卡里的 PNG，或复制下面的解码 URL）。 */
 function cleanLog(s, slim){
   var t = String(s == null ? "" : s).replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "").replace(/\u001b\][^\u0007]*\u0007/g, "");
@@ -948,10 +953,10 @@ function cleanLog(s, slim){
   var lines = t.split("\n");
   var out = [];
   for (var i = 0; i < lines.length; i++) {
-    if (/^[0-9a-f]{64}\s*$/i.test(lines[i])) continue;
+    if (/^[0-9a-f]{10,}\s*$/i.test(lines[i])) continue;
     var blk = lines[i].match(/[\u2580-\u259f]/g);
     if (blk && blk.length >= 8) continue;
-    out.push(lines[i]);
+    out.push(lines[i].replace(/^[0-9a-f]{6,}(?=\d{2}-\d{2} \d{2}:\d{2}:\d{2})/i, ""));
   }
   return out.join("\n");
 }
@@ -1131,8 +1136,17 @@ function refresh(){
 
 function refreshAll(){
   var st;
-  try { st = JSON.parse(Android.state()); } catch (e) { el("hdrSub").textContent = "读取状态失败"; return; }
-  if (st.error) { el("hdrSub").textContent = "错误：" + st.error; return; }
+  var stErr = "";
+  try { st = JSON.parse(Android.state()); } catch (e) { st = null; stErr = "读取状态失败"; }
+  if (!stErr && st && st.error) stErr = "错误：" + st.error;
+  /* 读不到本轮状态时不能直接 return：磁贴、组件开关、实例卡、端口、部署台、autoLink()
+     全都在这个函数下面，一 return 整页就停在上一次的数值上，用户只看到 header 一行错误。
+     这里退回上一次的 state 继续渲染，只有连旧状态都没有时才真的放弃。 */
+  if (stErr || !st) {
+    if (!stErr) stErr = "读取状态失败";
+    st = (S.st && S.st.bots) ? S.st : null;
+    if (!st) { el("hdrSub").textContent = stErr; return; }
+  }
   S.bots = st.bots || { active: "", bots: [] };
   /* bots.json 里混进 null 之类的脏元素时，下面 bs[i].id 会抛异常、整段渲染中断，
      所以先过滤一遍再拿去渲染 / 取当前实例。 */
@@ -1185,7 +1199,9 @@ function refreshAll(){
   p.push(pill("NapCat " + svcTileValue(st.napcatOff, st.napcatUp), isClosing(st.napcatOff, st.napcatUp) ? "warn" : (st.napcatOff ? "warn" : (st.napcatUp ? "ok" : "bad"))));
   p.push(pill("AstrBot " + svcTileValue(st.astrbotOff, st.astrbotUp), isClosing(st.astrbotOff, st.astrbotUp) ? "warn" : (st.astrbotOff ? "warn" : (st.astrbotUp ? "ok" : "bad"))));
   setHtml(el("pills"), p.join(""));
-  el("hdrSub").textContent = bs.length + " 个 NapCat 实例  ·  当前：" + (S.bots.active || "-");
+  /* 本轮是读失败后拿旧数据兜底的，副标题必须说清楚，别让用户当成实时值 */
+  el("hdrSub").textContent = stErr ? (stErr + "（显示的是上一次数据）")
+                                   : (bs.length + " 个 NapCat 实例  ·  当前：" + (S.bots.active || "-"));
   /* 全关是用户主动做的，不是故障，所以一律用中性的 warn，不要刺眼报警的 bad。 */
   el("d-svc").className = "dot " + ((st.napcatOff || st.astrbotOff) ? "warn" : "ok");
   renderBots();
@@ -1216,17 +1232,26 @@ function autoLink(){
   if (S.linked) return;
   if (!S.deployDone || !S.supAlive) return;
   if (!S.prefix) return;
-  S.linked = true;
+  /* S.linked 以前在发请求之前就置 true 了：linkbg 一失败（桥抛异常或 Java 侧返回失败）
+     就再没有复位的地方，自动对接永久哑掉。改成确认「已提交」之后才记，失败下一轮 refresh 会重试。 */
   setTimeout(function(){
-    try { Android.action("linkbg"); } catch (e) {}
+    var r = "";
+    try { r = String(Android.action("linkbg")); } catch (e) { r = "提交失败：" + e; }
+    if (r.indexOf("已提交") >= 0) S.linked = true;
     setTimeout(refresh, 6000);
   }, 1200);
 }
 
 function refreshDeploy(){
   var d;
-  try { d = JSON.parse(Android.deployInfo()); } catch (e) { return; }
-  if (!d || d.error) return;
+  try { d = JSON.parse(Android.deployInfo()); } catch (e) { d = null; }
+  if (!d || d.error) {
+    /* 静默早退会让部署台和主页部署磁贴一直停在上一次的步数上，看着像还在部署：
+       这里显式说清是读取失败（提示节点复用部署台已有的 #deployHint，不新建 DOM）。 */
+    var dh = el("deployHint");
+    if (dh) dh.textContent = "读取部署状态失败，显示的是上次进度。";
+    return;
+  }
   S.deployInfo = d;   /* 缓存给主页部署磁贴：步数用实际数据，别再写死 */
   var pct = d.total ? Math.round(d.doneCount * 100 / d.total) : 0;
   if (d.done) pct = 100;
@@ -1421,7 +1446,9 @@ function doGuard(arg){
   /* 跟组件开关同样的道理：S.st 最长 4 秒前，点完立刻本地翻转，否则连点会被旧值吞掉。 */
   var st = S.st || {};
   var on = arg === "wake" ? !!st.guardWake : !!st.guardOn;
-  var r = Android.action("guard:" + arg + ":" + (on ? "off" : "on"));
+  var r = "";
+  /* 桥调用抛异常会整段中断这次点击处理，后面的本地翻转/重绘/刷新全都不会跑 */
+  try { r = String(Android.action("guard:" + arg + ":" + (on ? "off" : "on"))); } catch (e) { r = "失败：" + e; }
   Android.toast(r);
   if (arg === "wake") st.guardWake = !on; else st.guardOn = !on;
   renderGuard(st);
@@ -1435,8 +1462,11 @@ function doSvc(arg){
     if (n === "napcat") S.st.napcatOff = !offNow; else S.st.astrbotOff = !offNow;
   }
   if (arg === "all-on"){
-    var r1 = Android.action("svc:napcat:on");
-    var r2 = Android.action("svc:astrbot:on");
+    /* 两条各自独立 try/catch：第一条炸了第二条也必须照发（用户点的是「全部打开」） */
+    var r1 = "";
+    var r2 = "";
+    try { r1 = String(Android.action("svc:napcat:on")); } catch (e) { r1 = "失败：" + e; }
+    try { r2 = String(Android.action("svc:astrbot:on")); } catch (e2) { r2 = "失败：" + e2; }
     Android.toast(r1 + " ／ " + r2);
     if (S.st) { S.st.napcatOff = false; S.st.astrbotOff = false; renderSvc(S.st); }
     setTimeout(refresh, 1200);
@@ -1445,7 +1475,8 @@ function doSvc(arg){
   if (arg !== "napcat" && arg !== "astrbot") return;
   var st = S.st || {};
   var off = arg === "napcat" ? !!st.napcatOff : !!st.astrbotOff;
-  var r = Android.action("svc:" + arg + ":" + (off ? "on" : "off"));
+  var r = "";
+  try { r = String(Android.action("svc:" + arg + ":" + (off ? "on" : "off"))); } catch (e) { r = "失败：" + e; }
   Android.toast(r);
   /* 只要不是写盘失败，就立刻把本地状态翻过来（容器在跑时返回的是「正在启动…」，
      没跑时才返回「已记下…」，两种都必须翻，否则 4 秒内连点仍会被吞）。 */
@@ -1487,7 +1518,9 @@ function renderHomeBots(){
 }
 
 function doAction(a){
-  var r = Android.action(a);
+  /* 桥调用要包 try/catch：抛异常会掐断整个 click 处理（连带下面的 toast 和 refresh） */
+  var r = "";
+  try { r = String(Android.action(a)); } catch (e) { r = "失败：" + e; }
   Android.toast(a + " -> " + r);
   setTimeout(refresh, 1500);
 }
@@ -1496,8 +1529,12 @@ function doAction(a){
 function linkBots(){
   var n = (S.bots.bots || []).length;
   Android.toast("正在对接 " + n + " 个实例并重启服务…");
-  var r = Android.action("relink");
+  var r = "";
+  try { r = String(Android.action("relink")); } catch (e) { r = "对接失败：" + e; }
   el("cmdOut").textContent = "relink -> " + r;
+  /* 桥调用炸了，上面那条「正在对接…」就永远没有下文：补一条失败提示；
+     后面的复位/刷新照走，不能让一次异常把整段点击处理吃掉。 */
+  if (r.indexOf("失败") >= 0) Android.toast(r);
   S.linked = true;
   setTimeout(refresh, 6000);
 }
@@ -1508,6 +1545,8 @@ function runCmd(c){
   el("cmdOut").textContent = "> " + c + "\n（运行中…）";
   var out = "";
   try { out = String(Android.exec(c)); } catch (e) { out = "执行失败：" + e; }
+  /* 命令没有任何输出时不能只留一行回显：用户会以为界面坏了。 */
+  if (out.replace(/\s+/g, "").length === 0) out = "（命令没有输出）";
   el("cmdOut").textContent = "> " + c + "\n" + out;
 }
 
@@ -1619,11 +1658,14 @@ function saveBot(){
   try { astrPort = parseInt((S.bots && S.bots.astrbotPort) || (S.st && S.st.astrbotPort) || 0, 10) || 0; } catch (e) { astrPort = 0; }
   if (astrPort > 0) reserved[astrPort] = 1;
   if (reserved[S.editing.napcatPort] || reserved[S.editing.onebotPort]) clash = true;
+  var clashMsg = "";
   if (clash) {
     var fp2 = nextFreePorts();
     S.editing.napcatPort = fp2.napcatPort;
     S.editing.onebotPort = fp2.onebotPort;
-    Android.toast("端口与其它实例冲突，或被 AstrBot 控制台占用（6185 这类端口），已改为 " + fp2.napcatPort + " / " + fp2.onebotPort);
+    /* 这条提示不能在这里直接 toast：函数末尾还有一条「已保存，正在自动对接…」，
+       连着发两条 toast 时后一条会立刻把前一条顶掉，用户就永远看不到端口被改过。攒着合并。 */
+    clashMsg = "端口与其它实例冲突，或被 AstrBot 控制台占用（6185 这类端口），已改为 " + fp2.napcatPort + " / " + fp2.onebotPort;
   }
   var found = false;
   for (var i = 0; i < bs.length; i++) if (bs[i].id === S.editing.id) { bs[i] = S.editing; found = true; }
@@ -1634,13 +1676,16 @@ function saveBot(){
      被拒就别再去对接/重启，否则界面会谎报成功而磁盘上没变 */
   var saveMsg = "已保存";
   try { saveMsg = String(Android.saveBots(JSON.stringify(S.bots))); } catch (e) { saveMsg = "保存失败"; }
-  cancelBot();
-  refresh();
+  /* 必须先判写盘结果再关编辑卡：以前先 cancelBot() 后判，被拒时卡片已经关了、
+     用户填的一整屏内容全丢，只能重填。被拒就只提示，卡片留着让他改完重试。 */
   if (saveMsg.indexOf("忽略") >= 0 || saveMsg.indexOf("失败") >= 0) {
     Android.toast(saveMsg);
     return;
   }
-  Android.toast(saveMsg + "，正在自动对接并重启服务…");
+  cancelBot();
+  refresh();
+  Android.toast(clashMsg ? (clashMsg + "；" + saveMsg + "，正在自动对接并重启服务…")
+                         : (saveMsg + "，正在自动对接并重启服务…"));
   setTimeout(linkBots, 300);
 }
 
@@ -1708,9 +1753,13 @@ function delBot(id){ doDelBot(id); }
 
 function useBot(id){
   S.bots.active = id;
-  var msg = "已切换到该实例";
+  var msg = "已切换到该实例，正在重新对接…";
   try { if (String(Android.saveBots(JSON.stringify(S.bots))).indexOf("忽略") >= 0) msg = "切换失败，请刷新页面重试"; } catch (e) { msg = "切换失败"; }
   Android.toast(msg);
+  /* active 只在容器启动时被沙盒脚本读一次，正在跑的容器不会自己换当前实例，所以切完必须
+     置 S.linked=false 让 autoLink 重跑一次对接（跟 saveBot 的 setTimeout(linkBots, 300) 一致）；
+     落盘失败分支保持原样：不置 linked、不重跑。 */
+  if (msg.indexOf("切换失败") < 0) { S.linked = false; setTimeout(linkBots, 300); }
   refresh();
 }
 
@@ -1827,7 +1876,7 @@ function toggleSlim(){
 
 function toggleAuto(){
   S.auto = !S.auto;
-  el("btnAuto").textContent = "自动刷新：" + (S.auto ? "开" : "关");
+  el("btnAuto").textContent = "日志自动刷新：" + (S.auto ? "开" : "关");
   el("btnAuto").className = "small" + (S.auto ? " primary" : "");
 }
 
@@ -1841,13 +1890,14 @@ document.addEventListener("click", function(ev){
   if (!act) return;
   var arg = t.getAttribute("data-arg");
   if (act === "start" || act === "stop" || act === "restart") doAction(act);
-  else if (act === "deploy") { var r = Android.action("deploy"); Android.toast("部署：" + r); refreshDeploy(); }
-  else if (act === "stopdeploy") { Android.action("stopdeploy"); Android.toast("已停止部署"); setTimeout(refreshDeploy, 1200); }
+  /* 桥调用一律包 try/catch：抛异常会整段中断点击处理，界面卡在「正在…」而指令根本没发出去 */
+  else if (act === "deploy") { var r = ""; try { r = String(Android.action("deploy")); } catch (e) { r = "失败：" + e; } Android.toast("部署：" + r); refreshDeploy(); }
+  else if (act === "stopdeploy") { var r = ""; try { r = String(Android.action("stopdeploy")); } catch (e) { r = "停止部署失败：" + e; } Android.toast(r.indexOf("失败") >= 0 ? r : "已停止部署"); setTimeout(refreshDeploy, 1200); }
   else if (act === "link") linkBots();
   else if (act === "svc") doSvc(arg);
   else if (act === "svcallon") doSvc("all-on");
       else if (act === "guardset") doGuard(arg);
-      else if (act === "battery") { Android.toast(Android.action("battery")); setTimeout(refresh, 1500); }
+      else if (act === "battery") { var r = ""; try { r = String(Android.action("battery")); } catch (e) { r = "失败：" + e; } Android.toast(r); setTimeout(refresh, 1500); }
   else if (act === "copytoken") Android.copy(el("tokText").textContent);
   else if (act === "copytok") Android.copy(arg || "");
   else if (act === "copyurl") Android.copy(arg || "");
@@ -1981,12 +2031,13 @@ function dirtyPort(box, kind, id, stateVal){
   return stateVal;
 }
 
-function renderPorts(){
+function renderPorts(force){
   var box = el("portList");
   if (!box) return;
-  /* 正在这个容器里打字就跳过这次重绘：innerHTML 一换，焦点和已敲的字就没了 */
+  /* 正在这个容器里打字就跳过这次重绘：innerHTML 一换，焦点和已敲的字就没了。
+     force 为真时无视焦点强制重绘（保存并避让端口之后必须把真正生效的值摆回来）。 */
   var ae = document.activeElement;
-  if (ae && box.contains && box.contains(ae)) return;
+  if (!force && ae && box.contains && box.contains(ae)) return;
   var bs = (S.bots && S.bots.bots) || [];
   var h = [];
   if (!bs.length) h.push('<div class="empty">还没有实例，去「机器人」页新增</div>');
@@ -1998,6 +2049,10 @@ function renderPorts(){
     h.push('<label class="prl"><span>OneBot</span>' + portInputHtml("onebot", b.id, dirtyPort(box, "onebot", b.id, b.onebotPort)) + '</label>');
     h.push('</div>');
   }
+  /* 强制重绘时必须先清掉 setHtml 的内容缓存：用户往输入框里敲过字之后 DOM 已经跑偏，
+     而 _lastHtml 还停在「上一次真正渲染」的内容上 —— 两个字符串恰好一样（都是避让后的
+     端口），setHtml 会当成「没变化」直接跳过，输入框就永远停在他敲的那个冲突值上。 */
+  if (force) box._lastHtml = null;
   /* 必须走 setHtml：内容没变就不重写 innerHTML，避免按钮点下去的瞬间节点被换掉 */
   setHtml(box, h.join(""));
 }
@@ -2105,17 +2160,27 @@ function savePorts(){
   if (msg.indexOf("忽略") >= 0 || msg.indexOf("失败") >= 0) { Android.toast(msg); return; }
   if (ap) ap._dirty = false;
   if (box) box._portDirty = {};
+  var nt = "";
   if (notes.length) {
-    var nt = notes.length > 3 ? (notes.slice(0, 3).join("；") + "；等 " + notes.length + " 个实例") : notes.join("；");
-    Android.toast("端口冲突，已自动避让：" + nt);
+    nt = notes.length > 3 ? (notes.slice(0, 3).join("；") + "；等 " + notes.length + " 个实例") : notes.join("；");
+    /* 被避让掉的端口必须立刻显示出来：renderPorts() 一看到「焦点还在 portList 里」就整段跳过
+       重绘，而用户点「保存并重启服务」时焦点仍留在输入框上（WebView 里点按钮不会让 input 失焦），
+       于是输入框会一直停在他敲的那个冲突值上，看着像「改成功了」，实际落盘的是避让后的端口。
+       这里显式失焦并立刻重绘一次，把真正生效的端口摆回输入框。 */
+    try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e) {}
+    renderPorts(true);
   }
   /* 端口变了必须重新生成 OneBot / AstrBot 两边的对接配置，光 restart 会对接不上，
      所以走 relink（它内部重新生成配置再停服务、重新拉起），后台执行，十几秒后才生效。 */
   setPortsSaveBusy(true);
-  Android.toast("端口已保存，正在重启服务…（约 15 秒后生效）");
-  var r;
+  var r = "";
   try { r = String(Android.action("relink")); } catch (e) { r = ""; }
-  if (r) Android.toast(r);
+  /* relink 的返回写进「维护」卡下面的输出框，不再抢 toast：
+     一个页面同时只有一条 toast，两条连着发时后一条会立刻把前一条顶掉，避让提示等于没出现过。 */
+  var co = el("cmdOut");
+  if (co) co.textContent = "relink -> " + (r || "已提交");
+  Android.toast(nt ? ("端口冲突，已自动避让：" + nt + "；正在重启服务…（约 15 秒后生效）")
+                   : "端口已保存，正在重启服务…（约 15 秒后生效）");
   setTimeout(function(){ setPortsSaveBusy(false); }, 20000);
   setTimeout(refresh, 3000);
   setTimeout(refresh, 12000);
@@ -2133,6 +2198,14 @@ function autoPorts(){
   if (box) box._portDirty = {};
   var ap = el("inAstrPort");
   if (ap) ap._dirty = false;
+  /* 只清脏值不够：焦点仍留在 portList 的输入框上（WebView 里点按钮不会让 input 失焦），
+     600ms 后的 refresh() 走的是不带 force 的 renderPorts()，会因焦点还在输入框里整段跳过重绘，
+     输入框继续显示旧值；syncAstrPortInput() 也会因 inp === document.activeElement 早退。
+     用户接着点「保存并重启服务」就会从 DOM 读旧值回写，把刚自动分配的结果静默覆盖掉。
+     照 savePorts() 的做法显式失焦并立刻重绘一次，本轮就回填，不依赖那 600ms。 */
+  try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e2) {}
+  renderPorts(true);
+  syncAstrPortInput();
   Android.toast(r + "。点「保存并重启服务」生效");
   setTimeout(refresh, 600);
 }
