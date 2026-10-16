@@ -872,19 +872,28 @@ public class QqbotActivity extends Activity {
     // 自动分配端口：AstrBot 控制台 + 每个实例的 NapCat WebUI / OneBot，并把结果写回
     // bots.json（home + cache 两份），返回一句中文说明给前端 toast。
     // 规则沿用前端 nextFreePorts() 的约定（WebUI 从 6099 往下找，OneBot = WebUI + 100）。
-    // 候选范围固定：WebUI 6099..6000，AstrBot 6185..6284，OneBot = WebUI+100 起往上最多 100 个，
-    // 每一处都由 pickFreePort() 用 portOpen() 实时探测真实占用，不需要先扫一遍全表。
+    //
+    // 关键：**已经配好的端口要尽量原样保留**。portOpen() 探的是真实占用，而每个实例
+    // 自己正在监听的端口当然也是「开着的」；如果一律当成冲突跳过，在健康的系统上点一次
+    // 「自动分配空闲端口」就会把 6098/6198/6186 全换成出厂默认的 6099/6199/6185 ——
+    // 配置写盘了、容器却还在旧端口上跑，state() 按新端口探测，两个状态灯立刻变红
+    // 「离线」，用户以为自己把服务点坏了。所以顺序是：先沿用现值（只要没和本次已经
+    // 分配出去的端口撞车），确实装不下时才重新挑。
     public String autoPorts() {
         try {
             JSONObject root = new JSONObject(readBots());
             JSONArray arr = root.optJSONArray("bots");
             // 本次已经分配出去的端口，保证同一个端口不会分给两个实例
             java.util.HashSet<Integer> used = new java.util.HashSet<Integer>();
-            // AstrBot 控制台：6185 起向上找第一个空闲的；全被占就仍然用 6185（保持老行为）
-            int astrPort = pickFreePort(6185, false, used);
+
+            // AstrBot 控制台：优先沿用当前值，否则从 6185 起向上找第一个空闲的
+            int oldAstr = root.optInt("astrbotPort", 0);
+            int astrPort = (oldAstr > 0 && !used.contains(Integer.valueOf(oldAstr)))
+                    ? oldAstr : pickFreePort(6185, false, used);
             if (astrPort <= 0) astrPort = 6185;
             // 先占住，后面给实例分 OneBot 端口时自然会避开它
             used.add(Integer.valueOf(astrPort));
+            boolean changed = (astrPort != oldAstr);
 
             StringBuilder sb = new StringBuilder();
             sb.append("已分配端口：AstrBot 控制台 ").append(astrPort);
@@ -892,14 +901,28 @@ public class QqbotActivity extends Activity {
                 for (int i = 0; i < arr.length(); i++) {
                     JSONObject b = arr.optJSONObject(i);
                     if (b == null) continue;
-                    // NapCat WebUI：6099 起往下找第一个空闲的（最多 100 个，正好覆盖 6099..6000）
-                    int nap = pickFreePort(6099, true, used);
-                    if (nap <= 0) nap = 6099;
+                    int oldNap = b.optInt("napcatPort", 0);
+                    int oldOne = b.optInt("onebotPort", 0);
+                    int nap;
+                    int one;
+                    if (oldNap > 0 && oldOne > 0
+                            && !used.contains(Integer.valueOf(oldNap))
+                            && !used.contains(Integer.valueOf(oldOne))) {
+                        // 沿用这个实例现有的两个端口（它们正被它自己的容器占着）
+                        nap = oldNap;
+                        one = oldOne;
+                    } else {
+                        // NapCat WebUI：6099 起往下找第一个空闲的（最多 100 个，覆盖 6099..6000）
+                        nap = pickFreePort(6099, true, used);
+                        if (nap <= 0) nap = 6099;
+                        used.add(Integer.valueOf(nap));
+                        // OneBot：WebUI + 100 起往上找；AstrBot 控制台已经在 used 里，会自动避开
+                        one = pickFreePort(nap + 100, false, used);
+                        if (one <= 0) one = nap + 100;
+                    }
                     used.add(Integer.valueOf(nap));
-                    // OneBot：WebUI + 100 起往上找；AstrBot 控制台已经在 used 里，会自动避开
-                    int one = pickFreePort(nap + 100, false, used);
-                    if (one <= 0) one = nap + 100;
                     used.add(Integer.valueOf(one));
+                    if (nap != oldNap || one != oldOne) changed = true;
                     b.put("napcatPort", nap);
                     b.put("onebotPort", one);
                     String nm = b.optString("name", "");
@@ -912,7 +935,9 @@ public class QqbotActivity extends Activity {
             // 交给 writeBots 落盘：它会只保留持久化字段（丢掉 up 等运行时字段）并同时写
             // home + cache 两份，另外还有一道「不许把已有实例写没」的保护。
             if (!writeBots(root.toString())) return "端口分配失败：无法写入 bots.json";
-            return sb.toString();
+            // 端口一个字都没变时要说清楚，否则用户以为点了没反应
+            if (!changed) return sb + "（与当前一致，不需要重启）";
+            return sb + "。点「保存并重启服务」生效";
         } catch (Throwable t) {
             return "端口分配失败：" + t;
         }

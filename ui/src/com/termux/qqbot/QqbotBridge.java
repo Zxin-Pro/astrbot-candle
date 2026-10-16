@@ -329,6 +329,16 @@ public class QqbotBridge {
             act.runShell("rm -f " + qh + "/deploy.pid; echo ok", 10);
             return "stopped";
         }
+        if ("linkbg".equals(what)) {
+            // 主页冷启动时自动对接用的轻量入口：只跑 link.sh（幂等——重写各实例的 OneBot
+            // 配置与 AstrBot 的 aiocqhttp 平台列表），**不**像 relink 那样再停服务、拉起来。
+            // 前端以前是直接 Android.exec(...) 同步跑 link.sh 的，而那个桥调用会阻塞到
+            // 超时（几十秒），整段时间 WebView 的 JS 线程卡死、页面点不动，所以这里必须
+            // 和 relink 一样丢到后台线程，立刻返回一句话。
+            runBg("bash " + prefix + "/opt/qqbot/link.sh >/dev/null 2>&1; echo ok",
+                    "已自动对接 NapCat 与 AstrBot", 300);
+            return "已提交自动对接";
+        }
         if ("relink".equals(what)) {
             // 重新生成各实例的 OneBot 配置与 AstrBot 的 aiocqhttp 平台列表，并重启沙盒让配置立即生效。
             // link.sh 要开 proot 沙盒（先停掉 AstrBot 等它退出、改配置、再由 run-all.sh 拉起来），
