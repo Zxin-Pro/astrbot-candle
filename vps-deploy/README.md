@@ -62,6 +62,7 @@
 | `astrbot_sync.py` | 每日爬虫。纯 Python3 标准库，无第三方依赖 |
 | `data/astrbot.json` | 本次改造后的成品内容（已按线上真实数据生成好，可直接铺） |
 | `install.sh` | 一键安装：探测站点目录 → 备份 → 铺文件 → 建 systemd timer → 立刻同步一次 |
+| **`deploy-astrbot-page.sh`** | **自包含一键部署**：把上面这些文件全部内嵌在这一个脚本里，服务器上单文件就能跑，不用先传目录 |
 | `astrbot-sync.service` | systemd oneshot 服务（`install.sh` 会把真实站点路径填进去） |
 | `astrbot-sync.timer` | 每天 04:17 触发一次，带 `Persistent=true` 和随机延迟 |
 | `rel110-body.md` | v1.1.0 的 release 正文（修掉过一次乱码，留档） |
@@ -72,11 +73,20 @@
 
 ## 四、怎么部署
 
-### 方式 A：交给 AI 远程装（推荐）
+### 方式 A：一行命令（推荐，不用先下载任何东西）
 
-给出这台服务器的 SSH 地址、端口、账号和密码（或密钥），我直接连上去跑 `install.sh` 并当场验证页面。
+在服务器上直接执行：
 
-### 方式 B：你自己在服务器上跑
+```bash
+curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/Zxin-Pro/astrbot-candle/main/vps-deploy/deploy-astrbot-page.sh | sudo bash
+```
+
+`deploy-astrbot-page.sh` 是**自包含**的 —— 爬虫、页面内容、systemd 单元全都内嵌在脚本里，
+所以不用先把目录传上去。（`ghfast.top` 是国内加速前缀；服务器能直连 GitHub 就把 `https://ghfast.top/` 去掉。）
+
+它会把站点目录、备份文件名、每一步的结果都打印出来，装完立刻联网同步一次。
+
+### 方式 B：把目录传上去再跑
 
 把整个 `vps-deploy/` 目录传上去，然后：
 
