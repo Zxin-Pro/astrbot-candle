@@ -385,7 +385,9 @@ def build(latest, all_rels, extra=None, mirror=None):
         {
             "icon": "📦",
             "title": "AstrBot烛版 %s（最新版）" % ver,
-            "desc": "安卓安装包 · %s%s" % (apk_size, (" · " + pub) if pub else "") + NL +
+            # 文件名放第一行：卡片里的说明会被样式截断，把「下载下来叫什么」摆在最前面才不会看不到。
+            "desc": "文件名 AstrBot-%s.apk（下载下来就是这个名字）" % ver + NL +
+                    "安卓安装包 · %s%s" % (apk_size, (" · " + pub) if pub else "") + NL +
                     "安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）" + NL +
                     "包名 com.termux，如果装过官方 Termux 要先卸载" + NL +
                     ("点这张卡直接下载 —— 就在本站，不用跳 GitHub。" if local
