@@ -69,6 +69,8 @@ public class QqbotShell {
     public static String run(File filesDir, String cmd, int timeoutSec) {
         StringBuilder sb = new StringBuilder();
         Process p = null;
+        StreamPump pump = null;
+        Thread th = null;
         try {
             ProcessBuilder pb = new ProcessBuilder(usrDir(filesDir).getAbsolutePath() + "/bin/bash", "-c", cmd);
             Map<String, String> env = pb.environment();
@@ -93,17 +95,40 @@ public class QqbotShell {
             pb.redirectErrorStream(true);
             pb.directory(homeDir(filesDir));
             p = pb.start();
-            BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream(), "UTF-8"));
-            String line;
-            long deadline = System.currentTimeMillis() + (timeoutSec * 1000L);
-            while ((line = br.readLine()) != null) {
-                sb.append(line).append('\n');
-                if (System.currentTimeMillis() > deadline) {
-                    sb.append("[timeout]\n");
-                    break;
+            /* 读输出必须放在独立线程里。旧写法是「读到一行之后再比 deadline」，
+               只要命令不产出任何输出（sleep 300、等 stdin 的 cat…）就永远读不到第一行，
+               超时形同虚设；而所有 @JavascriptInterface 调用都排在同一个 JavaBridge 线程上，
+               一次卡死会连带把 state()/readLog()/action() 全堵死，页面永久停在旧状态，
+               只能杀进程。这里改成主线程只做「等退出 / 到点就杀」，输出交给 StreamPump。 */
+            pump = new StreamPump(p.getInputStream());
+            th = new Thread(pump, "qqbot-shell-out");
+            th.setDaemon(true);
+            th.start();
+            long deadline = System.currentTimeMillis() + (Math.max(1, timeoutSec) * 1000L);
+            boolean exited = false;
+            /* 「到点」与「有没有杀干净」必须分开记：destroy() 通常能在几十毫秒内杀掉命令，
+               一旦 exited 被置回 true，下面就不能再用 exited 判断超时，
+               否则一条不产出任何输出的命令会返回空串，用户看到框里只有回显、没有任何说明。 */
+            boolean timedOut = false;
+            while (System.currentTimeMillis() < deadline) {
+                try { p.exitValue(); exited = true; break; }
+                catch (IllegalThreadStateException stillRunning) { }
+                try { Thread.sleep(80); } catch (InterruptedException ie) { break; }
+            }
+            if (!exited) {
+                timedOut = true;
+                try { p.destroy(); } catch (Exception ignored) {}
+                /* 给 SIGTERM 一点时间落地，还没死就再补一次。
+                   不用 destroyForcibly()：它是 API 26 才有的方法，minSdk 24 上会 NoSuchMethodError。 */
+                for (int i = 0; i < 10 && !exited; i++) {
+                    try { p.exitValue(); exited = true; }
+                    catch (IllegalThreadStateException stillRunning) { }
+                    try { Thread.sleep(100); } catch (InterruptedException ie) { break; }
                 }
             }
-            br.close();
+            if (th != null) { try { th.join(800); } catch (InterruptedException ie) { } }
+            sb.append(pump.text());
+            if (timedOut) sb.append("[timeout]\n");
         } catch (Exception e) {
             sb.append("ERROR: ").append(e.toString()).append('\n');
         } finally {

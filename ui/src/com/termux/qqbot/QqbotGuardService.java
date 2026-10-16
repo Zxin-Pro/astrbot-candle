@@ -126,18 +126,13 @@ public class QqbotGuardService extends Service {
             PowerManager pm = (PowerManager) a.getSystemService(Context.POWER_SERVICE);
             String pkg = a.getPackageName();
             if (pm != null && pm.isIgnoringBatteryOptimizations(pkg)) return "已经在电池优化白名单里，无需重复申请";
-            Intent i = new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-            i.setData(android.net.Uri.parse("package:" + pkg));
-            a.startActivity(i);
+            // 这个方法是从 WebView 的 JS 桥线程调进来的，而 startActivity 必须在主线程发，
+            // 否则是未定义行为，异常还会被下面的 catch 吞成「这台设备打不开电池优化设置」。
+            // 少数 ROM 没有这个系统页面，BatteryTask 会退回电池优化总列表。
+            a.runOnUiThread(new BatteryTask(a, pkg));
             return "已打开申请页面，请点「允许」";
         } catch (Throwable t) {
-            // 少数 ROM 没有这个系统页面，退回电池优化总列表让用户手动找到本应用。
-            try {
-                a.startActivity(new Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
-                return "请在本页把「AstrBot烛版」设为不优化";
-            } catch (Throwable t2) {
-                return "这台设备打不开电池优化设置，请到系统设置里手动允许后台运行";
-            }
+            return "申请失败：" + t;
         }
     }
 
