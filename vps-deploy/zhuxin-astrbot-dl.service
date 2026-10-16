@@ -1,0 +1,14 @@
+[Unit]
+Description=烛心站点 · AstrBot 栏「下载页」每日同步
+Documentation=https://github.com/Zxin-Pro/astrbot-candle
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__SITE__/scripts
+ExecStart=/usr/bin/python3 __SITE__/scripts/astrbot_download_sync.py --site-dir=__SITE__ --quiet
+User=root
+
+[Install]
+WantedBy=multi-user.target

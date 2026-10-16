@@ -1,0 +1,12 @@
+[Unit]
+Description=每天同步一次 AstrBot 栏的下载页（跟着 GitHub Releases 走）
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=1d
+AccuracySec=1s
+Persistent=true
+Unit=zhuxin-astrbot-dl.service
+
+[Install]
+WantedBy=timers.target
