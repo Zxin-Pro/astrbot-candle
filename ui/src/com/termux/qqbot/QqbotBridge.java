@@ -565,6 +565,21 @@ public class QqbotBridge {
         act.activity().runOnUiThread(new UiTask(act, UiTask.TERMINAL, ""));
     }
 
+    // ---- 检查更新 ----
+    // 拆成 start + poll 两步：桥方法是同步的，一次网络请求会把 WebView 的 JS 线程
+    // 卡住十几秒（国内直连 api.github.com 经常超时）。start 立刻返回，前端每 500ms
+    // 轮询一次 poll，页面全程不卡。
+    @JavascriptInterface
+    public void checkUpdateStart() {
+        CheckUpdate.start(appVersion());
+    }
+
+    /** 空串 = 还在查；非空 = 一段 JSON（ok / current / latest / hasUpdate / url / size ...） */
+    @JavascriptInterface
+    public String checkUpdatePoll() {
+        return CheckUpdate.poll();
+    }
+
     @JavascriptInterface
     public String exec(String cmd) {
         return act.runShell(cmd, 60);

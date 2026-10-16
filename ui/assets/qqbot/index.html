@@ -274,6 +274,15 @@ pre{
    会在页面上留一条黑色空条；没输出时整块隐藏，有输出时再出现。 */
 #cmdOut:empty{display:none}
 
+/* 「检查更新」里展开的更新内容（release notes）。GitHub 的 notes 是纯文本 + 换行，
+   所以用 pre-wrap 保留换行，别让它跟 pre 一样带滚动条 —— 这里要跟着页面一起长。 */
+.updnotes{
+  margin-top:8px;padding:10px 11px;border-radius:var(--r-sm);
+  background:rgba(5,7,12,.55);border:1px solid var(--line);
+  font-family:var(--mono);font-size:11.5px;line-height:1.65;color:#c2cbdb;
+  white-space:pre-wrap;word-break:break-word;max-height:38vh;overflow:auto;
+}
+
 /* ===== 表单 ===== */
 select,input{
   width:100%;padding:10px 12px;border-radius:var(--r-sm);
@@ -680,6 +689,14 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
           <button class="small primary" data-act="openqq" data-arg="1127997343">加群</button>
         </div>
       </div>
+      <div class="lkrow">
+        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 12a8.4 8.4 0 1 1-2.6-6"/><path d="M20.4 3.6V9.3h-5.7"/></svg></span>
+        <div class="lkbd"><div class="lkt">检查更新</div><div class="lkv" id="updText">点右边按钮看看有没有新版本</div></div>
+        <div class="lkbtns">
+          <button class="small primary" data-act="checkupdate" id="updBtn">检查更新</button>
+        </div>
+      </div>
+      <div class="hint" id="updNote" style="display:none"></div>
       <div class="hint">当前版本 <b id="v-appver">-</b></div>
       <div class="hint">本软件官方群 <b>1127997343</b>，发现 bug 及时反馈。</div>
     </div>
@@ -1919,6 +1936,9 @@ document.addEventListener("click", function(ev){
   else if (act === "terminal") Android.openTerminal();
   else if (act === "openurl") openExternal(arg || "");
   else if (act === "openqq") openQqGroup(arg || "");
+  else if (act === "checkupdate") doCheckUpdate(false);
+  else if (act === "dlupdate") updDownload();
+  else if (act === "updnotes") updDetail();
   else if (act === "copytext") Android.copy(arg || "");
   else if (act === "saveproxy") saveProxy();
   else if (act === "clearproxy") { if (el("inProxy")) el("inProxy").value = ""; saveProxy(); }
@@ -2239,6 +2259,157 @@ function openQqGroup(g){
   Android.toast("已复制群号 " + g + "，请在 QQ 里搜索加群");
 }
 
+// ---- 检查更新 ----
+// 为什么要轮询：Android.* 的桥方法是同步调用，直接在里面发网络请求会把 WebView 的
+// JS 线程卡住十几到几十秒（国内直连 api.github.com 经常超时）。所以 Java 侧起后台
+// 线程去拉，这里每 500ms 问一次结果，界面全程不卡。
+var UPD_LAST_KEY = "qqbot.updcheck";
+var UPD_TICKS    = 90;   // 90 * 500ms = 45 秒还没结果就当超时
+var updTimer = null;
+var updPolls = 0;
+var updSilent = false;
+var updLast = null;
+var updNotesOpen = false;  // 「查看更新内容」是否已展开
+
+function updEsc(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function updSize(n){
+  n = Number(n || 0);
+  if (!n) return "";
+  if (n >= 1048576) return (Math.round(n / 104857.6) / 10) + " MB";
+  return Math.round(n / 1024) + " KB";
+}
+function updDate(s){
+  s = String(s || "");
+  return s.length >= 10 ? s.substring(0, 10) : s;
+}
+function updPaint(title, noteHtml, btnText, btnDisabled, tone){
+  var t = el("updText"), n = el("updNote"), b = el("updBtn");
+  if (t) {
+    t.textContent = title;
+    t.style.color = (tone === "ok") ? "#7ee0a6" : (tone === "bad" ? "#ff9d9d" : "");
+  }
+  if (n) {
+    n.innerHTML = noteHtml || "";
+    n.style.display = noteHtml ? "block" : "none";
+  }
+  if (b) { b.textContent = btnText || "检查更新"; b.disabled = !!btnDisabled; }
+}
+function updReset(){
+  updNotesOpen = false;   // 重新检查时把展开的更新内容收起来
+  updPaint("点右边按钮看看有没有新版本", "", "检查更新", false, "");
+}
+function updStop(){
+  if (updTimer) { clearInterval(updTimer); updTimer = null; }
+}
+function doCheckUpdate(silent){
+  if (updTimer) return;
+  updSilent = !!silent;
+  updPolls = 0;
+  updPaint("正在向 GitHub 查询最新版本…", "", "检查中…", true, "");
+  try {
+    Android.checkUpdateStart();
+  } catch (e) {
+    updPaint("检查更新不可用", "调用失败：" + updEsc(e), "重试", false, "bad");
+    return;
+  }
+  updTimer = setInterval(updTick, 500);
+}
+function updTick(){
+  updPolls++;
+  var raw = "";
+  try { raw = String(Android.checkUpdatePoll() || ""); } catch (e) { raw = ""; }
+  if (raw) {
+    updStop();
+    var j = null;
+    try { j = JSON.parse(raw); } catch (e) { j = null; }
+    if (!j) {
+      if (updSilent) { updReset(); return; }
+      updPaint("检查更新返回异常", updEsc(raw.substring(0, 300)), "重试", false, "bad");
+      return;
+    }
+    try { localStorage.setItem(UPD_LAST_KEY, String(new Date().getTime())); } catch (e) {}
+    renderUpdate(j);
+    return;
+  }
+  if (updPolls >= UPD_TICKS) {
+    updStop();
+    if (updSilent) { updReset(); return; }
+    updPaint("检查超时", "45 秒还没连上 GitHub，可能是网络不通。稍后再试，或到 GitHub 页面手动看。", "重试", false, "bad");
+  }
+}
+function renderUpdate(j){
+  var silent = updSilent;
+  updLast = j;
+  if (!j.ok) {
+    if (silent) { updReset(); return; }
+    updPaint("检查失败", updEsc(j.error || "未知原因"), "重试", false, "bad");
+    return;
+  }
+  var cur = updEsc(j.current || "");
+  var lat = updEsc(j.latest || "");
+  if (j.hasUpdate) {
+    var meta = [];
+    if (j.apkName) meta.push(updEsc(j.apkName));
+    if (j.size) meta.push(updSize(j.size));
+    if (j.publishedAt) meta.push(updDate(j.publishedAt));
+    var html = "<div>发现新版本 <b>" + lat + "</b>（当前 " + cur + "）</div>";
+    if (meta.length) html += "<div style=\"opacity:.75;margin-top:2px\">" + meta.join(" · ") + "</div>";
+    html += "<div style=\"margin-top:8px\">"
+         +  "<button class=\"small primary\" data-act=\"dlupdate\">下载新版本</button> "
+         +  "<button class=\"small\" data-act=\"updnotes\">"
+         +  (updNotesOpen ? "收起更新内容" : "查看更新内容") + "</button>"
+         +  "</div>";
+    // 更新内容是应用内展开的：notes 早在检查时就连同 JSON 一起拿回来了，
+    // 没必要把用户甩到系统浏览器（那边还得自己登 GitHub，国内多半打不开）。
+    if (updNotesOpen && j.notes) html += "<div class=\"updnotes\">" + updEsc(j.notes) + "</div>";
+    updPaint("有新版本 " + lat + " 可以装", html, "再查一次", false, "ok");
+    if (silent) Android.toast("发现新版本 " + j.latest + "，到「更多 → 检查更新」可以下载");
+  } else if (j.newer) {
+    updPaint("当前 " + cur + " 比线上最新 " + lat + " 还新", "装的可能是还没发布的开发版，不用更新。", "再查一次", false, "");
+  } else {
+    updPaint("已经是最新版本 " + cur, "", "再查一次", false, "ok");
+    if (!silent) Android.toast("已经是最新版本 " + j.current);
+  }
+}
+function updDownload(){
+  var j = updLast;
+  if (!j || !j.url) {
+    Android.toast("这个版本没有附安装包，打开 GitHub 页面手动看");
+    openExternal((j && j.htmlUrl) ? j.htmlUrl : "https://github.com/Zxin-Pro/astrbot-candle/releases");
+    return;
+  }
+  Android.toast("已交给浏览器下载，下完点开安装即可");
+  openExternal(j.url);
+}
+function updDetail(){
+  var j = updLast;
+  if (j && j.notes) {
+    // 有更新内容就在应用内展开／收起，不跳浏览器。
+    updNotesOpen = !updNotesOpen;
+    var keep = updSilent;
+    updSilent = false;           // 收起／展开不该再弹一次「发现新版本」的 toast
+    renderUpdate(j);
+    updSilent = keep;
+    return;
+  }
+  var u = (j && j.htmlUrl) ? j.htmlUrl : "https://github.com/Zxin-Pro/astrbot-candle/releases";
+  Android.toast("这个版本没写更新内容，打开 GitHub 页面看");
+  openExternal(u);
+}
+// 应用启动后静默查一次：12 小时内查过就不查了，避免每次开应用都发请求。
+function maybeAutoCheck(){
+  var last = 0;
+  try { last = parseInt(localStorage.getItem(UPD_LAST_KEY) || "0", 10) || 0; } catch (e) { last = 0; }
+  var now = new Date().getTime();
+  if (last && (now - last) < 12 * 3600 * 1000) return;
+  setTimeout(updAutoFire, 9000);
+}
+function updAutoFire(){ if (!updTimer) doCheckUpdate(true); }
+
 function loadProxy(){
   var v = "";
   try { v = String(Android.proxyGet() || ""); } catch (e) { v = ""; }
@@ -2344,6 +2515,8 @@ clearFixedCardHidden();
 applyCards();
 loadProxy();
 refresh();
+/* 启动 9 秒后静默查一次更新（12 小时内查过就跳过），有新版本会 toast 提示 */
+maybeAutoCheck();
 /* 首次启动弹免责声明；同意后写入标记，以后不再弹 */
 try { if (String(Android.disclaimerSeen()) !== "1") showDisclaimer(); } catch (e) {}
 </script>
