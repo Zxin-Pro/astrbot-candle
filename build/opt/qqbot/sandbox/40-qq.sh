@@ -51,7 +51,7 @@ import json, sys
 ver = sys.argv[1]
 build = ver.rsplit('-', 1)[-1]
 p = '/root/.config/QQ/versions/config.json'
-d = json.load(open(p, encoding='utf-8'))
+d = json.load(open(p, encoding='utf-8-sig'))
 d['baseVersion'] = ver
 d['curVersion'] = ver
 d['buildId'] = build

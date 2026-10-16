@@ -11,6 +11,22 @@
 
 ---
 
+## [1.1.2] - 2026-10-16
+
+### 修复
+
+- **v1.1.1 那个补丁其实没生效，真正的原因在这里：AstrBot 把 `cmd_config.json` 写成带 UTF-8 BOM 的文件，而我们读它时按纯 UTF-8 解析，直接抛 `JSONDecodeError: Unexpected UTF-8 BOM (decode using utf-8-sig)`**（沙盒内实测报错原文）。异常被 `link.sh` 里的 `except Exception: a = {}` 吞掉，于是「当前 AstrBot 已经监听的端口」永远算成空列表，跟「需要的端口」永远对不上 → `CHANGED` 永远是 1 → 每次对接都会 `kill -TERM` 掉 AstrBot 再让守护循环拉回来（约 30 秒，期间所有 QQ 号的 OneBot 通道一起断）。表现就是：**在机器人页停掉任意一个实例，AstrBot 也跟着重启一次**。现在所有读 JSON 的地方统一改用 `utf-8-sig` 解码（它同时兼容带 BOM 和不带 BOM 的文件），比对逻辑这才真正跑起来。
+- 顺带把沙盒里所有读 JSON 的脚本都换成了 `utf-8-sig`：`link.sh`（bots.json、cmd_config.json）、`run-napcat.sh`（实例的 onebot11/webui 配置、bots.json）、`50-napcat.sh`（QQ 的 `package.json`、NapCat 配置）、`40-qq.sh`（QQ 的 `versions/config.json`）、`remove-instance.sh`（bots.json）。这些文件分别由 AstrBot、NapCat、QQ 和 App 自己写，谁加不加 BOM 不由我们决定——`utf-8-sig` 对两种情况都能读，写出去的一律不带 BOM。
+
+---
+## [1.1.1] - 2026-10-16
+
+### 修复
+
+- **停掉一个 NapCat 实例，会把 AstrBot 一起重启，其它号的连接也跟着断**（本版唯一一处，但影响所有多实例用户）：在机器人页点某个实例的「停止容器」后，AstrBot 会在几秒内被终止再重新拉起（约 30 秒），期间**所有**实例的 OneBot 通道一起掉线，日志里只留下一句「AstrBot 结束：被信号 15 终止」。原因是这次点击会顺手触发一次「重新对接」，而沙盒里的 `link.sh` 在计算「AstrBot 该监听哪些 OneBot 端口」时**按实例是否启用过滤**——停用一个实例必然让端口清单发生变化，于是它按设计先停掉 AstrBot 再改配置、由守护循环拉回来。现在端口清单始终包含全部实例（停用的那个端口暂时没人连，aiocqhttp 的反向 WS 服务端只是安静地听着），清单没变化时 `link.sh` 直接返回、一个信号都不发给 AstrBot。只有真的新增或删除实例才会重启它。
+- 附带的好处：应用每次冷启动时的自动对接、以及切换实例后的自动对接，现在都不会再重启 AstrBot 了——以前它们同样会把它杀掉重来一次。
+
+---
 ## [1.1.0] - 2026-10-16
 
 这一版加了一个「检查更新」，并顺手把版本号推到 1.1.0。

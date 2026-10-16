@@ -1,5 +1,5 @@
 #!/bin/bash
-# 沙盒内：把 bots.json 里每个启用的 NapCat 实例同步成 AstrBot 的一个 aiocqhttp 平台。
+# 沙盒内：把 bots.json 里每个 NapCat 实例同步成 AstrBot 的一个 aiocqhttp 平台。
 #
 # 每个 NapCat 实例自己的 onebot11.json（反向 WebSocket 指向 AstrBot）由 run-napcat.sh
 # 在启动该实例时写入，因为实例的 QQ 目录到底是 /opt/QQ 还是
@@ -12,20 +12,19 @@ BOTS_JSON=/qqbot-cache/bots.json
 
 # AstrBot 只在启动时读一次平台列表：新实例的 OneBot 端口不重启它就不会监听，
 # 删掉的实例端口也会一直留着。所以先算出这次需要哪些端口，跟现有配置比对。
-# 无论端口有没有变化（CHANGED=0 是 relink 最常见的路径），写 cmd_config.json
-# 之前都必须先停掉 AstrBot：
-#   * 顺序不能反——AstrBot 退出时会把内存里的旧配置写回磁盘，先写后停会被它覆盖；
-#   * json.dump 是截断式非原子写，和运行中的 AstrBot 自己的配置回写并发交错，
-#     会写出损坏的配置或被旧值覆盖掉。
-# 停掉之后由外层 run-all.sh 的守护循环（wait 返回）自动把整套服务重新拉起，
-# 所以 CHANGED=0 也一样会重启，不会把 AstrBot 停在停掉的状态。
+#
+# 端口清单取「bots.json 里的所有实例」，不看 enable：
+#   * 停用某个实例时清单不变 -> CHANGED=0 -> 整个脚本直接返回，AstrBot 一个信号都不收。
+#     以前停一个 QQ 号会连带把 AstrBot 重启（约 30 秒），其它号的连接一起断掉。
+#   * 那个端口暂时没人连是正常的：aiocqhttp 的反向 WS 服务端只是安静地听着。
+#   * 只有真的增删了实例（清单变化）才需要重启 AstrBot。
 PLAN=$(python3 - "$BOTS_JSON" <<'PY'
 import json, os, sys
 try:
-    root = json.load(open(sys.argv[1], encoding='utf-8'))
+    root = json.load(open(sys.argv[1], encoding='utf-8-sig'))
 except Exception:
     root = {}
-bots = [b for b in (root.get('bots') or []) if b.get('enable', True) is not False]
+bots = root.get('bots') or []
 if not bots:
     bots = [{'id': 'bot1', 'onebotPort': 6199}]
 ports = sorted(set(int(b.get('onebotPort') or 6199) for b in bots))
@@ -33,7 +32,7 @@ old = []
 acfg = '/opt/AstrBot/data/cmd_config.json'
 if os.path.exists(acfg):
     try:
-        a = json.load(open(acfg, encoding='utf-8'))
+        a = json.load(open(acfg, encoding='utf-8-sig'))
     except Exception:
         a = {}
     old = sorted(set(int(p.get('ws_reverse_port') or 0) for p in (a.get('platform') or [])
@@ -46,15 +45,18 @@ NEWPORTS=$(echo "$PLAN" | cut -d'|' -f2)
 OLDPORTS=$(echo "$PLAN" | cut -d'|' -f3)
 echo "[link] OneBot 端口 需要 [$NEWPORTS] / 当前 [$OLDPORTS]"
 
-# 不论 CHANGED 是 0 还是 1，写盘前都要先停 AstrBot 并等它真的退出：等它退出不只是
-# 为了不和它抢配置文件，也是为了让外层 run-all.sh 的守护循环尽快 wait 返回并重启服务。
+# CHANGED=0 就是「配置已经是对的」：什么都不做地返回，绝不去动正在跑的 AstrBot。
+if [ "$CHANGED" = "0" ]; then
+  echo "[link] 平台列表与当前配置一致，不动 AstrBot（不重启、不断开已连上的实例）"
+  exit 0
+fi
+
+# 清单真的变了才需要重启 AstrBot：写 cmd_config.json 之前必须先停掉它，
+# 顺序不能反——AstrBot 退出时会把内存里的旧配置写回磁盘，先写后停会被它覆盖。
+# 停掉之后由外层 run-all.sh 的守护循环（wait 返回）自动把它重新拉起。
 APID=$(pgrep -f 'AstrBot/.venv/bin/python main.py' 2>/dev/null | head -n 1)
 if [ -n "$APID" ]; then
-  if [ "$CHANGED" = "1" ]; then
-    echo "[link] 平台列表有变化，重启 AstrBot 使其生效（约 30 秒后新端口开始监听）"
-  else
-    echo "[link] 平台列表没有变化，仍先停 AstrBot 再原子改写配置（守护进程会自动重启服务）"
-  fi
+  echo "[link] 平台列表有变化，重启 AstrBot 使其生效（约 30 秒后新端口开始监听）"
   kill -TERM "$APID" 2>/dev/null || true
   n=0
   while [ "$n" -lt 20 ]; do
@@ -74,12 +76,13 @@ python3 - "$BOTS_JSON" <<'PY'
 import json, os, sys
 
 try:
-    root = json.load(open(sys.argv[1], encoding='utf-8'))
+    root = json.load(open(sys.argv[1], encoding='utf-8-sig'))
 except Exception as e:
     print('[link] bots.json 解析失败:', e)
     sys.exit(1)
 
-bots = [b for b in (root.get('bots') or []) if b.get('enable', True) is not False]
+# 与上面的 PLAN 保持一致：所有实例都写进去，不看 enable。
+bots = root.get('bots') or []
 if not bots:
     bots = [{'id': 'bot1', 'token': 'qqbot', 'napcatPort': 6099, 'onebotPort': 6199}]
 
@@ -92,7 +95,7 @@ os.makedirs('/opt/AstrBot/data', exist_ok=True)
 a = {}
 if os.path.exists(acfg):
     try:
-        a = json.load(open(acfg, encoding='utf-8'))
+        a = json.load(open(acfg, encoding='utf-8-sig'))
     except Exception:
         a = {}
 plats = [p for p in (a.get('platform') or [])

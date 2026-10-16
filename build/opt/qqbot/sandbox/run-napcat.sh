@@ -60,7 +60,7 @@ cfg = os.path.join(cdir, 'onebot11.json')
 d = {}
 if os.path.exists(cfg):
     try:
-        d = json.load(open(cfg, encoding='utf-8'))
+        d = json.load(open(cfg, encoding='utf-8-sig'))
     except Exception:
         d = {}
 net = d.setdefault('network', {})
@@ -151,7 +151,7 @@ def patch(path, create_ok):
         print('[napcat] %s 不存在，按权威结构创建' % path)
     else:
         try:
-            with open(path, encoding='utf-8') as fh:
+            with open(path, encoding='utf-8-sig') as fh:
                 raw = json.load(fh)
             if isinstance(raw, dict):
                 d = raw
@@ -234,7 +234,7 @@ if not os.path.exists(p):
     print('__SKIP__|文件不存在')
     sys.exit(0)
 try:
-    with open(p, encoding='utf-8') as fh:
+    with open(p, encoding='utf-8-sig') as fh:
         d = json.load(fh)
     # 顶层必须是对象：json 合法但不是对象（比如写成 [1,2,3]）时 d.get 会抛异常，
     # 异常逃出去就一行输出都没有，调用方会当成「实例全没了」——那是数据丢失。
@@ -284,7 +284,7 @@ import json, sys
 
 path, iid, key = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
-    with open(path, encoding='utf-8') as fh:
+    with open(path, encoding='utf-8-sig') as fh:
         root = json.load(fh)
     bots = root.get('bots') or []
     if not isinstance(bots, list):
