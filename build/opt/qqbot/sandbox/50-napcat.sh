@@ -79,8 +79,12 @@ esac
 echo "[sandbox] 写入 NapCat OneBot11 默认配置（首次登录后自动连接 AstrBot，端口 $ONEBOT_PORT）"
 NAPCAT_CONF="$APP/app_launcher/napcat/config"
 mkdir -p "$NAPCAT_CONF"
-if [ ! -f "$NAPCAT_CONF/onebot11.json" ]; then
-  cat > "$NAPCAT_CONF/onebot11.json" <<JSONEOF
+# 与 60-astrbot.sh 里 cmd_config.json 同样的道理：判据是「非空且 JSON 能解析」，不是「文件存在」。
+if [ -s "$NAPCAT_CONF/onebot11.json" ] \
+   && python3 -c 'import json,sys;json.load(open(sys.argv[1]))' "$NAPCAT_CONF/onebot11.json" 2>/dev/null; then
+  echo "[sandbox] 已存在可用的 onebot11.json，保持不变"
+else
+  cat > "$NAPCAT_CONF/onebot11.json.tmp" <<JSONEOF
 {
   "network": {
     "httpServers": [],
@@ -115,9 +119,8 @@ if [ ! -f "$NAPCAT_CONF/onebot11.json" ]; then
   }
 }
 JSONEOF
+  mv -f "$NAPCAT_CONF/onebot11.json.tmp" "$NAPCAT_CONF/onebot11.json"
   echo "[sandbox] 已生成 $NAPCAT_CONF/onebot11.json"
-else
-  echo "[sandbox] 已存在 onebot11.json，保持不变"
 fi
 
 # ---------- 反检测：首次安装就把 bypass 与 autoTimeSync 打开 ----------

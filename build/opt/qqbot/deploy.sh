@@ -5,19 +5,52 @@
 
 # 并发护栏：profile.d 里的 50-qqbot-sandbox.sh 每次新开登录 shell 都会直接跑本脚本，
 # 部署期间再打开一次应用（或多开一个终端）就会并发跑第二份部署，两条 rm -rf "$ROOTFS"
-# 和两批 apt 会互相踩，轻则部署失败、重则 rootfs 半残。这里用 deploy.pid 拦掉后来者。
-if [ -f "$QQBOT_HOME/deploy.pid" ]; then
-  OLDPID=$(cat "$QQBOT_HOME/deploy.pid" 2>/dev/null)
-  if [ -n "$OLDPID" ] && [ "$OLDPID" != "$$" ] && kill -0 "$OLDPID" 2>/dev/null; then
-    qqlog "已有部署在进行中 (pid $OLDPID)，本次跳过"
-    exit 0
+# 和两批 apt 会互相踩，轻则部署失败、重则 rootfs 半残。
+#
+# 抢锁用 `set -o noclobber` 下的 > 重定向：它走 O_EXCL，是原子的，同一瞬间启动的
+# 两个进程只有一个能建成文件，而且文件里立刻就有自己的 pid。
+# 早先只靠 deploy.pid「先读后写」是拦不住的 —— 两个进程在同一瞬间都读到「没有 pid 文件」，
+# 于是双双放行；真机上实测到过：日志里两行「发现陈旧的 deploy.pid…」交错出现，
+# 两份部署同时对 dpkg 下手（一份 dpkg --configure -a 拿到了 frontend lock，
+# 另一份报 rc=2 只能重试）。锁文件必须一次写成功，不能分「建文件」和「写 pid」两步。
+LOCK="$QQBOT_HOME/deploy.lock"
+qq_deploy_lock() {
+  if ( set -o noclobber; echo $$ > "$LOCK" ) 2>/dev/null; then
+    return 0
   fi
+  HOLDER="$(cat "$LOCK" 2>/dev/null)"
+  # 只判 kill -0 不够：Android 会复用 PID，而部署一跑就是几十分钟，
+  # 记下来的 PID 很容易飘到一个毫不相干的进程上。那样新部署会直接 exit 0，
+  # 而 exit 0 在校验方看来就是「成功」—— 界面显示一切正常、实际一步没跑，
+  # 用户永远等不到部署完成。所以必须再确认那个 PID 真的是 deploy.sh。
+  if [ -n "$HOLDER" ] && [ "$HOLDER" != "$$" ] && kill -0 "$HOLDER" 2>/dev/null \
+     && tr '\0' ' ' < "/proc/$HOLDER/cmdline" 2>/dev/null | grep -q 'deploy\.sh'; then
+    return 1
+  fi
+  qqlog "发现陈旧的部署锁（${HOLDER:-空} 已经不是部署进程了），继续本次部署"
+  rm -f "$LOCK"
+  ( set -o noclobber; echo $$ > "$LOCK" ) 2>/dev/null || return 1
+  return 0
+}
+if ! qq_deploy_lock; then
+  qqlog "已有部署在进行中 (pid $(cat "$LOCK" 2>/dev/null))，本次跳过"
+  exit 0
 fi
 
 # 记录自己的 PID，供 GUI / qqbot-status 判断部署是否还在跑（调用方的 $! 在
 # 经过 setsid 之后不可信，所以由脚本自己写）
 mkdir -p "$QQBOT_HOME/logs"
 echo $$ > "$QQBOT_HOME/deploy.pid"
+
+# 正常退出（含失败与 Ctrl-C）时抹掉自己的 pid 文件与锁，否则界面上「部署进行中」会一直挂着，
+# 而它靠的就是这个文件。被 SIGKILL 时 trap 不会触发，所以上面的「陈旧锁」兜底也得留着。
+cleanup_pid() {
+  [ "$(cat "$QQBOT_HOME/deploy.pid" 2>/dev/null)" = "$$" ] && rm -f "$QQBOT_HOME/deploy.pid"
+  # 只删自己持有的锁：万一锁已被别人（陈旧锁修复路径）接管，别把新持有者的锁删掉。
+  [ "$(cat "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"
+  return 0
+}
+trap cleanup_pid EXIT INT TERM HUP
 
 if command -v termux-wake-lock >/dev/null 2>&1; then
   termux-wake-lock 2>/dev/null || true

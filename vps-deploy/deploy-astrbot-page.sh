@@ -357,62 +357,304 @@ def _prune_downloads(kept, quiet=False):
 
 
 DL_PAGE_TPL = """<!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#111725">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕯️</text></svg>">
 <title>AstrBot烛版 · 下载</title>
+<meta name="description" content="AstrBot烛版 APK 站内直接下载，不用跳 GitHub。手机上一键跑起 AstrBot + NapCat。">
+<meta property="og:title" content="AstrBot烛版 · 下载">
+<meta property="og:description" content="手机上一键跑起 AstrBot + NapCat · 站内直下">
+<meta property="og:type" content="website">
 <style>
-:root{color-scheme:dark}
+/* 取色自站点 assets/theme.css 的 :root，跟站点同一套鎏金深空配色 */
+:root{color-scheme:dark;
+--void-1:#0d1119;--void-2:#111725;--void-3:#161d2b;
+--gold-1:#7a5a1e;--gold-2:#c9982f;--gold-3:#e8a33d;--gold-4:#ffd68a;--gold-5:#fff4d6;
+--tx-1:#e8edf6;--tx-2:#b0b8c6;--tx-3:#8b94a3;
+--line:rgba(255,255,255,.075);--line-gold:rgba(232,163,61,.30);
+--card:#141a26;--card-2:#161d2b;
+--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace}
 *{box-sizing:border-box}
-body{margin:0;padding:28px 18px 60px;background:#0b0f19;color:#e8eaed;
-font:15px/1.7 -apple-system,"Segoe UI","Noto Sans SC",sans-serif}
-.wrap{max-width:720px;margin:0 auto}
-h1{margin:0 0 6px;font-size:26px;letter-spacing:.5px}
-.sub{margin:0 0 20px;color:#8b939e}
-a.row{display:flex;align-items:center;gap:12px;padding:14px 16px;margin:10px 0;
-border:1px solid #1e2635;border-radius:14px;background:#111827;color:inherit;text-decoration:none}
-a.row:hover{border-color:#3b82f6;background:#141d2e}
-.v{font-weight:600;font-family:ui-monospace,Menlo,Consolas,monospace;white-space:nowrap}
-.m{flex:1;color:#8b939e;font-size:13px}
-.go{padding:7px 14px;border-radius:999px;background:#3b82f6;color:#fff;font-size:13px;white-space:nowrap}
-h2{margin:30px 0 10px;font-size:16px;color:#a8b3c4}
-.s{padding:10px 12px;margin:8px 0;border:1px solid #1e2635;border-radius:12px;background:#0e1420}
-code{display:block;margin-top:6px;word-break:break-all;color:#9fb4d8;font-size:12.5px}
-a.back{display:inline-block;margin-top:26px;color:#8b939e;text-decoration:none}
+html{-webkit-text-size-adjust:100%;background-color:var(--void-2)}
+body{margin:0;padding:24px 16px calc(54px + env(safe-area-inset-bottom));
+background-color:var(--void-1);
+background-image:
+linear-gradient(180deg,rgba(232,163,61,.075),rgba(232,163,61,0) 320px),
+radial-gradient(780px 430px at 6% -8%,rgba(232,163,61,.12),rgba(232,163,61,0) 62%),
+radial-gradient(700px 420px at 103% 1%,rgba(74,124,255,.085),rgba(74,124,255,0) 58%);
+background-repeat:no-repeat;overflow-x:hidden;
+color:var(--tx-1);
+font:15px/1.72 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:880px;margin:0 auto}
+a,button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+
+/* ---------- 页头 ---------- */
+.hd{margin:2px 0 20px}
+.hd h1{margin:0 0 9px;font-size:clamp(22px,5.8vw,30px);line-height:1.3;letter-spacing:.3px;font-weight:700}
+.hd h1 b{font-weight:inherit;background:linear-gradient(180deg,var(--gold-4),var(--gold-2));
+-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{margin:0;color:var(--tx-2);font-size:14.5px}
+.stat{margin:11px 0 0;color:var(--tx-3);font-size:12.5px}
+
+/* ---------- 最新版大卡片 ---------- */
+.hero{position:relative;overflow:hidden;padding:20px 18px 18px;border-radius:22px;
+border:1px solid var(--line-gold);
+background:linear-gradient(180deg,rgba(232,163,61,.105),rgba(232,163,61,.02) 44%),var(--card);
+box-shadow:0 20px 48px -28px rgba(0,0,0,.92)}
+.hero:before{content:"";position:absolute;left:0;right:0;top:0;height:1px;
+background:linear-gradient(90deg,transparent,rgba(255,214,138,.7),transparent)}
+.ribbon{display:inline-flex;align-items:center;gap:7px;padding:4px 12px;border-radius:999px;
+font-size:12px;font-weight:700;letter-spacing:.5px;color:#2a1c02;
+background:linear-gradient(135deg,var(--gold-4),var(--gold-2))}
+.ribbon:before{content:"";width:6px;height:6px;border-radius:50%;background:#2a1c02;opacity:.5}
+.hero-ver{margin:15px 0 3px;font-size:clamp(32px,9.6vw,46px);line-height:1.04;font-weight:800;
+letter-spacing:-.6px;font-family:var(--mono);
+background:linear-gradient(180deg,var(--gold-5),var(--gold-3) 60%,var(--gold-2));
+-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero-file{margin:0;color:var(--tx-2);font-size:13px;word-break:break-all;font-family:var(--mono)}
+.facts{display:flex;flex-wrap:wrap;gap:8px;margin:15px 0 17px;padding:0;list-style:none}
+.facts li{display:flex;align-items:baseline;gap:6px;padding:5px 12px;border-radius:999px;
+border:1px solid var(--line);background:rgba(255,255,255,.03);font-size:12.5px;white-space:nowrap}
+.facts li span{color:var(--tx-3)}
+.facts li b{color:var(--tx-1);font-weight:600}
+.btn{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;
+min-height:54px;padding:0 20px;border-radius:15px;text-decoration:none;
+font-size:16.5px;font-weight:700;letter-spacing:.3px;color:#2b1c02;
+background:linear-gradient(135deg,var(--gold-4),var(--gold-3) 55%,var(--gold-2));
+box-shadow:0 12px 28px -14px rgba(232,163,61,.8);
+transition:transform .16s ease,filter .16s ease,box-shadow .16s ease}
+.btn:hover{filter:brightness(1.07);box-shadow:0 15px 34px -14px rgba(232,163,61,.9)}
+.btn:active{transform:translateY(1px) scale(.995)}
+.hint{margin:11px 0 0;color:var(--tx-3);font-size:12.5px;text-align:center}
+
+/* ---------- SHA-256 + 复制 ---------- */
+.sha{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px;
+margin:16px 0 0;padding:10px 12px;border-radius:13px;border:1px solid var(--line);background:rgba(0,0,0,.3)}
+.sha-k{font-size:11.5px;letter-spacing:.6px;font-weight:700;color:var(--gold-3);white-space:nowrap}
+.sha code{min-width:0;color:var(--tx-2);font-size:12px;line-height:1.55;
+word-break:break-all;font-family:var(--mono)}
+.copy{padding:6px 14px;border-radius:999px;cursor:pointer;
+border:1px solid var(--line-gold);background:rgba(232,163,61,.10);color:var(--gold-4);
+font-size:12.5px;font-weight:600;font-family:inherit;
+transition:background .16s ease,color .16s ease,border-color .16s ease}
+.copy:hover{background:rgba(232,163,61,.22)}
+.copy.ok{background:rgba(46,230,200,.16);border-color:rgba(46,230,200,.5);color:#8ff3e2}
+.copy.bad{background:rgba(255,140,140,.14);border-color:rgba(255,140,140,.45);color:#ffb9b9}
+/* 窄屏：标签和「复制」并排一行，SHA-256 整行铺开，免得被挤成三行 */
+@media (max-width:560px){
+.sha{grid-template-columns:minmax(0,1fr) auto;row-gap:5px}
+.sha code{grid-column:1/-1;grid-row:2}
+.sha .copy{grid-column:2;grid-row:1;justify-self:end}
+}
+
+/* ---------- 历史版本 ---------- */
+h2.sec{display:flex;align-items:center;gap:11px;margin:30px 0 13px;
+font-size:15.5px;font-weight:600;color:var(--tx-2)}
+h2.sec:after{content:"";flex:1;height:1px;
+background:linear-gradient(90deg,var(--line-gold),rgba(232,163,61,0))}
+.list{display:grid;gap:13px;grid-template-columns:repeat(auto-fit,minmax(288px,1fr))}
+.card{padding:15px 15px 14px;border-radius:17px;border:1px solid var(--line);
+background:var(--card-2);
+transition:border-color .18s ease,transform .18s ease}
+.card:hover{border-color:var(--line-gold);transform:translateY(-1px)}
+.card-top{display:flex;align-items:center;gap:9px}
+.tag{font-family:var(--mono);font-weight:700;font-size:16px;
+color:var(--gold-4);white-space:nowrap}
+.date{margin-left:auto;color:var(--tx-3);font-size:12px;white-space:nowrap}
+.fname{margin:6px 0 12px;color:var(--tx-3);font-size:12px;word-break:break-all;font-family:var(--mono)}
+.card-bot{display:flex;align-items:center;gap:10px}
+.size{color:var(--tx-2);font-size:12.5px}
+.btn-sm{margin-left:auto;flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;
+min-height:40px;padding:0 16px;border-radius:11px;text-decoration:none;
+font-size:13.5px;font-weight:700;color:#2b1c02;
+background:linear-gradient(135deg,var(--gold-4),var(--gold-3));
+transition:filter .16s ease}
+.btn-sm:hover{filter:brightness(1.07)}
+.card .sha{margin-top:12px;padding:8px 10px;gap:7px}
+.card .sha code{font-size:11.5px}
+.card .copy{padding:5px 11px;font-size:12px}
+
+/* ---------- 页脚 ---------- */
+.back{display:inline-flex;align-items:center;gap:7px;margin:30px 0 0;padding:9px 16px;
+border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.03);
+color:var(--tx-2);text-decoration:none;font-size:13.5px;transition:border-color .16s,color .16s}
+.back:hover{border-color:var(--line-gold);color:var(--gold-4)}
+footer{margin-top:24px;color:var(--tx-3);font-size:12px;line-height:1.85}
+footer a{color:var(--tx-3);text-decoration:underline;text-underline-offset:2px}
+footer a:hover{color:var(--gold-4)}
+
+@media (max-width:360px){
+body{padding-left:12px;padding-right:12px}
+.hero{padding:17px 14px 15px;border-radius:19px}
+.facts li{font-size:12px;padding:4px 10px}
+.sha{padding:9px 10px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}.card:hover{transform:none}}
 </style>
 </head>
 <body><div class="wrap">
-<h1>AstrBot烛版 · 下载</h1>
-<p class="sub">就在这里下，不用跳 GitHub。页面每天自动跟着新版本更新。</p>
-__ROWS__
-<h2>SHA-256 校验值</h2>
-__SHAS__
+<header class="hd">
+<h1>AstrBot<b>烛版</b> · 下载</h1>
+<p class="sub">手机上一键跑起 AstrBot + NapCat —— 就在这儿下，不用跳 GitHub。</p>
+<p class="stat">站内共 __COUNT__ 个版本 · 页面每天跟着 GitHub Releases 自动更新</p>
+</header>
+__HERO__
+__REST__
 <a class="back" href="/#/astrbot">← 回到 AstrBot烛版 页面</a>
-</div></body></html>
+<footer>
+APK 全部由本站直接提供，点击即下。装完可以先核对上面的 SHA-256；安装时如提示风险，选择「仍要安装」即可。<br>
+站内最多保留最近 __KEEP__ 个版本，更早的版本见 <a href="__RELEASES__" rel="noopener">GitHub Releases</a>。
+</footer>
+</div>
+<script>
+/* SHA-256 一键复制：优先进剪贴板 API，不行退到 execCommand，再不行就把文字选中让用户手动复制 */
+(function () {
+  var timer = null;
+  function mark(btn, cls, text) {
+    if (!btn.getAttribute('data-txt')) btn.setAttribute('data-txt', btn.textContent);
+    btn.textContent = text;
+    btn.classList.remove('ok', 'bad');
+    if (cls) btn.classList.add(cls);
+    clearTimeout(timer);
+    timer = setTimeout(function () {
+      btn.textContent = btn.getAttribute('data-txt');
+      btn.classList.remove('ok', 'bad');
+    }, 1600);
+  }
+  function legacy(t) {
+    var ta = document.createElement('textarea');
+    ta.value = t;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '-2000px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, t.length);
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+  function selectText(node) {
+    if (!node || !window.getSelection || !document.createRange) return;
+    var r = document.createRange();
+    r.selectNodeContents(node);
+    var s = window.getSelection();
+    s.removeAllRanges();
+    s.addRange(r);
+  }
+  document.addEventListener('click', function (ev) {
+    var t = ev.target;
+    var btn = t && t.closest ? t.closest('button.copy') : null;
+    if (!btn) return;
+    var box = btn.closest('.sha');
+    var code = box ? box.querySelector('code') : null;
+    var text = code ? code.textContent.replace(/[^0-9a-fA-F]/g, '') : '';
+    if (!text) return;
+    var done = function () { mark(btn, 'ok', '已复制 ✓'); };
+    var fail = function () {
+      if (legacy(text)) { done(); return; }
+      selectText(code);
+      mark(btn, 'bad', '请手动复制');
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, fail);
+    } else {
+      fail();
+    }
+  });
+})();
+</script>
+</body></html>
 """
 
 
+def _esc(v):
+    return html.escape(str(v if v is not None else ""))
+
+
+def _dl_vlabel(it):
+    """版本号显示成 v1.1.4 这个样子。"""
+    tag = str(it.get("tag") or "").strip()
+    if not tag:
+        tag = str(it.get("ver") or "").strip()
+    if not tag:
+        return "未知版本"
+    return tag if tag[:1] in ("v", "V") else "v" + tag
+
+
+def _dl_sha(it):
+    """一行 SHA-256 + 一键复制按钮。按钮从兄弟 code 里取文字，不用再存一份。"""
+    return (
+        '<div class="sha"><span class="sha-k">SHA-256</span>'
+        '<code>%s</code>'
+        '<button type="button" class="copy" aria-label="复制 SHA-256 校验值">复制</button>'
+        '</div>' % _esc(it.get("sha") or "（这次没算出来）")
+    )
+
+
+def _dl_hero(it):
+    """最新版：整页最显眼的那张大卡片。"""
+    return (
+        '<section class="hero">'
+        '<span class="ribbon">最新版</span>'
+        '<h2 class="hero-ver">%s</h2>'
+        '<p class="hero-file">%s</p>'
+        '<ul class="facts">'
+        '<li><span>大小</span><b>%s</b></li>'
+        '<li><span>发布</span><b>%s</b></li>'
+        '<li><span>平台</span><b>Android</b></li>'
+        '</ul>'
+        '<a class="btn" href="%s" download>&#11015;&#65039; 下载最新版 APK</a>'
+        '<p class="hint">点一下就开始下载，不用跳 GitHub。安装时若提示风险，选「仍要安装」即可。</p>'
+        '%s'
+        '</section>'
+        % (_esc(_dl_vlabel(it)), _esc(it.get("name")), _esc(it.get("size") or "体积未知"),
+           _esc(it.get("date") or "日期未知"), _esc(it.get("url")), _dl_sha(it))
+    )
+
+
+def _dl_card(it):
+    """历史版本：一版一张小卡，版本 / 文件名 / 大小 / SHA-256 / 下载按钮都有。"""
+    return (
+        '<article class="card">'
+        '<div class="card-top"><span class="tag">%s</span>'
+        '<span class="date">%s</span></div>'
+        '<p class="fname">%s</p>'
+        '<div class="card-bot"><span class="size">%s</span>'
+        '<a class="btn-sm" href="%s" download>&#11015;&#65039; 下载</a></div>'
+        '%s'
+        '</article>'
+        % (_esc(_dl_vlabel(it)), _esc(it.get("date") or "日期未知"), _esc(it.get("name")),
+           _esc(it.get("size") or "体积未知"), _esc(it.get("url")), _dl_sha(it))
+    )
+
+
 def write_download_index(items, quiet=False):
-    """在 downloads/ 里放一个列表页：站内就能翻到所有留着的版本。"""
+    """在 downloads/ 里放一个列表页：最新版一张大卡片，其余版本排在下面的网格里。
+
+    版本少也不塌：只有 1 个版本时「历史版本」整段不渲染，页面上就一张大卡片。
+    （站内最多留 KEEP_VERSIONS 个安装包，见 mirror_releases。）
+    """
     if not items:
         return
     ordered = sorted(items.values(), key=lambda x: x.get("date") or "", reverse=True)
-    rows = []
-    for it in ordered:
-        rows.append(
-            '<a class="row" href="%s" download>'
-            '<span class="v">%s</span>'
-            '<span class="m">%s · %s · %s</span>'
-            '<span class="go">下载</span></a>'
-            % (html.escape(it["url"]), html.escape(it["tag"]),
-               html.escape(it["date"] or "日期未知"), html.escape(it["size"]),
-               html.escape(it["name"])))
-    shas = []
-    for it in ordered:
-        shas.append('<div class="s"><b>%s</b><code>%s</code></div>'
-                    % (html.escape(it["tag"]), html.escape(it["sha"])))
-    page = DL_PAGE_TPL.replace("__ROWS__", "\n".join(rows)).replace("__SHAS__", "\n".join(shas))
+    hero, rest = ordered[0], ordered[1:]
+    blocks = []
+    if rest:
+        blocks.append('<h2 class="sec">历史版本</h2>')
+        blocks.append('<div class="list">%s</div>' % "".join(_dl_card(it) for it in rest))
+    page = (DL_PAGE_TPL
+            .replace("__HERO__", _dl_hero(hero))
+            .replace("__REST__", chr(10).join(blocks))
+            .replace("__COUNT__", str(len(ordered)))
+            .replace("__KEEP__", str(KEEP_VERSIONS))
+            .replace("__RELEASES__", RELEASES_PAGE))
     p = os.path.join(DL_DIR, "index.html")
     tmp = p + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -423,7 +665,7 @@ def write_download_index(items, quiet=False):
     except Exception:
         pass
     if not quiet:
-        print("[astrbot-dl] 已生成站内下载列表页：%s" % p)
+        print("[astrbot-dl] 已生成站内下载列表页：%s（%d 个版本）" % (p, len(ordered)))
 
 
 def validate(doc):
