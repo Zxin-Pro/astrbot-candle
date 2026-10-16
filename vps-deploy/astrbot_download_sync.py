@@ -16,6 +16,10 @@ GitHub Releases 走：发了新版本，下载直链、版本号、体积、SHA-
     · 后台编辑器里看到的也是同一份内容，不会在你下次在后台点保存时被打回去
   万一那个脚本不在（比如站点目录被挪走），就退回自己把两份都原子写一遍。
 
+安装包顺便也在站点自己的 downloads/ 里存一份（最近 KEEP_VERSIONS 个版本）：页面上的
+下载按钮直接指向本站文件，用户点一下就开始下载，不用被甩去 GitHub —— 国内直连
+GitHub 经常打不开，加速镜像也时好时坏。顺便在 downloads/index.html 生成一个列表页。
+
 不碰 JS / CSS / HTML：assets/astrbot.<hash>.js 顶部注释写明了这个 JSON 结构就是
 唯一的消费契约，所以只改内容，不用去改 HTML 里的 ?v= 缓存指纹。
 
@@ -31,6 +35,8 @@ GitHub Releases 走：发了新版本，下载直链、版本号、体积、SHA-
   python3 astrbot_download_sync.py --site-dir=/path # 指定站点根目录
 """
 
+import hashlib
+import html
 import json
 import os
 import re
@@ -56,11 +62,23 @@ CFG = os.path.join(DATA, "astrbot_content.json")   # 母本（后台编辑）
 PUB = os.path.join(DATA, "astrbot.json")           # 前端读取
 BAK_DIR = os.path.join(DATA, "astrbot_bak")
 FALLBACK = os.path.join(SCRIPTS, "astrbot_download_sync.fallback.json")
-# 这几个子栏由本脚本每天重写；其它子栏（比如你自己写的人格分享）原样保留。
+# 这几个子栏由本脚本每天重写。
+# 其它历史子栏（早先分享栏留下的人格之类）不再保留：见下面的 KEEP_EXTRA_TABS。
 MANAGED_KEYS = ("download", "what", "howto", "changelog")
+
+# ---- 站内下载：页面只指本站，用户点下载不会再被甩去 GitHub ----
+DL_DIR = os.path.join(SITE, "downloads")     # 安装包就放这儿，nginx 直接从站点根目录发出去
+DL_URL = "/downloads"                        # 页面里用同源地址
+PUBLIC_BASE = "https://xn--15t839a.xyz"      # 复制「下载直链」时用的站点域名
+KEEP_VERSIONS = 4                            # 站内最多留几个版本（每个约 24 MB）
+APK_TPL = "AstrBot-%s.apk"                   # 站内文件名
 
 RELEASES_PAGE = "https://github.com/" + REPO + "/releases"
 MIRROR_PREFIX = "https://ghfast.top/"
+# 服务器自己抓安装包时的加速镜像：直连 GitHub 的安装包地址会 302 跳到
+# objects.githubusercontent.com，国内机房经常连不上（实测 timeout）。
+# 用户那边看到的一直是站内地址，这里用镜像只是「进货渠道」，对用户无感。
+MIRROR_FALLBACKS = ("https://ghfast.top/", "https://gh-proxy.com/", "https://ghproxy.net/")
 
 KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 MAX_TABS = 12
@@ -73,14 +91,6 @@ NL = chr(10)
 
 GH_API = "https://api.github.com/repos/" + REPO + "/releases/latest"
 GH_ALL = "https://api.github.com/repos/" + REPO + "/releases?per_page=8"
-RELEASES_PAGE = "https://github.com/" + REPO + "/releases"
-MIRROR_PREFIX = "https://ghfast.top/"
-
-KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
-MAX_TABS = 12
-MAX_CARDS = 200
-UA = "astrbot-candle-site-sync/1.0"
-NL = chr(10)
 
 
 def http_json(url, timeout=20):
@@ -106,6 +116,208 @@ def pick_apk(rel):
         if str(a.get("name", "")).lower().endswith(".apk"):
             return a
     return None
+
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _http_get_to(url, dest, timeout=180):
+    """下载 url 到 dest。先写 .part 再改名，中途断了不会留下半个文件。返回字节数。"""
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    tmp = dest + ".part"
+    n = 0
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        with open(tmp, "wb") as f:
+            for chunk in iter(lambda: r.read(1 << 20), b""):
+                f.write(chunk)
+                n += len(chunk)
+    os.replace(tmp, dest)
+    try:
+        os.chmod(dest, 0o644)
+    except Exception:
+        pass
+    return n
+
+
+def _fetch_apk(url, dest, want=0, sha=""):
+    """把安装包抓到 dest，返回实际字节数。
+
+    直连 GitHub 的 asset 地址会 302 跳到 objects.githubusercontent.com，
+    实测在这台机房的 VPS 上是直接超时（直连 302 之后 0 字节），加镜像前缀
+    却有 600 KB/s。所以按「直连 → 各家加速镜像」依次重试。
+    下完先核字节数，GitHub 给了 sha256 就再核一遍哈希 —— 镜像返回半截文件或
+    被人换了包，都在这里拦下来，绝不让坏文件进站内目录。
+    """
+    last = None
+    # 镜像排前面：直连不是「连不上」，而是「能连但只有 30 KB/s」，靠失败回退是救不了的，
+    # 25 MB 要下十几分钟。完整性有 GitHub 官方给的 sha256 兜底（对不上就不收），所以先走快的。
+    for src in [p + url for p in MIRROR_FALLBACKS] + [url]:
+        host = src.split("/")[2]
+        try:
+            n = _http_get_to(src, dest)
+            if want and n != want:
+                raise ValueError("字节数不对（下到 %d，应该是 %d）" % (n, want))
+            if sha:
+                got = sha256_file(dest)
+                if got != sha:
+                    raise ValueError("哈希对不上（下到 %s…）" % got[:16])
+            return n
+        except Exception as e:
+            last = e
+            try:
+                os.remove(dest + ".part")
+            except Exception:
+                pass
+            print("[astrbot-dl] 从 %s 抓失败（%s），换下一个源" % (host, e), file=sys.stderr)
+    raise last
+
+
+def mirror_releases(rels, quiet=False):
+    """把最近几个版本的安装包存一份到站点自己的 downloads/ 目录。
+
+    为什么这么做：下载按钮直接指本站文件，用户点一下就开始下载，不用被甩去 GitHub。
+    国内直连 GitHub 经常打不开，加速镜像也时好时坏，站内存一份最稳。
+    返回 {版本号: 信息}，信息里的 url 是站内相对地址。
+    """
+    out = {}
+    kept = []
+    try:
+        os.makedirs(DL_DIR, exist_ok=True)
+    except Exception as e:
+        print("[astrbot-dl] 建不了 %s，这次不做站内下载：%s" % (DL_DIR, e), file=sys.stderr)
+        return out
+    for rel in rels:
+        if len(kept) >= KEEP_VERSIONS:
+            break
+        if rel.get("draft"):
+            continue
+        apk = pick_apk(rel)
+        if not apk:
+            continue
+        ver = str(rel.get("tag_name") or "").lstrip("vV")
+        if not ver or "/" in ver or ver in out:
+            continue
+        name = APK_TPL % ver
+        dest = os.path.join(DL_DIR, name)
+        want = int(apk.get("size") or 0)
+        _dg = str(apk.get("digest") or "")
+        sha_want = _dg.split(":", 1)[1] if _dg.startswith("sha256:") else ""
+        have = os.path.getsize(dest) if os.path.isfile(dest) else -1
+        if want and have == want:
+            got = have          # 之前下过、字节数也对，不重复下
+        elif have > 0 and not want:
+            got = have
+        else:
+            try:
+                if not quiet:
+                    print("[astrbot-dl] 存一份到站内：%s（%s）"
+                          % (name, human_size(want) if want else "大小未知"))
+                got = _fetch_apk(apk["browser_download_url"], dest, want, sha_want)
+            except Exception as e:
+                print("[astrbot-dl] %s 存站内失败，这一版先用 GitHub 直链：%s" % (name, e),
+                      file=sys.stderr)
+                continue
+        kept.append(name)
+        out[ver] = {
+            "ver": ver,
+            "tag": str(rel.get("tag_name") or ver),
+            "name": name,
+            "url": DL_URL + "/" + name,
+            "bytes": got,
+            "size": human_size(got),
+            "sha": sha256_file(dest),
+            "date": (rel.get("published_at") or "")[:10],
+            "notes": (rel.get("body") or "").strip(),
+        }
+    _prune_downloads(kept, quiet)
+    return out
+
+
+def _prune_downloads(kept, quiet=False):
+    """清掉站内不再需要的老安装包。只动本脚本自己下的那些 AstrBot-*.apk。"""
+    try:
+        for fn in sorted(os.listdir(DL_DIR)):
+            if fn.startswith("AstrBot-") and fn.endswith(".apk") and fn not in kept:
+                os.remove(os.path.join(DL_DIR, fn))
+                if not quiet:
+                    print("[astrbot-dl] 清掉站内旧安装包：%s" % fn)
+    except Exception as e:
+        print("[astrbot-dl] 清理旧安装包失败（不影响这次同步）：%s" % e, file=sys.stderr)
+
+
+DL_PAGE_TPL = """<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AstrBot烛版 · 下载</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;padding:28px 18px 60px;background:#0b0f19;color:#e8eaed;
+font:15px/1.7 -apple-system,"Segoe UI","Noto Sans SC",sans-serif}
+.wrap{max-width:720px;margin:0 auto}
+h1{margin:0 0 6px;font-size:26px;letter-spacing:.5px}
+.sub{margin:0 0 20px;color:#8b939e}
+a.row{display:flex;align-items:center;gap:12px;padding:14px 16px;margin:10px 0;
+border:1px solid #1e2635;border-radius:14px;background:#111827;color:inherit;text-decoration:none}
+a.row:hover{border-color:#3b82f6;background:#141d2e}
+.v{font-weight:600;font-family:ui-monospace,Menlo,Consolas,monospace;white-space:nowrap}
+.m{flex:1;color:#8b939e;font-size:13px}
+.go{padding:7px 14px;border-radius:999px;background:#3b82f6;color:#fff;font-size:13px;white-space:nowrap}
+h2{margin:30px 0 10px;font-size:16px;color:#a8b3c4}
+.s{padding:10px 12px;margin:8px 0;border:1px solid #1e2635;border-radius:12px;background:#0e1420}
+code{display:block;margin-top:6px;word-break:break-all;color:#9fb4d8;font-size:12.5px}
+a.back{display:inline-block;margin-top:26px;color:#8b939e;text-decoration:none}
+</style>
+</head>
+<body><div class="wrap">
+<h1>AstrBot烛版 · 下载</h1>
+<p class="sub">就在这里下，不用跳 GitHub。页面每天自动跟着新版本更新。</p>
+__ROWS__
+<h2>SHA-256 校验值</h2>
+__SHAS__
+<a class="back" href="/#/astrbot">← 回到 AstrBot烛版 页面</a>
+</div></body></html>
+"""
+
+
+def write_download_index(items, quiet=False):
+    """在 downloads/ 里放一个列表页：站内就能翻到所有留着的版本。"""
+    if not items:
+        return
+    ordered = sorted(items.values(), key=lambda x: x.get("date") or "", reverse=True)
+    rows = []
+    for it in ordered:
+        rows.append(
+            '<a class="row" href="%s" download>'
+            '<span class="v">%s</span>'
+            '<span class="m">%s · %s · %s</span>'
+            '<span class="go">下载</span></a>'
+            % (html.escape(it["url"]), html.escape(it["tag"]),
+               html.escape(it["date"] or "日期未知"), html.escape(it["size"]),
+               html.escape(it["name"])))
+    shas = []
+    for it in ordered:
+        shas.append('<div class="s"><b>%s</b><code>%s</code></div>'
+                    % (html.escape(it["tag"]), html.escape(it["sha"])))
+    page = DL_PAGE_TPL.replace("__ROWS__", "\n".join(rows)).replace("__SHAS__", "\n".join(shas))
+    p = os.path.join(DL_DIR, "index.html")
+    tmp = p + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(page)
+    os.replace(tmp, p)
+    try:
+        os.chmod(p, 0o644)
+    except Exception:
+        pass
+    if not quiet:
+        print("[astrbot-dl] 已生成站内下载列表页：%s" % p)
 
 
 def validate(doc):
@@ -150,14 +362,22 @@ def validate(doc):
     return True, ""
 
 
-def build(latest, all_rels, extra=None):
+def build(latest, all_rels, extra=None, mirror=None):
+    mirror = mirror or {}
     tag = latest.get("tag_name") or "v0.0.0"
     ver = tag.lstrip("vV")
     apk = pick_apk(latest)
     apk_size = human_size(apk["size"]) if apk else ""
-    dl = apk["browser_download_url"] if apk else RELEASES_PAGE
+    mine = mirror.get(ver) or {}
+    gh_dl = apk["browser_download_url"] if apk else RELEASES_PAGE
+    # 站内已经存了就用站内地址：用户点一下直接开始下载，不用跳 GitHub。
+    # 只有站内那份没下来（网络问题、磁盘满）才退回 GitHub 直链，页面不至于没有下载按钮。
+    local = bool(mine.get("url"))
+    dl = mine.get("url") or gh_dl
     digest = (apk or {}).get("digest") or ""
-    sha = digest.split(":", 1)[1] if digest.startswith("sha256:") else ""
+    sha = mine.get("sha") or (digest.split(":", 1)[1] if digest.startswith("sha256:") else "")
+    if mine.get("size"):
+        apk_size = mine["size"]
     pub = (latest.get("published_at") or "")[:10]
     now = time.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -167,22 +387,27 @@ def build(latest, all_rels, extra=None):
             "title": "AstrBot烛版 %s（最新版）" % ver,
             "desc": "安卓安装包 · %s%s" % (apk_size, (" · " + pub) if pub else "") + NL +
                     "安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）" + NL +
-                    "包名 com.termux，如果装过官方 Termux 要先卸载",
+                    "包名 com.termux，如果装过官方 Termux 要先卸载" + NL +
+                    ("点这张卡直接下载 —— 就在本站，不用跳 GitHub。" if local
+                     else "点这张卡下载（这一版本站没存住，暂时指向 GitHub）。"),
             "link": dl,
         },
-        {
-            "icon": "🚀",
-            "title": "国内加速下载",
-            "desc": "GitHub 直连慢或者打不开时用这个。" + NL + "内容与上面的安装包完全一样。",
-            "link": MIRROR_PREFIX + dl,
-        },
-        {
-            "icon": "🕘",
-            "title": "所有历史版本",
-            "desc": "想装旧版、或者想看每一版改了什么，都在这里。",
-            "link": RELEASES_PAGE,
-        },
     ]
+    if local:
+        # 可复制卡：把直链给出去，方便发群里、发给别人
+        d_cards.append({
+            "icon": "🔗",
+            "title": "复制下载直链",
+            "desc": "点这张卡就把地址复制下来，可以直接发给别人或贴进浏览器。",
+            "text": PUBLIC_BASE + mine["url"],
+        })
+    d_cards.append({
+        "icon": "🕘",
+        "title": "所有历史版本",
+        "desc": ("本站存着的几个版本，点进去直接下。" if local
+                 else "想装旧版、或者想看每一版改了什么，都在这里。"),
+        "link": (DL_URL + "/") if local else RELEASES_PAGE,
+    })
     if sha:
         d_cards.append({
             "icon": "🔐",
@@ -254,20 +479,22 @@ def build(latest, all_rels, extra=None):
         if len(rbody) > 1200:
             rbody = rbody[:1200] + "…"
         # 这里千万不要加 text：站点的 contentCard() 判断顺序是「先看 text，再看 link」，
-        # 只要卡里有 text 就会被渲染成「可复制卡」，link 被直接丢掉 —— 用户点不进 release 页。
+        # 只要卡里有 text 就会被渲染成「可复制卡」，link 被直接丢掉。
         # 更新说明放进 desc（CSS 是 white-space:pre-wrap，换行照样在），整张卡都能点开。
+        # 有站内包就把整张卡指到站内文件（点一下就能下这一版）；没有就不给链接，
+        # 免得又把用户带去 GitHub。
+        rlocal = (mirror.get(rtag.lstrip("vV")) or {}).get("url") or ""
         ch_cards.append({
             "icon": "📝",
             "title": "%s%s" % (rtag, ("  ·  " + rpub) if rpub else ""),
             "desc": rbody or "（这一版没写更新说明）",
-            "link": rel.get("html_url") or RELEASES_PAGE,
+            "link": rlocal,
         })
     if not ch_cards:
         ch_cards.append({
             "icon": "📝",
             "title": "暂无更新日志",
-            "desc": "去 GitHub 看：" + RELEASES_PAGE,
-            "link": RELEASES_PAGE,
+            "desc": "这一版还没有更新记录。",
         })
 
     return {
@@ -296,12 +523,17 @@ def _clip(s, field, default=""):
     return s
 
 
-def load_extra_tabs():
-    """把现有内容里「不是我们管的」子栏原样捡回来。
+# 站点 AstrBot 栏现在的定位是「下载页」，内容只由本脚本管的四个子栏组成：
+# download / what / howto / changelog。历史遗留的别的子栏（例如早先的人格分享）
+# 不再往新内容里带 —— 否则它们会一直粘在下载页后面，页面上就有第五个「人格」栏。
+# 想恢复「保留你自己写的子栏」这个老行为，把下面这行改成 True 即可。
+KEEP_EXTRA_TABS = False
 
-    这样每天同步只刷新下载/介绍/教程/更新日志这四栏，你之前写在里面的东西
-    （比如人格分享）不会被我覆盖掉；你在后台改它们也不会被冲掉。
-    """
+
+def load_extra_tabs():
+    """把现有内容里「不是我们管的」子栏原样捡回来（默认关闭，见上面的开关）。"""
+    if not KEEP_EXTRA_TABS:
+        return []
     try:
         with open(CFG, encoding="utf-8") as f:
             d = json.load(f)
@@ -416,6 +648,7 @@ def main():
         return 1
 
     ver = ""
+    mirror = {}
     try:
         latest = http_json(GH_API)
         ver = str(latest.get("tag_name") or "")
@@ -427,7 +660,18 @@ def main():
         extra = load_extra_tabs()
         if extra:
             print("[astrbot-dl] 保留原有子栏：%s" % ", ".join(str(t.get("key")) for t in extra))
-        doc = build(latest, all_rels, extra)
+        # 先把安装包存一份到站内：下载按钮从此只指本站地址，用户不会再被甩去 GitHub。
+        # --dry-run 不下 24 MB 的文件，只把页面结构打出来。
+        if dry:
+            print("[astrbot-dl] --dry-run：跳过把安装包存到站内这一步", file=sys.stderr)
+        else:
+            mirror = mirror_releases([latest] + list(all_rels or []), quiet=quiet)
+            if mirror:
+                print("[astrbot-dl] 站内已备好 %d 个版本：%s"
+                      % (len(mirror), ", ".join(sorted(mirror.keys(), reverse=True))))
+            else:
+                print("[astrbot-dl] 站内没存到安装包，下载按钮暂时指向 GitHub", file=sys.stderr)
+        doc = build(latest, all_rels, extra, mirror)
     except Exception as e:
         print("[astrbot-dl] 连不上 GitHub：%s" % e, file=sys.stderr)
         doc = load_fallback()
@@ -464,6 +708,11 @@ def main():
     if not quiet:
         print("[astrbot-dl] 写入方式：%s" % how)
         print("[astrbot-dl] 内容版本：%s（线上最新 %s）" % (doc.get("title", ""), ver or "未知"))
+    try:
+        write_download_index(mirror, quiet=quiet)
+    except Exception as e:
+        # 列表页只是顺手生成的，写不出来不该让整个同步算失败（下载卡片本身还好好的）
+        print("[astrbot-dl] 站内下载列表页没生成：%s" % e, file=sys.stderr)
     return 0
 
 

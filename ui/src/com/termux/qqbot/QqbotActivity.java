@@ -431,6 +431,47 @@ public class QqbotActivity extends Activity {
         }
     }
 
+    /* 去掉日志里的 ANSI 颜色码。apt / pip / NapCat 都会写颜色，直接塞进 toast
+       会变成一堆 [0;32m 之类的乱码，用户根本看不出是哪一步出了什么问题。 */
+    public String stripAnsi(String s) {
+        if (s == null) return "";
+        StringBuilder sb = new StringBuilder(s.length());
+        int i = 0;
+        int n = s.length();
+        while (i < n) {
+            char c = s.charAt(i);
+            if (c == 27 && i + 1 < n && s.charAt(i + 1) == '[') {
+                i += 2;
+                while (i < n) {
+                    char d = s.charAt(i);
+                    i++;
+                    if (d >= '@' && d <= '~') break;   // CSI 的终结字符
+                }
+                continue;
+            }
+            sb.append(c);
+            i++;
+        }
+        return sb.toString();
+    }
+
+    /* 取日志最后一行，用来在操作失败时告诉用户「到底为什么失败」。
+       部署脚本在第 1 步开跑之前就退出时（真机 arm64 上 proot 前置自检那回），
+       pid 文件不会写、进程也查不到，旧代码只回一句 start failed，
+       用户看到的 toast 是「部署：start failed」，完全看不出原因。 */
+    public String lastLogLine(File f) {
+        try {
+            String s = stripAnsi(tail(f, 1)).trim();
+            if (s.length() > 200) s = s.substring(0, 200) + "…";
+            return s;
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    /** 服务日志（supervisor.log），启动失败时用它给原因。 */
+    public File supervisorLogFile() { return new File(new File(qqbotDir(), "logs"), "supervisor.log"); }
+
     public File deployPidFile() { return new File(qqbotDir(), "deploy.pid"); }
     public File deployDoneFile() { return new File(qqbotDir(), "deploy.done"); }
 
@@ -474,12 +515,12 @@ public class QqbotActivity extends Activity {
 
     /** 在后台启动（或续跑）完整部署流程。 */
     public String startDeploy() {
-        if (deployDoneFile().isFile()) return "already deployed";
-        if (pidAlive(deployPidFile())) return "already running";
+        if (deployDoneFile().isFile()) return "已经部署完成，不用重新开始";
+        if (pidAlive(deployPidFile())) return "部署正在跑，稍等一下";
         File bash = new File(usrDir(), "bin/bash");
-        if (!bash.isFile()) return "termux bootstrap not ready";
+        if (!bash.isFile()) return "Termux 基础环境还没解包好，退出重进一次应用再试";
         File script = new File(usrDir(), "opt/qqbot/deploy.sh");
-        if (!script.isFile()) return "deploy.sh missing";
+        if (!script.isFile()) return "找不到部署脚本，覆盖安装一次应用可以恢复";
         String qh = qqbotDir().getAbsolutePath();
         // 必须用 setsid：runShell 返回后会 destroy() 掉这个 shell，而 Android 的
         // ProcessImpl.destroyProcess 是按进程组发 SIGTERM 的，同组的后台进程会被连带杀死，
@@ -488,15 +529,19 @@ public class QqbotActivity extends Activity {
                 + "nohup setsid bash " + usrDir().getAbsolutePath() + "/opt/qqbot/deploy.sh >> "
                 + qh + "/logs/deploy.log 2>&1 < /dev/null & "
                 + "sleep 2; echo ok", 25);
-        return pidAlive(deployPidFile()) ? "started" : "start failed";
+        if (pidAlive(deployPidFile())) return "已开始部署";
+        // 没活下来：把部署日志的最后一行原样带出去（去色、截断），
+        // 否则界面只能显示一句没头没尾的「启动失败」，用户没法反馈、我也没法定位。
+        String why = lastLogLine(deployLogFile());
+        return "启动失败" + (why.length() > 0 ? "：" + why : "：部署脚本没有写出日志，重进应用再试一次");
     }
 
     /** 在后台拉起机器人服务（NapCat + AstrBot）。 */
     public String startServices() {
         File bash = new File(usrDir(), "bin/bash");
-        if (!bash.isFile()) return "termux bootstrap not ready";
+        if (!bash.isFile()) return "Termux 基础环境还没解包好，退出重进一次应用再试";
         File pid = new File(qqbotDir(), "supervisor.pid");
-        if (pidAlive(pid)) return "already running";
+        if (pidAlive(pid)) return "服务已经在跑了";
         String qh = qqbotDir().getAbsolutePath();
         // 同 startDeploy：setsid 脱离进程组；pid 由 start-sandbox.sh 自己写
         // （setsid 在调用者是进程组组长时会 fork，$! 指向的就不是真正的 proot）
@@ -504,7 +549,9 @@ public class QqbotActivity extends Activity {
                 + "nohup setsid bash " + usrDir().getAbsolutePath() + "/opt/qqbot/start-sandbox.sh > "
                 + qh + "/logs/supervisor.log 2>&1 < /dev/null & "
                 + "sleep 3; echo ok", 30);
-        return pidAlive(pid) ? "started" : "start failed";
+        if (pidAlive(pid)) return "服务已启动";
+        String why = lastLogLine(supervisorLogFile());
+        return "启动失败" + (why.length() > 0 ? "：" + why : "：服务没有写出日志，重进应用再试一次");
     }
 
     /** 应用启动时：没部署完就续跑部署；部署完了就确保服务在跑。 */
