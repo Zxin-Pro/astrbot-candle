@@ -37,10 +37,18 @@ qqlog "设备架构 $QQBOT_ARCH（ro.product.cpu.abi=$QQBOT_ABI）"
 qqlog "proot     $QQBOT_PROOT"
 qqlog "工作目录  $QQBOT_HOME"
 
-if command -v timeout >/dev/null 2>&1; then
+# 全新安装时 $PREFIX/bin/proot 还不存在：Termux 的 bootstrap 里根本没有 proot，
+# 它是步骤 10 用 apt 装进来的（只有 amd64 用的是随包内置的 proot-x86_64，从第一秒就在）。
+# 老版本在这里无条件自检，arm64 真机上等于「拿一个还不存在的文件去自检」：
+# timeout 返回 127，被误判成「架构与 proot 不匹配」直接 exit 1，部署一步都跑不起来。
+# 所以只有 proot 真的存在时才做前置自检，不存在就等步骤 10 装完再检。
+if [ ! -x "$QQBOT_PROOT" ]; then
+  qqlog "proot 尚未安装（$QQBOT_PROOT），跳过前置自检，步骤 10 装好后会再检一次"
+elif command -v timeout >/dev/null 2>&1; then
   if ! qq_proot_selftest; then
     qqerr "proot 自检失败：$QQBOT_PROOT"
-    qqerr "该设备的架构与 proot 不匹配，部署无法继续。"
+    qq_proot_selftest_log
+    qqerr "这台设备上的 proot 跑不起来，部署无法继续。"
     exit 1
   fi
   qqok "proot 自检通过"

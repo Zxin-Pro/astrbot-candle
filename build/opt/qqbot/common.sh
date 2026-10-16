@@ -16,6 +16,9 @@ QQBOT_DEVDIR="$QQBOT_HOME/dev"
 # 下载代理配置文件：由 App 的设置页写入（纯文本，一行 URL，可能为空或不存在）。
 # 所有下载（rootfs / QQ / NapCat / AstrBot / apt / pip）都要走这个代理。
 QQBOT_PROXY_FILE="$QQBOT_HOME/proxy.txt"
+# proot 自检的输出落盘，自检失败时原样打印。老版本把 stderr 丢进 /dev/null，
+# 真机上分不清到底是「文件不存在」还是「被系统拦了 ptrace」，只能瞎猜。
+QQBOT_SELFTEST_LOG="$QQBOT_LOGS/proot-selftest.log"
 
 QQBOT_QQ_DEB_BASE="https://qqdl.gtimg.cn/qqfile/QQNT/9.9.36/beta/9ee04bef"
 QQBOT_QQ_VER="3.2.34-53644"
@@ -378,11 +381,25 @@ qq_proot_selftest() {
   unset LD_PRELOAD
   export PROOT_TMP_DIR="$QQBOT_PTMP"
   mkdir -p "$QQBOT_PTMP" 2>/dev/null
-  if command -v timeout >/dev/null 2>&1; then
-    timeout 25 "$QQBOT_PROOT" -0 /system/bin/echo qqbot-proot-ok >/dev/null 2>&1
-  else
-    "$QQBOT_PROOT" -0 /system/bin/echo qqbot-proot-ok >/dev/null 2>&1
+  # proot 不存在时先挡下来：否则 timeout 会返回 127，而上层只看退出码，
+  # 会把「文件都还没装」误报成「架构不匹配」。
+  if [ ! -x "$QQBOT_PROOT" ]; then
+    printf 'proot 不存在或不可执行：%s\n' "$QQBOT_PROOT" > "$QQBOT_SELFTEST_LOG" 2>/dev/null
+    return 1
   fi
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 25 "$QQBOT_PROOT" -0 /system/bin/echo qqbot-proot-ok > "$QQBOT_SELFTEST_LOG" 2>&1
+  else
+    "$QQBOT_PROOT" -0 /system/bin/echo qqbot-proot-ok > "$QQBOT_SELFTEST_LOG" 2>&1
+  fi
+}
+
+# 自检失败时把 proot 自己的报错原样打到日志里（缩进四格，便于和 [QQBot] 行区分）。
+qq_proot_selftest_log() {
+  if [ -s "$QQBOT_SELFTEST_LOG" ]; then
+    sed 's/^/    /' "$QQBOT_SELFTEST_LOG" >&2
+  fi
+  return 0
 }
 
 # 注意：绝不能加 --link2symlink。它会把 dpkg 的硬链接换成指向宿主绝对路径
