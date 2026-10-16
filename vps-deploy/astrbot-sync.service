@@ -1,0 +1,20 @@
+[Unit]
+Description=AstrBot烛版 下载页数据同步（每日爬 GitHub Releases 刷新 data/astrbot.json）
+Documentation=https://github.com/Zxin-Pro/astrbot-candle
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+# 站点目录由 install.sh 自动探测后写进下面这行；也可以手动改。
+Environment=ASTRBOT_JSON=__SITE_DIR__/data/astrbot.json
+ExecStart=/usr/bin/python3 /opt/astrbot-sync/astrbot_sync.py
+# 失败就重试两次（网络抖动），仍然失败保留上一次的好数据。
+Restart=on-failure
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
