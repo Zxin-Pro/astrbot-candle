@@ -144,7 +144,7 @@ journalctl -u astrbot-sync.service -n 30 --no-pager
 
 1. 标题是「**AstrBot烛版**」、副标题「手机上一键跑起 AstrBot + NapCat」；
 2. 有四个子栏：下载 / 这是什么 / 怎么用 / 更新日志；
-3. 「下载」栏第一张卡的链接指向站内的 `downloads/AstrBot-<版本号>.apk`（当前为 `downloads/AstrBot-1.1.5.apk`），且版本号与线上最新一致；
+3. 「下载」栏第一张卡的链接指向站内的 `downloads/AstrBot-<版本号>.apk`（当前为 `downloads/AstrBot-1.1.6.apk`），且版本号与线上最新一致；
 4. 「下载」栏最后一张「SHA-256 校验值」卡点一下能复制出 64 位十六进制串；
 5. 「更新日志」栏第一张卡是当前最新版，正文是中文、**没有乱码**。
 
