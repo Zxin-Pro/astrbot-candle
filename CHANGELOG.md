@@ -11,6 +11,26 @@
 
 ---
 
+## [1.1.8] - 2026-10-17
+
+真机（arm64）上第 3 步报的错终于被抓住了 —— 应用自己把原因显示出来了：
+`dpkg: error: error creating new backup file '/var/lib/dpkg/status-old': Permission denied`。
+这说明 apt 本身能下载（32 MB 的 libc6 包都下完了），失败的是 dpkg 往 `/var/lib/dpkg` 里写东西。
+
+### 修复
+
+- **第 3 步开始前先给 dpkg 数据库做体检并就地修好**：打印身份、`/var/lib/dpkg` 权限、剩余空间与 inode，
+  然后补回权限位、清掉残留的 `status-old`/`status-new`，再真的写一个测试文件确认能写。
+  能修就继续装，修不了立刻失败退出（几秒），不再白跑十几分钟。
+- **`status` 若是符号链接就换回普通文件**：旧版本用过 proot 的 `--link2symlink`，会把 dpkg 的数据库文件
+  换成指向宿主绝对路径的符号链接，沙盒里解析不到。
+- **硬链接自检**：dpkg 备份 status 用的是 `link(2)`。沙盒所在存储建不了硬链接时（把应用数据放外置存储、
+  某些 FUSE 挂载），apt 装任何包都会失败。现在解包完 rootfs 就先试一次，不行直接说清楚「应用要装在内部存储」。
+- **下到一半的 .deb 一律先清掉**：真机上 libc6 的包是半个，`dpkg-deb` 解它时报
+  `Broken pipe / <decompress> subprocess returned error exit status 2`，而 apt 认为包已在本地不会重下，
+  于是每次重试都撞同一个坏包。
+- **重建根文件系统之前先判断重建有没有用**：文件系统不支持硬链接、或旧目录删不掉时，
+  直接给结论（去内部存储 / 卸载重装），不再让用户白等一次 30 MB 下载。
 ## [1.1.7] - 2026-10-17
 
 ### 新增

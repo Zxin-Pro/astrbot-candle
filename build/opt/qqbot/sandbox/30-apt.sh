@@ -97,6 +97,110 @@ if [ "$FREE_MB" -gt 0 ] && [ "$FREE_MB" -lt 900 ]; then
   exit 1
 fi
 
+# ---------------------------------------------------------------------------
+# dpkg 数据库预检 + 加固（真机实测过 /var/lib/dpkg 写不进去的失败形态）。
+# 用户真机上报的原始错误是这两句：
+#   dpkg: error: error creating new backup file '/var/lib/dpkg/status-old': Permission denied
+#   dpkg-deb (subprocess): cannot copy archive member ... to decompressor pipe: failed to write (Broken pipe)
+#   dpkg-deb: error: <decompress> subprocess returned error exit status 2
+# 它们都指向同一件事：dpkg 往 /var/lib/dpkg 里写东西被拒。可能的原因有三类，
+# 这个函数逐个探测并把结果写进日志（日志会进「上次失败原因」红框，出问题能直接看到）：
+#   1) 目录/文件属主或权限不对（rootfs 被别的用户解出来过、权限位丢了）→ chmod 修
+#   2) status / status-old 被旧版 proot --link2symlink 换成了指向宿主的符号链接 → 换回普通文件
+#   3) 文件系统根本不支持硬链接（dpkg 备份 status 用的就是 link()）→ 只能重建根文件系统
+# 任何一步修不好都立刻失败退出：早退比下载 200 MB 之后再炸好得多。
+# ---------------------------------------------------------------------------
+qq_db_say() { echo "[sandbox] $*"; }
+qq_db_precheck() {
+  DB=/var/lib/dpkg
+  if [ ! -d "$DB" ]; then
+    qq_db_say "E: $DB 不存在，根文件系统不完整"
+    return 1
+  fi
+  qq_db_say "dpkg 预检：身份 $(id -u 2>/dev/null):$(id -gn 2>/dev/null)，$DB $(ls -ld "$DB" 2>&1 | tr -s ' ')"
+  qq_db_say "dpkg 预检：status $(ls -l "$DB/status" 2>&1 | tr -s ' ')"
+  qq_db_say "dpkg 预检：空间 $(df -h / 2>/dev/null | tail -n 1 | tr -s ' ')；inode $(df -i / 2>/dev/null | tail -n 1 | tr -s ' ')"
+
+  # (2) status 必须是普通文件：旧版 proot --link2symlink 会把它换成指向宿主绝对路径的符号链接，
+  # 那种链接在沙盒里解析不到，dpkg 会一直报错。cp -L 顺着链接把内容读出来再覆盖成普通文件。
+  if [ -L "$DB/status" ]; then
+    qq_db_say "status 是符号链接（旧版 link2symlink 留下的），换成普通文件"
+    rm -f "$DB/status.qqbottmp" 2>/dev/null || true
+    if cp -fL "$DB/status" "$DB/status.qqbottmp" 2>/dev/null && [ -s "$DB/status.qqbottmp" ]; then
+      mv -f "$DB/status.qqbottmp" "$DB/status" 2>/dev/null || true
+      qq_db_say "status 已换回普通文件"
+    else
+      rm -f "$DB/status.qqbottmp" 2>/dev/null || true
+      qq_db_say "E: status 读不出来（链接指向的文件不存在），需要重建根文件系统"
+      return 1
+    fi
+  fi
+
+  # status-old / status-new 是 dpkg 自己的备份，留着反而会挡住 link()，先清掉重来。
+  rm -f "$DB/status-old" "$DB/status-new" 2>/dev/null || true
+  # 不碰别的目录的权限：apt/log/tmp 那几个下面的 chmod 放在后面失败分支里做，
+  # 免得在一切都正常的时候也去动全树权限（慢，而且没必要）。
+
+  # 写测试：**先原样试写一次**，这样日志里才能记下「本来为什么写不进去」；
+  # 补权限放在失败之后做，成功路径不打印无关内容。
+  # 注意写法：本脚本开着 set -e，`var=$(会失败的命令)` 会直接终止脚本，
+  # 所以失败路径必须放在 if 条件里（条件里的失败不影响 set -e）。
+  _werr=""
+  if ! { : > "$DB/.qqbot-wtest"; } 2>/tmp/.qqbot-wtest.err; then
+    _werr=$(cat /tmp/.qqbot-wtest.err 2>/dev/null | tail -n 1)
+  fi
+  rm -f /tmp/.qqbot-wtest.err 2>/dev/null || true
+  if [ -f "$DB/.qqbot-wtest" ]; then
+    rm -f "$DB/.qqbot-wtest" 2>/dev/null || true
+    qq_db_say "dpkg 预检：$DB 可写"
+  else
+    qq_db_say "E: $DB 不可写（${_werr:-Permission denied}），补回权限后再试"
+    # 能 chmod 成功就说明我们就是属主，补完之后一般就能写了。
+    chmod u+rwx "$DB" 2>/dev/null || true
+    chmod -R u+rwX "$DB" /var/lib/apt /var/cache/apt /var/log/apt /tmp /run 2>/dev/null || true
+    if ( : > "$DB/.qqbot-wtest" ) 2>/dev/null; then
+      rm -f "$DB/.qqbot-wtest" 2>/dev/null || true
+      qq_db_say "加固后 $DB 已可写，继续"
+    else
+      qq_db_say "E: 沙盒里 $DB 连 chmod 777 都修不好 —— 这个根文件系统的文件不属于当前应用，必须重建"
+      : > /qqbot-cache/fs-nowrite 2>/dev/null || true
+      return 1
+    fi
+  fi
+
+  # (3) 硬链接测试：dpkg 备份 status 用的是 link()，不支持硬链接的文件系统上必然 EACCES。
+  if ln "$DB/status" "$DB/.qqbot-htest" 2>/dev/null; then
+    rm -f "$DB/.qqbot-htest" 2>/dev/null || true
+    qq_db_say "dpkg 预检：硬链接可用"
+  else
+    _herr=""
+    if ! ln "$DB/status" "$DB/.qqbot-htest" 2>/tmp/.qqbot-hlink.err; then
+      _herr=$(cat /tmp/.qqbot-hlink.err 2>/dev/null | tail -n 1)
+    fi
+    rm -f /tmp/.qqbot-hlink.err 2>/dev/null || true
+    rm -f "$DB/.qqbot-htest" 2>/dev/null || true
+    qq_db_say "E: 沙盒所在文件系统建不了硬链接（${_herr:-Operation not permitted}）"
+    qq_db_say "E: dpkg 备份 status 用的就是硬链接，这个盘上装不了依赖"
+    # 留个标记给宿主的 deploy.sh：这种情况重建根文件系统没用，别再白下 30 MB。
+    # /qqbot-cache 是宿主 <QQBOT_HOME>/cache 的绑定挂载，宿主侧能看到这个文件。
+    : > /qqbot-cache/fs-nolink 2>/dev/null || true
+    return 1
+  fi
+  return 0
+}
+
+# apt 缓存里下到一半的 .deb 一定要先清掉：真机上 libc6 的包就是半个，
+# dpkg-deb 解它时报 "Broken pipe / <decompress> subprocess returned error exit status 2"，
+# 而 apt 认为包已在本地、不会重下，于是每次重试都撞同一个坏包。
+rm -f /var/cache/apt/archives/*.deb 2>/dev/null || true
+rm -rf /var/cache/apt/archives/partial 2>/dev/null || true
+mkdir -p /var/cache/apt/archives/partial 2>/dev/null || true
+
+if ! qq_db_precheck; then
+  echo "[sandbox] E: 沙盒里安装不了东西（dpkg 数据库写不进去），需要重建根文件系统"
+  exit 4
+fi
+
 apt_update() {
   printf 'deb %s/ noble main restricted universe multiverse\ndeb %s/ noble-updates main restricted universe multiverse\ndeb %s/ noble-backports main restricted universe multiverse\ndeb %s/ noble-security main restricted universe multiverse\n' "$1" "$1" "$1" "$1" > /etc/apt/sources.list
   echo "[sandbox] apt-get update（镜像 $1）"
