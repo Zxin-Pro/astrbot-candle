@@ -1,0 +1,13 @@
+[Unit]
+Description=AstrBot 烛版 错误报告接收
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/qqbot-errdump/server.py
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

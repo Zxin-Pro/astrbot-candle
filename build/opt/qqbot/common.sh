@@ -59,6 +59,92 @@ qq_err_note() {
 qqerr()  { printf '\033[31m[QQBot]\033[0m %s\n' "$*" >&2; qq_err_note "$*"; }
 
 # ---------------------------------------------------------------------------
+# 沙盒目录体检：能否写 / 能否建硬链接 / 还剩多少空间
+#
+# 为什么单独做：dpkg 备份 status 用的是 link(2)，而「写不进去」和「不能建硬链接」
+# 在真机上是两种完全不同的毛病（权限 vs 文件系统格式），旧代码把它们混成一句
+# 「不可写，或者不支持硬链接」，用户拿着这句话没法处理。这里每项单独测、单独说，
+# 并把完整诊断写进 $QQBOT_HOME/fs-probe.txt —— 界面的「上传错误日志」会带上它。
+#
+# 用法：qq_fsprobe <目录>   返回 0 正常 / 1 不可用（原因已打印并记进 deploy.error）
+# ---------------------------------------------------------------------------
+qq_fsprobe() {
+  _d=${1:-$QQBOT_ROOTFS}
+  _rep=$QQBOT_HOME/fs-probe.txt
+  _err=$QQBOT_CACHE/.fsprobe.err
+  _rc=0
+  mkdir -p "$_d" 2>/dev/null || true
+  {
+    echo "== 沙盒目录体检 $(date '+%F %T' 2>/dev/null) =="
+    echo "目标目录: $_d"
+    echo "架构: $(uname -m 2>/dev/null)   内核: $(uname -r 2>/dev/null)"
+    echo "HOME=$HOME"
+    echo "PREFIX=$PREFIX"
+  } > "$_rep" 2>/dev/null || true
+  if [ ! -d "$_d" ]; then
+    qqerr "沙盒目录 $_d 建不出来（连 mkdir 都失败）"
+    echo "mkdir 失败：目录不存在也建不出来" >> "$_rep" 2>/dev/null || true
+    return 1
+  fi
+  # ---- 1) 写测试 ----
+  _w=0
+  if : > "$_d/.qqbot-wtest" 2>"$_err"; then
+    _w=1
+  else
+    # 先试着自己修一次再判死：属主/权限位不对是最常见的一种。
+    chmod u+rwx "$_d" 2>/dev/null || true
+    chmod -R u+rwX "$_d" 2>/dev/null || true
+    if : > "$_d/.qqbot-wtest" 2>"$_err"; then _w=1; fi
+  fi
+  _werr=$(cat "$_err" 2>/dev/null | head -n 2 | tr '\n' ' ')
+  # ---- 2) 硬链接测试（只有写成功才有意义）----
+  _h=0
+  if [ "$_w" = 1 ]; then
+    if ln "$_d/.qqbot-wtest" "$_d/.qqbot-htest" 2>"$_err"; then
+      _h=1
+    else
+      chmod -R u+rwX "$_d" 2>/dev/null || true
+      if ln "$_d/.qqbot-wtest" "$_d/.qqbot-htest" 2>"$_err"; then _h=1; fi
+    fi
+    _herr=$(cat "$_err" 2>/dev/null | head -n 2 | tr '\n' ' ')
+  else
+    _herr='(写不进去，硬链接未测)'
+  fi
+  rm -f "$_d/.qqbot-wtest" "$_d/.qqbot-htest" 2>/dev/null || true
+  # ---- 3) 空间 ----
+  _df=$(df -k "$_d" 2>/dev/null | tail -n 1)
+  _avail=$(echo "$_df" | awk '{print $4}' 2>/dev/null)
+  _use=$(echo "$_df" | awk '{print $5}' 2>/dev/null)
+  {
+    echo "目录权限: $(ls -ldn "$_d" 2>/dev/null)"
+    echo "上级目录: $(ls -ldn "$(dirname "$_d")" 2>/dev/null)"
+    echo "目录内抽样: $(ls -ldn "$_d"/* 2>/dev/null | head -n 3 | tr '\n' '|')"
+    echo "空间: ${_df:-取不到}   可用KB=${_avail:-?}   使用率=${_use:-?}"
+    echo "写测试: $([ "$_w" = 1 ] && echo 通过 || echo 失败)   ${_werr}"
+    echo "硬链接: $([ "$_h" = 1 ] && echo 通过 || echo 失败)   ${_herr}"
+    echo "挂载: $(mount 2>/dev/null | grep -F " $(dirname "$_d") " | head -n 2 | tr '\n' '|')"
+  } >> "$_rep" 2>/dev/null || true
+  if [ "$_w" != 1 ]; then
+    rm -f "$QQBOT_CACHE/fs-nolink" 2>/dev/null || true
+    : > "$QQBOT_CACHE/fs-nowrite" 2>/dev/null || true
+    qqerr "沙盒目录 $_d 写不进去：${_werr:-未知错误}"
+    [ -n "$_avail" ] && [ "$_avail" -lt 51200 ] 2>/dev/null && qqerr "手机剩余空间不够（只剩 $((_avail / 1024)) MB），先清一点空间再试"
+    qqerr "如果这条一直出现：设置页 → 重置部署标记 → 重新部署；还不行就卸载重装（安装时选内部存储）"
+    return 1
+  fi
+  if [ "$_h" != 1 ]; then
+    rm -f "$QQBOT_CACHE/fs-nowrite" 2>/dev/null || true
+    : > "$QQBOT_CACHE/fs-nolink" 2>/dev/null || true
+    qqerr "$_d 所在的文件系统不支持硬链接：${_herr:-未知错误}"
+    qqerr "apt/dpkg 必须能建硬链接才能装包。请确认应用数据在「内部存储」，不要在 SD 卡或外置存储上"
+    return 1
+  fi
+  rm -f "$QQBOT_CACHE/fs-nowrite" "$QQBOT_CACHE/fs-nolink" 2>/dev/null || true
+  qqlog "沙盒目录体检通过（可写、硬链接可用${_avail:+，剩余 $((_avail / 1024)) MB}）"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # 端口配置（从 bots.json 读）
 #
 # 本文件在 Termux 侧执行，那里没有 python3（只有沙盒内的 Ubuntu 才有），所以

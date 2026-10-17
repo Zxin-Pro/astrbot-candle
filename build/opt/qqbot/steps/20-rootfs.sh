@@ -61,17 +61,9 @@ fi
 # 而这个报错看起来像权限问题，实际是磁盘格式问题（FAT/exFAT、把应用数据放外置存储、
 # 某些 FUSE 挂载都会这样）。在这里先试一次，早失败早说清楚。
 # ---------------------------------------------------------------------------
-qqfs_ok=0
-if { : > "$ROOTFS/.qqbot-wtest"; } 2>/dev/null; then
-  if ln "$ROOTFS/.qqbot-wtest" "$ROOTFS/.qqbot-htest" 2>/dev/null; then qqfs_ok=1; fi
-fi
-rm -f "$ROOTFS/.qqbot-wtest" "$ROOTFS/.qqbot-htest" 2>/dev/null
-if [ "$qqfs_ok" != "1" ]; then
-  qqerr "沙盒目录 $ROOTFS 不可写，或者它所在的文件系统不支持硬链接"
-  qqerr "apt/dpkg 必须有硬链接才能工作：请确认应用装在「内部存储」，不要装到 SD 卡 / 外置存储，然后重试"
-  exit 1
-fi
-qqlog "沙盒目录可写，硬链接可用"
+# 具体哪一项不过由 qq_fsprobe 分开报（写不进去 / 不能建硬链接是两种毛病），
+# 完整诊断落在 ~/.qqbot/fs-probe.txt，界面的「上传错误日志」会带上它。
+qq_fsprobe "$ROOTFS" || exit 1
 # 权限归一：rootfs 可能是旧版应用留下的、或从别处拷来的，属主/权限位一旦不对，
 # 后面 dpkg 就会一路 Permission denied。只修关键目录，不做全树 chmod（手机上太慢）。
 chmod -R u+rwX "$ROOTFS/var/lib/dpkg" "$ROOTFS/var/lib/apt" "$ROOTFS/var/cache/apt" \
