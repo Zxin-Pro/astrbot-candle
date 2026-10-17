@@ -90,13 +90,100 @@ case "$PROXY_URL" in
     ./.venv/bin/pip install pysocks -i "$PIPMIRROR" >/dev/null 2>&1 || true
     ;;
 esac
-./.venv/bin/python -m pip install --upgrade pip -i "$PIPMIRROR" "${PIP_PROXY_ARGS[@]}"
+# ---------------------------------------------------------------------------
+# 心跳：依赖安装是本流程最久的一步（真机上 pip 要十几分钟），期间可能长达几分钟
+# 一行输出都没有，用户看到「日志 N 分钟没有新内容」会以为卡死然后强杀。
+# 每 45 秒打一行，既让界面知道还活着，也让部署日志有可读的时间线。
+# ---------------------------------------------------------------------------
+qq_hb() {
+  _hbp=$1
+  while kill -0 "$_hbp" 2>/dev/null; do
+    sleep 45
+    kill -0 "$_hbp" 2>/dev/null || break
+    echo "[sandbox] 仍在安装依赖…（$(date +%H:%M:%S 2>/dev/null)）"
+  done
+}
+qq_run_hb() {
+  set +e
+  "$@" &
+  _p=$!
+  qq_hb "$_p" &
+  _hb=$!
+  wait "$_p"
+  _rc=$?
+  kill "$_hb" 2>/dev/null || true
+  wait "$_hb" 2>/dev/null || true
+  set -e
+  return $_rc
+}
 
+# ---------------------------------------------------------------------------
+# 优先用 uv 装依赖。pip 在这类手机上要解析上百个包的依赖树，真机实测能卡十几分钟；
+# uv 是单个静态二进制，解析 + 下载通常一分钟内解决（参考项目 AstrBot-Bubble-Android-App
+# 用的也是 astral-sh/uv）。uv 拿不到或失败时自动退回 pip，不会因此装不上。
+# ---------------------------------------------------------------------------
+UV=/opt/astrbot-tools/uv
+ensure_uv() {
+  [ -x "$UV" ] && return 0
+  # 路径一：直接从 PyPI 装。uv 自己在 PyPI 上有 manylinux 的 x86_64 / aarch64 wheel，
+  # 走清华镜像几秒就能落地，完全不用碰 GitHub —— 真机上 GitHub 直连基本不可用，
+  # release 镜像（ghfast / gh-proxy / ghproxy）又时好时坏，实测三个都失败过。
+  echo "[sandbox] 从 PyPI 安装 uv"
+  if ./.venv/bin/pip install --disable-pip-version-check -q -i "$PIPMIRROR" "${PIP_PROXY_ARGS[@]}" uv >/tmp/uv-pypi.log 2>&1; then
+    if [ -x ./.venv/bin/uv ]; then
+      echo "[sandbox] uv 已就绪：$(./.venv/bin/uv --version 2>/dev/null)"
+      UV=./.venv/bin/uv
+      return 0
+    fi
+  fi
+  tail -n 4 /tmp/uv-pypi.log 2>/dev/null || true
+  # 路径二：从 GitHub release 取静态二进制（PyPI 装不上时的兜底）。
+  case "$(uname -m 2>/dev/null)" in
+    aarch64|arm64) _uva=uv-aarch64-unknown-linux-gnu ;;
+    x86_64|amd64)  _uva=uv-x86_64-unknown-linux-gnu ;;
+    *) return 1 ;;
+  esac
+  mkdir -p /opt/astrbot-tools 2>/dev/null || true
+  for _b in "https://ghfast.top/" "https://gh-proxy.com/" "https://ghproxy.net/" ""; do
+    echo "[sandbox] 下载 uv（${_b:-直连}）"
+    rm -f /tmp/uv.tar.gz
+    if curl -fL --connect-timeout 15 --max-time 240 --retry 1 -o /tmp/uv.tar.gz \
+         "${_b}https://github.com/astral-sh/uv/releases/latest/download/$_uva.tar.gz" 2>/dev/null; then
+      rm -rf "/tmp/$_uva"
+      if tar -xzf /tmp/uv.tar.gz -C /tmp 2>/dev/null && [ -x "/tmp/$_uva/uv" ]; then
+        mv -f "/tmp/$_uva/uv" "$UV"
+        chmod 755 "$UV"
+        rm -rf "/tmp/$_uva" /tmp/uv.tar.gz
+        UV=/opt/astrbot-tools/uv
+        return 0
+      fi
+    fi
+  done
+  rm -f /tmp/uv.tar.gz 2>/dev/null || true
+  return 1
+}
 echo "[sandbox] 安装 AstrBot 依赖（耗时较长，请耐心等待）"
-if ! ./.venv/bin/pip install -r requirements.txt -i "$PIPMIRROR" "${PIP_PROXY_ARGS[@]}"; then
-  echo "[sandbox] 镜像安装失败，改用官方 PyPI 重试"
-  ./.venv/bin/pip install -r requirements.txt "${PIP_PROXY_ARGS[@]}" || { echo "[sandbox] AstrBot 依赖安装失败"; exit 1; }
+DEPS_OK=0
+if ensure_uv && "$UV" --version >/dev/null 2>&1; then
+  echo "[sandbox] 使用 uv 安装（$("$UV" --version 2>/dev/null)）"
+  # uv 走 HTTP(S)_PROXY 环境变量，代理已在上面 export；socks5 需要 uv 自己支持，失败就退回 pip。
+  if qq_run_hb "$UV" pip install --python .venv/bin/python -r requirements.txt --index-url "$PIPMIRROR"; then
+    DEPS_OK=1
+  else
+    echo "[sandbox] uv 安装失败，改用 pip 重试"
+  fi
 fi
+if [ "$DEPS_OK" != "1" ]; then
+  ./.venv/bin/python -m pip install --upgrade pip -i "$PIPMIRROR" "${PIP_PROXY_ARGS[@]}" || true
+  if qq_run_hb ./.venv/bin/pip install -r requirements.txt -i "$PIPMIRROR" "${PIP_PROXY_ARGS[@]}"; then
+    DEPS_OK=1
+  else
+    echo "[sandbox] 镜像安装失败，改用官方 PyPI 重试"
+    qq_run_hb ./.venv/bin/pip install -r requirements.txt "${PIP_PROXY_ARGS[@]}" || { echo "[sandbox] AstrBot 依赖安装失败"; exit 1; }
+    DEPS_OK=1
+  fi
+fi
+echo "[sandbox] AstrBot 依赖安装完成"
 
 echo "[sandbox] 预置 AstrBot 配置（自动接入本机 NapCat）"
 # 控制台（dashboard）端口不在这里写：AstrBot 的解析顺序是

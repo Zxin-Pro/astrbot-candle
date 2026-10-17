@@ -236,6 +236,8 @@ button.tiny{min-height:0;padding:4px 10px;font-size:11.5px;border-radius:var(--r
 .askup .asktx{font-size:12px;line-height:1.65;color:#b9c9e6}
 /* 部署卡标题栏里的两个小按钮挨在一起：复制日志在左、展开/收起在右 */
 .dtgl + .dtgl{margin-left:6px}
+/* 慢步骤的旁注：让用户一眼看出「这一步本来就慢」，别因为没输出就强杀 */
+.slow{font-style:normal;color:#8fa3c0;font-size:11px;margin-left:6px;opacity:.92}
 #btnCopyLog{margin-left:auto}
 #btnCopyLog + .dtgl{margin-left:6px;margin-right:0}
 
@@ -1420,9 +1422,12 @@ function refreshDeploy(){
   el("deployBar").style.width = pct + "%";
   el("d-deploying").className = "dot " + (d.done ? "ok" : (d.running ? "warn" : "bad"));
   var h = [];
+  var curStep = null;
   for (var i = 0; i < d.steps.length; i++) {
+    if (!d.steps[i].done && !curStep) curStep = d.steps[i];
     var s = d.steps[i];
-    h.push('<div class="step' + (s.done ? " done" : "") + '"><span class="mk">' + (s.done ? "✓" : "○") + '</span><span>' + esc(s.label) + '</span></div>');
+    var tip = (!s.done && SLOW_STEP[s.key]) ? ' <i class="slow">' + SLOW_STEP[s.key] + '</i>' : '';
+    h.push('<div class="step' + (s.done ? " done" : "") + '"><span class="mk">' + (s.done ? "✓" : "○") + '</span><span>' + esc(s.label) + tip + '</span></div>');
   }
   setHtml(el("stepList"), h.join(""));
   if (d.done) el("deployHint").textContent = "部署已完成，可以开始扫码登录 QQ 了。";
@@ -1432,11 +1437,15 @@ function refreshDeploy(){
     var age = d.logAge || 0;
     var mins = Math.floor(age / 60);
     var stuck = age > 600;
+    var curName = curStep ? curStep.label : "";
+    var curTip = curStep && SLOW_STEP[curStep.key] ? SLOW_STEP[curStep.key] : "";
     el("deployHint").textContent = "正在部署中…（已完成 " + d.doneCount + "/" + d.total + " 步）"
-      + (mins >= 1 ? "日志 " + mins + " 分钟没有新内容，" : "")
+      + (curName ? "当前：" + curName + "。" : "")
+      + (mins >= 1 ? "这一步已经 " + mins + " 分钟没有新内容输出，" : "")
+      + (curTip ? curTip + "，没输出是正常的，" : "")
       + (stuck
-        ? "可能卡在下载或 dpkg 上。可以再等等；实在不动就点「停止」再来一次，已装好的部分不会重装。"
-        : "请保持应用在前台、屏幕不要熄灭。中途被打断会自动修好再重试，不用管它。");
+        ? "如果实在不动，点「停止」再来一次也不会重装已装好的部分。"
+        : "请保持应用在前台、屏幕不要熄灭；中途被打断会自动修好再重试。");
   }
   else if (d.doneCount > 0) {
     /* 卡在第 3 步（30-apt）是最常见的中断：上次 apt 被打断会在 dpkg 数据库里留下半配置的包。
@@ -1474,6 +1483,17 @@ function refreshDeploy(){
   }
   autoRetryDeploy(d);
 }
+
+/* 哪些步骤本来就慢：直接写在步骤旁边，配一句大概耗时。
+   真机上「卡在第 6 步」就是这种 —— 用户在没输出的那几分钟里以为死机，强杀之后永远装不完。
+   这里的耗时是按红米那种中端机估的，宁可写宽一点，别让人以为超出预期就是出错。 */
+var SLOW_STEP = {
+  "20-rootfs": "下载并解压约 29MB，1~3 分钟",
+  "30-apt": "装几十个包，2~6 分钟",
+  "40-qq": "下载约 200MB，5~20 分钟",
+  "60-astrbot": "装 Python 依赖，5~20 分钟（最慢的一步，没输出是正常的）",
+  "70-launcher": "生成命令脚本，通常不到 1 分钟"
+};
 
 /* ---------- 部署台展开 / 收起 ----------
    没部署完时永远展开、也不显示折叠按钮（部署过程要看得见）。
@@ -1762,11 +1782,23 @@ var UPLOADING = false;
 function paintErrAsk(etxt, d){
   var box = el("errAsk");
   if (!box) return;
-  var sig = errSig(etxt);
+  var tx = box.querySelector(".asktx");
+  /* 两种情形都要能上传：
+     1) 部署已经失败（有 deploy.error）；
+     2) 部署还在跑、但日志 4 分钟没动 —— 真机上「卡在第 6 步」就是这种，
+        以前只能等它彻底失败才给入口，用户只能干看着然后强杀。 */
+  var stuck = !!(d && d.running && d.logAge >= 240);
+  var failed = !!(etxt && d && !d.done && !d.running);
+  var sig = failed ? errSig(etxt) : (stuck ? ("stale" + Math.floor(d.logAge / 300)) : "");
   box._sig = sig;
-  var show = !!(etxt && d && !d.done && !d.running);
+  var show = failed || stuck;
   if (show && lsGet("qqbot.errskip", "") === sig) show = false;
   box.style.display = show ? "" : "none";
+  if (tx && !UPLOADING) {
+    tx.textContent = stuck
+      ? "这次像是卡住了（日志已经 " + Math.round(d.logAge / 60) + " 分钟没有新内容）。要把现场发给作者看看吗？"
+      : "这次失败要发给作者看看吗？只发这台手机的部署日志、机型和系统版本，不包含任何聊天内容。";
+  }
   var b = el("btnUploadLog");
   if (b) { b.disabled = UPLOADING; b.textContent = UPLOADING ? "正在上传…" : "上传错误日志"; }
 }
