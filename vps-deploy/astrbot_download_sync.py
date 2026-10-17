@@ -63,7 +63,7 @@ PUB = os.path.join(DATA, "astrbot.json")           # 前端读取
 BAK_DIR = os.path.join(DATA, "astrbot_bak")
 FALLBACK = os.path.join(SCRIPTS, "astrbot_download_sync.fallback.json")
 # 这几个子栏由本脚本每天重写。
-# 其它历史子栏（早先分享栏留下的人格之类）不再保留：见下面的 KEEP_EXTRA_TABS。
+# 其它子栏（例如早先写的人格分享）由 KEEP_EXTRA_TABS 决定要不要原样保留。
 MANAGED_KEYS = ("download", "what", "howto", "changelog")
 
 # ---- 站内下载：页面只指本站，用户点下载不会再被甩去 GitHub ----
@@ -767,11 +767,11 @@ def _clip(s, field, default=""):
     return s
 
 
-# 站点 AstrBot 栏现在的定位是「下载页」，内容只由本脚本管的四个子栏组成：
-# download / what / howto / changelog。历史遗留的别的子栏（例如早先的人格分享）
-# 不再往新内容里带 —— 否则它们会一直粘在下载页后面，页面上就有第五个「人格」栏。
-# 想恢复「保留你自己写的子栏」这个老行为，把下面这行改成 True 即可。
-KEEP_EXTRA_TABS = False
+# 站点 AstrBot 栏由本脚本管的四个子栏组成：download / what / howto / changelog。
+# 除此之外，站点上原本就有的别的子栏（例如早先写的「人格」分享）一律原样保留 ——
+# 那是站点主人自己的内容，本脚本只负责每天刷新下载/说明/更新日志，没有资格删。
+# 它们会被排在受管子栏后面；总子栏数受站点 MAX_TABS=12 限制。
+KEEP_EXTRA_TABS = True
 
 
 def load_extra_tabs():
