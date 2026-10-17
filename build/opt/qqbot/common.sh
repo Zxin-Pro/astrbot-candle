@@ -168,11 +168,15 @@ qq_fsprobe() {
       qqerr "同一个手机上别的目录（HOME / cache）可以建，说明是这个目录被弄脏了，下一步会把它删掉重建"
       return 3
     fi
-    qqerr "这台手机的存储不支持硬链接：${_herr:-未知错误}"
-    qqerr "apt/dpkg 装包时必须能建硬链接（备份 /var/lib/dpkg/status 用）。"
-    qqerr "常见原因：应用数据被放在「SD 卡 / 外置存储」，或系统对应用数据分区做了禁止硬链接的限制。"
-    qqerr "请把应用装在「内部存储」后卸载重装；如果已经是内部存储，请把这份日志发给作者。"
-    return 4
+    # 真机（Redmi / Android 16）实测：目录属主正确、写测试通过，但 link(2) 就是 EPERM。
+    # 这种机器上 apt 装任何包都会死在「备份 /var/lib/dpkg/status」这一步。
+    # 解法与 AstrBot-Bubble-Android-App 一致：让 proot 用 --link2symlink 把硬链接
+    # 模拟成符号链接（proot 内部用 rename + symlink 实现，不依赖文件系统支持硬链接）。
+    : > "$QQBOT_HOME/link2symlink" 2>/dev/null || true
+    qqwarn "这台手机的存储不支持硬链接（${_herr:-未知错误}）"
+    qqwarn "已改用 proot 的 --link2symlink 模拟硬链接，apt/dpkg 可以正常工作了"
+    qqlog "沙盒目录体检通过（可写；硬链接用符号链接模拟）"
+    return 0
   fi
   rm -f "$QQBOT_CACHE/fs-nowrite" "$QQBOT_CACHE/fs-nolink" 2>/dev/null || true
   qqlog "沙盒目录体检通过（可写、硬链接可用${_avail:+，剩余 $((_avail / 1024)) MB}）"
@@ -565,11 +569,14 @@ qq_proot_selftest_log() {
   return 0
 }
 
-# 注意：绝不能加 --link2symlink。它会把 dpkg 的硬链接换成指向宿主绝对路径
-# （/data/data/.../ubuntu/usr/lib/...）的 .l2s.* 符号链接，沙盒内解析不到，
-# 使 libc.so.6 / ld-linux-x86-64.so.2 变悬空，之后所有 execve 都返回 ENOENT
-# （dpkg 报 "unable to execute rm command for cleanup"、apt 报 "Could not exec dpkg!"）。
-# Android 的 /data 是 ext4/f2fs，本来就支持硬链接。
+# 关于 --link2symlink：默认关闭，只在「这台手机的存储不支持硬链接」时自动开启
+# （qq_fsprobe 判定后写 $QQBOT_HOME/link2symlink）。
+#
+# 早期的教训是：那时 rootfs 是在 proot **内部**用 tar 解压的，tar 为压缩包里的硬链接
+# 调 link()，被 link2symlink 换成 .l2s.* 符号链接，导致 libc.so.6 悬空、所有 execve
+# 返回 ENOENT。现在解压全部在宿主侧完成（不走 proot），所以只在运行期的 dpkg 事务里
+# 生效，不会碰到系统库。真机证据：Redmi / Android 16 上 link(2) 直接 EPERM，
+# 不开这个 apt 装不了任何包（AstrBot-Bubble-Android-App 也是无条件开着它跑的）。
 qq_proot() {
   unset LD_PRELOAD
   export PROOT_TMP_DIR="$QQBOT_PTMP"
@@ -588,7 +595,12 @@ qq_proot() {
   fi
   # 时区每次进沙盒都重新同步：只写 rootfs 文件不够，TZ 环境变量优先级更高。
   _tz="$(qq_tz_sync)"
-  "$QQBOT_PROOT" --kill-on-exit -0 -r "$QQBOT_ROOTFS" -b /dev -b "$QQBOT_DEVDIR/shm:/dev/shm" -b /proc -b /sys -b "$QQBOT_CACHE:/qqbot-cache" -b "$QQBOT_OPT:/qqbot-opt" -w /root /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin QQBOT_ARCH="$QQBOT_ARCH" _PYTHON_HOST_PLATFORM="$QQBOT_GUEST_PLATFORM" TERM=xterm-256color LANG=C.UTF-8 LC_ALL=C.UTF-8 TMPDIR=/tmp TZ="$_tz" $_px_env /bin/bash -lc "$*"
+  # 存储不支持硬链接时必须开这个：dpkg 每次装包第一步要给 status 建硬链接备份，
+  # 建不了就整条链全挂。proot 的 --link2symlink 会用 rename + symlink 模拟，
+  # 不依赖底层文件系统。（参考 AstrBot-Bubble-Android-App 的做法。）
+  _l2s=""
+  if [ -f "$QQBOT_HOME/link2symlink" ]; then _l2s="--link2symlink"; fi
+  "$QQBOT_PROOT" --kill-on-exit -0 -r "$QQBOT_ROOTFS" $_l2s -b /dev -b "$QQBOT_DEVDIR/shm:/dev/shm" -b /proc -b /sys -b "$QQBOT_CACHE:/qqbot-cache" -b "$QQBOT_OPT:/qqbot-opt" -w /root /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin QQBOT_ARCH="$QQBOT_ARCH" _PYTHON_HOST_PLATFORM="$QQBOT_GUEST_PLATFORM" TERM=xterm-256color LANG=C.UTF-8 LC_ALL=C.UTF-8 TMPDIR=/tmp TZ="$_tz" $_px_env /bin/bash -lc "$*"
 }
 
 qq_sandbox() {

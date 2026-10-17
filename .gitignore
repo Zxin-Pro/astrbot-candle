@@ -9,6 +9,7 @@ _research/
 _sdk/
 out/
 _apkwork/
+_ref/
 _vps/
 
 # Python 缓存（vps-deploy 下的爬虫脚本在本地跑过一次就会生成）

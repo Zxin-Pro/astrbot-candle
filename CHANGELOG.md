@@ -11,6 +11,21 @@
 
 ---
 
+## [1.1.11] - 2026-10-17
+
+按用户给的参考项目 [AstrBot-Bubble-Android-App](https://github.com/MuFengDR/AstrBot-Bubble-Android-App) 的做法，
+补上了硬链接不可用时的解法：**proot 的 `--link2symlink`**。
+
+那个项目在启动 proot 时无条件带 `--link2symlink`，apt 就能在红米这类「link(2) 直接 EPERM」的机器上正常工作。
+
+### 修复
+
+- **存储不支持硬链接时不再判死**：体检发现目标目录、HOME、cache 三处都建不了硬链接时，
+  不再报「必须卸载重装」，而是写下 `~/.qqbot/link2symlink` 标记并继续部署。
+- **`qq_proot` 读到标记就加 `--link2symlink`**：proot 会用 rename + symlink 模拟硬链接，
+  不依赖底层文件系统，dpkg 备份 `/var/lib/dpkg/status` 这一步就能过了。
+- **默认仍然关闭**：只有在真的需要时才开，避免正常机器上多出一堆 `.l2s.*` 符号链接。
+  rootfs 解压始终在宿主侧完成、不经过 proot，所以不会像早期那样把 libc 换成悬空符号链接。
 ## [1.1.10] - 2026-10-17
 
 用户真机（Redmi / Android 16 / arm64）上传的报告把第 2 步的真因抓出来了：
