@@ -38,7 +38,7 @@ if [ ! -s "$BOTS_JSON" ]; then
   mv -f "$BOTS_JSON.$$.tmp" "$BOTS_JSON"
 fi
 
-declare -A PIDS QDIR STOP PURGE
+declare -A PIDS QDIR STOP PURGE XPIDS
 CLEANED=0
 
 log() { echo "[napcat] $*"; }
@@ -320,6 +320,38 @@ PY
   printf '%s' "$v"
 }
 
+# ---------- X 显示（每个实例一个） ----------
+# 为什么不继续用 xvfb-run：它是脚本，会先跑 mcookie/xauth、再用 -a 从 99 往下试号，
+# 每次启动都多几秒，而且在 proot 里 xauth 偶发卡住会让 QQ 一直等 X。
+# 参考项目（AstrBot-Bubble-Android-App）是自己起 Xvfb、等 /tmp/.X11-unix/XN 出现后再拉 QQ，
+# 屏幕还是 1x1x8 —— QQ 根本不需要真的画东西，1 个像素 8 位足够，
+# 1024x768x24 那种帧缓冲只会让 Electron 的软件渲染白干活，arm64 上尤其明显。
+pick_display() {
+  local d
+  for d in $(seq 40 99); do
+    [ -e "/tmp/.X11-unix/X$d" ] && continue
+    [ -e "/tmp/.X$d-lock" ] && continue
+    printf '%s' "$d"
+    return 0
+  done
+  printf '40'
+}
+
+start_xvfb() {
+  local id="$1" d="$2" i
+  mkdir -p /tmp/.X11-unix 2>/dev/null || true
+  chmod 1777 /tmp/.X11-unix 2>/dev/null || true
+  rm -f "/tmp/.X$d-lock" "/tmp/.X11-unix/X$d" 2>/dev/null || true
+  Xvfb ":$d" -screen 0 1x1x8 +extension GLX +render > "$RUNDIR/xvfb-$id.log" 2>&1 &
+  XPIDS[$id]=$!
+  for i in $(seq 1 60); do
+    [ -S "/tmp/.X11-unix/X$d" ] && return 0
+    kill -0 "${XPIDS[$id]}" 2>/dev/null || break
+    sleep 0.1
+  done
+  return 1
+}
+
 # ---------- 进程操作 ----------
 kill_group() {
   [ -n "${2:-}" ] || return 0
@@ -372,16 +404,19 @@ stop_inst() {
     log "停止实例 $id（pid $pg）"
     kill_group TERM "$pg"
     sweep TERM "${QDIR[$id]:-}"
+    # Xvfb 是自己起的，进程组和 QQ 不是一个（set -m 下每个后台任务自成一族），
+    # 只 kill_group 会把它留下占着 /tmp/.X11-unix/XN，下次换号又多一层变量。
+    if [ -n "${XPIDS[$id]:-}" ]; then kill -TERM "${XPIDS[$id]}" 2>/dev/null; fi
     STOP[$id]=1
   else
-    unset "PIDS[$id]" "QDIR[$id]"
+    unset "PIDS[$id]" "QDIR[$id]" "XPIDS[$id]"
     STOP[$id]=0
   fi
   return 0
 }
 
 start_inst() {
-  local e="$1" id rest tok np op uin QQDIR INSTHOME LOGF NAP CONF SRC EXTRA
+  local e="$1" id rest tok np op uin QQDIR INSTHOME LOGF NAP CONF SRC EXTRA DISP
   id="${e%%|*}"; rest="${e#*|}"
   tok="${rest%%|*}"; rest="${rest#*|}"
   np="${rest%%|*}"; op="${rest#*|}"
@@ -473,11 +508,18 @@ PY
   fi
 
   log "启动实例 $id（WebUI 端口 $np，WebUI token $tok，日志 $LOGF）"
-  HOME="$INSTHOME" \
+  DISP="$(pick_display)"
+  if start_xvfb "$id" "$DISP"; then
+    log "实例 $id 的 X 已就绪（DISPLAY=:$DISP，屏幕 1x1x8）"
+  else
+    log "警告：实例 $id 的 Xvfb 未在 6 秒内就绪，仍尝试启动 QQ（见 $RUNDIR/xvfb-$id.log）"
+    tail -n 5 "$RUNDIR/xvfb-$id.log" 2>/dev/null
+  fi
+  HOME="$INSTHOME" DISPLAY=":$DISP" \
   NAPCAT_WEBUI_SECRET_KEY="$tok" \
   NAPCAT_WEBUI_JWT_SECRET_KEY="${tok}_jwt" \
   NAPCAT_WEBUI_PREFERRED_PORT="$np" \
-  xvfb-run -a --server-args="-screen 0 1280x800x24" "$QQDIR/qq" --no-sandbox $EXTRA >> "$LOGF" 2>&1 &
+  "$QQDIR/qq" --no-sandbox $EXTRA >> "$LOGF" 2>&1 &
   PIDS[$id]=$!
   QDIR[$id]="$QQDIR"
   STOP[$id]=0
@@ -495,6 +537,7 @@ cleanup() {
   for id in "${!PIDS[@]}"; do
     kill_group TERM "${PIDS[$id]:-}"
     sweep TERM "${QDIR[$id]:-}"
+    if [ -n "${XPIDS[$id]:-}" ]; then kill -TERM "${XPIDS[$id]}" 2>/dev/null; fi
   done
   # 表驱动的清理之外再按 cmdline 兜一遍，堵住「刚起还没登记」的窗口
   sweep_orphans TERM
@@ -503,6 +546,7 @@ cleanup() {
   for id in "${!PIDS[@]}"; do
     kill_group KILL "${PIDS[$id]:-}"
     sweep KILL "${QDIR[$id]:-}"
+    if [ -n "${XPIDS[$id]:-}" ]; then kill -KILL "${XPIDS[$id]}" 2>/dev/null; fi
   done
   sweep_orphans KILL
   rm -f "$RUNDIR"/*.pid
@@ -585,7 +629,9 @@ while true; do
         STOP[$id]=$(( "${STOP[$id]:-0}" + 1 ))
       fi
     else
-      unset "PIDS[$id]" "QDIR[$id]"
+      # QQ 退出后 Xvfb 不会自己走，留着就会一直占着那个显示号，收掉它
+      if [ -n "${XPIDS[$id]:-}" ]; then kill -TERM "${XPIDS[$id]}" 2>/dev/null; fi
+      unset "PIDS[$id]" "QDIR[$id]" "XPIDS[$id]"
       STOP[$id]=0
       if [ "${PURGE[$id]:-0}" = "1" ]; then
         purge_inst "$id"
