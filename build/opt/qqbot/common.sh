@@ -61,56 +61,82 @@ qqerr()  { printf '\033[31m[QQBot]\033[0m %s\n' "$*" >&2; qq_err_note "$*"; }
 # ---------------------------------------------------------------------------
 # 沙盒目录体检：能否写 / 能否建硬链接 / 还剩多少空间
 #
-# 为什么单独做：dpkg 备份 status 用的是 link(2)，而「写不进去」和「不能建硬链接」
-# 在真机上是两种完全不同的毛病（权限 vs 文件系统格式），旧代码把它们混成一句
-# 「不可写，或者不支持硬链接」，用户拿着这句话没法处理。这里每项单独测、单独说，
-# 并把完整诊断写进 $QQBOT_HOME/fs-probe.txt —— 界面的「上传错误日志」会带上它。
+# 为什么单独做：dpkg 备份 status 用的是 link(2)，dpkg 每次装包第一步就调它。
+# 而「写不进去」和「不能建硬链接」是两种完全不同的毛病，旧代码把它们混成一句
+# 「不可写，或者不支持硬链接」，用户拿着这句话没法处理，作者也判断不了。
 #
-# 用法：qq_fsprobe <目录>   返回 0 正常 / 1 不可用（原因已打印并记进 deploy.error）
+# 真机案例（Redmi / Android 16）：写测试通过、link() 却报 Permission denied。
+# 所以这里不止测目标目录，还横向测 HOME / cache / PREFIX/tmp——只有把几个位置
+# 摆在一起，才能分清是「这台手机的存储整体不支持」还是「这个目录被弄脏了」。
+# 完整诊断写进 $QQBOT_HOME/fs-probe.txt，界面的「上传错误日志」会带上它。
+#
+# 返回值：0 正常 / 1 写不进去 / 3 目标目录建不了硬链接（别处可以，建议重建目录）
+#         / 4 这台手机根本建不了硬链接
 # ---------------------------------------------------------------------------
+# 在某个目录里试一次「写 + 硬链接」：0 成功 / 1 硬链接失败 / 2 写失败
+# 失败原因放 qq_probe_why，供调用方原样打印。
+qq_ln_probe() {
+  _pd=$1
+  _perr=$QQBOT_CACHE/.probe.err
+  qq_probe_why=''
+  mkdir -p "$_pd" 2>/dev/null || { qq_probe_why='目录建不出来'; return 2; }
+  if ! : > "$_pd/.qqbot-wtest" 2>"$_perr"; then
+    qq_probe_why=$(head -n 1 "$_perr" 2>/dev/null)
+    rm -f "$_pd/.qqbot-wtest" 2>/dev/null
+    return 2
+  fi
+  if ln "$_pd/.qqbot-wtest" "$_pd/.qqbot-htest" 2>"$_perr"; then
+    rm -f "$_pd/.qqbot-wtest" "$_pd/.qqbot-htest" 2>/dev/null
+    return 0
+  fi
+  qq_probe_why=$(head -n 1 "$_perr" 2>/dev/null)
+  rm -f "$_pd/.qqbot-wtest" "$_pd/.qqbot-htest" 2>/dev/null
+  return 1
+}
+
 qq_fsprobe() {
   _d=${1:-$QQBOT_ROOTFS}
   _rep=$QQBOT_HOME/fs-probe.txt
-  _err=$QQBOT_CACHE/.fsprobe.err
-  _rc=0
   mkdir -p "$_d" 2>/dev/null || true
   {
     echo "== 沙盒目录体检 $(date '+%F %T' 2>/dev/null) =="
     echo "目标目录: $_d"
+    echo "身份: uid=$(id -u 2>/dev/null) gid=$(id -g 2>/dev/null)"
     echo "架构: $(uname -m 2>/dev/null)   内核: $(uname -r 2>/dev/null)"
+    echo "SELinux: $(getenforce 2>/dev/null || echo unknown)   protected_hardlinks: $(cat /proc/sys/fs/protected_hardlinks 2>/dev/null)"
     echo "HOME=$HOME"
     echo "PREFIX=$PREFIX"
   } > "$_rep" 2>/dev/null || true
   if [ ! -d "$_d" ]; then
     qqerr "沙盒目录 $_d 建不出来（连 mkdir 都失败）"
-    echo "mkdir 失败：目录不存在也建不出来" >> "$_rep" 2>/dev/null || true
+    echo 'mkdir 失败：目录不存在也建不出来' >> "$_rep" 2>/dev/null || true
     return 1
   fi
-  # ---- 1) 写测试 ----
-  _w=0
-  if : > "$_d/.qqbot-wtest" 2>"$_err"; then
-    _w=1
-  else
-    # 先试着自己修一次再判死：属主/权限位不对是最常见的一种。
+  # ---- 1) 目标目录：写 + 硬链接 ----
+  qq_ln_probe "$_d"; _t=$?
+  _werr=''; _herr=''
+  if [ "$_t" = 2 ]; then
+    _werr=$qq_probe_why
     chmod u+rwx "$_d" 2>/dev/null || true
     chmod -R u+rwX "$_d" 2>/dev/null || true
-    if : > "$_d/.qqbot-wtest" 2>"$_err"; then _w=1; fi
+    qq_ln_probe "$_d"; _t=$?
+    [ "$_t" = 2 ] && _werr=$qq_probe_why
   fi
-  _werr=$(cat "$_err" 2>/dev/null | head -n 2 | tr '\n' ' ')
-  # ---- 2) 硬链接测试（只有写成功才有意义）----
-  _h=0
-  if [ "$_w" = 1 ]; then
-    if ln "$_d/.qqbot-wtest" "$_d/.qqbot-htest" 2>"$_err"; then
-      _h=1
-    else
-      chmod -R u+rwX "$_d" 2>/dev/null || true
-      if ln "$_d/.qqbot-wtest" "$_d/.qqbot-htest" 2>"$_err"; then _h=1; fi
-    fi
-    _herr=$(cat "$_err" 2>/dev/null | head -n 2 | tr '\n' ' ')
-  else
-    _herr='(写不进去，硬链接未测)'
-  fi
-  rm -f "$_d/.qqbot-wtest" "$_d/.qqbot-htest" 2>/dev/null || true
+  [ "$_t" = 1 ] && _herr=$qq_probe_why
+  # ---- 2) 横向对照：其它几个位置能不能建硬链接 ----
+  _alt=0
+  for _x in "$HOME" "$QQBOT_CACHE" "$PREFIX/tmp"; do
+    [ -d "$_x" ] || continue
+    qq_ln_probe "$_x"
+    _st=$?
+    case $_st in
+      0) _sv='可以' ;;
+      1) _sv="不行（$qq_probe_why）" ;;
+      *) _sv='写不进去' ;;
+    esac
+    echo "对照 $_x: $_sv" >> "$_rep" 2>/dev/null || true
+    [ "$_st" = 0 ] && _alt=1
+  done
   # ---- 3) 空间 ----
   _df=$(df -k "$_d" 2>/dev/null | tail -n 1)
   _avail=$(echo "$_df" | awk '{print $4}' 2>/dev/null)
@@ -120,30 +146,38 @@ qq_fsprobe() {
     echo "上级目录: $(ls -ldn "$(dirname "$_d")" 2>/dev/null)"
     echo "目录内抽样: $(ls -ldn "$_d"/* 2>/dev/null | head -n 3 | tr '\n' '|')"
     echo "空间: ${_df:-取不到}   可用KB=${_avail:-?}   使用率=${_use:-?}"
-    echo "写测试: $([ "$_w" = 1 ] && echo 通过 || echo 失败)   ${_werr}"
-    echo "硬链接: $([ "$_h" = 1 ] && echo 通过 || echo 失败)   ${_herr}"
-    echo "挂载: $(mount 2>/dev/null | grep -F " $(dirname "$_d") " | head -n 2 | tr '\n' '|')"
+    echo "写测试: $([ "$_t" != 2 ] && echo 通过 || echo 失败)   ${_werr}"
+    echo "硬链接: $([ "$_t" = 0 ] && echo 通过 || echo 失败)   ${_herr}"
+    echo "挂载: $(mount 2>/dev/null | grep -F ' on /data' | head -n 2 | tr '\n' '|')"
+    echo "SELinux 标签: $(ls -Zd "$_d" 2>/dev/null) | $(ls -Zd "$HOME" 2>/dev/null)"
   } >> "$_rep" 2>/dev/null || true
-  if [ "$_w" != 1 ]; then
+  if [ "$_t" = 2 ]; then
     rm -f "$QQBOT_CACHE/fs-nolink" 2>/dev/null || true
     : > "$QQBOT_CACHE/fs-nowrite" 2>/dev/null || true
     qqerr "沙盒目录 $_d 写不进去：${_werr:-未知错误}"
-    [ -n "$_avail" ] && [ "$_avail" -lt 51200 ] 2>/dev/null && qqerr "手机剩余空间不够（只剩 $((_avail / 1024)) MB），先清一点空间再试"
+    if [ -n "$_avail" ] && [ "$_avail" -lt 51200 ] 2>/dev/null; then
+      qqerr "手机剩余空间不够（只剩 $((_avail / 1024)) MB），先清一点空间再试"
+    fi
     qqerr "如果这条一直出现：设置页 → 重置部署标记 → 重新部署；还不行就卸载重装（安装时选内部存储）"
     return 1
   fi
-  if [ "$_h" != 1 ]; then
-    rm -f "$QQBOT_CACHE/fs-nowrite" 2>/dev/null || true
+  if [ "$_t" = 1 ]; then
     : > "$QQBOT_CACHE/fs-nolink" 2>/dev/null || true
-    qqerr "$_d 所在的文件系统不支持硬链接：${_herr:-未知错误}"
-    qqerr "apt/dpkg 必须能建硬链接才能装包。请确认应用数据在「内部存储」，不要在 SD 卡或外置存储上"
-    return 1
+    if [ "$_alt" = 1 ]; then
+      qqerr "$_d 里建不了硬链接：${_herr:-未知错误}"
+      qqerr "同一个手机上别的目录（HOME / cache）可以建，说明是这个目录被弄脏了，下一步会把它删掉重建"
+      return 3
+    fi
+    qqerr "这台手机的存储不支持硬链接：${_herr:-未知错误}"
+    qqerr "apt/dpkg 装包时必须能建硬链接（备份 /var/lib/dpkg/status 用）。"
+    qqerr "常见原因：应用数据被放在「SD 卡 / 外置存储」，或系统对应用数据分区做了禁止硬链接的限制。"
+    qqerr "请把应用装在「内部存储」后卸载重装；如果已经是内部存储，请把这份日志发给作者。"
+    return 4
   fi
   rm -f "$QQBOT_CACHE/fs-nowrite" "$QQBOT_CACHE/fs-nolink" 2>/dev/null || true
   qqlog "沙盒目录体检通过（可写、硬链接可用${_avail:+，剩余 $((_avail / 1024)) MB}）"
   return 0
 }
-
 # ---------------------------------------------------------------------------
 # 端口配置（从 bots.json 读）
 #
