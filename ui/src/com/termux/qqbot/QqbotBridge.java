@@ -617,4 +617,22 @@ public class QqbotBridge {
     public String exec(String cmd) {
         return act.runShell(cmd, 60);
     }
+
+    /**
+     * 把这次失败的现场打包上传给作者（只有用户点了「上传错误日志」才会走到这里）。
+     *
+     * 为什么不在后台跑：上传的是几十 KB 文本，正常 2~10 秒就回来了，同步返回能让界面
+     * 直接把「已上传，编号 xxxx」显示出来；超时给 55 秒，比脚本里 curl 的 45 秒长一点，
+     * 免得 curl 还没超时 shell 就先被砍掉、用户只看到一句空结果。
+     */
+    @JavascriptInterface
+    public String uploadLog() {
+        String script = act.usrDir() + "/opt/qqbot/upload-log.sh";
+        File f = new File(script);
+        if (!f.exists()) return "上传失败：这台手机上的脚本还没就位（" + script + "），请先完成部署";
+        String out = act.runShell("bash " + script + " " + appVersion(), 55);
+        String s = out == null ? "" : out.trim();
+        if (s.length() == 0) return "上传没有回音（可能网络不通），稍后再试一次";
+        return s;
+    }
 }

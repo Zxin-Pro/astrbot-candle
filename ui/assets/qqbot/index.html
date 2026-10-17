@@ -228,6 +228,12 @@ button.tiny{min-height:0;padding:4px 10px;font-size:11.5px;border-radius:var(--r
   font-family:var(--mono);font-size:11.5px;line-height:1.6;color:#ffb4b4;
   white-space:pre-wrap;word-break:break-word;max-height:24vh;overflow:auto;
 }
+/* 失败后的「要不要上传日志」：一块淡蓝提示 + 两个按钮，别做得像弹窗去打断人 */
+.askup{
+  margin-top:8px;padding:10px 11px;border-radius:var(--r-sm);
+  background:rgba(90,150,255,.08);border:1px solid rgba(120,170,255,.30);
+}
+.askup .asktx{font-size:12px;line-height:1.65;color:#b9c9e6}
 /* 部署卡标题栏里的两个小按钮挨在一起：复制日志在左、展开/收起在右 */
 .dtgl + .dtgl{margin-left:6px}
 #btnCopyLog{margin-left:auto}
@@ -547,6 +553,13 @@ button.locked{box-shadow:none;transform:none}
       <div class="dsum" id="deploySum" style="display:none"></div>
       <div class="hint" style="margin-top:0" id="deployHint">正在读取部署状态…</div>
       <pre class="derr" id="deployErr" style="display:none"></pre>
+      <div class="askup" id="errAsk" style="display:none">
+        <div class="asktx">这次失败要发给作者看看吗？只发这台手机的部署日志、机型和系统版本，不包含任何聊天内容。</div>
+        <div class="btns" style="margin-top:8px">
+          <button class="small primary" data-act="uploadlog" id="btnUploadLog">上传错误日志</button>
+          <button class="small" data-act="uploadskip">这次不用</button>
+        </div>
+      </div>
       <div class="bar" id="deployBarWrap"><i id="deployBar"></i></div>
       <div id="stepList" style="margin-top:10px"></div>
       <div class="btns" style="margin-top:10px" id="deployBtns">
@@ -1183,7 +1196,7 @@ var NO_LOCK_ACTS = [
   "deploy", "stopdeploy", "fixdpkg", "resetdeploy",
   /* 部署没成功的时候，正是最需要看部署日志、展开看哪一步挂了的时候，
      这两个不能拦 —— 否则「复制日志」在用户最需要它的那一刻是灰的。 */
-  "copylog", "deploytoggle",
+  "copylog", "deploytoggle", "uploadlog", "uploadskip",
   "settings", "backhome", "showlogs",
   "pickbg", "clearbg", "bgpreset", "glass",
   "reload", "slim", "rmcard",
@@ -1457,6 +1470,7 @@ function refreshDeploy(){
     var etxt = (d.err || "").replace(/\s+$/, "");
     if (etxt && !d.done) { ebox.textContent = "上次失败原因：\n" + etxt; ebox.style.display = ""; }
     else { ebox.textContent = ""; ebox.style.display = "none"; }
+    paintErrAsk(etxt, d);
   }
   autoRetryDeploy(d);
 }
@@ -1732,6 +1746,57 @@ function doCopyDeployLog(){
   var r = "";
   try { r = String(Android.action("copylog")); } catch (e) { r = "复制失败：" + e; }
   Android.toast(r || "已复制部署日志");
+}
+
+/* ---------- 失败后征询：要不要把日志发给作者 ----------
+   真机上的失败原因往往只有用户手机上才看得到，截图还常被红框截断。
+   这里不弹窗打断人，就在红框下面摆两个按钮；点「这次不用」会按这段错误文本的
+   指纹记住，同一段错误不再反复问（错误变了会重新问一次）。 */
+function errSig(t){
+  t = String(t || "");
+  var h = 5381;
+  for (var i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0;
+  return "e" + h.toString(36) + "-" + t.length;
+}
+var UPLOADING = false;
+function paintErrAsk(etxt, d){
+  var box = el("errAsk");
+  if (!box) return;
+  var sig = errSig(etxt);
+  box._sig = sig;
+  var show = !!(etxt && d && !d.done && !d.running);
+  if (show && lsGet("qqbot.errskip", "") === sig) show = false;
+  box.style.display = show ? "" : "none";
+  var b = el("btnUploadLog");
+  if (b) { b.disabled = UPLOADING; b.textContent = UPLOADING ? "正在上传…" : "上传错误日志"; }
+}
+function doUploadLog(){
+  if (UPLOADING) return;
+  if (typeof Android === "undefined" || !Android.uploadLog) { Android.toast("这个安装包不支持上传，请到官网装最新版"); return; }
+  UPLOADING = true;
+  var box = el("errAsk"), b = el("btnUploadLog");
+  var tx = box ? box.querySelector(".asktx") : null;
+  var back = "这次失败要发给作者看看吗？只发这台手机的部署日志、机型和系统版本，不包含任何聊天内容。";
+  if (b) { b.disabled = true; b.textContent = "正在上传…"; }
+  if (tx) tx.textContent = "正在打包上传，大约 10 秒，期间别退出应用…";
+  setTimeout(function(){
+    var r = "";
+    try { r = String(Android.uploadLog()); } catch (e) { r = "上传失败：" + e; }
+    UPLOADING = false;
+    if (tx) tx.textContent = back;
+    if (b) { b.disabled = false; b.textContent = "上传错误日志"; }
+    var first = String(r || "").split("\n")[0] || "没有回音";
+    Android.toast(first.slice(0, 90));
+    if (first.indexOf("已上传") === 0) {
+      if (box) { lsSet("qqbot.errskip", box._sig || ""); box.style.display = "none"; }
+    }
+  }, 60);
+}
+function skipErrAsk(){
+  var box = el("errAsk");
+  if (box && box._sig) lsSet("qqbot.errskip", box._sig);
+  if (box) box.style.display = "none";
+  Android.toast("好，这次不上传");
 }
 
 /* ---------- 部署自动续跑 ----------
@@ -2190,6 +2255,8 @@ document.addEventListener("click", function(ev){
   else if (act === "updnotes") updDetail();
   else if (act === "copytext") Android.copy(arg || "");
   else if (act === "copylog") doCopyDeployLog();
+  else if (act === "uploadlog") doUploadLog();
+  else if (act === "uploadskip") skipErrAsk();
   else if (act === "saveproxy") saveProxy();
   else if (act === "clearproxy") { if (el("inProxy")) el("inProxy").value = ""; saveProxy(); }
   else if (act === "testproxy") testProxy();
