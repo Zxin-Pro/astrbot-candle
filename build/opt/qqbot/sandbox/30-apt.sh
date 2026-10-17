@@ -9,6 +9,12 @@ mkdir -p /etc/apt/apt.conf.d
 cat > /etc/apt/apt.conf.d/99-qqbot-noninteractive <<'APTEOF'
 Dpkg::Options { "--force-confdef"; "--force-confold"; }
 APT::Get::Assume-Yes "true";
+APT::Install-Recommends "false";
+// Use-Pty 关掉：dpkg 默认会给维护者脚本开伪终端，
+// 容器里 pty 与 proot 的组合偶尔会让脚本卡在 read 上，
+// 而部署是无人值守的，卡住就等于第 3 步永远不结束。
+Dpkg::Use-Pty "false";
+
 APTEOF
 
 # ---------------------------------------------------------------------------

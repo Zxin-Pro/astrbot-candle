@@ -490,6 +490,25 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
   pre{background:rgba(6,8,14,.95)}
   .dlg{background:linear-gradient(180deg,#1a1e2a,#11141d)}
 }
+
+/* ===== 未部署锁定态 =====
+   自动部署没跑完之前沙盒里连容器都不存在：组件开关、实例卡、二维码、日志复制
+   这些全都还没有意义。需求是「显示出来、但看起来就是不能点的」，所以这里只改外观，
+   真正的拦截在 document 的点击委托里（见 paintLocks / actLocked）。
+   .locked 故意不写 pointer-events:none：那样点下去连提示都没有，用户又回到
+   「点了没反应」的老问题里。 */
+.locked{opacity:.45;cursor:not-allowed;filter:grayscale(.6)}
+button.locked{box-shadow:none;transform:none}
+.locked:active{transform:none;opacity:.45}
+/* 开关置灰后连滑块都要看起来是死的：绿色轨道与白色滑块都要退成灰 */
+.tgl.locked{box-shadow:inset 0 2px 7px rgba(0,0,0,.55)}
+.tgl.locked::after{background:linear-gradient(180deg,#aab2c2,#79829a)}
+/* 中性灰：未安装不是故障，不许用 bad 的红色 */
+.tile.mute .tv{color:#8e97aa}
+.dot.mute{background:#5b6376;box-shadow:0 0 0 3px rgba(255,255,255,.05);animation:none}
+.pill.mute{color:#9aa3b5;border-color:var(--line-2);background:linear-gradient(180deg, rgba(255,255,255,.075), rgba(255,255,255,.028))}
+.pill.mute::before{animation:none;box-shadow:none;background:#8b93a6}
+.swtag.mute{color:#9aa3b5;border-color:var(--line-2);background:linear-gradient(180deg,rgba(255,255,255,.075),rgba(255,255,255,.028))}
 </style>
 </head>
 <body>
@@ -1125,6 +1144,73 @@ function showTab(t){
 
 function pill(txt, cls){ return '<span class="pill ' + (cls || "") + '">' + esc(txt) + '</span>'; }
 
+/* ---------- 未部署时的统一锁定 ----------
+   自动部署没跑完之前沙盒里连容器都不存在：组件开关写着「启动中」、实例卡写着
+   「容器运行中」，点了却什么都不发生 —— 用户当然会一脸问号。
+   这里只有一份判定，给两处用：渲染时切外观（.locked / mute 中性灰），点击时在
+   document 的委托里拦下。每次 refresh 都重算，部署完成的那一刻自动解锁，
+   所以不能把结果缓存进变量、也不能只在启动时算一次。 */
+
+/* 未部署时仍然放行的 act（白名单）。原则：只放「跟沙盒里装没装东西无关」的动作，
+   凡是需要 NapCat / AstrBot / 容器真的跑起来才有意义的，一律锁死。
+
+   部署本身：deploy / stopdeploy / fixdpkg / resetdeploy —— 部署一跑要 20~60 分钟，
+     不放行「停止」等于把用户锁在一台跑不完的部署里；卡住时也必须能自救。
+   纯导航：settings（设置齿轮）/ backhome（回主页）/ showlogs（进日志页）——
+     拦掉的话用户连设置页都进不去，又变成「点了没反应」。
+   纯外观：pickbg / clearbg / bgpreset / glass —— 换背景、调玻璃强度跟沙盒无关，
+     部署要等几十分钟，这段时间用户想换个皮肤不该被拦。
+   纯只读：reload（立即刷新日志）/ slim（精简模式）/ rmcard（收起日志框）——
+     文件读不到就显示空，不会破坏任何东西。
+   与沙盒无关的信息类：checkupdate / dlupdate / updnotes（检查更新）、
+     copyurl / openurl（官网）、openqq（加群）、copydisc（免责声明）、dlgagree。
+   系统级开关：guardset（常驻守护 / 息屏保持，部署期间正需要）、battery（电池白名单）、
+     terminal（打开终端，排障要用）。 */
+var NO_LOCK_ACTS = [
+  "deploy", "stopdeploy", "fixdpkg", "resetdeploy",
+  "settings", "backhome", "showlogs",
+  "pickbg", "clearbg", "bgpreset", "glass",
+  "reload", "slim", "rmcard",
+  "checkupdate", "dlupdate", "updnotes",
+  "copyurl", "openurl", "openqq", "copydisc", "dlgagree",
+  "guardset", "battery", "terminal"
+];
+
+/* 这个 act 在未部署时要不要拦 */
+function actLocked(a){
+  if (S.deployDone) return false;   /* 装好了就全部放开 */
+  if (!a) return false;
+  return NO_LOCK_ACTS.indexOf(String(a)) < 0;
+}
+
+/* 从点击目标往上找第一个带 data-act 的元素（按钮里的 svg / span 也能点中） */
+function actNodeOf(node){
+  var n = node;
+  while (n && n !== document.body && n.getAttribute) {
+    if (n.getAttribute("data-act")) return n;
+    n = n.parentNode;
+  }
+  return null;
+}
+
+/* 把所有「未部署时不该点」的控件统一切成置灰外观。
+   直接扫 [data-act]，新加的按钮不用再单独登记；每次刷新都重跑一遍，
+   所以部署完成后下一轮（最长 4 秒）就恢复成可点。 */
+function paintLocks(){
+  var bs = document.querySelectorAll("[data-act]");
+  for (var i = 0; i < bs.length; i++) {
+    var b = bs[i];
+    if (!b.classList) continue;
+    var want = actLocked(b.getAttribute("data-act"));
+    if (want !== b.classList.contains("locked")) b.classList.toggle("locked", want);
+    /* aria-disabled 只作语义标记：故意不写 disabled 属性，否则 click 事件根本不会派发，
+       下面那句「还没安装完成…」的提示就永远看不到。 */
+    if (want) {
+      if (b.getAttribute("aria-disabled") !== "true") b.setAttribute("aria-disabled", "true");
+    } else if (b.getAttribute("aria-disabled")) b.removeAttribute("aria-disabled");
+  }
+}
+
 /* 状态磁贴：只改 class 与副标题文本，值节点沿用 #v-* id（refresh 里照旧写 textContent）。
    每次都比较再写，避免 4 秒轮询里做无意义的 DOM 变更。 */
 function setTile(id, cls, sub){
@@ -1186,24 +1272,39 @@ function refreshAll(){
   el("v-prefix").textContent = st.prefix || "-";
   var av = el("v-appver");
   if (av) av.textContent = st.appVersion || "-";
-  el("v-deploy").textContent = st.deployDone ? "已完成" : "未完成";
-  el("d-deploy").className = "dot " + (st.deployDone ? "ok" : "warn");
-  el("v-sup").textContent = st.supervisorAlive ? "运行中" : "未运行";
-  setTile("t-sup", st.supervisorAlive ? "ok" : "bad", "");
-  /* 端口不通有两种原因：用户用组件开关关掉了，或者服务崩了。界面上必须区分开，
-     否则关掉 NapCat 会显示成刺眼的「离线」，像是出故障了。 */
-  el("v-napcat").textContent = svcTileValue(st.napcatOff, st.napcatUp);
-  setTile("t-napcat", isClosing(st.napcatOff, st.napcatUp) ? "warn" : (st.napcatOff ? "warn" : (st.napcatUp ? "ok" : "bad")), "端口 " + st.napcatPort);
-  el("v-astrbot").textContent = svcTileValue(st.astrbotOff, st.astrbotUp);
-  setTile("t-astrbot", isClosing(st.astrbotOff, st.astrbotUp) ? "warn" : (st.astrbotOff ? "warn" : (st.astrbotUp ? "ok" : "bad")), "端口 " + st.astrbotPort);
-  /* 6199 是 AstrBot 的 aiocqhttp 反向 WS 监听口，跟 NapCat 在不在线无关：
-     AstrBot 关着时这一行必须说「已停止」，否则两处状态自相矛盾。 */
-  var obTxt, obCls;
-  if (st.astrbotOff) { obTxt = "已停止"; obCls = "warn"; }
-  else if (st.napcatOff) { obTxt = st.onebotUp ? "端口在听，NapCat 关着" : "未连接"; obCls = st.onebotUp ? "warn" : "bad"; }
-  else { obTxt = st.onebotUp ? "已连接" : "未连接"; obCls = st.onebotUp ? "ok" : "bad"; }
-  el("v-onebot").textContent = obTxt;
-  setTile("t-onebot", obCls, "端口 " + st.onebotPort);
+  /* 没部署完时沙盒里连容器都还没有：这五块磁贴一律说「未安装」并配中性灰，
+     不用红色 —— 这不是故障，是还没装；用户看到红灯只会以为坏了。
+     部署完成后照旧显示真实状态。判定每轮 refresh 都重算（installed）。 */
+  var installed = !!st.deployDone;
+  el("v-deploy").textContent = installed ? "已完成" : "未安装";
+  el("d-deploy").className = "dot " + (installed ? "ok" : "mute");
+  if (!installed) {
+    el("v-sup").textContent = "未安装";
+    setTile("t-sup", "mute", "");
+    el("v-napcat").textContent = "未安装";
+    setTile("t-napcat", "mute", "端口 " + st.napcatPort);
+    el("v-astrbot").textContent = "未安装";
+    setTile("t-astrbot", "mute", "端口 " + st.astrbotPort);
+    el("v-onebot").textContent = "未安装";
+    setTile("t-onebot", "mute", "端口 " + st.onebotPort);
+  } else {
+    el("v-sup").textContent = st.supervisorAlive ? "运行中" : "未运行";
+    setTile("t-sup", st.supervisorAlive ? "ok" : "bad", "");
+    /* 端口不通有两种原因：用户用组件开关关掉了，或者服务崩了。界面上必须区分开，
+       否则关掉 NapCat 会显示成刺眼的「离线」，像是出故障了。 */
+    el("v-napcat").textContent = svcTileValue(st.napcatOff, st.napcatUp);
+    setTile("t-napcat", isClosing(st.napcatOff, st.napcatUp) ? "warn" : (st.napcatOff ? "warn" : (st.napcatUp ? "ok" : "bad")), "端口 " + st.napcatPort);
+    el("v-astrbot").textContent = svcTileValue(st.astrbotOff, st.astrbotUp);
+    setTile("t-astrbot", isClosing(st.astrbotOff, st.astrbotUp) ? "warn" : (st.astrbotOff ? "warn" : (st.astrbotUp ? "ok" : "bad")), "端口 " + st.astrbotPort);
+    /* 6199 是 AstrBot 的 aiocqhttp 反向 WS 监听口，跟 NapCat 在不在线无关：
+       AstrBot 关着时这一行必须说「已停止」，否则两处状态自相矛盾。 */
+    var obTxt, obCls;
+    if (st.astrbotOff) { obTxt = "已停止"; obCls = "warn"; }
+    else if (st.napcatOff) { obTxt = st.onebotUp ? "端口在听，NapCat 关着" : "未连接"; obCls = st.onebotUp ? "warn" : "bad"; }
+    else { obTxt = st.onebotUp ? "已连接" : "未连接"; obCls = st.onebotUp ? "ok" : "bad"; }
+    el("v-onebot").textContent = obTxt;
+    setTile("t-onebot", obCls, "端口 " + st.onebotPort);
+  }
   var tok = "zhuxin";
   var napPort = st.napcatPort || 6099;
   var bs = validBots(S.bots.bots);
@@ -1212,24 +1313,34 @@ function refreshAll(){
   el("tokText").textContent = tok;
   el("btnNapPanel").setAttribute("data-arg", "http://127.0.0.1:" + napPort + "/webui?token=" + encodeURIComponent(tok));
   var p = [];
+  /* 「待部署 / 已部署」这颗永远按真实部署状态走，其余三颗在没装好时说「未安装」 */
   p.push(pill(st.deployDone ? "已部署" : "待部署", st.deployDone ? "ok" : "warn"));
-  p.push(pill(st.supervisorAlive ? "服务运行中" : "服务已停止", st.supervisorAlive ? "ok" : "bad"));
-  /* 胶囊与磁贴共用同一套判定（isClosing / svcTileValue），关闭窗口内两处说法一致 */
-  p.push(pill("NapCat " + svcTileValue(st.napcatOff, st.napcatUp), isClosing(st.napcatOff, st.napcatUp) ? "warn" : (st.napcatOff ? "warn" : (st.napcatUp ? "ok" : "bad"))));
-  p.push(pill("AstrBot " + svcTileValue(st.astrbotOff, st.astrbotUp), isClosing(st.astrbotOff, st.astrbotUp) ? "warn" : (st.astrbotOff ? "warn" : (st.astrbotUp ? "ok" : "bad"))));
+  if (!installed) {
+    /* 服务、NapCat、AstrBot 在未部署时并不存在：既不是「已停止」也不是「离线」，
+       用中性灰（mute）而不是报警红，别让用户以为装坏了。 */
+    p.push(pill("服务未安装", "mute"));
+    p.push(pill("NapCat 未安装", "mute"));
+    p.push(pill("AstrBot 未安装", "mute"));
+  } else {
+    p.push(pill(st.supervisorAlive ? "服务运行中" : "服务已停止", st.supervisorAlive ? "ok" : "bad"));
+    /* 胶囊与磁贴共用同一套判定（isClosing / svcTileValue），关闭窗口内两处说法一致 */
+    p.push(pill("NapCat " + svcTileValue(st.napcatOff, st.napcatUp), isClosing(st.napcatOff, st.napcatUp) ? "warn" : (st.napcatOff ? "warn" : (st.napcatUp ? "ok" : "bad"))));
+    p.push(pill("AstrBot " + svcTileValue(st.astrbotOff, st.astrbotUp), isClosing(st.astrbotOff, st.astrbotUp) ? "warn" : (st.astrbotOff ? "warn" : (st.astrbotUp ? "ok" : "bad"))));
+  }
   setHtml(el("pills"), p.join(""));
   /* 本轮是读失败后拿旧数据兜底的，副标题必须说清楚，别让用户当成实时值 */
   el("hdrSub").textContent = stErr ? (stErr + "（显示的是上一次数据）")
                                    : (bs.length + " 个 NapCat 实例  ·  当前：" + (S.bots.active || "-"));
-  /* 全关是用户主动做的，不是故障，所以一律用中性的 warn，不要刺眼报警的 bad。 */
-  el("d-svc").className = "dot " + ((st.napcatOff || st.astrbotOff) ? "warn" : "ok");
+  /* 全关是用户主动做的，不是故障，所以一律用中性的 warn，不要刺眼报警的 bad。
+     未部署时连容器都没有，直接给中性灰，别让它看起来像个待处理的故障。 */
+  el("d-svc").className = "dot " + (!installed ? "mute" : ((st.napcatOff || st.astrbotOff) ? "warn" : "ok"));
   renderBots();
   renderHomeBots();
   renderSvc(st);
   renderGuard(st);
   /* #d-log 这个点以前从没人更新，永远是灰的：有日志文件就绿，一个都没有才红。 */
   var dl = el("d-log");
-  if (dl) dl.className = "dot " + ((S.logFiles && S.logFiles.length) ? "ok" : "bad");
+  if (dl) dl.className = "dot " + (!S.deployDone ? "mute" : ((S.logFiles && S.logFiles.length) ? "ok" : "bad"));
   fillLogSelect(S.logFiles);
   syncAstrPortInput();
   renderPorts();
@@ -1238,8 +1349,11 @@ function refreshAll(){
      S.deployInfo，用它实际的 doneCount/total 拼，增删部署步骤也不会对不上。
      放在 refreshDeploy() 之后才不会用到旧值。 */
   var dInf = S.deployInfo;
-  setTile("t-deploy", S.deployDone ? "ok" : "warn", (S.deployDone && dInf) ? (dInf.doneCount + "/" + dInf.total + " 步") : "");
+  setTile("t-deploy", S.deployDone ? "ok" : "mute", (S.deployDone && dInf) ? (dInf.doneCount + "/" + dInf.total + " 步") : "");
   autoLink();
+  /* 所有控件的置灰外观放在最后统一刷：上面每个 render 都可能刚重建过 DOM，
+     新节点上没有 .locked。这里每轮重算，部署完成那一刻下一轮就自动解锁。 */
+  paintLocks();
 }
 
 /* 主页自动把 NapCat 与 AstrBot 连起来：部署完成且服务在跑时自动跑一次 link.sh（幂等）。
@@ -1283,15 +1397,21 @@ function refreshDeploy(){
   }
   setHtml(el("stepList"), h.join(""));
   if (d.done) el("deployHint").textContent = "部署已完成，可以开始扫码登录 QQ 了。";
-  else if (d.running) el("deployHint").textContent = "正在部署中…（已完成 " + d.doneCount + "/" + d.total + " 步）请保持应用在前台、屏幕不要熄灭。";
+  else if (d.running) el("deployHint").textContent = "正在部署中…（已完成 " + d.doneCount + "/" + d.total + " 步）请保持应用在前台、屏幕不要熄灭。中途被打断会自动修好再重试，不用管它。";
   else if (d.doneCount > 0) {
-    /* 卡在第 3 步（30-apt）是最常见的中断：上次 apt 被打断会在 dpkg 数据库里留下半配置的包，
-       这时「继续部署」只是把同一面墙再撞一次。这里直接把急救按钮摆到按钮行里，
-       并说清要先修再继续——否则用户看到的就是「点了没用」，只能一遍遍重试。 */
+    /* 卡在第 3 步（30-apt）是最常见的中断：上次 apt 被打断会在 dpkg 数据库里留下半配置的包。
+       现在 deploy.sh 每个步骤失败后都会先跑一次 fix-sandbox.sh --force 再重试（最多 3 次），
+       所以文案改成「点继续，它自己会修」的顺序；急救按钮仍然摆着，留给三次都没救回来的情况，
+       否则用户看到「点了没用」只会一遍遍重复同一个动作。 */
     var stuckApt = !d.done && !d.running && d.doneCount >= 2 && d.steps && d.steps[2] && !d.steps[2].done;
-    el("deployHint").textContent = stuckApt
-      ? "部署中断于沙盒依赖安装（第 3 步）。先点「修复沙盒依赖」把上次中断留下的半配置状态清掉，跑完再点「继续部署」。"
-      : "部署中断于第 " + (d.doneCount + 1) + " 步，点下面按钮继续（已完成 " + d.doneCount + "/" + d.total + " 步）。";
+    /* doneCount 已经等于 total、但收尾标记还没落地：8 步都跑完了，只差最后写 deploy.done。
+       这时再说「中断于第 9 步」纯属胡说（总数就 8），必须单独说清楚。 */
+    var allStepsDone = d.total > 0 && d.doneCount >= d.total;
+    el("deployHint").textContent = allStepsDone
+      ? "八个步骤都已经跑完了，只差最后收尾没写完。点「继续部署」补一下就完成。"
+      : (stuckApt
+        ? "部署卡在沙盒依赖安装（第 3 步）。直接点「继续部署」就行 —— 它会先自动修好上次中断留下的半配置状态再接着装；要是连试三次都没过，再点「修复沙盒依赖」手动清一次。"
+        : "部署中断于第 " + (d.doneCount + 1) + " 步，点下面按钮继续（已完成 " + d.doneCount + "/" + d.total + " 步）。");
   }
   else el("deployHint").textContent = "首次使用需要自动部署一次：下载约 250MB，耗时 20~60 分钟，请保持应用在前台。";
   el("btnDeploy").textContent = d.done ? "重新部署" : (d.running ? "部署进行中…" : (d.doneCount > 0 ? "继续部署" : "开始部署"));
@@ -1369,6 +1489,8 @@ function toggleBtnHtml(b){
    的容器都停）要一起看。只看 b.enable 的话，总开关关掉时这里会显示绿色「容器运行中」，
    与同屏的磁贴 / 胶囊自相矛盾。按钮仍按 b.enable 显示（它控制的是单实例开关）。 */
 function botPill(b){
+  /* 没装好时容器根本不存在：说「容器运行中 / 已停止」都是在描述一个不存在的东西 */
+  if (!S.deployDone) return pill("未安装", "mute");
   var enabled = (b.enable !== false);
   var gOff = !!(S.st && S.st.napcatOff);      /* 组件总开关：一关就停所有实例的 NapCat */
   var running = enabled && !gOff;
@@ -1400,6 +1522,7 @@ function renderBots(){
     h.push('</div>');
   }
   setHtml(list, h.join(""));
+  paintLocks();   /* 重建的卡片按钮立刻补上灰色外观，不等下一轮刷新 */
 }
 
 /* refresh() 每 4 秒跑一次，如果每次都整体重写 innerHTML，点击正好落在替换瞬间时
@@ -1423,21 +1546,34 @@ function renderSvc(st){
       desc: "机器人框架 · 控制台 " + (st.astrbotPort || 6185),
       off: !!st.astrbotOff, up: !!st.astrbotUp }
   ];
+  /* 没部署完时容器根本不存在：标签只说「未安装」，开关画成灰色关态且点不动
+     （点击由 document 委托里的 actLocked 拦下）。按需重算，装好之后立刻恢复正常。 */
+  var installed = !!S.deployDone;
   var h = [];
   for (var i = 0; i < rows.length; i++){
     var r = rows[i];
     /* 标记文件落下后沙盒还要最多十几秒才真的停/起（守护循环 3 秒轮询 + 停止最多等 10 秒），
        这段窗口里显示「已关闭」是假的：端口还开着。改成如实说「正在关闭…」。 */
     var closing = isClosing(r.off, r.up);   /* 与磁贴 / 胶囊同一份判定 */
-    var tag = r.off ? (closing ? "wait" : "off") : (r.up ? "on" : "wait");
-    var txt = r.off ? (closing ? "正在关闭…" : "已关闭") : (r.up ? "运行中" : "启动中");
+    var tag, txt;
+    if (!installed) {
+      tag = "mute"; txt = "未安装";
+    } else {
+      tag = r.off ? (closing ? "wait" : "off") : (r.up ? "on" : "wait");
+      txt = r.off ? (closing ? "正在关闭…" : "已关闭") : (r.up ? "运行中" : "启动中");
+    }
+    var tglCls = "tgl" + ((installed && !r.off) ? " on" : "") + (installed ? "" : " locked");
+    var tglTitle = installed ? ((r.off ? "点一下打开 " : "点一下关闭 ") + esc(r.label)) : "还没安装完成";
     h.push('<div class="swrow"><div class="swinfo">'
       + '<div class="swname">' + esc(r.label) + '<span class="swtag ' + tag + '">' + txt + '</span></div>'
       + '<div class="swdesc">' + esc(r.desc) + '</div></div>'
-      + '<button class="tgl' + (r.off ? "" : " on") + '" data-act="svc" data-arg="' + r.n
-      + '" title="' + (r.off ? "点一下打开 " : "点一下关闭 ") + esc(r.label) + '"></button></div>');
+      + '<button class="' + tglCls + '" data-act="svc" data-arg="' + r.n
+      + '" title="' + tglTitle + '"></button></div>');
   }
   setHtml(el("swList"), h.join(""));
+  /* 刚重建出来的开关还是 DOM 新节点，身上没有 .locked；这里立刻补一次外观，
+     别等下一轮 4 秒刷新（等待期间开关看着还是亮的，点下去却弹「还没安装」）。 */
+  paintLocks();
 }
 
 /* 后台守护：Android 侧的常驻前台服务。它和沙盒内的 supervisor、Termux 侧的
@@ -1527,7 +1663,11 @@ function renderHomeBots(){
     var port = b.napcatPort || 6099;
     var url = "http://" + ip + ":" + port;
     h.push('<div class="bot' + (act ? " active" : "") + '">');
-    h.push('<div class="bh"><span class="bn">' + esc(b.name || b.id) + '</span><span class="bh-r">' + botPill(b) + pill(b.up ? "端口在线" : "端口离线", b.up ? "ok" : "bad") + '</span></div>');
+    /* 未部署时「端口在线/离线」同样没有意义（端口根本没被占用），
+       整行只留 botPill() 那颗「未安装」，别摆两颗一模一样的灰胶囊。 */
+    var statusPill = botPill(b);
+    if (S.deployDone) statusPill += pill(b.up ? "端口在线" : "端口离线", b.up ? "ok" : "bad");
+    h.push('<div class="bh"><span class="bn">' + esc(b.name || b.id) + '</span><span class="bh-r">' + statusPill + '</span></div>');
     h.push('<div class="row"><span class="k">QQ</span><span class="v mono">' + esc(b.qq || "未登录") + '</span></div>');
     h.push('<div class="row"><span class="k">登录地址</span><span class="v mono">' + esc(url) + '</span></div>');
     h.push('<div class="row"><span class="k">Token</span><span class="v mono">' + esc(b.token || "zhuxin") + '</span></div>');
@@ -1545,6 +1685,7 @@ function renderHomeBots(){
     h.push('</div>');
   }
   setHtml(box, h.join(""));
+  paintLocks();   /* 重建的卡片按钮立刻补上灰色外观，不等下一轮刷新 */
 }
 
 function doAction(a){
@@ -1918,6 +2059,20 @@ document.addEventListener("click", function(ev){
   if (!t || t === document.body) return;
   var tab = t.getAttribute("data-tab");
   if (tab) { showTab(tab); return; }
+  /* 未部署守门：除白名单里的部署相关 act 以外，一律弹提示后吞掉这次点击。
+     用 actNodeOf 从 ev.target 往上找，点到按钮里的 span / svg 也照样拦住。
+     故意不给按钮加 disabled 属性 —— disabled 的按钮根本不派发 click，
+     用户点下去一点反馈都没有，正是这次要消灭的「点了没反应」。
+     判定走 actLocked()，每次点击都重算，部署完成后自然放行。 */
+  var lockedNode = actNodeOf(ev.target);
+  if (lockedNode && actLocked(lockedNode.getAttribute("data-act"))) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    var _di = S.deployInfo;
+    if (_di && _di.running) Android.toast("还在部署中，等它跑完就能用了");
+    else Android.toast("还没安装完成，先在上面点「继续部署」");
+    return;
+  }
   var act = t.getAttribute("data-act");
   if (!act) return;
   var arg = t.getAttribute("data-arg");
