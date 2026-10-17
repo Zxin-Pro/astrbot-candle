@@ -41,6 +41,8 @@ fi
 # 经过 setsid 之后不可信，所以由脚本自己写）
 mkdir -p "$QQBOT_HOME/logs"
 echo $$ > "$QQBOT_HOME/deploy.pid"
+# 上一轮留下的失败原因不能带到这一轮：否则部署正在顺利跑，界面上还挂着一条红色的旧报错。
+rm -f "$QQBOT_HOME/deploy.error" 2>/dev/null || true
 
 # 正常退出（含失败与 Ctrl-C）时抹掉自己的 pid 文件与锁，否则界面上「部署进行中」会一直挂着，
 # 而它靠的就是这个文件。被 SIGKILL 时 trap 不会触发，所以上面的「陈旧锁」兜底也得留着。
@@ -149,6 +151,8 @@ fi
 if [ -z "$FAILED" ]; then
   : > "$QQBOT_HOME/deploy.done"
   rm -f "$QQBOT_HOME/.rootfs-rebuilt" 2>/dev/null || true
+  # 成功了就把失败记录清掉：不然界面上会一直顶着一句早就过期的报错。
+  rm -f "$QQBOT_HOME/deploy.error" 2>/dev/null || true
   qqok "全部部署完成"
   bash "$QQBOT_OPT/steps/90-summary.sh" || true
 
@@ -163,8 +167,21 @@ if [ -z "$FAILED" ]; then
     # setsid 让 proot 脱离本脚本所在进程组：本脚本若被调用方的 destroy()
     # 按进程组 kill 掉，同组的 proot 会被连带杀死。pid 由 start-sandbox.sh 自己写。
     nohup setsid bash "$QQBOT_OPT/start-sandbox.sh" >> "$QQBOT_LOGS/supervisor.log" 2>&1 < /dev/null &
-    sleep 3
-    qqok "服务已启动（supervisor pid $(cat "$QQBOT_HOME/supervisor.pid" 2>/dev/null)）"
+    # start-sandbox.sh 要先进 proot 再写 pid，慢的机器上 3 秒不够 —— 原来这里直接 cat，
+    # 结果日志里打出「服务已启动（supervisor pid ）」，pid 是空的。等文件出现（最多 12 秒）。
+    SUP=""
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+      sleep 1
+      if [ -f "$QQBOT_HOME/supervisor.pid" ]; then
+        SUP="$(cat "$QQBOT_HOME/supervisor.pid" 2>/dev/null)"
+        [ -n "$SUP" ] && break
+      fi
+    done
+    if [ -n "$SUP" ]; then
+      qqok "服务已启动（supervisor pid $SUP）"
+    else
+      qqok "服务已启动（沙盒还在拉起，稍等一会儿刷新页面）"
+    fi
     qqlog "首次启动需要几分钟，可在应用「日志」页查看进度"
   fi
 else
