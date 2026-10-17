@@ -11,6 +11,27 @@
 
 ---
 
+## [1.1.14] - 2026-10-17
+
+真机日志把「NapCat 一直起不来」的真相说清楚了 —— 不是慢，是 QQ 每轮都在失败退出：
+
+```
+[17152:...:ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:256] Missing X server or $DISPLAY
+[17152:...:ERROR:ui/aura/env.cc:257] The platform failed to initialize.  Exiting.
+```
+
+QQ 起来后等 20 多秒连不上 X，就退出；supervisor 5 秒后再拉一遍，于是看起来「十分钟都没启动好」。
+也就是 Xvfb 根本没起来（或者起来又死了），而我们以前照旧把 QQ 拉起来 —— QQ 只能等死。
+
+### 修复
+
+- **Xvfb 起不来就不再硬拉 QQ**：先换显示号重试一次，仍失败就本轮跳过，5 秒后由 supervisor 再来，
+  并把 Xvfb 的报错原样写进容器日志（`[xvfb] ...` 缩进行），下次截图就能看到它为什么起不来。
+- **等待时间从 6 秒放宽到 20 秒**：真机上 Xvfb 冷启动可能更久，以前等到 6 秒就硬启 QQ。
+- **Xvfb 加 `-ac -nolisten tcp`**：关掉访问控制，不再需要 Xauthority cookie（xvfb-run 会临时生成，
+  QQ 那边拿不到就连不上）；只走 unix socket，少一层失败可能。
+- **失败时清掉 `/tmp/.XN-lock` 和 `/tmp/.X11-unix/XN`**：否则 pick_display 会一直跳过这个号，
+  重试几次就把 40~99 占满。
 ## [1.1.13] - 2026-10-17
 
 真机上 NapCat 启动要十几分钟。照着参考项目 [AstrBot-Bubble-Android-App](https://github.com/MuFengDR/AstrBot-Bubble-Android-App)，

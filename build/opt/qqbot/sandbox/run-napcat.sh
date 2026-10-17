@@ -342,13 +342,24 @@ start_xvfb() {
   mkdir -p /tmp/.X11-unix 2>/dev/null || true
   chmod 1777 /tmp/.X11-unix 2>/dev/null || true
   rm -f "/tmp/.X$d-lock" "/tmp/.X11-unix/X$d" 2>/dev/null || true
-  Xvfb ":$d" -screen 0 1x1x8 +extension GLX +render > "$RUNDIR/xvfb-$id.log" 2>&1 &
+  # -ac：关掉访问控制。用 xvfb-run 时它会临时生成 Xauthority，QQ 那边要是没拿到
+  # 这份 cookie 就会连不上；自己起的时候干脆不启用鉴权，省掉这一整类问题。
+  # -nolisten tcp：只走 unix socket，不占端口，也少一层失败可能。
+  Xvfb ":$d" -screen 0 1x1x8 -ac -nolisten tcp +extension GLX +render > "$RUNDIR/xvfb-$id.log" 2>&1 &
   XPIDS[$id]=$!
-  for i in $(seq 1 60); do
+  # 真机上实测：Xvfb 起得慢的时候 QQ 会先跑起来，然后 20 多秒后报
+  # "Missing X server or $DISPLAY" 退出，supervisor 再拉一遍，看起来就像「一直启动不起来」。
+  # 所以这里多等一会儿（最多 20 秒），并且全程盯着 Xvfb 有没有死。
+  for i in $(seq 1 200); do
     [ -S "/tmp/.X11-unix/X$d" ] && return 0
     kill -0 "${XPIDS[$id]}" 2>/dev/null || break
     sleep 0.1
   done
+  # 失败就把它留下的 socket / 锁文件一并清掉：否则 pick_display 会一直跳过这个号，
+  # 重试几次就把 40~99 全占满，后面再也挑不到可用显示号。
+  kill -TERM "${XPIDS[$id]}" 2>/dev/null || true
+  unset "XPIDS[$id]"
+  rm -f "/tmp/.X$d-lock" "/tmp/.X11-unix/X$d" 2>/dev/null || true
   return 1
 }
 
@@ -509,12 +520,18 @@ PY
 
   log "启动实例 $id（WebUI 端口 $np，WebUI token $tok，日志 $LOGF）"
   DISP="$(pick_display)"
-  if start_xvfb "$id" "$DISP"; then
-    log "实例 $id 的 X 已就绪（DISPLAY=:$DISP，屏幕 1x1x8）"
-  else
-    log "警告：实例 $id 的 Xvfb 未在 6 秒内就绪，仍尝试启动 QQ（见 $RUNDIR/xvfb-$id.log）"
-    tail -n 5 "$RUNDIR/xvfb-$id.log" 2>/dev/null
+  if ! start_xvfb "$id" "$DISP"; then
+    log "实例 $id 的 Xvfb 起不来（DISPLAY=:$DISP），清掉锁文件后再试一次"
+    tail -n 20 "$RUNDIR/xvfb-$id.log" 2>/dev/null | sed 's/^/  [xvfb] /'
+    log "  [xvfb] /tmp/.X11-unix: $(ls -1 /tmp/.X11-unix 2>/dev/null | tr '\n' ' ')"
+    DISP="$(pick_display)"
+    if ! start_xvfb "$id" "$DISP"; then
+      log "实例 $id 的 Xvfb 仍然起不来，本轮先不启动 QQ（5 秒后自动重试）"
+      tail -n 20 "$RUNDIR/xvfb-$id.log" 2>/dev/null | sed 's/^/  [xvfb] /'
+      return 1
+    fi
   fi
+  log "实例 $id 的 X 已就绪（DISPLAY=:$DISP，屏幕 1x1x8）"
   HOME="$INSTHOME" DISPLAY=":$DISP" \
   NAPCAT_WEBUI_SECRET_KEY="$tok" \
   NAPCAT_WEBUI_JWT_SECRET_KEY="${tok}_jwt" \
