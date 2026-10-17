@@ -84,6 +84,19 @@ else
   QQBOT_APT_MIRRORS="$QQBOT_APT_MIRRORS http://archive.ubuntu.com/ubuntu"
 fi
 rm -f /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/*.list 2>/dev/null || true
+
+# 空间预检：apt 解包 libc6 / gcc 这类大包时缓存与解包空间同时占用，手机上的常见
+# 失败就是这里，而报错是一长串 "No space left on device"，用户根本看不出是空间问题。
+# 先量一次，不够就直说。900 MB 是实测装完全部依赖所需的下限（缓存清理前）。
+FREE_MB=$(df -k / 2>/dev/null | awk 'NR==2 {print int($4/1024)}')
+case "$FREE_MB" in ''|*[!0-9]*) FREE_MB=0 ;; esac
+echo "[sandbox] 沙盒可用空间 ${FREE_MB} MB"
+if [ "$FREE_MB" -gt 0 ] && [ "$FREE_MB" -lt 900 ]; then
+  echo "[sandbox] E: 沙盒所在分区只剩 ${FREE_MB} MB，装运行依赖至少要 900 MB 可用空间"
+  echo "[sandbox] E: 请先清理手机存储（相册/下载/其它应用），再回主页点「继续部署」"
+  exit 1
+fi
+
 apt_update() {
   printf 'deb %s/ noble main restricted universe multiverse\ndeb %s/ noble-updates main restricted universe multiverse\ndeb %s/ noble-backports main restricted universe multiverse\ndeb %s/ noble-security main restricted universe multiverse\n' "$1" "$1" "$1" "$1" > /etc/apt/sources.list
   echo "[sandbox] apt-get update（镜像 $1）"
@@ -94,7 +107,23 @@ for M in $QQBOT_APT_MIRRORS; do
   if apt_update "$M"; then APT_OK=1; break; fi
   echo "[sandbox] 该镜像失败，尝试下一个"
 done
-if [ "$APT_OK" != "1" ]; then echo "[sandbox] 所有 apt 镜像均不可用"; exit 1; fi
+if [ "$APT_OK" != "1" ]; then
+  # 四个镜像全挂时，真正的根因几乎总是 DNS 或空间，而不是「镜像挂了」。
+  # 这里把判定做在前面，界面上的报错才能说人话（用户看到的会是最后这几行）。
+  echo "[sandbox] 所有 apt 镜像均不可用，开始诊断"
+  echo "[sandbox] --- /etc/resolv.conf ---"
+  sed -e "s/^/[sandbox]   /" /etc/resolv.conf 2>&1 || true
+  for _h in mirrors.tuna.tsinghua.edu.cn mirrors.ustc.edu.cn mirrors.aliyun.com ports.ubuntu.com; do
+    if getent hosts "$_h" >/dev/null 2>&1; then
+      echo "[sandbox] DNS 正常：$_h"
+    else
+      echo "[sandbox] E: 沙盒内解析不了 $_h（DNS 不通，apt 无法工作）"
+    fi
+  done
+  echo "[sandbox] E: 可用空间 $(df -h / 2>/dev/null | tail -n 1 | awk '{print $4" 剩余 / "$2" 总量"}')"
+  echo "[sandbox] E: 所有 apt 镜像均不可用（上面几行就是原因）"
+  exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # 自愈 + 重试。部署如果正好在 apt 装到一半时被打断（用户切走应用、手机休眠、进程被

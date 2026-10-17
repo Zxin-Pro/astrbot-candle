@@ -220,6 +220,18 @@ button.tiny{min-height:0;padding:4px 10px;font-size:11.5px;border-radius:var(--r
   color:var(--txt-3);box-shadow:none;font-weight:500;
 }
 .dtgl:active{background:rgba(255,255,255,.08)}
+/* 部署失败原因：红框直接摆在部署卡上。以前只有一句「第 3 步没装完」，
+   真正的原因（DNS / 空间 / dpkg）埋在几百行 apt 输出里，等于没告诉用户。 */
+.derr{
+  margin-top:8px;padding:9px 11px;border-radius:var(--r-sm);
+  background:rgba(255,92,92,.10);border:1px solid rgba(255,120,120,.36);
+  font-family:var(--mono);font-size:11.5px;line-height:1.6;color:#ffb4b4;
+  white-space:pre-wrap;word-break:break-word;max-height:24vh;overflow:auto;
+}
+/* 部署卡标题栏里的两个小按钮挨在一起：复制日志在左、展开/收起在右 */
+.dtgl + .dtgl{margin-left:6px}
+#btnCopyLog{margin-left:auto}
+#btnCopyLog + .dtgl{margin-left:6px;margin-right:0}
 
 /* ===== Token 展示框 ===== */
 .tokbox{
@@ -531,9 +543,10 @@ button.locked{box-shadow:none;transform:none}
 
   <section class="tab on" id="tab-home">
     <div class="card" id="deployCard">
-      <h2><span class="dot" id="d-deploying"></span>自动部署<button class="dtgl" id="btnDeployToggle" data-act="deploytoggle" style="display:none">展开</button></h2>
+      <h2><span class="dot" id="d-deploying"></span>自动部署<button class="dtgl" id="btnCopyLog" data-act="copylog" title="把部署日志复制出来">复制日志</button><button class="dtgl" id="btnDeployToggle" data-act="deploytoggle" style="display:none">展开</button></h2>
       <div class="dsum" id="deploySum" style="display:none"></div>
       <div class="hint" style="margin-top:0" id="deployHint">正在读取部署状态…</div>
+      <pre class="derr" id="deployErr" style="display:none"></pre>
       <div class="bar" id="deployBarWrap"><i id="deployBar"></i></div>
       <div id="stepList" style="margin-top:10px"></div>
       <div class="btns" style="margin-top:10px" id="deployBtns">
@@ -1168,6 +1181,9 @@ function pill(txt, cls){ return '<span class="pill ' + (cls || "") + '">' + esc(
      terminal（打开终端，排障要用）。 */
 var NO_LOCK_ACTS = [
   "deploy", "stopdeploy", "fixdpkg", "resetdeploy",
+  /* 部署没成功的时候，正是最需要看部署日志、展开看哪一步挂了的时候，
+     这两个不能拦 —— 否则「复制日志」在用户最需要它的那一刻是灰的。 */
+  "copylog", "deploytoggle",
   "settings", "backhome", "showlogs",
   "pickbg", "clearbg", "bgpreset", "glass",
   "reload", "slim", "rmcard",
@@ -1397,7 +1413,18 @@ function refreshDeploy(){
   }
   setHtml(el("stepList"), h.join(""));
   if (d.done) el("deployHint").textContent = "部署已完成，可以开始扫码登录 QQ 了。";
-  else if (d.running) el("deployHint").textContent = "正在部署中…（已完成 " + d.doneCount + "/" + d.total + " 步）请保持应用在前台、屏幕不要熄灭。中途被打断会自动修好再重试，不用管它。";
+  else if (d.running) {
+    /* 第 3 步（装依赖）动辄十几分钟，界面一直显示同一句话，用户会以为卡死了。
+       日志多久没更新就说多久，并且明确「还在装」还是「好像停了」。 */
+    var age = d.logAge || 0;
+    var mins = Math.floor(age / 60);
+    var stuck = age > 600;
+    el("deployHint").textContent = "正在部署中…（已完成 " + d.doneCount + "/" + d.total + " 步）"
+      + (mins >= 1 ? "日志 " + mins + " 分钟没有新内容，" : "")
+      + (stuck
+        ? "可能卡在下载或 dpkg 上。可以再等等；实在不动就点「停止」再来一次，已装好的部分不会重装。"
+        : "请保持应用在前台、屏幕不要熄灭。中途被打断会自动修好再重试，不用管它。");
+  }
   else if (d.doneCount > 0) {
     /* 卡在第 3 步（30-apt）是最常见的中断：上次 apt 被打断会在 dpkg 数据库里留下半配置的包。
        现在 deploy.sh 每个步骤失败后都会先跑一次 fix-sandbox.sh --force 再重试（最多 3 次），
@@ -1422,6 +1449,16 @@ function refreshDeploy(){
   el("btnFixDpkg").style.display = (!d.done && !d.running && d.doneCount >= 2 && d.steps && d.steps[2] && !d.steps[2].done) ? "" : "none";
   if (d.logTail) el("deployLog").textContent = d.logTail;
   paintDeploy(d);
+  /* 上次失败的真实原因（common.sh 的 qqerr 写在 ~/.qqbot/deploy.error）。
+     部署成功后后端会把这个文件删掉，所以这里只在没跑完时显示；
+     必须放在 paintDeploy 之后 —— 它会把 deployLog 之类一并 display:"". */
+  var ebox = el("deployErr");
+  if (ebox) {
+    var etxt = (d.err || "").replace(/\s+$/, "");
+    if (etxt && !d.done) { ebox.textContent = "上次失败原因：\n" + etxt; ebox.style.display = ""; }
+    else { ebox.textContent = ""; ebox.style.display = "none"; }
+  }
+  autoRetryDeploy(d);
 }
 
 /* ---------- 部署台展开 / 收起 ----------
@@ -1686,6 +1723,48 @@ function renderHomeBots(){
   }
   setHtml(box, h.join(""));
   paintLocks();   /* 重建的卡片按钮立刻补上灰色外观，不等下一轮刷新 */
+}
+
+/* ---------- 复制部署日志 ----------
+   用户说「卡在第三步」时，让他自己去日志页找、再截图发给我，成本太高。
+   这里一键把 deploy.log 末尾 200 行丢进剪贴板，粘过来就能定位。 */
+function doCopyDeployLog(){
+  var r = "";
+  try { r = String(Android.action("copylog")); } catch (e) { r = "复制失败：" + e; }
+  Android.toast(r || "已复制部署日志");
+}
+
+/* ---------- 部署自动续跑 ----------
+   最常见的「卡在第三步」其实是：部署进程在 apt 装到一半时被打断（切走应用、锁屏、
+   系统回收进程），界面上就永远停在「中断于第 3 步」。以前只能用户自己再点一次
+   「继续部署」，而每点一次都要重新等十几分钟。
+   现在只要部署没跑完、又没在跑，就自动续一次（最多 3 次）；deploy.sh 靠步骤标记
+   续跑，已经装好的步骤不会重装，每次也会先自愈 dpkg 再接着装。
+   用户手动「停止部署」或自己点了按钮之后，自动续跑会暂停 10 分钟，不跟人抢方向盘。 */
+var AR = { n: 0, last: 0, pauseUntil: 0, progress: -1 };
+function arSuspend(ms){ AR.pauseUntil = Date.now() + (ms || 600000); }
+function autoRetryDeploy(d){
+  if (!d || d.done) { AR.n = 0; AR.last = 0; AR.progress = -1; return; }
+  /* 只有真的往前走了（有新的步骤完成）才把重试次数补回来。
+     否则「起来就挂」的部署会无限循环：每跑一次 n 清零，再挂再跑。 */
+  if (typeof d.doneCount === "number" && d.doneCount > AR.progress) {
+    AR.progress = d.doneCount;
+    AR.n = 0;
+  }
+  if (d.running) return;
+  var now = Date.now();
+  if (now < AR.pauseUntil) return;
+  if (AR.n >= 3) return;
+  if (AR.last && now - AR.last < 45000) return;
+  if (!S.prefix) return;
+  /* 一步都没跑过时交给 maybeAutoDeploy 处理：那个路径已经处理过 bootstrap 还没解包的情况，
+     这里再插手只会在解包期间反复触发。 */
+  if (!d.doneCount && !(d.err || "").length) return;
+  AR.last = now;
+  AR.n++;
+  var r = "";
+  try { r = String(Android.action("deploy")); } catch (e) { r = ""; }
+  if (r) Android.toast("部署没跑完，已自动续跑（第 " + AR.n + " 次）");
 }
 
 function doAction(a){
@@ -2079,7 +2158,7 @@ document.addEventListener("click", function(ev){
   if (act === "start" || act === "stop" || act === "restart") doAction(act);
   /* 桥调用一律包 try/catch：抛异常会整段中断点击处理，界面卡在「正在…」而指令根本没发出去 */
   else if (act === "deploy") { var r = ""; try { r = String(Android.action("deploy")); } catch (e) { r = "失败：" + e; } Android.toast(r.indexOf("部署") >= 0 ? r : "部署：" + r); refreshDeploy(); }
-  else if (act === "stopdeploy") { var r = ""; try { r = String(Android.action("stopdeploy")); } catch (e) { r = "停止部署失败：" + e; } Android.toast(r.indexOf("失败") >= 0 ? r : "已停止部署"); setTimeout(refreshDeploy, 1200); }
+  else if (act === "stopdeploy") { var r = ""; try { r = String(Android.action("stopdeploy")); } catch (e) { r = "停止部署失败：" + e; } Android.toast(r.indexOf("失败") >= 0 ? r : "已停止部署"); /* 用户主动叫停，自动续跑别再偷偷拉起来 */ arSuspend(); setTimeout(refreshDeploy, 1200); }
   else if (act === "link") linkBots();
   else if (act === "svc") doSvc(arg);
   else if (act === "svcallon") doSvc("all-on");
@@ -2110,6 +2189,7 @@ document.addEventListener("click", function(ev){
   else if (act === "dlupdate") updDownload();
   else if (act === "updnotes") updDetail();
   else if (act === "copytext") Android.copy(arg || "");
+  else if (act === "copylog") doCopyDeployLog();
   else if (act === "saveproxy") saveProxy();
   else if (act === "clearproxy") { if (el("inProxy")) el("inProxy").value = ""; saveProxy(); }
   else if (act === "testproxy") testProxy();

@@ -38,7 +38,25 @@ qqok()   { printf '\033[32m[QQBot]\033[0m %s\n' "$*"; }
 # 的调用方普遍写成 port=$(qq_xxx_port)，若警告走 stdout 就会被命令替换一并捕获，
 # 端口变量里混进警告文本（"http://127.0.0.1:[QQBot] bots.json ...6099"）。
 qqwarn() { printf '\033[33m[QQBot]\033[0m %s\n' "$*" >&2; }
-qqerr()  { printf '\033[31m[QQBot]\033[0m %s\n' "$*" >&2; }
+
+# ---------------------------------------------------------------------------
+# 最近几条错误单独留一份给界面看（deploy.error）。
+#
+# 为什么要单独留：部署失败时用户只能看到一个「第 3 步没装完」，得自己去日志页
+# 翻几百行 apt 输出才知道原因。这个文件让首页直接显示「上次失败原因」，也让
+# 「复制部署日志」有确定的内容可复制。只保留最后 12 行，避免越滚越大。
+# 写失败一律忽略：日志功能绝不能反过来把部署弄挂。
+qq_err_note() {
+  [ -n "$QQBOT_HOME" ] || return 0
+  [ -d "$QQBOT_HOME" ] || return 0
+  printf '%s %s\n' "$(date '+%H:%M:%S' 2>/dev/null)" "$*" >> "$QQBOT_HOME/deploy.error" 2>/dev/null || return 0
+  if [ -f "$QQBOT_HOME/deploy.error" ]; then
+    tail -n 12 "$QQBOT_HOME/deploy.error" > "$QQBOT_HOME/deploy.error.tmp" 2>/dev/null \
+      && mv -f "$QQBOT_HOME/deploy.error.tmp" "$QQBOT_HOME/deploy.error" 2>/dev/null
+  fi
+  return 0
+}
+qqerr()  { printf '\033[31m[QQBot]\033[0m %s\n' "$*" >&2; qq_err_note "$*"; }
 
 # ---------------------------------------------------------------------------
 # 端口配置（从 bots.json 读）
