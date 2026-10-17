@@ -138,10 +138,32 @@ run_steps
 # （可能是更早的版本反复中断留下的烂摊子）。这时重建根文件系统比继续硬修快得多。
 # 只做一次，避免在系统性故障（比如一直装不上）时无限重建。
 if [ "$FAILED" = "30-apt" ] && [ ! -f "$QQBOT_HOME/.rootfs-rebuilt" ]; then
+  # 如果是「文件系统不支持硬链接」或「根文件系统整体不可写」，重建出来的新树还是一样，
+  # 白等一次 30 MB 下载 + 十几分钟。这种硬件/存储层面的问题必须直说。
+  if [ -f "$QQBOT_CACHE/fs-nolink" ]; then
+    qqerr "这台手机给应用分配的存储不支持硬链接，apt/dpkg 在这种存储上无法工作"
+    qqerr "请确认应用装在「内部存储」（不要装到 SD 卡 / 外置存储 / 内存卡），必要时卸载重装后再部署"
+    rm -f "$QQBOT_CACHE/fs-nolink" 2>/dev/null || true
+    exit 1
+  fi
+  if [ -f "$QQBOT_CACHE/fs-nowrite" ]; then
+    qqerr "沙盒目录里残留的文件不属于当前应用，dpkg 无法写入，需要重建根文件系统"
+    rm -f "$QQBOT_CACHE/fs-nowrite" 2>/dev/null || true
+  fi
   qqerr "第 3 步反复失败，dpkg 状态可能已经无法就地修复"
   qqlog "重建沙盒根文件系统后再来一次（需重新下载约 30 MB，之后会自动接着装依赖）"
   : > "$QQBOT_HOME/.rootfs-rebuilt"
   rm -rf "$QQBOT_ROOTFS"
+  # 里面有别的用户的文件时 rm 会静默失败，先放开权限再删一次；还删不掉就只能让用户重装。
+  if [ -e "$QQBOT_ROOTFS" ]; then
+    qqlog "旧的沙盒目录没删干净，放开权限后再删"
+    chmod -R 777 "$QQBOT_ROOTFS" 2>/dev/null || true
+    rm -rf "$QQBOT_ROOTFS" 2>/dev/null || true
+  fi
+  if [ -e "$QQBOT_ROOTFS" ]; then
+    qqerr "旧的沙盒目录删不掉（里面的文件不属于当前应用），只能卸载本应用后重新安装"
+    exit 1
+  fi
   rm -f "$QQBOT_STEPS/20-rootfs" "$QQBOT_STEPS/30-apt" \
         "$QQBOT_STEPS/40-qq" "$QQBOT_STEPS/50-napcat" \
         "$QQBOT_STEPS/60-astrbot" "$QQBOT_STEPS/65-link" "$QQBOT_STEPS/70-launcher"

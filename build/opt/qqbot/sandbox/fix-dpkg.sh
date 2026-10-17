@@ -46,6 +46,49 @@ qq_audit_pkgs() { dpkg --audit 2>/dev/null | awk '/^ [^ ]/ {print $1}'; }
 
 say "检查 dpkg 状态（journal=$(qq_journal) 条，半配置包：$(qq_audit_pkgs | tr '\n' ' ')）"
 
+# 0) 先确认 dpkg 数据库本身能写 —— 真机上出现过的形态是：
+#      dpkg: error: error creating new backup file '/var/lib/dpkg/status-old': Permission denied
+#    这种时候后面每一条 dpkg 命令都会失败，先修权限，修不好就直说，别让用户对着同一面墙重试。
+DB=/var/lib/dpkg
+if [ -d "$DB" ]; then
+  # status 必须普通文件：旧版 proot --link2symlink 曾把它换成指向宿主绝对路径的符号链接
+  if [ -L "$DB/status" ]; then
+    say "status 是符号链接（旧版 link2symlink 留下的），换回普通文件"
+    rm -f "$DB/status.qqbottmp" 2>/dev/null || true
+    if cp -fL "$DB/status" "$DB/status.qqbottmp" 2>/dev/null && [ -s "$DB/status.qqbottmp" ]; then
+      mv -f "$DB/status.qqbottmp" "$DB/status" 2>/dev/null || true
+    else
+      rm -f "$DB/status.qqbottmp" 2>/dev/null || true
+      say "E: status 读不出来，dpkg 数据库已损坏，只能重建根文件系统"
+    fi
+  fi
+  rm -f "$DB/status-old" "$DB/status-new" 2>/dev/null || true
+  if ( : > "$DB/.qqbot-wtest" ) 2>/dev/null; then
+    rm -f "$DB/.qqbot-wtest" 2>/dev/null || true
+    say "dpkg 数据库目录可写"
+  else
+    _we=""
+    if ! { : > "$DB/.qqbot-wtest"; } 2>/tmp/.qqbot-wtest.err; then
+      _we=$(cat /tmp/.qqbot-wtest.err 2>/dev/null | tail -n 1)
+    fi
+    rm -f /tmp/.qqbot-wtest.err 2>/dev/null || true
+    say "E: $DB 不可写（${_we:-Permission denied}），加固权限"
+    chmod -R 777 "$DB" 2>/dev/null || true
+    if ( : > "$DB/.qqbot-wtest" ) 2>/dev/null; then
+      rm -f "$DB/.qqbot-wtest" 2>/dev/null || true
+      say "加固后已可写"
+    else
+      say "E: 连 chmod 都改不动，这个根文件系统的文件不属于当前应用，需要重建根文件系统"
+    fi
+  fi
+  if ln "$DB/status" "$DB/.qqbot-htest" 2>/dev/null; then
+    rm -f "$DB/.qqbot-htest" 2>/dev/null || true
+  else
+    rm -f "$DB/.qqbot-htest" 2>/dev/null || true
+    say "E: 沙盒所在文件系统不支持硬链接，dpkg 无法备份 status，只能重建根文件系统"
+  fi
+fi
+
 # 1) 有别的 apt/dpkg 在跑就先等它，别互相破坏
 if qq_dpkg_busy; then
   say "检测到仍在运行的 apt/dpkg，等它结束（最多 180 秒）"
