@@ -337,29 +337,58 @@ pick_display() {
   printf '40'
 }
 
+# 真机上 Xvfb 秒退的原因不止一种，用同一套参数重试只会得到同一个结果。
+# 下面三档按「最激进 → 最保守」排：
+#   1) 1x1x8 +GLX +render —— 参考项目的做法，帧缓冲最小；但它要 mesa 的 GLX 模块，
+#      --no-install-recommends 装出来的 rootfs 不一定有，Xvfb 会直接
+#      'Fatal server error: could not enable GLX extension' 退出；
+#   2) 640x480x24 —— 不要求 GLX，纯软件，几乎任何 Xvfb 都能起；
+#   3) 1280x800x24 —— 前两档都不行说明问题不在参数（多半 /tmp 不可写或缺库），
+#      这档只是把失败留个完整记录。
+XVFB_VARIANTS="1x1x8|+extension GLX +render
+640x480x24|
+1280x800x24|"
+
+xvfb_dump_log() {
+  local id="$1" n="${2:-12}" ln
+  [ -s "$RUNDIR/xvfb-$id.log" ] || return 0
+  while IFS= read -r ln; do log "  [xvfb] $ln"; done < <(sed -n "1,${n}p" "$RUNDIR/xvfb-$id.log" 2>/dev/null)
+  return 0
+}
+
 start_xvfb() {
-  local id="$1" d="$2" i
+  local id="$1" d="$2" i v screen extra
   mkdir -p /tmp/.X11-unix 2>/dev/null || true
   chmod 1777 /tmp/.X11-unix 2>/dev/null || true
-  rm -f "/tmp/.X$d-lock" "/tmp/.X11-unix/X$d" 2>/dev/null || true
-  # -ac：关掉访问控制。用 xvfb-run 时它会临时生成 Xauthority，QQ 那边要是没拿到
-  # 这份 cookie 就会连不上；自己起的时候干脆不启用鉴权，省掉这一整类问题。
-  # -nolisten tcp：只走 unix socket，不占端口，也少一层失败可能。
-  Xvfb ":$d" -screen 0 1x1x8 -ac -nolisten tcp +extension GLX +render > "$RUNDIR/xvfb-$id.log" 2>&1 &
-  XPIDS[$id]=$!
-  # 真机上实测：Xvfb 起得慢的时候 QQ 会先跑起来，然后 20 多秒后报
-  # "Missing X server or $DISPLAY" 退出，supervisor 再拉一遍，看起来就像「一直启动不起来」。
-  # 所以这里多等一会儿（最多 20 秒），并且全程盯着 Xvfb 有没有死。
-  for i in $(seq 1 200); do
-    [ -S "/tmp/.X11-unix/X$d" ] && return 0
-    kill -0 "${XPIDS[$id]}" 2>/dev/null || break
-    sleep 0.1
-  done
-  # 失败就把它留下的 socket / 锁文件一并清掉：否则 pick_display 会一直跳过这个号，
-  # 重试几次就把 40~99 全占满，后面再也挑不到可用显示号。
-  kill -TERM "${XPIDS[$id]}" 2>/dev/null || true
-  unset "XPIDS[$id]"
-  rm -f "/tmp/.X$d-lock" "/tmp/.X11-unix/X$d" 2>/dev/null || true
+  while IFS='|' read -r screen extra; do
+    [ -n "$screen" ] || continue
+    rm -f "/tmp/.X$d-lock" "/tmp/.X11-unix/X$d" 2>/dev/null || true
+    : > "$RUNDIR/xvfb-$id.log" 2>/dev/null || true
+    # -ac：关掉访问控制。用 xvfb-run 时它会临时生成 Xauthority，QQ 那边要是没拿到
+    # 这份 cookie 就会连不上；自己起的时候干脆不启用鉴权，省掉这一整类问题。
+    # -nolisten tcp：只走 unix socket，不占端口，也少一层失败可能。
+    # shellcheck disable=SC2086
+    Xvfb ":$d" -screen 0 "$screen" -ac -nolisten tcp $extra >> "$RUNDIR/xvfb-$id.log" 2>&1 &
+    XPIDS[$id]=$!
+    # 真机上实测：Xvfb 起得慢的时候 QQ 会先跑起来，然后 20 多秒后报
+    # "Missing X server or $DISPLAY" 退出，supervisor 再拉一遍，看起来就像「一直启动不起来」。
+    # 所以每一档最多等 12 秒，并且全程盯着 Xvfb 有没有死。
+    for i in $(seq 1 120); do
+      if [ -S "/tmp/.X11-unix/X$d" ]; then
+        XVFB_SCREEN_USED="$screen ${extra:-（无扩展）}"
+        return 0
+      fi
+      kill -0 "${XPIDS[$id]}" 2>/dev/null || break
+      sleep 0.1
+    done
+    # 这一档失败：把进程和它留下的 socket / 锁文件清干净，否则 pick_display 会一直
+    # 跳过这个号，重试几次就把 40~99 全占满，后面再也挑不到可用显示号。
+    kill -TERM "${XPIDS[$id]}" 2>/dev/null || true
+    unset "XPIDS[$id]"
+    rm -f "/tmp/.X$d-lock" "/tmp/.X11-unix/X$d" 2>/dev/null || true
+    log "实例 $id 的 Xvfb 用「$screen ${extra:-（无扩展）}」起不来，Xvfb 自己说："
+    xvfb_dump_log "$id" 14
+  done <<< "$XVFB_VARIANTS"
   return 1
 }
 
@@ -520,18 +549,20 @@ PY
 
   log "启动实例 $id（WebUI 端口 $np，WebUI token $tok，日志 $LOGF）"
   DISP="$(pick_display)"
+  XVFB_SCREEN_USED=""
   if ! start_xvfb "$id" "$DISP"; then
-    log "实例 $id 的 Xvfb 起不来（DISPLAY=:$DISP），清掉锁文件后再试一次"
-    tail -n 20 "$RUNDIR/xvfb-$id.log" 2>/dev/null | sed 's/^/  [xvfb] /'
+    # start_xvfb 内部已经把三档参数逐个试过、并各自打印了 Xvfb 自己的报错，
+    # 这里只补两条环境信息，然后**不启动 QQ** —— 否则 QQ 起来只会报
+    # "Missing X server or $DISPLAY" 自杀，supervisor 再拉，看起来像一直启动不起来。
+    log "实例 $id 的 Xvfb 三档参数都没起来，本轮先不启动 QQ（5 秒后自动重试）"
     log "  [xvfb] /tmp/.X11-unix: $(ls -1 /tmp/.X11-unix 2>/dev/null | tr '\n' ' ')"
-    DISP="$(pick_display)"
-    if ! start_xvfb "$id" "$DISP"; then
-      log "实例 $id 的 Xvfb 仍然起不来，本轮先不启动 QQ（5 秒后自动重试）"
-      tail -n 20 "$RUNDIR/xvfb-$id.log" 2>/dev/null | sed 's/^/  [xvfb] /'
-      return 1
-    fi
+    log "  [xvfb] /tmp 可写: $({ : > /tmp/.qqbot-wtest && echo yes && rm -f /tmp/.qqbot-wtest; } 2>/dev/null || echo no)"
+    return 1
   fi
-  log "实例 $id 的 X 已就绪（DISPLAY=:$DISP，屏幕 1x1x8）"
+  log "实例 $id 的 X 已就绪（DISPLAY=:$DISP，参数 $XVFB_SCREEN_USED）"
+  # 参考项目的 launcher 里有一句 trap "" SIGPIPE：QQ 往已经关掉的日志管道里写时
+  # 会被 SIGPIPE 直接打死，症状是「刚起来就没了」且日志里什么都没有。
+  trap '' PIPE
   HOME="$INSTHOME" DISPLAY=":$DISP" \
   NAPCAT_WEBUI_SECRET_KEY="$tok" \
   NAPCAT_WEBUI_JWT_SECRET_KEY="${tok}_jwt" \

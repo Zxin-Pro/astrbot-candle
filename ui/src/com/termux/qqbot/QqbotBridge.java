@@ -635,4 +635,29 @@ public class QqbotBridge {
         if (s.length() == 0) return "上传没有回音（可能网络不通），稍后再试一次";
         return s;
     }
+
+    /**
+     * 运行环境自检（设置页「检查运行环境」按钮）。
+     *
+     * 必须放后台跑：脚本要在沙盒里真起三次 Xvfb，加起来经常 30 秒以上，同步等会把
+     * WebView 的 JS 线程卡死。结果由脚本自己写进 ~/.qqbot/doctor.txt，前端轮询 doctorText()。
+     */
+    @JavascriptInterface
+    public void doctorStart() {
+        String script = act.usrDir() + "/opt/qqbot/doctor.sh";
+        File f = new File(script);
+        if (!f.exists()) {
+            act.doToast("自检脚本还没就位，请先完成部署");
+            return;
+        }
+        runBg("bash " + script + " >/dev/null 2>&1", "环境自检已结束", "环境自检没跑完", 240);
+    }
+
+    /** 自检结果（doctor.txt 末 200 行）；空串 = 还没跑过。 */
+    @JavascriptInterface
+    public String doctorText() {
+        File f = new File(act.qqbotDir(), "doctor.txt");
+        if (!f.exists()) return "";
+        return act.tail(f, 200);
+    }
 }

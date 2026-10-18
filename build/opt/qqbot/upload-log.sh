@@ -57,7 +57,26 @@ have() { command -v "$1" >/dev/null 2>&1; }
   ls -ldn "$QQBOT_ROOTFS" "$QQBOT_ROOTFS/var/lib/dpkg" "$QQBOT_ROOTFS/var/lib/dpkg/status" 2>/dev/null
   echo
   echo "----- 进程 -----"
-  ps -eo pid,args 2>/dev/null | grep -E "proot|run-all|watchdog" | head -n 12
+  ps -eo pid,args 2>/dev/null | grep -E "proot|run-all|watchdog|Xvfb|/opt/QQ/qq" | head -n 20
+  echo
+  # NapCat（QQ/Electron）的日志：这里才有 "Missing X server"、GLX 失败、二维码之类
+  # 真正说明问题的行。以前只有部署日志，NapCat 起不来的报告里什么线索都没有。
+  echo "----- NapCat 实例日志尾部 120 行 -----"
+  for f in "$QQBOT_CACHE"/logs/qq-*.log "$QQBOT_CACHE"/logs/qq.log; do
+    [ -f "$f" ] || continue
+    echo "### $f（$(wc -c < "$f" 2>/dev/null) 字节）"
+    tail -n 120 "$f" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g'
+    echo
+  done
+  echo "----- Xvfb 日志（每个实例一份）----- "
+  for f in "$QQBOT_CACHE"/run/xvfb-*.log; do
+    [ -f "$f" ] || continue
+    echo "### $f"
+    sed -n '1,60p' "$f" 2>/dev/null
+    echo
+  done
+  echo "----- 沙盒自检结果 (doctor.txt) -----"
+  cat "$QQBOT_HOME/doctor.txt" 2>/dev/null || echo "(还没跑过「检查运行环境」)"
 } > "$TMP" 2>&1
 
 SZ=$(wc -c < "$TMP" 2>/dev/null || echo 0)

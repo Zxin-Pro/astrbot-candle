@@ -839,6 +839,7 @@ button.locked{box-shadow:none;transform:none}
         <button class="small" data-act="deploy">重新部署</button>
         <button class="small" data-act="status">查看状态</button>
         <button class="small" data-act="fixdpkg">修复沙盒依赖</button>
+        <button class="small" data-act="doctor">检查运行环境</button>
         <button class="small danger" data-act="resetdeploy">重置部署标记</button>
       </div>
       <pre id="cmdOut" style="max-height:30vh"></pre>
@@ -1199,6 +1200,8 @@ var NO_LOCK_ACTS = [
   /* 部署没成功的时候，正是最需要看部署日志、展开看哪一步挂了的时候，
      这两个不能拦 —— 否则「复制日志」在用户最需要它的那一刻是灰的。 */
   "copylog", "deploytoggle", "uploadlog", "uploadskip",
+  /* 自检是排障入口，本来就只在「起不来」的时候有人点它。 */
+  "doctor",
   "settings", "backhome", "showlogs",
   "pickbg", "clearbg", "bgpreset", "glass",
   "reload", "slim", "rmcard",
@@ -1759,6 +1762,39 @@ function renderHomeBots(){
   paintLocks();   /* 重建的卡片按钮立刻补上灰色外观，不等下一轮刷新 */
 }
 
+/* ---------- 运行环境自检 ----------
+   NapCat 起不来时，用户能做的只有「重装 / 重试」，真正的原因（Xvfb 缺库、/tmp 不可写、
+   GLX 不可用）全在沙盒里。这个按钮跑 doctor.sh：它会在沙盒内真起三次 Xvfb，把 Xvfb
+   自己的报错打出来。脚本自己写 doctor.txt，这里每 1.5 秒读一次，看到「（自检结束）」为止。 */
+var DOC_TIMER = null, DOC_TICKS = 0;
+function doDoctor(){
+  var co = el("cmdOut");
+  if (co) { co.style.display = ""; co.textContent = "正在自检：会在沙盒里真起三次 Xvfb，大约 20~60 秒，请稍等…"; }
+  try { Android.doctorStart(); }
+  catch (e) { if (co) co.textContent = "自检启动失败：" + e; return; }
+  if (DOC_TIMER) clearInterval(DOC_TIMER);
+  DOC_TICKS = 0;
+  DOC_TIMER = setInterval(docTick, 1500);
+}
+function docTick(){
+  DOC_TICKS++;
+  var t = "";
+  try { t = String(Android.doctorText() || ""); } catch (e) { t = ""; }
+  var co = el("cmdOut");
+  if (t && t.indexOf("（自检结束）") >= 0) {
+    if (DOC_TIMER) { clearInterval(DOC_TIMER); DOC_TIMER = null; }
+    if (co) co.textContent = t;
+    Android.toast("自检完成，结果在下面（也可以点「上传错误日志」发给作者）");
+    return;
+  }
+  if (t && co) co.textContent = t;
+  /* 90 秒还没跑完就别再轮询了：沙盒没起来时脚本会卡在 proot 启动那一步 */
+  if (DOC_TICKS > 60) {
+    if (DOC_TIMER) { clearInterval(DOC_TIMER); DOC_TIMER = null; }
+    if (co && !t) co.textContent = "自检没有产出结果（沙盒可能没在跑）。先去主页点「启动服务」，再试一次。";
+  }
+}
+
 /* ---------- 复制部署日志 ----------
    用户说「卡在第三步」时，让他自己去日志页找、再截图发给我，成本太高。
    这里一键把 deploy.log 末尾 200 行丢进剪贴板，粘过来就能定位。 */
@@ -2287,6 +2323,7 @@ document.addEventListener("click", function(ev){
   else if (act === "updnotes") updDetail();
   else if (act === "copytext") Android.copy(arg || "");
   else if (act === "copylog") doCopyDeployLog();
+  else if (act === "doctor") doDoctor();
   else if (act === "uploadlog") doUploadLog();
   else if (act === "uploadskip") skipErrAsk();
   else if (act === "saveproxy") saveProxy();

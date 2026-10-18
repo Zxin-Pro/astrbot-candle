@@ -11,6 +11,32 @@
 
 ---
 
+## [1.1.15] - 2026-10-18
+
+上一版把「X 起不来就不要启 QQ」这条补上了，但真机上还是起不来 —— 说明 **Xvfb 自己就没起来**。
+这一版不再赌一种参数，而是逐档回退，并且把 Xvfb 自己说的话摆到用户面前。
+
+### 修复
+
+- **Xvfb 三档参数逐档回退**：`1x1x8 +GLX +render` → `640x480x24`（不要求 GLX）→ `1280x800x24`。
+  真机上最可能的情况是 arm64 的 rootfs 用 `--no-install-recommends` 装出来没有 mesa 的 GLX 模块，
+  Xvfb 一加 `+extension GLX` 就 `Fatal server error: could not enable GLX extension` 秒退；
+  而原来失败后只会拿同一套参数再试一次，等于试了个寂寞。现在第二档不要求 GLX，纯软件也能起。
+- **每档失败都把 Xvfb 自己的报错打出来**（前 14 行），并清掉它残留的 `/tmp/.X<n>-lock` 与 socket，
+  否则 `pick_display` 会一直跳过那个号，重试几次把 40~99 全占满。
+- **补装 mesa / xkb 相关包**：`libgl1 libglx-mesa0 libgl1-mesa-dri xkb-data x11-xkb-utils`
+  （只对新装环境生效，老环境靠上面的回退）。
+- **`trap '' PIPE`**：照参考项目的做法。QQ 往已关闭的日志管道写时会被 SIGPIPE 直接打死，
+  症状正是「刚起来就没了、日志里什么都没有」。
+
+### 新增
+
+- **设置页 → 维护 → 检查运行环境**：`doctor.sh` 只读自检，报告 proot / supervisor / 三个端口 /
+  NapCat 日志，并**在沙盒里真的把三档 Xvfb 各起一次**（各 10 秒），把 Xvfb 的输出原样列出来。
+  结果存成 `~/.qqbot/doctor.txt`。
+- **错误报告带上 NapCat 与 Xvfb 日志**：`upload-log.sh` 现在还会打包 `qq-*.log` 末 120 行、
+  每个实例的 `run/xvfb-*.log` 前 60 行、以及 `doctor.txt`。以前 NapCat 起不来的报告里
+  一条相关线索都没有，只能靠猜。
 ## [1.1.14] - 2026-10-17
 
 真机日志把「NapCat 一直起不来」的真相说清楚了 —— 不是慢，是 QQ 每轮都在失败退出：
