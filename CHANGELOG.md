@@ -11,6 +11,35 @@
 
 ---
 
+## [1.1.20] - 2026-10-18
+
+1.1.19 把 QQ 的启动参数做成阶梯（`--disable-gpu` 之类）去绕 GPU 崩溃，真机上照样崩。
+这一版找到了真病因：**Xvfb 的色深**。
+
+### 修复
+
+- **Xvfb 一律用 24 位色深**（`sandbox/run-napcat.sh` 的 `XVFB_VARIANTS`）：8 位屏没有可用的
+  GL 配置，16 位配不出 EGL config，只有 24 位能让 QQ 里 Chromium 的 GPU 子进程初始化成功。
+  原来那档 `1x1x8 +extension GLX +render` 是照抄参考项目 AstrBot-Bubble-Android-App 的，
+  我们跟着抄错了一整版。同一台模拟器、同一份 rootfs 只换色深实测：8 位打出 20 条
+  ANGLE/EGL 报错，16 位报 `No suitable EGL configs found`，24 位一条 GL 报错都没有、
+  二维码正常输出。
+- **`--disable-gpu` 从参数阶梯里删掉**：它只是不让 Chromium *用* 硬件加速，GPU 进程照样起、
+  EGL 照样初始化；而一旦带了它，GPU 进程崩掉时判定「没有软件合成可退」，直接
+  `GPU process isn't usable. Goodbye.` 把主进程带走 —— 1.1.19 就是栽在这上面。现在第一档
+  是「什么额外参数都不加」，后面几档（`--disable-gpu-sandbox`、swiftshader、`--in-process-gpu`）
+  只作别的机型兜底。
+- **自检脚本同步**（`doctor.sh`）：逐档试起 Xvfb 的参数也从 8 位改成 24 位，否则用户在
+  「检查运行环境」里看到的仍是必然失败的组合，还会误以为是环境坏了。
+
+### 说明
+
+- GPU 进程退出时常伴随 `sandbox/linux/services/proc_util.cc:114 Check failed: . :
+  Operation not permitted`，那是它退出时的清理动作（枚举 `/proc/self/fd` 做沙箱自检），
+  是症状不是病因，别再被它带偏。
+
+---
+
 ## [1.1.19] - 2026-10-18
 
 接 1.1.18 往下修：Xvfb 在真机上总算起来了，但 QQ 自己秒退，表现成

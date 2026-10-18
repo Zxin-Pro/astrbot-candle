@@ -30,7 +30,9 @@ echo "剩余空间 : $(df -h / 2>/dev/null | tail -n 1 | tr -s ' ')"
 echo "qq 二进制: $(ls -l /opt/QQ/qq 2>&1 | tr -s ' ')"
 echo
 echo "--- 逐档试起 Xvfb（每档最多 10 秒）---"
-for spec in "1x1x8|+extension GLX +render" "640x480x24|" "1280x800x24|"; do
+# 一律 24 位色深：8 位没有可用 GL、16 位 EGL 配不出 surface，GPU 进程会初始化失败
+# 并把 QQ 一起带走（详见 run-napcat.sh 里 XVFB_VARIANTS 上面那段实测记录）。
+for spec in "640x480x24|" "1280x800x24|" "640x480x24|-nolock"; do
   screen="${spec%%|*}"
   extra="${spec#*|}"
   rm -f /tmp/.X77-lock /tmp/.X11-unix/X77 2>/dev/null

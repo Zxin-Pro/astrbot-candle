@@ -11,9 +11,9 @@
       "cards": [
         {
           "icon": "📦",
-          "title": "AstrBot烛版 1.1.19（最新版）",
-          "desc": "文件名 AstrBot-1.1.19.apk（下载下来就是这个名字）\n安卓安装包 · 24.1 MB · 2026-10-18\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
-          "link": "/downloads/AstrBot-1.1.19.apk",
+          "title": "AstrBot烛版 1.1.20（最新版）",
+          "desc": "文件名 AstrBot-1.1.20.apk（下载下来就是这个名字）\n安卓安装包 · 24.1 MB · 2026-10-18\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
+          "link": "/downloads/AstrBot-1.1.20.apk",
           "text": ""
         },
         {
@@ -21,7 +21,7 @@
           "title": "复制下载直链",
           "desc": "点这张卡就把地址复制下来，可以直接发给别人或贴进浏览器。",
           "link": "",
-          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.1.19.apk"
+          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.1.20.apk"
         },
         {
           "icon": "🕘",
@@ -32,10 +32,10 @@
         },
         {
           "icon": "🔐",
-          "title": "SHA-256 校验值（v1.1.19）",
+          "title": "SHA-256 校验值（v1.1.20）",
           "desc": "点这张卡复制，然后和下载到的文件比对，一样就说明没被改过。",
           "link": "",
-          "text": "255d3ceb72960ed9c76149bd8b00a0e67886300c49f103e4f9999b84fe948368"
+          "text": "fb781b2abe38fe4e7506ebf3677433177bacbfd689668d720f935677a8daaf9a"
         }
       ]
     },
@@ -112,6 +112,13 @@
       "cards": [
         {
           "icon": "📝",
+          "title": "v1.1.20  ·  2026-10-18",
+          "desc": "## AstrBot 烛版 1.1.20\n\n## [1.1.20] - 2026-10-18\n\n1.1.19 把 QQ 的启动参数做成阶梯（`--disable-gpu` 之类）去绕 GPU 崩溃，真机上照样崩。\n这一版找到了真病因：**Xvfb 的色深**。\n\n### 修复\n\n- **Xvfb 一律用 24 位色深**（`sandbox/run-napcat.sh` 的 `XVFB_VARIANTS`）：8 位屏没有可用的\n  GL 配置，16 位配不出 EGL config，只有 24 位能让 QQ 里 Chromium 的 GPU 子进程初始化成功。\n  原来那档 `1x1x8 +extension GLX +render` 是照抄参考项目 AstrBot-Bubble-Android-App 的，\n  我们跟着抄错了一整版。同一台模拟器、同一份 rootfs 只换色深实测：8 位打出 20 条\n  ANGLE/EGL 报错，16 位报 `No suitable EGL configs found`，24 位一条 GL 报错都没有、\n  二维码正常输出。\n- **`--disable-gpu` 从参数阶梯里删掉**：它只是不让 Chromium *用* 硬件加速，GPU 进程照样起、\n  EGL 照样初始化；而一旦带了它，GPU 进程崩掉时判定「没有软件合成可退」，直接\n  `GPU process isn't usable. Goodbye.` 把主进程带走 —— 1.1.19 就是栽在这上面。现在第一档\n  是「什么额外参数都不加」，后面几档（`--disable-gpu-sandbox`、swiftshader、`--in-process-gpu`）\n  只作别的机型兜底。\n- **自检脚本同步**（`doctor.sh`）：逐档试起 Xvfb 的参数也从 8 位改成 24 位，否则用户在\n  「检查运行环境」里看到的仍是必然失败的组合，还会误以为是环境坏了。\n\n### 说明\n\n- GPU 进程退出时常伴随 `sandbox/linux/services/proc_util.cc:114 Check failed: . :\n  Operation not permitted`，那是它退出时的清理动作（枚举 `/proc/self/fd` 做沙箱自检），\n  是症状不是病因，别再被它带偏。\n\n---",
+          "link": "/downloads/AstrBot-1.1.20.apk",
+          "text": ""
+        },
+        {
+          "icon": "📝",
           "title": "v1.1.19  ·  2026-10-18",
           "desc": "## AstrBot 烛版 1.1.19\n\n## [1.1.19] - 2026-10-18\n\n接 1.1.18 往下修：Xvfb 在真机上总算起来了，但 QQ 自己秒退，表现成\n`Trace/breakpoint trap`，NapCat 照样起不来。\n\n### 修复\n\n- **QQ 启动改成参数阶梯**（`sandbox/run-napcat.sh`）：真机（Redmi 24069RA21C / Android 16）\n  上 QQ 的 Chromium 会先起一个 GPU 子进程去初始化 EGL —— Xvfb 里没有 GLX，这一步必然打出\n  `GLX is not present` / `Initialization of all EGL display types failed`；紧接着它还要枚举\n  那个子进程的 `/proc/<pid>/fd` 来校验沙箱，而 Android 10 起 `/proc` 对非本进程大幅收紧，\n  `fstatat()` 直接 EPERM：`FATAL:sandbox/linux/services/proc_util.cc:114\n  Check failed: . : Operation not permitted (1)`。连撞三次后\n  `GPU process isn't usable. Goodbye.` 把主进程一起带走。现在按\n  `--disable-gpu` → `--disable-gpu --in-process-gpu` →\n  再加 `--disable-dev-shm-usage --no-zygote` → 原样（1.1.18 的行为）四档依次试，留下第一档\n  能活过观察期的，并把最终采用的参数写进服务日志，下次排障一眼就能看到走的哪一档。\n- **「设置 → 维护」增加常驻的「上传错误日志」**：这个入口原来只挂在「部署失败 / 卡住」的\n  弹窗上，可真实场景恰恰是「部署成功、服务起不来」，于是最需要它的时候偏偏找不到。\n\n### 说明\n\n- x86_64 模拟器的 `/proc` 规则和真机不同，同样的参数在模拟器上能跑起来，所以这个问题\n  在模拟器上复现不了，只能在真机上验。",
           "link": "/downloads/AstrBot-1.1.19.apk",
@@ -135,20 +142,13 @@
           "icon": "📝",
           "title": "v1.1.16  ·  2026-10-18",
           "desc": "### AstrBot 烛版 v1.1.16\n\n真机自检结果：三档 Xvfb 参数**全部能起来**，`/tmp` 可写、Xvfb 不缺库、qq 二进制在，\n但 6099 端口没监听、`qq-bot1.log` 停在 00:30 不再增长 —— 说明不是参数问题，\n而是 QQ 压根没被拉起来（或起来就退了）。这一版针对「显示号被残留进程占着」和\n「看不到守护到底在干什么」两个盲区。\n\n### 修复\n\n- **守护启动时先清扫上次残留的 Xvfb / QQ 进程和 X 锁文件**：上次守护被强杀、或 proot 整个重启后，\n  老的 Xvfb 还攥着 `/tmp/.X11-unix/NN`。新 Xvfb 一启动就 `Server is already active for display N`\n  秒退，三档参数全部失败 —— 现象和我们看到的完全一致。\n- **一个显示号三档都失败时，换下一个显示号再整套试一遍**（最多 3 个号）。\n  之前一个号失败就放弃本轮，而 `pick_display` 只看 socket 文件在不在，文件被清掉但号还被占着时\n  会一直挑到同一个坏号。\n- **X 就绪后按实际使用的显示号启动 QQ**：`start_xvfb` 换过号时，`DISPLAY` 变量以前不会跟着更新。\n- **失败时打印进程表**：所有 Xvfb / QQ 进程的 cmdline 和 `/tmp/.X11-unix` 内容，\n  直接看出「X 有没有在跑、QQ 有没有真的活着」。\n\n### 自检增强\n\n- 「检查运行环境」现在还会打印 **`supervisor.log` 末 30 行**、**`qq-*.log` 末 30 行**、\n  以及当前所有 Xvfb / QQ 进程的完整命令行。以前只报文件大小，最关键的内容看不到。",
-          "link": "/downloads/AstrBot-1.1.16.apk",
+          "link": "",
           "text": ""
         },
         {
           "icon": "📝",
           "title": "v1.1.15  ·  2026-10-18",
           "desc": "### AstrBot 烛版 v1.1.15\n\n上一版把「X 起不来就不要启 QQ」这条补上了，但真机上还是起不来 —— 说明 **Xvfb 自己就没起来**。\n这一版不再赌一种参数，而是逐档回退，并且把 Xvfb 自己说的话摆到用户面前。\n\n### 修复\n\n- **Xvfb 三档参数逐档回退**：`1x1x8 +GLX +render` → `640x480x24`（不要求 GLX）→ `1280x800x24`。\n  真机上最可能的情况是 arm64 的 rootfs 用 `--no-install-recommends` 装出来没有 mesa 的 GLX 模块，\n  Xvfb 一加 `+extension GLX` 就 `Fatal server error: could not enable GLX extension` 秒退；\n  而原来失败后只会拿同一套参数再试一次，等于试了个寂寞。现在第二档不要求 GLX，纯软件也能起。\n- **每档失败都把 Xvfb 自己的报错打出来**（前 14 行），并清掉它残留的 `/tmp/.X<n>-lock` 与 socket，\n  否则 `pick_display` 会一直跳过那个号，重试几次把 40~99 全占满。\n- **补装 mesa / xkb 相关包**：`libgl1 libglx-mesa0 libgl1-mesa-dri xkb-data x11-xkb-utils`\n  （只对新装环境生效，老环境靠上面的回退）。\n- **`trap '' PIPE`**：照参考项目的做法。QQ 往已关闭的日志管道写时会被 SIGPIPE 直接打死，\n  症状正是「刚起来就没了、日志里什么都没有」。\n\n### 新增\n\n- **设置页 → 维护 → 检查运行环境**：`doctor.sh` 只读自检，报告 proot / supervisor / 三个端口 /\n  NapCat 日志，并**在沙盒里真的把三档 Xvfb 各起一次**（各 10 秒），把 Xvfb 的输出原样列出来。\n  结果存成 `~/.qqbot/doctor.txt`。\n- **错误报告带上 NapCat 与 Xvfb 日志**：`upload-log.sh` 现在还会打包 `qq-*.log` 末 120 行、\n  每个实例的 `run/xvfb-*.log` 前 60 行、以及 `doctor.txt`。以前 NapCat 起不来的报告里\n  一条相关线索都没有，只能靠猜。",
-          "link": "",
-          "text": ""
-        },
-        {
-          "icon": "📝",
-          "title": "v1.1.14  ·  2026-10-17",
-          "desc": "### AstrBot 烛版 v1.1.14\n\n真机日志把「NapCat 一直起不来」的真相说清楚了 —— 不是慢，是 QQ 每轮都在失败退出：\n\n```\n[17152:...:ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:256] Missing X server or $DISPLAY\n[17152:...:ERROR:ui/aura/env.cc:257] The platform failed to initialize.  Exiting.\n```\n\nQQ 起来后等 20 多秒连不上 X，就退出；supervisor 5 秒后再拉一遍，于是看起来「十分钟都没启动好」。\n也就是 Xvfb 根本没起来（或者起来又死了），而我们以前照旧把 QQ 拉起来 —— QQ 只能等死。\n\n### 修复\n\n- **Xvfb 起不来就不再硬拉 QQ**：先换显示号重试一次，仍失败就本轮跳过，5 秒后由 supervisor 再来，\n  并把 Xvfb 的报错原样写进容器日志（`[xvfb] ...` 缩进行），下次截图就能看到它为什么起不来。\n- **等待时间从 6 秒放宽到 20 秒**：真机上 Xvfb 冷启动可能更久，以前等到 6 秒就硬启 QQ。\n- **Xvfb 加 `-ac -nolisten tcp`**：关掉访问控制，不再需要 Xauthority cookie（xvfb-run 会临时生成，\n  QQ 那边拿不到就连不上）；只走 unix socket，少一层失败可能。\n- **失败时清掉 `/tmp/.XN-lock` 和 `/tmp/.X11-unix/XN`**：否则 pick_display 会一直跳过这个号，\n  重试几次就把 40~99 占满。",
           "link": "",
           "text": ""
         }
@@ -184,5 +184,5 @@
       ]
     }
   ],
-  "updated": "2026-10-18 19:37:52"
+  "updated": "2026-10-18 21:08:23"
 }

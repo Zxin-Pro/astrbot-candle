@@ -255,9 +255,11 @@ echo "[sandbox] 安装 Python 运行时"
 qq_apt_install python3 python3-venv python3-pip python3-dev build-essential pkg-config libffi-dev libssl-dev libsqlite3-dev
 
 echo "[sandbox] 安装 Electron/QQ 图形依赖"
-# libgl1 / libglx-mesa0 / libgl1-mesa-dri / xkb-data 是给 Xvfb 用的：没有 GLX 模块时
-# Xvfb 加 +extension GLX 会直接 'could not enable GLX extension' 退出；没有 xkb-data 时
-# 它加载键位表会报错。这几包装上，run-napcat.sh 的第一档参数（1x1x8 +GLX）才有机会成功。
+# libgl1 / libglx-mesa0 / libgl1-mesa-dri / xkb-data 是给 Xvfb 用的：没有 xkb-data 时
+# 它加载键位表会报错；mesa 的 dri 驱动（swrast）是 Chromium 的 GPU 进程取 EGL config
+# 的来源，缺了就只能走 GLX，而 Xvfb 的 xvfb 包并不带 libglx.so 模块。
+# 注意 Xvfb 要用 24 位色深：8 位没有可用 GL、16 位配不出 EGL config，都会让 GPU
+# 进程初始化失败（详见 run-napcat.sh 里 XVFB_VARIANTS 上面那段实测记录）。
 qq_apt_install libgl1 libglx-mesa0 libgl1-mesa-dri xkb-data x11-xkb-utils
 qq_apt_install xvfb libnss3 libgbm1 libasound2t64 libxss1 libxtst6 libxdamage1 libxrandr2 libxkbcommon0 libxkbcommon-x11-0 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libdrm2 libxcomposite1 libxfixes3 libpango-1.0-0 libcairo2 libgtk-3-0t64 libx11-xcb1 libxcb-dri3-0 libexpat1 libuuid1 libxshmfence1 libnotify4 xdg-utils libatspi2.0-0t64 libsecret-1-0
 

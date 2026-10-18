@@ -342,9 +342,9 @@ PY
 # ---------- X 显示（每个实例一个） ----------
 # 为什么不继续用 xvfb-run：它是脚本，会先跑 mcookie/xauth、再用 -a 从 99 往下试号，
 # 每次启动都多几秒，而且在 proot 里 xauth 偶发卡住会让 QQ 一直等 X。
-# 参考项目（AstrBot-Bubble-Android-App）是自己起 Xvfb、等 /tmp/.X11-unix/XN 出现后再拉 QQ，
-# 屏幕还是 1x1x8 —— QQ 根本不需要真的画东西，1 个像素 8 位足够，
-# 1024x768x24 那种帧缓冲只会让 Electron 的软件渲染白干活，arm64 上尤其明显。
+# 参考项目（AstrBot-Bubble-Android-App）是自己起 Xvfb、等 /tmp/.X11-unix/XN 出现后再拉 QQ。
+# 它用的是 1x1x8，我们照抄过，结果在真机上把 QQ 的 GPU 进程害死了 —— 色深必须 24 位，
+# 详见 XVFB_VARIANTS 上面那段实测记录。屏幕尺寸倒是真的无所谓（640x480 够用）。
 pick_display() {
   local d
   for d in $(seq 40 99); do
@@ -370,18 +370,33 @@ next_display_after() {
 }
 
 # 真机上 Xvfb 秒退的原因不止一种，用同一套参数重试只会得到同一个结果。
-# 下面五档按「最激进 → 最保守」排，前两档是屏幕参数，后两档换成绕开锁文件：
-#   1) 1x1x8 +GLX +render —— 参考项目的做法，帧缓冲最小；但它要 mesa 的 GLX 模块，
-#      --no-install-recommends 装出来的 rootfs 不一定有，Xvfb 会直接
-#      'Fatal server error: could not enable GLX extension' 退出；
-#   2) 640x480x24 —— 不要求 GLX，纯软件，几乎任何 Xvfb 都能起；
-#   3) 1280x800x24 —— 前两档都不行说明问题不在屏幕参数，这档只是把失败留个完整记录；
-#   4) / 5) 同上两档 + -nolock —— 真机上 Xvfb 起显示号第一步会给 /tmp/.X<n>-lock
+# 下面四档一律 24 位色深，见下面那段「色深」说明；后两档换成绕开锁文件：
+#   1) 640x480x24 —— 最小可用的 24 位屏，先试它；
+#   2) 1280x800x24 —— 屏幕参数不是问题时的备用档，把失败留个完整记录；
+#   3) / 4) 同上两档 + -nolock —— 真机上 Xvfb 起显示号第一步会给 /tmp/.X<n>-lock
 #      建一个硬链接，proot 里 link(2) 被拒就 'Lock file ... failed: Permission denied'
 #      然后 Fatal 退出。-nolock 是 Xvfb 自己的开关（-help 原文 "disable the locking
 #      mechanism"），完全不碰锁文件，是从 X 服务器这一层绕过去，与 proot 参数无关。
-XVFB_VARIANTS="1x1x8|+extension GLX +render
-640x480x24|
+#
+# 关于色深（v1.1.20 实测结论，别再改回去）：
+# 以前第一档是 "1x1x8 +extension GLX +render"，照抄参考项目「QQ 不画东西，1 个像素
+# 8 位够用」。这个判断是错的 —— 屏小不小无所谓，**色深决定 Chromium 的 GPU 进程能不能
+# 初始化**。同一台机器上逐档实测（模拟器 800x600，跑完看 QQ 日志）：
+#   1x1x8          → ANGLE 走 GLX 后端，报 "GLX is not present"，
+#                    "Initialization of all EGL display types failed"，
+#                    "Exiting GPU process due to errors during initialization"（必挂）
+#   640x480x16     → "No suitable EGL configs found"（EGL 没有 16 位配置，同样必挂）
+#   640x480x24     → 一条 GL 报错都没有，GPU 进程正常，二维码正常输出
+# 8 位的 Xvfb 根本没有可用的 GL；16 位 EGL 配不出 surface；只有 24 位能让 mesa 的
+# swrast 正常出 EGL config。
+#
+# GPU 进程一挂，Android 上的 Chromium 没有软件合成兜底：连挂三次后
+# "GPU process isn't usable. Goodbye."（gpu_data_manager_impl_private.cc:415）
+# 把主进程一起带走，伴随 sandbox/linux/services/proc_util.cc:114 的
+# "Check failed: . : Operation not permitted"（那是 GPU 进程退出时的清理动作，
+# 是症状不是病因）。真机 Android 16 上必现；x86_64 模拟器上能降级继续跑，
+# 所以「模拟器能起、真机起不来」—— 根因就在这一行色深上。
+XVFB_VARIANTS="640x480x24|
 1280x800x24|
 640x480x24|-nolock
 1280x800x24|-nolock"
@@ -583,13 +598,16 @@ PY
   rm -f "$CONF/webui.json" "$CONF/onebot11.json"
   mkdir -p "$INSTHOME"
   EXTRA="--user-data-dir=$INSTHOME/.config/QQ"
-  # QQ 的「能活下来」的参数阶梯，见下面启动段的长注释。第一档就该用
-  # --disable-gpu：Xvfb 里根本没有 GLX，让 Chromium 去初始化 EGL 只会白撞三回。
-  # 最后一档「-」= 什么额外参数都不加（1.1.18 及更早的原始行为），留作兜底。
-  QQ_TRIES=( "--disable-gpu"
-             "--disable-gpu --in-process-gpu"
-             "--disable-gpu --in-process-gpu --disable-dev-shm-usage --no-zygote"
-             "-" )
+  # QQ 的「能活下来」的参数阶梯，见下面启动段的长注释。
+  # 第一档是「什么额外参数都不加」（1.1.18 及更早的行为）—— 只要 Xvfb 是 24 位色深，
+  # 这一档就该成功，什么都不用加。下面几档是万一还有别的机型卡在 GPU 上时的退路：
+  #   --disable-gpu 千万别用！它只是不让 Chromium *用* 硬件加速，GPU 进程照样起、
+  #   EGL 照样初始化；而一旦带了它，GPU 进程崩掉时 Chromium 判定「没有软件合成可退」，
+  #   直接 "GPU process isn't usable. Goodbye." 把主进程带走 —— 1.1.19 就是栽在这上面。
+  QQ_TRIES=( "-"
+             "--disable-gpu-sandbox"
+             "--use-gl=angle --use-angle=swiftshader"
+             "--in-process-gpu" )
 
   write_onebot "$CONF" "$op"
 
@@ -635,23 +653,26 @@ PY
   # 会被 SIGPIPE 直接打死，症状是「刚起来就没了」且日志里什么都没有。
   trap '' PIPE
   #
-  # QQ 是 Electron 壳，它的 Chromium 在 Android 上要做两件 proot 里注定失败的事：
-  #   1) 起 GPU 子进程并初始化 EGL/GL。Xvfb 没有 GLX，于是必然打出
-  #      "GLX is not present" / "Initialization of all EGL display types failed"；
-  #   2) 枚举那个子进程的 /proc/<pid>/fd 来校验沙箱。Android 10 起 /proc 对非本进程
-  #      大幅收紧，这里直接 EPERM 撞死：
-  #        FATAL:sandbox/linux/services/proc_util.cc:114
-  #        Check failed: . : Operation not permitted (1)
-  # 连撞三次后 gpu_data_manager 打出 "GPU process isn't usable. Goodbye."，
-  # 把主进程一起带走，在 shell 里的表现就是 "Trace/breakpoint trap"（SIGTRAP）。
-  # 真机（Redmi 24069RA21C / Android 16 / SDK 36）必现；x86_64 模拟器上 /proc 的
-  # 规则不同，同样参数能跑起来 —— 所以这个坑在模拟器上永远测不出来，只能照着
-  # 「别让 Chromium 另起 GPU 子进程」这个方向绕，并且逐档试到有一档能活下来为止。
+  # QQ 是 Electron 壳，Chromium 在 Android 上最脆的一环是 GPU 子进程：它初始化
+  # EGL/GL 一旦失败就退出，连挂三次后 gpu_data_manager 打出
+  # "GPU process isn't usable. Goodbye."（gpu_data_manager_impl_private.cc:415）
+  # 把主进程一起带走，shell 里看到的就是 "Trace/breakpoint trap"（SIGTRAP）。
+  # 同一现场还常伴随 sandbox/linux/services/proc_util.cc:114 的
+  # "Check failed: . : Operation not permitted" —— 那是 GPU 进程退出时的清理动作，
+  # 是症状不是病因，别被它带偏。
+  #
+  # 病因在 Xvfb 的色深，不在 QQ 的参数（v1.1.20 实测，见 XVFB_VARIANTS 上面那段）：
+  # 8 位没有可用 GL、16 位 EGL 配不出 surface，只有 24 位能让 GPU 进程正常初始化。
+  # 所以第一档就该是「什么额外参数都不加」，后面几档只在别的机型还卡 GPU 时兜底。
   QQ_OK=0
   QQ_USED="-"
   for qf in "${QQ_TRIES[@]}"; do
     [ "$qf" = "-" ] && qf=""
     log "实例 $id 启动 QQ（附加参数: ${qf:-无}）"
+    # 日志是追加写的，只扫「这次启动之后新增的那一段」，否则上一档留下的
+    # "Exiting GPU process..." 会让下一档一开局就被判失败。
+    qq_off=$(wc -c < "$LOGF" 2>/dev/null | tr -d ' \n')
+    [ -n "$qq_off" ] || qq_off=0
     # shellcheck disable=SC2086
     HOME="$INSTHOME" DISPLAY=":$DISP" \
     NAPCAT_WEBUI_SECRET_KEY="$tok" \
@@ -660,26 +681,47 @@ PY
     "$QQDIR/qq" --no-sandbox "$EXTRA" $qf >> "$LOGF" 2>&1 &
     qq_pid=$!
     qq_n=0
-    qq_live=1
-    qq_seen=0
+    qq_verdict=""
     while [ "$qq_n" -lt 60 ]; do
-      if ! kill -0 "$qq_pid" 2>/dev/null; then qq_live=0; break; fi
+      if ! kill -0 "$qq_pid" 2>/dev/null; then qq_verdict="died"; break; fi
       # QQ 会往自己日志里写二进制，先 tr 掉 NUL，否则命令替换会断在半截上。
-      # QQ 走到 resourcesPath 就说明 Chromium 主体已经活过初始化，是成功的强信号，
-      # 能比死等 30 秒早得多（实测崩在 19 秒左右，成功档 5~10 秒就能确认）。
-      qq_chunk=$(tail -c 16000 "$LOGF" 2>/dev/null | tr -d '\000')
-      case "$qq_chunk" in *resourcesPath:*) qq_seen=1; break ;; esac
+      qq_chunk=$(tail -c +$((qq_off + 1)) "$LOGF" 2>/dev/null | tr -d '\000')
+      case "$qq_chunk" in
+        *"GPU process isn't usable"* | *"Exiting GPU process due to errors during initialization"*)
+          qq_verdict="gpu"
+          break
+          ;;
+      esac
+      # NapCat 打出内核版本 / 二维码地址，说明 Chromium 主体已经活过初始化。
+      # 不能拿 "resourcesPath:" 当判据：它在 GPU 进程崩之前就写出来了，
+      # 真机上它出现 0.7 秒之后才 "Goodbye"，拿它判成功会永远卡在第一档。
+      case "$qq_chunk" in
+        *"NapCat.Core Version"* | *"二维码解码URL"*)
+          qq_verdict="ok"
+          break
+          ;;
+      esac
       qq_n=$((qq_n + 1))
       sleep 0.5 &
       wait $! 2>/dev/null
     done
-    # 撑满 30 秒还活着也算成功：慢机器上可能还没写到 resourcesPath 那一行
-    if [ "$qq_seen" = 1 ] || [ "$qq_live" = 1 ]; then
-      QQ_OK=1
-      QQ_USED="${qf:--}"
-      break
+    # 撑满 30 秒：既没报 GPU 错、也没走到 NapCat，只要进程还活着就算成功（慢机器）
+    if [ -z "$qq_verdict" ]; then
+      if kill -0 "$qq_pid" 2>/dev/null; then qq_verdict="ok-slow"; else qq_verdict="died"; fi
     fi
-    log "实例 $id 这一档没活下来（pid $qq_pid 已退出），换下一档参数重试"
+    case "$qq_verdict" in
+      ok | ok-slow)
+        QQ_OK=1
+        QQ_USED="${qf:--}"
+        break
+        ;;
+      gpu)
+        log "实例 $id 这一档的 GPU 进程没能初始化（参数: ${qf:-无}），换下一档"
+        ;;
+      *)
+        log "实例 $id 这一档没活下来（pid $qq_pid 已退出，参数: ${qf:-无}），换下一档"
+        ;;
+    esac
     kill -KILL "$qq_pid" 2>/dev/null
     wait "$qq_pid" 2>/dev/null
   done
@@ -689,8 +731,11 @@ PY
     # 顺手把自己刚起的 Xvfb 收掉，不然每 5 秒重来一次会把 40~99 的显示号逐个占满。
     if [ -n "${XPIDS[$id]:-}" ]; then kill -TERM "${XPIDS[$id]}" 2>/dev/null; fi
     unset "XPIDS[$id]"
-    log "实例 $id 的 QQ 四档参数全部没能活下来，本轮放弃（5 秒后自动重试）"
-    log "  上面紧邻的日志里若有 proc_util.cc 或 GPU process isn't usable，就是 Chromium 的 GPU 子进程被 /proc 拒了"
+    log "实例 $id 的 QQ 各档参数全部没能活下来，本轮放弃（5 秒后自动重试）"
+    log "  若上面紧邻的日志里有 'GLX is not present' 或 'Initialization of all EGL display types failed'："
+    log "  说明 Xvfb 的色深不是 24 位（8 位没有可用 GL、16 位 EGL 配不出 surface），"
+    log "  当前 X 参数是 [$XVFB_SCREEN_USED]，正常应当是 640x480x24 这类。"
+    log "  若日志里是 'GPU process isn't usable' 且色深确实是 24 位，才是 GPU 子进程被 /proc 拒了。"
     return 1
   fi
   PIDS[$id]=$qq_pid
