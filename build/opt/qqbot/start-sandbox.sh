@@ -71,11 +71,32 @@ echo $$ > "$QQBOT_HOME/supervisor.pid"
 rm -rf "$LOCK" 2>/dev/null
 unset LD_PRELOAD
 export PROOT_TMP_DIR="$QQBOT_PTMP"
-# 注意：绝不能加 --link2symlink。它会把 dpkg 的硬链接换成指向宿主绝对路径
-# （/data/data/.../ubuntu/usr/lib/...）的 .l2s.* 符号链接，沙盒内解析不到，
-# 使 libc.so.6 / ld-linux-x86-64.so.2 变悬空，之后所有 execve 都返回 ENOENT
-# （dpkg 报 "unable to execute rm command for cleanup"、apt 报 "Could not exec dpkg!"）。
-# Android 的 /data 是 ext4/f2fs，本来就支持硬链接。
+# 关于 --link2symlink：运行期必须和部署期（qq_proot）一致。
+# 体检判定「这台手机的存储建不了硬链接」时（真机 Redmi / Android 16 实测 link(2)
+# 直接 EPERM），qq_fsprobe 会写 $QQBOT_HOME/link2symlink，部署期的 apt/dpkg 靠它
+# 才装得上包。运行期这里以前硬编码不加，于是沙盒里的 link(2) 依旧 EPERM ——
+# Xvfb 起显示号第一步就是 link() 一个 /tmp/.X<n>-lock，失败立刻 Fatal 退出，
+# NapCat 因此永远起不来；AstrBot 是纯 Python 用不到 link(2)，看起来就成了「好的」。
+#
+# 早期那条「加了会让 libc.so.6 悬空」的警告只适用于「rootfs 在 proot 内部 tar
+# 解压」的旧流程：tar 会为压缩包里的硬链接调 link()，被换成指向宿主绝对路径的
+# .l2s.* 符号链接，沙盒内解析不到。现在解压全在宿主侧完成，运行期只有 dpkg / Xvfb
+# 这类零散 link() 会走到它。（AstrBot-Bubble-Android-App 是无条件开着它跑的。）
+_l2s=""
+if [ -f "$QQBOT_HOME/link2symlink" ]; then
+  _l2s="--link2symlink"
+elif : > "$QQBOT_HOME/.l2s-probe" 2>/dev/null; then
+  # 标记丢了也自愈：在宿主侧直接试一次 link(2)。写都写不了就当「支持」，
+  # 交给后面 qq_fsprobe 去报真正的写入错误，不在这里抢戏。
+  if ln "$QQBOT_HOME/.l2s-probe" "$QQBOT_HOME/.l2s-probe2" 2>/dev/null; then
+    :
+  else
+    _l2s="--link2symlink"
+    : > "$QQBOT_HOME/link2symlink" 2>/dev/null || true
+    echo "[start] 这台手机的存储建不了硬链接，改用 --link2symlink（否则 Xvfb 起不来）"
+  fi
+  rm -f "$QQBOT_HOME/.l2s-probe" "$QQBOT_HOME/.l2s-probe2" 2>/dev/null
+fi
 # /usr/bin/env -i 会清空全部环境变量，代理必须在这里显式补上：
 # 沙盒内常驻运行的 NapCat / AstrBot 都要用（apt / pip 已经装完了，但运行期
 # 若有任何组件要联网，走这里）。no_proxy 固定带上本机地址：NapCat 与 AstrBot
@@ -85,7 +106,7 @@ _px_env=""
 if [ -n "$_px" ]; then
   _px_env="http_proxy=$_px https_proxy=$_px all_proxy=$_px HTTP_PROXY=$_px HTTPS_PROXY=$_px ALL_PROXY=$_px no_proxy=127.0.0.1,localhost,::1 NO_PROXY=127.0.0.1,localhost,::1"
 fi
-exec "$QQBOT_PROOT" --kill-on-exit -0 -r "$QQBOT_ROOTFS" -b /dev -b "$QQBOT_DEVDIR/shm:/dev/shm" -b /proc -b /sys \
+exec "$QQBOT_PROOT" --kill-on-exit -0 -r "$QQBOT_ROOTFS" $_l2s -b /dev -b "$QQBOT_DEVDIR/shm:/dev/shm" -b /proc -b /sys \
   -b "$QQBOT_CACHE:/qqbot-cache" -b "$QQBOT_OPT:/qqbot-opt" -w /root \
   /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
   QQBOT_ARCH="$QQBOT_ARCH" _PYTHON_HOST_PLATFORM="$QQBOT_GUEST_PLATFORM" \

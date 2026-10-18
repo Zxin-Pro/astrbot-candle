@@ -1086,9 +1086,9 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
       "cards": [
         {
           "icon": "📦",
-          "title": "AstrBot烛版 1.1.17（最新版）",
-          "desc": "文件名 AstrBot-1.1.17.apk（下载下来就是这个名字）\n安卓安装包 · 24.1 MB · 2026-10-18\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
-          "link": "/downloads/AstrBot-1.1.17.apk",
+          "title": "AstrBot烛版 1.1.18（最新版）",
+          "desc": "文件名 AstrBot-1.1.18.apk（下载下来就是这个名字）\n安卓安装包 · 24.1 MB · 2026-10-18\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
+          "link": "/downloads/AstrBot-1.1.18.apk",
           "text": ""
         },
         {
@@ -1096,7 +1096,7 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
           "title": "复制下载直链",
           "desc": "点这张卡就把地址复制下来，可以直接发给别人或贴进浏览器。",
           "link": "",
-          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.1.17.apk"
+          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.1.18.apk"
         },
         {
           "icon": "🕘",
@@ -1107,10 +1107,10 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
         },
         {
           "icon": "🔐",
-          "title": "SHA-256 校验值（v1.1.17）",
+          "title": "SHA-256 校验值（v1.1.18）",
           "desc": "点这张卡复制，然后和下载到的文件比对，一样就说明没被改过。",
           "link": "",
-          "text": "6cf9ef78e5ef2a054efdfb0eb1f6f69f0ed4888a4ede67975a893eaf6f1946fc"
+          "text": "92269a05f79ecd21563e17256ea17bd6984ef514a0c31bcb120b5fd2353977f0"
         }
       ]
     },
@@ -1187,6 +1187,13 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
       "cards": [
         {
           "icon": "📝",
+          "title": "v1.1.18  ·  2026-10-18",
+          "desc": "## AstrBot 烛版 1.1.18\n\n## [1.1.18] - 2026-10-18\n\n修掉「真机上 NapCat 怎么都起不来、AstrBot 却一切正常」的根因。一句话：**部署期和运行期用的\nproot 参数不一致**，运行期把 `--link2symlink` 丢了。\n\n### 修复\n\n- **运行期沙盒启动补回 `--link2symlink`**（`opt/qqbot/start-sandbox.sh`）：真机上 `link(2)` 直接\n  返回 EPERM，而 Xvfb 起显示号的第一步就是给 `/tmp/.X<n>-lock` 建硬链接，建不了就\n  `Lock file ... failed: Permission denied` + `【Fatal】 server error: Failed to establish socket`\n  秒退，于是 NapCat 永远拉不起来。部署期（`qq_proot`）本来就按 `$QQBOT_HOME/link2symlink`\n  标记加了这个参数，运行期却硬编码不加 —— 同一个手机，apt 装得上、QQ 起不来。AstrBot 是纯\n  Python 用不到 `link(2)`，所以看起来「只有 NapCat 坏了」。\n- **标记丢了会自愈**：运行期不再只信标记文件，标记不在时会在宿主侧实测一次 `link(2)`，\n  判不出来就写回标记，避免「清过数据 / 换过安装路径」之后再踩一次。\n- **Xvfb 多两档 `-nolock` 兜底**（`sandbox/run-napcat.sh`）：`XVFB_VARIANTS` 从 3 档扩到 5 档，\n  后两档带 Xvfb 自己的 `-nolock`（`-help` 原文 \"disable the locking mechanism\"），完全不碰\n  锁文件，从 X 服务器这层绕过去，与 proot 参数无关。正常设备行为不变（前 3 档仍然是原来的\n  参数和顺序）。\n\n### 说明\n\n- **覆盖安装即可，不用重装、不丢数据**：`syncScripts()` 会按 APK 的 `lastUpdateTime` 覆盖\n  `$PREFIX` 下的脚本，并自动重启容器让新参数生效。装完后 `logs/scripts.log` 里的\n  `synced=N failed=0` 就是脚本已下发的证据。\n- 早期那条「绝不能加 `--link2symlink`」的警告已删除：它只适用于「rootfs 在 proot **内部**\n  用 tar 解压」的旧流程（tar 会为压缩包里的硬链接调 `link()`，被换成指向宿主绝对路径的\n  `.l2s.*` 符号链接，导致 `libc.so.6` 悬空）。现在解压全部在宿主侧完成，运…",
+          "link": "/downloads/AstrBot-1.1.18.apk",
+          "text": ""
+        },
+        {
+          "icon": "📝",
           "title": "v1.1.17  ·  2026-10-18",
           "desc": "## AstrBot 烛版 v1.1.17\n\n## [1.1.17] - 2026-10-18\n\n只修一处文案错位，但它是会让人**第一次登录就被拒**的那种：终端提示里的 Token 和实际生效的\nToken 不是一个词。\n\n### 修复\n\n- **部署汇总与 `qqbot-help` 里打印的 NapCat WebUI Token 写错了**：一直写「Token 填 `qqbot`」，\n  而实际生成到 `webui.json` / `bots.json` 里的是 **`zhuxin`**（1.1.x 品牌改名时改的）。\n  Java 侧（新建实例默认 `zhuxin`、老设备迁移）与界面（实例卡回退值 `zhuxin`）当时都跟上了，\n  只有 `steps/90-summary.sh` 和 `steps/70-launcher.sh` 这两处终端提示漏了 —— 照提示填 `qqbot`\n  会被 NapCat WebUI 直接拒绝，用户很容易误判成「装坏了」。\n- **默认实例的播种值同步改成 `zhuxin`**：`opt/qqbot/link.sh`、`opt/qqbot/sandbox/link.sh`\n  生成 `bots.json` 时写的 token 由 `qqbot` 改为 `zhuxin`，与界面、`使用说明.md`、`README.md` 一致。\n\n### 说明\n\n- 存量设备不受影响：`run-napcat.sh` 里 `qqbot` / `qqbot2` … → `zhuxin` / `zhuxin2` … 的归一化\n  逻辑保留（那条规则只服务已部署过的老 `bots.json`），并补了注释说明它的存在理由。",
           "link": "/downloads/AstrBot-1.1.17.apk",
@@ -1210,20 +1217,13 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
           "icon": "📝",
           "title": "v1.1.14  ·  2026-10-17",
           "desc": "### AstrBot 烛版 v1.1.14\n\n真机日志把「NapCat 一直起不来」的真相说清楚了 —— 不是慢，是 QQ 每轮都在失败退出：\n\n```\n[17152:...:ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:256] Missing X server or $DISPLAY\n[17152:...:ERROR:ui/aura/env.cc:257] The platform failed to initialize.  Exiting.\n```\n\nQQ 起来后等 20 多秒连不上 X，就退出；supervisor 5 秒后再拉一遍，于是看起来「十分钟都没启动好」。\n也就是 Xvfb 根本没起来（或者起来又死了），而我们以前照旧把 QQ 拉起来 —— QQ 只能等死。\n\n### 修复\n\n- **Xvfb 起不来就不再硬拉 QQ**：先换显示号重试一次，仍失败就本轮跳过，5 秒后由 supervisor 再来，\n  并把 Xvfb 的报错原样写进容器日志（`[xvfb] ...` 缩进行），下次截图就能看到它为什么起不来。\n- **等待时间从 6 秒放宽到 20 秒**：真机上 Xvfb 冷启动可能更久，以前等到 6 秒就硬启 QQ。\n- **Xvfb 加 `-ac -nolisten tcp`**：关掉访问控制，不再需要 Xauthority cookie（xvfb-run 会临时生成，\n  QQ 那边拿不到就连不上）；只走 unix socket，少一层失败可能。\n- **失败时清掉 `/tmp/.XN-lock` 和 `/tmp/.X11-unix/XN`**：否则 pick_display 会一直跳过这个号，\n  重试几次就把 40~99 占满。",
-          "link": "/downloads/AstrBot-1.1.14.apk",
+          "link": "",
           "text": ""
         },
         {
           "icon": "📝",
           "title": "v1.1.13  ·  2026-10-17",
           "desc": "### AstrBot 烛版 v1.1.13\n\n真机上 NapCat 启动要十几分钟。照着参考项目 [AstrBot-Bubble-Android-App](https://github.com/MuFengDR/AstrBot-Bubble-Android-App)，\n把它启动 QQ 的方式搬了过来。\n\n### 修复\n\n- **不再用 `xvfb-run`，自己起 Xvfb**：`xvfb-run` 是脚本，会先跑 mcookie/xauth、再用 `-a` 从 99 往下试号，\n  每次启动都多几秒，proot 里 xauth 偶发卡住还会让 QQ 一直等 X。\n  现在自己起 Xvfb，等 `/tmp/.X11-unix/XN` 出现就直接拉 QQ（最多等 6 秒，超时也照启，日志写进 `xvfb-<实例>.log`）。\n- **虚拟屏幕从 1280x800x24 改成 1x1x8**：QQ 根本不需要真的画东西，1 个像素 8 位就够。\n  1024x768x24 那种帧缓冲只会让 Electron 的软件渲染白干活 —— 在 arm64 手机上这一步能慢到分钟级。\n- **每个实例固定分配自己的显示号（40~99 里找空的）**，启动前清掉 `X<n>-lock` 和 `/tmp/.X11-unix/XN` 残留，\n  避免上次崩溃留下的旧 X 让新实例连不上。\n- **停止 / 退出时把 Xvfb 一起收掉**：它和 QQ 不是一个进程组，以前只 kill QQ 会留下 Xvfb 占着显示号。\n- **装机时预热字体缓存**（`fc-cache -f`）：QQ 第一次启动会自己扫一遍系统字体，手机上这步能吃掉几分钟，\n  表现出来就是「NapCat 十分钟都没起来」。现在第 3 步顺手扫完。",
-          "link": "",
-          "text": ""
-        },
-        {
-          "icon": "📝",
-          "title": "v1.1.12  ·  2026-10-17",
-          "desc": "### AstrBot 烛版 v1.1.12\n\n第 2 步的硬链接问题解决了（体检判定后自动走 `--link2symlink`），真机上第 2~5 步一路通过：\nrootfs、运行依赖、Linux QQ、NapCat 全部装好。现在卡在第 6 步 —— 装 AstrBot 的 Python 依赖。\n\n### 变更\n\n- **改用 uv 装 Python 依赖**：pip 在这台手机上要解析上百个包的依赖树，真机实测几分钟没有任何输出。\n  换成 uv（单个静态二进制，astral-sh/uv，参考项目也用它），解析 + 下载通常一分钟内完成。\n  uv 从 GitHub 下载，失败会自动换 ghfast.top / gh-proxy.com / ghproxy.net 三个镜像；\n  全都拿不到就退回原来的 pip，不会因此装不上。\n- **每一步都标出「本来就慢」和大概耗时**：步骤列表里给慢步骤加旁注 ——\n  `下载并解压约 29MB，1~3 分钟`、`装几十个包，2~6 分钟`、`下载约 200MB，5~20 分钟`、\n  `装 Python 依赖，5~20 分钟（最慢的一步，没输出是正常的）`。\n  部署中的提示也改成「当前：安装 AstrBot 与 WebUI。这一步已经 3 分钟没有新内容输出，\n  装 Python 依赖 5~20 分钟（最慢的一步，没输出是正常的），没输出是正常的……」\n- **依赖安装期间每 45 秒打一行心跳**：`[sandbox] 仍在安装依赖…（时间）`。\n  以前这一步可能几分钟零输出，界面显示「日志 N 分钟没有新内容」，用户以为卡死就强杀，\n  结果永远装不完。\n\n### 修复\n\n- **卡住的时候也能上传日志了**：以前只有「部署失败」才出现「上传错误日志」按钮；\n  现在部署还在跑、但日志 4 分钟没动时，红框下面同样会出现这条询问 ——\n  「这次像是卡住了（日志已经 N 分钟没有新内容）。要把现场发给作者看看吗？」\n  这样卡在第 6 步这种情形也能把现场发出来，而不是干看着。",
           "link": "",
           "text": ""
         }
@@ -1259,7 +1259,7 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
       ]
     }
   ],
-  "updated": "2026-10-18 16:27:23"
+  "updated": "2026-10-18 18:32:14"
 }
 __ASTRBOT_DL_STATIC__
 log "离线兜底内容已装到 $SCRIPTS/astrbot_download_sync.fallback.json"

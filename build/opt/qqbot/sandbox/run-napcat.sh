@@ -370,16 +370,21 @@ next_display_after() {
 }
 
 # 真机上 Xvfb 秒退的原因不止一种，用同一套参数重试只会得到同一个结果。
-# 下面三档按「最激进 → 最保守」排：
+# 下面五档按「最激进 → 最保守」排，前两档是屏幕参数，后两档换成绕开锁文件：
 #   1) 1x1x8 +GLX +render —— 参考项目的做法，帧缓冲最小；但它要 mesa 的 GLX 模块，
 #      --no-install-recommends 装出来的 rootfs 不一定有，Xvfb 会直接
 #      'Fatal server error: could not enable GLX extension' 退出；
 #   2) 640x480x24 —— 不要求 GLX，纯软件，几乎任何 Xvfb 都能起；
-#   3) 1280x800x24 —— 前两档都不行说明问题不在参数（多半 /tmp 不可写或缺库），
-#      这档只是把失败留个完整记录。
+#   3) 1280x800x24 —— 前两档都不行说明问题不在屏幕参数，这档只是把失败留个完整记录；
+#   4) / 5) 同上两档 + -nolock —— 真机上 Xvfb 起显示号第一步会给 /tmp/.X<n>-lock
+#      建一个硬链接，proot 里 link(2) 被拒就 'Lock file ... failed: Permission denied'
+#      然后 Fatal 退出。-nolock 是 Xvfb 自己的开关（-help 原文 "disable the locking
+#      mechanism"），完全不碰锁文件，是从 X 服务器这一层绕过去，与 proot 参数无关。
 XVFB_VARIANTS="1x1x8|+extension GLX +render
 640x480x24|
-1280x800x24|"
+1280x800x24|
+640x480x24|-nolock
+1280x800x24|-nolock"
 
 xvfb_dump_log() {
   local id="$1" n="${2:-12}" ln
@@ -395,7 +400,7 @@ start_xvfb() {
   # 显示号也可能被占：上次守护被强杀（或 proot 整个重启）留下的 Xvfb 还攥着
   # /tmp/.X11-unix/NN，而 pick_display 只看 socket 文件在不在 —— 文件被我们 rm 掉之后
   # 号还在老进程手里，新 Xvfb 一启动就 "Server is already active for display N" 秒退，
-  # 于是三档参数全部失败，看起来就像「Xvfb 起不来」。所以一个号三档都失败时换下一个号，
+  # 于是每一档参数都会失败，看起来就像「Xvfb 起不来」。所以一个号的各档全失败时换下一个号，
   # 最多试 3 个号。
   tries=1
   next=""
@@ -430,7 +435,7 @@ start_xvfb() {
     log "实例 $id 的 Xvfb 用「$screen ${extra:-（无扩展）}」起不来（显示号 :$d），Xvfb 自己说："
     xvfb_dump_log "$id" 14
   done <<< "$XVFB_VARIANTS"
-  # 三档在这个显示号上都失败 -> 换一个显示号再整套试一遍
+  # 各档在这个显示号上都失败 -> 换一个显示号再整套试一遍
   if [ "$tries" -ge 3 ]; then break; fi
   next="$(next_display_after "$d")"
   if [ -z "$next" ]; then
@@ -603,12 +608,17 @@ PY
   DISP="$(pick_display)"
   XVFB_SCREEN_USED=""
   if ! start_xvfb "$id" "$DISP"; then
-    # start_xvfb 内部已经把三档参数逐个试过、并各自打印了 Xvfb 自己的报错，
+    # start_xvfb 内部已经把每一档参数逐个试过、并各自打印了 Xvfb 自己的报错，
     # 这里只补两条环境信息，然后**不启动 QQ** —— 否则 QQ 起来只会报
     # "Missing X server or $DISPLAY" 自杀，supervisor 再拉，看起来像一直启动不起来。
-    log "实例 $id 的 Xvfb 三档参数都没起来，本轮先不启动 QQ（5 秒后自动重试）"
+    log "实例 $id 的 Xvfb 所有参数组合都没起来，本轮先不启动 QQ（5 秒后自动重试）"
     dump_procs
+    # 光测「能不能写」是不够的：真机上 /tmp 完全可写，但 link(2) 直接 EPERM，
+    # 而 Xvfb 起显示号第一步就是 link() 一个 /tmp/.X<n>-lock，失败即 Fatal 退出。
+    # 这两项必须分开报，否则症状会伪装成「磁盘满/权限不对」。
     log "  [xvfb] /tmp 可写: $({ : > /tmp/.qqbot-wtest && echo yes && rm -f /tmp/.qqbot-wtest; } 2>/dev/null || echo no)"
+    log "  [xvfb] link(2) 可用: $({ : > /tmp/.qqbot-ltest && ln /tmp/.qqbot-ltest /tmp/.qqbot-ltest2 2>/dev/null && echo yes; rm -f /tmp/.qqbot-ltest /tmp/.qqbot-ltest2; } 2>/dev/null || echo no)"
+    log "  [xvfb] 若是 link(2) 不可用：说明启动器没带 --link2symlink，重启一次服务即可自动纠正"
     return 1
   fi
   # start_xvfb 可能换过显示号（原号被上次残留的 Xvfb 占着），以它实际用的为准
@@ -662,7 +672,7 @@ trap cleanup TERM INT EXIT
 
 # 上次守护被强杀 / proot 整个重启时，会留下没人管的 Xvfb 与 QQ：它们还攥着
 # /tmp/.X11-unix/NN，新 Xvfb 一启动就 "Server is already active for display N" 秒退，
-# 三档参数全部失败 —— 现象就是「NapCat 怎么都起不来」。所以开机先扫一遍。
+# 所有参数组合全部失败 —— 现象就是「NapCat 怎么都起不来」。所以开机先扫一遍。
 sweep_orphans TERM
 sleep 2 &
 wait $! 2>/dev/null

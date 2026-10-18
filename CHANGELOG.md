@@ -11,6 +11,40 @@
 
 ---
 
+## [1.1.18] - 2026-10-18
+
+修掉「真机上 NapCat 怎么都起不来、AstrBot 却一切正常」的根因。一句话：**部署期和运行期用的
+proot 参数不一致**，运行期把 `--link2symlink` 丢了。
+
+### 修复
+
+- **运行期沙盒启动补回 `--link2symlink`**（`opt/qqbot/start-sandbox.sh`）：真机上 `link(2)` 直接
+  返回 EPERM，而 Xvfb 起显示号的第一步就是给 `/tmp/.X<n>-lock` 建硬链接，建不了就
+  `Lock file ... failed: Permission denied` + `【Fatal】 server error: Failed to establish socket`
+  秒退，于是 NapCat 永远拉不起来。部署期（`qq_proot`）本来就按 `$QQBOT_HOME/link2symlink`
+  标记加了这个参数，运行期却硬编码不加 —— 同一个手机，apt 装得上、QQ 起不来。AstrBot 是纯
+  Python 用不到 `link(2)`，所以看起来「只有 NapCat 坏了」。
+- **标记丢了会自愈**：运行期不再只信标记文件，标记不在时会在宿主侧实测一次 `link(2)`，
+  判不出来就写回标记，避免「清过数据 / 换过安装路径」之后再踩一次。
+- **Xvfb 多两档 `-nolock` 兜底**（`sandbox/run-napcat.sh`）：`XVFB_VARIANTS` 从 3 档扩到 5 档，
+  后两档带 Xvfb 自己的 `-nolock`（`-help` 原文 "disable the locking mechanism"），完全不碰
+  锁文件，从 X 服务器这层绕过去，与 proot 参数无关。正常设备行为不变（前 3 档仍然是原来的
+  参数和顺序）。
+
+### 说明
+
+- **覆盖安装即可，不用重装、不丢数据**：`syncScripts()` 会按 APK 的 `lastUpdateTime` 覆盖
+  `$PREFIX` 下的脚本，并自动重启容器让新参数生效。装完后 `logs/scripts.log` 里的
+  `synced=N failed=0` 就是脚本已下发的证据。
+- 早期那条「绝不能加 `--link2symlink`」的警告已删除：它只适用于「rootfs 在 proot **内部**
+  用 tar 解压」的旧流程（tar 会为压缩包里的硬链接调 `link()`，被换成指向宿主绝对路径的
+  `.l2s.*` 符号链接，导致 `libc.so.6` 悬空）。现在解压全部在宿主侧完成，运行期只有
+  dpkg / Xvfb 这类零散 `link()` 会走到它。
+- 真机失败诊断里新增单独一行 `[xvfb] link(2) 可用: yes/no`，不再把「链接建不了」伪装成
+  「磁盘满 / 权限不对」。
+
+---
+
 ## [1.1.17] - 2026-10-18
 
 只修一处文案错位，但它是会让人**第一次登录就被拒**的那种：终端提示里的 Token 和实际生效的
