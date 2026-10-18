@@ -43,6 +43,23 @@ CLEANED=0
 
 log() { echo "[napcat] $*"; }
 
+# 把当前所有 Xvfb / QQ 进程的显示号打出来。NapCat 起不来时，
+# 「X 到底有没有在跑、QQ 有没有真的活着」比任何参数都重要。
+dump_procs() {
+  local p c found=0
+  for p in /proc/[0-9]*; do
+    [ -r "$p/cmdline" ] || continue
+    { c=$(<"$p/cmdline"); } 2>/dev/null || continue
+    case "$c" in
+      *Xvfb*|*/opt/QQ/qq*|*/opt/qqbot-inst/*)
+        log "  [ps] ${p#/proc/}: $(printf '%s' "$c" | tr '\0' ' ' | cut -c1-160)"
+        found=1 ;;
+    esac
+  done
+  [ "$found" = 1 ] || log "  [ps] 没有任何 Xvfb / QQ 进程在跑"
+  log "  [x] /tmp/.X11-unix: $(ls -1 /tmp/.X11-unix 2>/dev/null | tr '\n' ' ')"
+}
+
 in_list() {
   local x="$1"; shift
   local y
@@ -337,6 +354,19 @@ pick_display() {
   printf '40'
 }
 
+# 挑一个比 $1 大的空闲显示号；找不到就返回空（调用方据此收手）。
+next_display_after() {
+  local from="$1" d
+  for d in $(seq 40 99); do
+    [ "$d" -le "$from" ] && continue
+    [ -e "/tmp/.X11-unix/X$d" ] && continue
+    [ -e "/tmp/.X$d-lock" ] && continue
+    printf '%s' "$d"
+    return 0
+  done
+  printf ''
+}
+
 # 真机上 Xvfb 秒退的原因不止一种，用同一套参数重试只会得到同一个结果。
 # 下面三档按「最激进 → 最保守」排：
 #   1) 1x1x8 +GLX +render —— 参考项目的做法，帧缓冲最小；但它要 mesa 的 GLX 模块，
@@ -357,9 +387,17 @@ xvfb_dump_log() {
 }
 
 start_xvfb() {
-  local id="$1" d="$2" i v screen extra
+  local id="$1" d="$2" i v screen extra tries next
   mkdir -p /tmp/.X11-unix 2>/dev/null || true
   chmod 1777 /tmp/.X11-unix 2>/dev/null || true
+  # 显示号也可能被占：上次守护被强杀（或 proot 整个重启）留下的 Xvfb 还攥着
+  # /tmp/.X11-unix/NN，而 pick_display 只看 socket 文件在不在 —— 文件被我们 rm 掉之后
+  # 号还在老进程手里，新 Xvfb 一启动就 "Server is already active for display N" 秒退，
+  # 于是三档参数全部失败，看起来就像「Xvfb 起不来」。所以一个号三档都失败时换下一个号，
+  # 最多试 3 个号。
+  tries=1
+  next=""
+  while [ -n "$d" ]; do
   while IFS='|' read -r screen extra; do
     [ -n "$screen" ] || continue
     rm -f "/tmp/.X$d-lock" "/tmp/.X11-unix/X$d" 2>/dev/null || true
@@ -376,6 +414,7 @@ start_xvfb() {
     for i in $(seq 1 120); do
       if [ -S "/tmp/.X11-unix/X$d" ]; then
         XVFB_SCREEN_USED="$screen ${extra:-（无扩展）}"
+        XVFB_DISP="$d"
         return 0
       fi
       kill -0 "${XPIDS[$id]}" 2>/dev/null || break
@@ -386,9 +425,20 @@ start_xvfb() {
     kill -TERM "${XPIDS[$id]}" 2>/dev/null || true
     unset "XPIDS[$id]"
     rm -f "/tmp/.X$d-lock" "/tmp/.X11-unix/X$d" 2>/dev/null || true
-    log "实例 $id 的 Xvfb 用「$screen ${extra:-（无扩展）}」起不来，Xvfb 自己说："
+    log "实例 $id 的 Xvfb 用「$screen ${extra:-（无扩展）}」起不来（显示号 :$d），Xvfb 自己说："
     xvfb_dump_log "$id" 14
   done <<< "$XVFB_VARIANTS"
+  # 三档在这个显示号上都失败 -> 换一个显示号再整套试一遍
+  if [ "$tries" -ge 3 ]; then break; fi
+  next="$(next_display_after "$d")"
+  if [ -z "$next" ]; then
+    log "实例 $id 的显示号 40~99 已经全被占满了，没法再换号"
+    break
+  fi
+  log "实例 $id 换显示号 :$d -> :$next 再试一次（第 $((tries + 1)) 个号）"
+  d="$next"
+  tries=$((tries + 1))
+  done
   return 1
 }
 
@@ -555,10 +605,12 @@ PY
     # 这里只补两条环境信息，然后**不启动 QQ** —— 否则 QQ 起来只会报
     # "Missing X server or $DISPLAY" 自杀，supervisor 再拉，看起来像一直启动不起来。
     log "实例 $id 的 Xvfb 三档参数都没起来，本轮先不启动 QQ（5 秒后自动重试）"
-    log "  [xvfb] /tmp/.X11-unix: $(ls -1 /tmp/.X11-unix 2>/dev/null | tr '\n' ' ')"
+    dump_procs
     log "  [xvfb] /tmp 可写: $({ : > /tmp/.qqbot-wtest && echo yes && rm -f /tmp/.qqbot-wtest; } 2>/dev/null || echo no)"
     return 1
   fi
+  # start_xvfb 可能换过显示号（原号被上次残留的 Xvfb 占着），以它实际用的为准
+  DISP="${XVFB_DISP:-$DISP}"
   log "实例 $id 的 X 已就绪（DISPLAY=:$DISP，参数 $XVFB_SCREEN_USED）"
   # 参考项目的 launcher 里有一句 trap "" SIGPIPE：QQ 往已经关掉的日志管道里写时
   # 会被 SIGPIPE 直接打死，症状是「刚起来就没了」且日志里什么都没有。
@@ -605,6 +657,16 @@ cleanup() {
   exit 0
 }
 trap cleanup TERM INT EXIT
+
+# 上次守护被强杀 / proot 整个重启时，会留下没人管的 Xvfb 与 QQ：它们还攥着
+# /tmp/.X11-unix/NN，新 Xvfb 一启动就 "Server is already active for display N" 秒退，
+# 三档参数全部失败 —— 现象就是「NapCat 怎么都起不来」。所以开机先扫一遍。
+sweep_orphans TERM
+sleep 2 &
+wait $! 2>/dev/null
+sweep_orphans KILL
+rm -f /tmp/.X*-lock /tmp/.X11-unix/X* 2>/dev/null || true
+log "已清理上次残留的 Xvfb / QQ 进程与 X 锁文件"
 
 log "实例守护启动（每 5 秒检查一次 bots.json）"
 

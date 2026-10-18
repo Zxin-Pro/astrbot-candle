@@ -78,6 +78,24 @@ fi
   echo "端口 6199: $(port_open 6199)"
   echo "端口 6185: $(port_open 6185)"
   echo "NapCat 日志: $(ls -l "$QQBOT_CACHE"/logs/qq*.log 2>/dev/null | tr -s ' ' | tr '\n' ' ')"
+  echo "X 相关进程:"
+  for p in /proc/[0-9]*; do
+    [ -r "$p/cmdline" ] || continue
+    c=$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null)
+    case "$c" in
+      *Xvfb*|*/opt/QQ/qq*|*run-napcat*)
+        echo "  ${p#/proc/}: $(printf '%s' "$c" | cut -c1-150)" ;;
+    esac
+  done | head -n 20
+  echo "NapCat 守护日志尾部（supervisor.log，最后 30 行）:"
+  tail -n 30 "$QQBOT_HOME/logs/supervisor.log" 2>/dev/null | sed 's/^/  /' || echo "  (无)"
+  echo "QQ 日志尾部（最后 30 行）:"
+  for f in "$QQBOT_CACHE"/logs/qq-*.log "$QQBOT_CACHE"/logs/qq.log; do
+    [ -s "$f" ] || continue
+    echo "  [$f]"
+    tail -n 30 "$f" 2>/dev/null | sed 's/^/  /'
+    break
+  done
   echo
   echo "--- 沙盒内 ---"
   if [ -d "$QQBOT_ROOTFS/usr/bin" ]; then
