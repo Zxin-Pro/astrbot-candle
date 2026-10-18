@@ -41,7 +41,10 @@
 
 ---
 
-## 二、四个子栏
+## 二、四个子栏（其它子栏原样保留）
+
+爬虫固定重写下面这四栏；**原有的其它子栏（例如早先分享栏留下的人格）会原样保留**
+（`KEEP_EXTRA_TABS = True`），所以线上那一栏实际是 5 个子栏：下载 / 这是什么 / 怎么用 / 更新日志 / 人格。
 
 | 子栏 | key | 内容 |
 | --- | --- | --- |
@@ -115,9 +118,27 @@ sudo bash install.sh --site-dir=/www/wwwroot/your-site
 
 ## 五、每天自动刷新
 
-`astrbot-sync.timer` 每天 **04:17** 跑一次（`Persistent=true`，服务器关机错过了会开机补跑；
-再加 `RandomizedDelaySec=600` 避免和别的定时任务撞）。触发 `astrbot-sync.service`，
-它带着 `ASTRBOT_JSON=<站点>/data/astrbot.json` 执行爬虫。
+先说清楚现在跑的是哪一套 —— 仓库里有两代方案，**推荐用新的那套（方式 A）**：
+
+| | 新（`deploy-astrbot-page.sh`） | 旧（`install.sh` + `astrbot_sync.py`） |
+| --- | --- | --- |
+| 定时器 | `zhuxin-astrbot-dl.timer`，`OnUnitActiveSec=1d`（开机 3 分钟后先跑一次，之后每天一次） | `astrbot-sync.timer`，每天 **04:17** |
+| 装到哪 | `<站点>/scripts/astrbot_download_sync.py` | `/opt/astrbot-sync/astrbot_sync.py` |
+| 断网兜底 | 自带一份离线内容，先顶上，联网成功后再换成最新 | 铺静态版本，等定时任务再试 |
+
+新方案的重启/补跑行为：`OnBootSec=3min` + `OnUnitActiveSec=1d` + `Persistent=true`
+（服务器关机错过了，开机就会补跑一次），不再额外加随机延迟。
+
+随手看看/手动跑一次：
+
+```bash
+systemctl list-timers zhuxin-astrbot-dl.timer --no-pager   # 下次什么时候跑
+systemctl start zhuxin-astrbot-dl.service                  # 立刻跑一次
+journalctl -u zhuxin-astrbot-dl.service -n 30 --no-pager   # 看这次跑了什么
+```
+
+旧方案的对应命令是 `systemctl list-timers astrbot-sync.timer` 与
+`systemctl start astrbot-sync.service`（它带着 `ASTRBOT_JSON=<站点>/data/astrbot.json` 执行爬虫）。
 
 这跟站上已有的几个定时任务（`data/status.json` 服务器监控、`data/quota.json` AI 中转站额度、
 `data/points.json` 积分）是**同一个套路**，架构上不引入新东西。
@@ -126,15 +147,9 @@ sudo bash install.sh --site-dir=/www/wwwroot/your-site
 
 - **原子写**：先写 `astrbot.json.tmp` 再 `os.replace`，访客不会读到写了一半的 JSON；
 - **失败不动线上文件**：抓不到 GitHub、或生成的内容没通过结构校验，脚本 `exit 1` 直接退出，线上保留上一次的好数据；
-- **自动备份**：`install.sh` 会先把原文件存成 `data/astrbot.json.bak.<时间戳>`，`--revert` 可一键还原；
-- 换新版本**不用改任何配置**，爬虫每次都重新读最新的 release。
-
-手动跑一次：
-
-```bash
-sudo systemctl start astrbot-sync.service
-journalctl -u astrbot-sync.service -n 30 --no-pager
-```
+- **自动备份**：动手前先把原文件存成备份 —— 新方案是 `data/astrbot.json.bak-deploy.<时间戳>`
+  （脚本自带 `--revert` 一键还原），旧方案是 `data/astrbot.json.bak.<时间戳>`（`install.sh --revert`）；
+- 换新版本**不用改任何配置**，爬虫每次都重新读最新的 release，站内 APK 只留最近 4 个版本。
 
 ---
 
@@ -143,7 +158,7 @@ journalctl -u astrbot-sync.service -n 30 --no-pager
 部署完打开 `https://烛心.xyz/#/astrbot`（或站点的 AstrBot 子栏），确认：
 
 1. 标题是「**AstrBot烛版**」、副标题「手机上一键跑起 AstrBot + NapCat」；
-2. 有四个子栏：下载 / 这是什么 / 怎么用 / 更新日志；
+2. 有四个子栏：下载 / 这是什么 / 怎么用 / 更新日志（外加原样保留的人格栏，共 5 个）；
 3. 「下载」栏第一张卡的链接指向站内的 `downloads/AstrBot-<版本号>.apk`（当前仓库快照里是 `downloads/AstrBot-1.1.17.apk`），且版本号与线上最新一致；
 4. 「下载」栏最后一张「SHA-256 校验值」卡点一下能复制出 64 位十六进制串；
 5. 「更新日志」栏第一张卡是当前最新版，正文是中文、**没有乱码**。
