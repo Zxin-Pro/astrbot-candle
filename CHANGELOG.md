@@ -11,6 +11,28 @@
 
 ---
 
+## [1.1.17] - 2026-10-18
+
+只修一处文案错位，但它是会让人**第一次登录就被拒**的那种：终端提示里的 Token 和实际生效的
+Token 不是一个词。
+
+### 修复
+
+- **部署汇总与 `qqbot-help` 里打印的 NapCat WebUI Token 写错了**：一直写「Token 填 `qqbot`」，
+  而实际生成到 `webui.json` / `bots.json` 里的是 **`zhuxin`**（1.1.x 品牌改名时改的）。
+  Java 侧（新建实例默认 `zhuxin`、老设备迁移）与界面（实例卡回退值 `zhuxin`）当时都跟上了，
+  只有 `steps/90-summary.sh` 和 `steps/70-launcher.sh` 这两处终端提示漏了 —— 照提示填 `qqbot`
+  会被 NapCat WebUI 直接拒绝，用户很容易误判成「装坏了」。
+- **默认实例的播种值同步改成 `zhuxin`**：`opt/qqbot/link.sh`、`opt/qqbot/sandbox/link.sh`
+  生成 `bots.json` 时写的 token 由 `qqbot` 改为 `zhuxin`，与界面、`使用说明.md`、`README.md` 一致。
+
+### 说明
+
+- 存量设备不受影响：`run-napcat.sh` 里 `qqbot` / `qqbot2` … → `zhuxin` / `zhuxin2` … 的归一化
+  逻辑保留（那条规则只服务已部署过的老 `bots.json`），并补了注释说明它的存在理由。
+
+---
+
 ## [1.1.16] - 2026-10-18
 
 真机自检结果：三档 Xvfb 参数**全部能起来**，`/tmp` 可写、Xvfb 不缺库、qq 二进制在，

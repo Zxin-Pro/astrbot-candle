@@ -270,8 +270,9 @@ try:
         if not i:
             continue
         tok = str(b.get('token') or '').strip()
-        # 历史默认 token 是 qqbot（宿主机 link.sh / 旧版本种进 bots.json 的）。这里在启动前
-        # 就地把它当成 zhuxin：老设备不用改 bots.json 也能把 WebUI token 换过来。
+        # 历史默认 token 是 qqbot —— v1.1.16 及更早的宿主机 link.sh 就是这么种进 bots.json 的
+        # （现在种的是 zhuxin）。这里在启动前就地把它当成 zhuxin：老设备不用改 bots.json
+        # 也能把 WebUI token 换过来。这条归一化只服务存量设备，别删。
         if tok in ('', 'qqbot'):
             tok = 'zhuxin'
         lines.append('%s|%s|%d|%d|%d|%s' % (i, tok,
@@ -291,8 +292,9 @@ PY
 #     所以 bot1/bot2 可以各用各的 WebUI token（NAP CAT 的 WebUI 端口同理各用各的 napcatPort）。
 #   * stdout 只打「值本身」，保证 $() 拿到的是干净的一行；诊断信息一律走 stderr。
 #   * 文件不存在 / JSON 坏 / 实例不存在 / 字段缺失或为空 -> 回退到 <默认值>。
-#   * token 的历史默认值 qqbot 在这里归一成 zhuxin：老的 bots.json 由宿主机 link.sh 种下，
-#     不改那个文件也能把 WebUI token 换过来。⚠️ 这条规则和 read_bots 里那条必须保持一致。
+#   * token 的历史默认值 qqbot 在这里归一成 zhuxin：v1.1.16 及更早的宿主机 link.sh 种下的是
+#     qqbot，不改那个文件也能把 WebUI token 换过来（存量设备兼容，别删）。
+#     ⚠️ 这条规则和 read_bots 里那条必须保持一致。
 # 注意：沙盒里 /qqbot-cache 是宿主机 $QQBOT_CACHE 的映射，bots.json 直接可读。
 napcat_inst_value() {
   local id="$1" key="$2" def="$3" v

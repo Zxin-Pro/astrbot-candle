@@ -84,7 +84,7 @@ except Exception as e:
 # 与上面的 PLAN 保持一致：所有实例都写进去，不看 enable。
 bots = root.get('bots') or []
 if not bots:
-    bots = [{'id': 'bot1', 'token': 'qqbot', 'napcatPort': 6099, 'onebotPort': 6199}]
+    bots = [{'id': 'bot1', 'token': 'zhuxin', 'napcatPort': 6099, 'onebotPort': 6199}]
 
 ports = sorted(set(int(b.get('onebotPort') or 6199) for b in bots))
 for b in bots:

@@ -6,7 +6,7 @@ set -e
 mkdir -p "$QQBOT_CACHE/logs" "$QQBOT_HOME"
 
 if [ ! -s "$QQBOT_HOME/bots.json" ]; then
-  printf '%s' '{"active":"bot1","bots":[{"id":"bot1","name":"\u4e3b\u53f7","qq":"","token":"qqbot","napcatPort":6099,"onebotPort":6199,"enable":true}]}' > "$QQBOT_HOME/bots.json"
+  printf '%s' '{"active":"bot1","bots":[{"id":"bot1","name":"\u4e3b\u53f7","qq":"","token":"zhuxin","napcatPort":6099,"onebotPort":6199,"enable":true}]}' > "$QQBOT_HOME/bots.json"
   qqlog "已生成默认实例配置 $QQBOT_HOME/bots.json"
 fi
 
