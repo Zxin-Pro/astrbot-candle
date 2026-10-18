@@ -1086,9 +1086,9 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
       "cards": [
         {
           "icon": "📦",
-          "title": "AstrBot烛版 1.1.6（最新版）",
-          "desc": "文件名 AstrBot-1.1.6.apk（下载下来就是这个名字）\n安卓安装包 · 24.0 MB · 2026-10-17\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
-          "link": "/downloads/AstrBot-1.1.6.apk",
+          "title": "AstrBot烛版 1.1.17（最新版）",
+          "desc": "文件名 AstrBot-1.1.17.apk（下载下来就是这个名字）\n安卓安装包 · 24.1 MB · 2026-10-18\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
+          "link": "/downloads/AstrBot-1.1.17.apk",
           "text": ""
         },
         {
@@ -1096,7 +1096,7 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
           "title": "复制下载直链",
           "desc": "点这张卡就把地址复制下来，可以直接发给别人或贴进浏览器。",
           "link": "",
-          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.1.6.apk"
+          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.1.17.apk"
         },
         {
           "icon": "🕘",
@@ -1107,10 +1107,10 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
         },
         {
           "icon": "🔐",
-          "title": "SHA-256 校验值（v1.1.6）",
+          "title": "SHA-256 校验值（v1.1.17）",
           "desc": "点这张卡复制，然后和下载到的文件比对，一样就说明没被改过。",
           "link": "",
-          "text": "bd40e92c44bc20d70215074c780c9bc0d90f01a7971b887974ac8e93e62396c4"
+          "text": "6cf9ef78e5ef2a054efdfb0eb1f6f69f0ed4888a4ede67975a893eaf6f1946fc"
         }
       ]
     },
@@ -1187,43 +1187,43 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
       "cards": [
         {
           "icon": "📝",
-          "title": "v1.1.6  ·  2026-10-17",
-          "desc": "### AstrBot 烛版 v1.1.6\n\n### 修复\n\n- **真正修好「第 3 步永远装不上」——上次的 dpkg 自愈没有解开那把锁**。apt 判断「dpkg 被中断」的唯一依据是 `/var/lib/dpkg/updates/` 里有残留条目（`tmp.i` 与 `lock` 除外），而这个目录只有 `dpkg --configure -a` **成功**时才会被顺带清空。只要有一个包的维护者脚本持续失败（真机上就是 `libc-bin`），journal 就一直留着，apt 每次都在入口处直接拒绝，`--configure -a` 再怎么重试都过不去 —— 这就是为什么上一次加的「自愈」看起来跑了、报错却一模一样。现在修复脚本在确认 dpkg 已经不忙之后，会把这批 journal 移到 `/var/lib/dpkg/updates.stale/`（挪走而不是删除，方便事后回查），apt 的闸门这才算真正打开。整段修复也从原来的 5 步扩到 11 步：等 apt/dpkg 结束（最多 180 秒）→ `status-old` 兜底 → `dpkg --configure -a` 最多 3 次并打印真实报错 → `--force-all` 再试 → 仍脏就对每个残留包 `--remove --force-remove-reinstreq --force-depends` 后 `--reinstall` 装回 → `apt-get -f install` 收尾 → 清锁、清半截 .deb、重建目录 → 挪走 journal → 打印前后 journal 条数做健康判定。\n- **部署的每一步失败后都会先自愈再重试，最多三次**。原来一步失败就直接中断部署，用户只能自己找按钮。现在每个步骤最多试 3 次，每次失败前先跑一次依赖修复（`fix-sandbox.sh --force`）再继续，日志里会写明是第几次尝试。\n- **最后一道保险：第 3 步三次都没过，就重建整个根文件系统**。任何 dpkg 状态污染到无法挽救时，删掉 `~/ubuntu` 重新解包一份干净的 Ubuntu 再来 —— 代价只是重新下载 29 MB，而不是让用户永远卡在第 3 步。这个动作在一次部署里最多触发一次，避免系统性故障时反复重建；部署成功后会清掉标记，下次还能重新触发。\n- **部署正在跑的时候，「修复沙盒依赖」会拒绝执行**。两个进程同时动 dpkg 只会互相抢锁、把状态搞得更乱（真机日志里就出现过 `dpkg frontend lock was locked by another process` 后的重试）。现在它会先看部署锁，正在部署就提示「部署正在运行中，现在不要去动 dpkg」。\n- **dpkg 不再给维护者脚本开 pty，apt 也不再装推荐包**…",
-          "link": "/downloads/AstrBot-1.1.6.apk",
+          "title": "v1.1.17  ·  2026-10-18",
+          "desc": "## AstrBot 烛版 v1.1.17\n\n## [1.1.17] - 2026-10-18\n\n只修一处文案错位，但它是会让人**第一次登录就被拒**的那种：终端提示里的 Token 和实际生效的\nToken 不是一个词。\n\n### 修复\n\n- **部署汇总与 `qqbot-help` 里打印的 NapCat WebUI Token 写错了**：一直写「Token 填 `qqbot`」，\n  而实际生成到 `webui.json` / `bots.json` 里的是 **`zhuxin`**（1.1.x 品牌改名时改的）。\n  Java 侧（新建实例默认 `zhuxin`、老设备迁移）与界面（实例卡回退值 `zhuxin`）当时都跟上了，\n  只有 `steps/90-summary.sh` 和 `steps/70-launcher.sh` 这两处终端提示漏了 —— 照提示填 `qqbot`\n  会被 NapCat WebUI 直接拒绝，用户很容易误判成「装坏了」。\n- **默认实例的播种值同步改成 `zhuxin`**：`opt/qqbot/link.sh`、`opt/qqbot/sandbox/link.sh`\n  生成 `bots.json` 时写的 token 由 `qqbot` 改为 `zhuxin`，与界面、`使用说明.md`、`README.md` 一致。\n\n### 说明\n\n- 存量设备不受影响：`run-napcat.sh` 里 `qqbot` / `qqbot2` … → `zhuxin` / `zhuxin2` … 的归一化\n  逻辑保留（那条规则只服务已部署过的老 `bots.json`），并补了注释说明它的存在理由。",
+          "link": "/downloads/AstrBot-1.1.17.apk",
           "text": ""
         },
         {
           "icon": "📝",
-          "title": "v1.1.5  ·  2026-10-16",
-          "desc": "### AstrBot 烛版 v1.1.5\n\n### 修复\n\n- **修好「第 3 步安装不了」——部署一旦卡在沙盒依赖安装，就会永远卡在同一个地方**（用户真机截图反馈：日志停在 `E: dpkg was interrupted, you must manually run 'dpkg --configure -a' to correct the problem.`）。原因是那一步在被中断过的 dpkg 数据库上直接重跑 `apt-get install`，撞上「有包没配置完」就立刻退出；而「这一步已完成」的标记只在成功后才写，所以每次重开应用都从同一面墙重新撞一次，永远过不去。现在沙盒内先做一遍 **dpkg 自愈**（等正在跑的 apt/dpkg 结束 → 必要时用 `status-old` 恢复数据库 → `dpkg --configure -a` 重试 → `apt-get -f install` 修断裂依赖 → 清残留锁和半截 .deb → 重建缺失目录），再安装；单批安装失败还会**自愈后自动重试一次**。整个过程纯本地、不联网也能跑，重复执行无害。\n- **主页部署卡多了一个「修复沙盒依赖」按钮**：卡在第 3 步时自动出现，文案也会告诉你「先点它、再点继续部署」，不用自己翻到设置页找。它跑完会顺带刷新部署台，不需要等下一轮轮询。设置页「维护」卡里也有同样的入口。\n- **Termux 侧同样加了依赖修复**：原来只做 `dpkg --configure -a`，缺了 `apt-get -f install`，依赖关系被中断破坏时会以完全相同的报错再卡一次。\n- **「已有部署在进行中，本次跳过」不再可能变成一句假成功**：判断依据从「那个 PID 还活着」改成「那个 PID 真的是部署脚本」。Android 会复用进程号，而部署要跑几十分钟，记录下来的 PID 很容易飘到一个毫不相干的进程上——那样新部署会直接以成功退出，界面显示一切正常、实际一步没跑，用户永远等不到结果。现在还会核对进程命令行，PID 对不上就当作陈旧标记清掉，照常部署。部署结束（含失败和手动中止）也会自动抹掉自己的 PID 文件，不会再把状态挂住。\n- **下载的文件开始做完整性检查**。以前只判断「下载下来不是 0 字节」，于是镜像返回的 HTML 错误页、被超时截断的半包都会被当成成品缓存下来，之后每次重装都失败在「解包」那一步、而重装并不会清掉那个坏文件，只能靠用户手动清缓存。现在按文件类型设了体积下限（rootfs 25 MB、QQ 安装包 150 MB），并会识别网页错误页，不合格的立刻丢弃重试。\n- **rootfs 解压到一半被打断，不再被当成「已完成」**。「已完成」的判据从「两个文件存在」扩充为关键目录与文件数量；解压结果缺胳膊少腿时会删掉残留目录并要…",
-          "link": "/downloads/AstrBot-1.1.5.apk",
+          "title": "v1.1.16  ·  2026-10-18",
+          "desc": "### AstrBot 烛版 v1.1.16\n\n真机自检结果：三档 Xvfb 参数**全部能起来**，`/tmp` 可写、Xvfb 不缺库、qq 二进制在，\n但 6099 端口没监听、`qq-bot1.log` 停在 00:30 不再增长 —— 说明不是参数问题，\n而是 QQ 压根没被拉起来（或起来就退了）。这一版针对「显示号被残留进程占着」和\n「看不到守护到底在干什么」两个盲区。\n\n### 修复\n\n- **守护启动时先清扫上次残留的 Xvfb / QQ 进程和 X 锁文件**：上次守护被强杀、或 proot 整个重启后，\n  老的 Xvfb 还攥着 `/tmp/.X11-unix/NN`。新 Xvfb 一启动就 `Server is already active for display N`\n  秒退，三档参数全部失败 —— 现象和我们看到的完全一致。\n- **一个显示号三档都失败时，换下一个显示号再整套试一遍**（最多 3 个号）。\n  之前一个号失败就放弃本轮，而 `pick_display` 只看 socket 文件在不在，文件被清掉但号还被占着时\n  会一直挑到同一个坏号。\n- **X 就绪后按实际使用的显示号启动 QQ**：`start_xvfb` 换过号时，`DISPLAY` 变量以前不会跟着更新。\n- **失败时打印进程表**：所有 Xvfb / QQ 进程的 cmdline 和 `/tmp/.X11-unix` 内容，\n  直接看出「X 有没有在跑、QQ 有没有真的活着」。\n\n### 自检增强\n\n- 「检查运行环境」现在还会打印 **`supervisor.log` 末 30 行**、**`qq-*.log` 末 30 行**、\n  以及当前所有 Xvfb / QQ 进程的完整命令行。以前只报文件大小，最关键的内容看不到。",
+          "link": "/downloads/AstrBot-1.1.16.apk",
           "text": ""
         },
         {
           "icon": "📝",
-          "title": "v1.1.4  ·  2026-10-16",
-          "desc": "### AstrBot 烛版 v1.1.4\n\n### 修复\n\n- **在 arm64 手机上点「重新部署」，只会弹一句英文的「部署：start failed」，完全看不出为什么失败**（用户真机截图反馈）。以前 `startDeploy()` 无论成功失败都只回一个内部状态串，失败时既不写日志也不留原因，看起来就像按钮坏了。现在所有提示都换成了中文，并且**失败时会把部署日志（或服务日志）的最后一行一起显示出来**——那一行通常是 apt、pip 或 NapCat 真正报的错，照着它就能判断是没网、是磁盘满、还是某个包下载失败。日志里的 ANSI 颜色码会先剥掉，不会在提示里变成一串乱码。\n- 对应的几句话也一并中文化：已经是「已经部署完成，不用重新开始」「部署正在跑，稍等一下」，没解包好是「Termux 基础环境还没解包好，退出重进一次应用再试」，脚本丢了是「找不到部署脚本，覆盖安装一次应用可以恢复」。服务启动按钮同理（「服务已经在跑了」「服务已启动」）。\n- 顺手把按钮回显里 `start -> started` 这种只有开发者看得懂的字符串去掉：现在直接显示中文结果，没有结果就显示「操作 完成」。\n\n### 变更\n\n- **安装包文件名开始带版本号**：从这一版起，发布出去的安装包叫 `AstrBot-1.1.4.apk`（而不是以前的 `AstrBot.apk`）。下载目录里躺着好几个包的时候，一眼就能看出哪个是哪个，不用再去比对文件大小或哈希。构建脚本在签名完成后会按 `VERSION` 自动复制一份带版本号的副本到仓库根目录，官网「下载」栏与 Releases 页面的资产也统一用这个名字。\n\n---",
-          "link": "/downloads/AstrBot-1.1.4.apk",
+          "title": "v1.1.15  ·  2026-10-18",
+          "desc": "### AstrBot 烛版 v1.1.15\n\n上一版把「X 起不来就不要启 QQ」这条补上了，但真机上还是起不来 —— 说明 **Xvfb 自己就没起来**。\n这一版不再赌一种参数，而是逐档回退，并且把 Xvfb 自己说的话摆到用户面前。\n\n### 修复\n\n- **Xvfb 三档参数逐档回退**：`1x1x8 +GLX +render` → `640x480x24`（不要求 GLX）→ `1280x800x24`。\n  真机上最可能的情况是 arm64 的 rootfs 用 `--no-install-recommends` 装出来没有 mesa 的 GLX 模块，\n  Xvfb 一加 `+extension GLX` 就 `Fatal server error: could not enable GLX extension` 秒退；\n  而原来失败后只会拿同一套参数再试一次，等于试了个寂寞。现在第二档不要求 GLX，纯软件也能起。\n- **每档失败都把 Xvfb 自己的报错打出来**（前 14 行），并清掉它残留的 `/tmp/.X<n>-lock` 与 socket，\n  否则 `pick_display` 会一直跳过那个号，重试几次把 40~99 全占满。\n- **补装 mesa / xkb 相关包**：`libgl1 libglx-mesa0 libgl1-mesa-dri xkb-data x11-xkb-utils`\n  （只对新装环境生效，老环境靠上面的回退）。\n- **`trap '' PIPE`**：照参考项目的做法。QQ 往已关闭的日志管道写时会被 SIGPIPE 直接打死，\n  症状正是「刚起来就没了、日志里什么都没有」。\n\n### 新增\n\n- **设置页 → 维护 → 检查运行环境**：`doctor.sh` 只读自检，报告 proot / supervisor / 三个端口 /\n  NapCat 日志，并**在沙盒里真的把三档 Xvfb 各起一次**（各 10 秒），把 Xvfb 的输出原样列出来。\n  结果存成 `~/.qqbot/doctor.txt`。\n- **错误报告带上 NapCat 与 Xvfb 日志**：`upload-log.sh` 现在还会打包 `qq-*.log` 末 120 行、\n  每个实例的 `run/xvfb-*.log` 前 60 行、以及 `doctor.txt`。以前 NapCat 起不来的报告里\n  一条相关线索都没有，只能靠猜。",
+          "link": "/downloads/AstrBot-1.1.15.apk",
           "text": ""
         },
         {
           "icon": "📝",
-          "title": "v1.1.3  ·  2026-10-16",
-          "desc": "### AstrBot 鐑涚増 v1.1.3\n\n### 修复\n\n- **arm64 真机上部署一步都跑不起来，日志顶死在「proot 自检失败 / 该设备的架构与 proot 不匹配」**（本版唯一一处，但 100% 影响所有手机，模拟器上反而完全看不出来）：部署主脚本在**第一步开始之前**先做了一次 proot 自检，而 Termux 的 bootstrap 里**根本没有 proot**——它是第一步用 `apt` 装进来的。x86_64 模拟器走的是随包内置的 `proot-x86_64`（从装机第一秒就存在），所以自检通过、这个问题一直没暴露；arm64 手机上则是拿一个**还不存在的文件**去自检，`timeout` 返回 127，被当成「架构不匹配」直接 `exit 1`，八个步骤一个都不会执行。现在只有在 proot 确实存在时才做前置自检，不存在就记一句「proot 尚未安装…跳过前置自检，步骤 10 装好后会再检一次」，装好之后那一次才是真正有意义的检查。\n- 自检失败时把 proot 自己的报错原样打进部署日志（缩进四格，与 `[QQBot]` 行区分）。以前这些都丢进了 `/dev/null`，失败时只能说一句笼统的「自检失败」，分不清到底是文件不存在、还是被系统拦了 `ptrace`。\n\n---",
-          "link": "/downloads/AstrBot-1.1.3.apk",
+          "title": "v1.1.14  ·  2026-10-17",
+          "desc": "### AstrBot 烛版 v1.1.14\n\n真机日志把「NapCat 一直起不来」的真相说清楚了 —— 不是慢，是 QQ 每轮都在失败退出：\n\n```\n[17152:...:ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:256] Missing X server or $DISPLAY\n[17152:...:ERROR:ui/aura/env.cc:257] The platform failed to initialize.  Exiting.\n```\n\nQQ 起来后等 20 多秒连不上 X，就退出；supervisor 5 秒后再拉一遍，于是看起来「十分钟都没启动好」。\n也就是 Xvfb 根本没起来（或者起来又死了），而我们以前照旧把 QQ 拉起来 —— QQ 只能等死。\n\n### 修复\n\n- **Xvfb 起不来就不再硬拉 QQ**：先换显示号重试一次，仍失败就本轮跳过，5 秒后由 supervisor 再来，\n  并把 Xvfb 的报错原样写进容器日志（`[xvfb] ...` 缩进行），下次截图就能看到它为什么起不来。\n- **等待时间从 6 秒放宽到 20 秒**：真机上 Xvfb 冷启动可能更久，以前等到 6 秒就硬启 QQ。\n- **Xvfb 加 `-ac -nolisten tcp`**：关掉访问控制，不再需要 Xauthority cookie（xvfb-run 会临时生成，\n  QQ 那边拿不到就连不上）；只走 unix socket，少一层失败可能。\n- **失败时清掉 `/tmp/.XN-lock` 和 `/tmp/.X11-unix/XN`**：否则 pick_display 会一直跳过这个号，\n  重试几次就把 40~99 占满。",
+          "link": "/downloads/AstrBot-1.1.14.apk",
           "text": ""
         },
         {
           "icon": "📝",
-          "title": "v1.1.2  ·  2026-10-16",
-          "desc": "### AstrBot 烛版 v1.1.2\n\n### 修复\n\n- **v1.1.1 那个补丁其实没生效，真正的原因在这里：AstrBot 把 `cmd_config.json` 写成带 UTF-8 BOM 的文件，而我们读它时按纯 UTF-8 解析，直接抛 `JSONDecodeError: Unexpected UTF-8 BOM (decode using utf-8-sig)`**（沙盒内实测报错原文）。异常被 `link.sh` 里的 `except Exception: a = {}` 吞掉，于是「当前 AstrBot 已经监听的端口」永远算成空列表，跟「需要的端口」永远对不上 → `CHANGED` 永远是 1 → 每次对接都会 `kill -TERM` 掉 AstrBot 再让守护循环拉回来（约 30 秒，期间所有 QQ 号的 OneBot 通道一起断）。表现就是：**在机器人页停掉任意一个实例，AstrBot 也跟着重启一次**。现在所有读 JSON 的地方统一改用 `utf-8-sig` 解码（它同时兼容带 BOM 和不带 BOM 的文件），比对逻辑这才真正跑起来。\n- 顺带把沙盒里所有读 JSON 的脚本都换成了 `utf-8-sig`：`link.sh`（bots.json、cmd_config.json）、`run-napcat.sh`（实例的 onebot11/webui 配置、bots.json）、`50-napcat.sh`（QQ 的 `package.json`、NapCat 配置）、`40-qq.sh`（QQ 的 `versions/config.json`）、`remove-instance.sh`（bots.json）。这些文件分别由 AstrBot、NapCat、QQ 和 App 自己写，谁加不加 BOM 不由我们决定——`utf-8-sig` 对两种情况都能读，写出去的一律不带 BOM。\n\n---",
+          "title": "v1.1.13  ·  2026-10-17",
+          "desc": "### AstrBot 烛版 v1.1.13\n\n真机上 NapCat 启动要十几分钟。照着参考项目 [AstrBot-Bubble-Android-App](https://github.com/MuFengDR/AstrBot-Bubble-Android-App)，\n把它启动 QQ 的方式搬了过来。\n\n### 修复\n\n- **不再用 `xvfb-run`，自己起 Xvfb**：`xvfb-run` 是脚本，会先跑 mcookie/xauth、再用 `-a` 从 99 往下试号，\n  每次启动都多几秒，proot 里 xauth 偶发卡住还会让 QQ 一直等 X。\n  现在自己起 Xvfb，等 `/tmp/.X11-unix/XN` 出现就直接拉 QQ（最多等 6 秒，超时也照启，日志写进 `xvfb-<实例>.log`）。\n- **虚拟屏幕从 1280x800x24 改成 1x1x8**：QQ 根本不需要真的画东西，1 个像素 8 位就够。\n  1024x768x24 那种帧缓冲只会让 Electron 的软件渲染白干活 —— 在 arm64 手机上这一步能慢到分钟级。\n- **每个实例固定分配自己的显示号（40~99 里找空的）**，启动前清掉 `X<n>-lock` 和 `/tmp/.X11-unix/XN` 残留，\n  避免上次崩溃留下的旧 X 让新实例连不上。\n- **停止 / 退出时把 Xvfb 一起收掉**：它和 QQ 不是一个进程组，以前只 kill QQ 会留下 Xvfb 占着显示号。\n- **装机时预热字体缓存**（`fc-cache -f`）：QQ 第一次启动会自己扫一遍系统字体，手机上这步能吃掉几分钟，\n  表现出来就是「NapCat 十分钟都没起来」。现在第 3 步顺手扫完。",
           "link": "",
           "text": ""
         },
         {
           "icon": "📝",
-          "title": "v1.1.0  ·  2026-10-16",
-          "desc": "### AstrBot 烛版 v1.1.0\n\n这一版加了一个「检查更新」，并顺手把版本号推到 1.1.0。\n\n### 新增\n\n- **「更多 → 关于与支持 → 检查更新」**：以前想知道有没有新版，只能自己去 GitHub 翻 release 列表。现在应用里点一下「检查更新」，它会去 GitHub 查最新版本，直接告出「有新版本 1.x.x 可以装」，并给出「下载新版本」和「查看更新内容」两个按钮——前者把安装包交给浏览器下载，下完点开就能覆盖安装（覆盖装不会动沙盒里的 QQ 登录状态）。\n- **检查更新对国内网络做了兜底**：手机直连 `api.github.com` 经常超时，所以内置了直连 + 三个反代共四个地址，依次尝试，第一个能用的就用。四十五秒还没结果会明确说「检查超时」而不是一直转圈。\n- **启动后静默自检**：打开应用九秒后会在后台查一次（同一台设备十二小时内只查一次），有新版本才弹提示，其余情况不打扰。\n\n### 说明\n\n- 查询全程在后台线程进行，前端每 500ms 取一次结果，所以点「检查更新」不会把界面卡住——这一点和「运行命令」不同，「运行命令」卡的是命令本身。\n- 「查看更新内容」是在应用内展开的：新版说明在检查更新的同时就已经一起取回来了，点一下就地展开、再点收起，不用跳浏览器（跳过去还得自己登 GitHub，国内多半打不开）。只有那一版确实没写更新说明时才会退回打开 GitHub 页面。\n- 「下载新版本」交给系统浏览器下载，应用本身不内置下载器；如果你的手机装了多个浏览器，会由默认浏览器接管。",
+          "title": "v1.1.12  ·  2026-10-17",
+          "desc": "### AstrBot 烛版 v1.1.12\n\n第 2 步的硬链接问题解决了（体检判定后自动走 `--link2symlink`），真机上第 2~5 步一路通过：\nrootfs、运行依赖、Linux QQ、NapCat 全部装好。现在卡在第 6 步 —— 装 AstrBot 的 Python 依赖。\n\n### 变更\n\n- **改用 uv 装 Python 依赖**：pip 在这台手机上要解析上百个包的依赖树，真机实测几分钟没有任何输出。\n  换成 uv（单个静态二进制，astral-sh/uv，参考项目也用它），解析 + 下载通常一分钟内完成。\n  uv 从 GitHub 下载，失败会自动换 ghfast.top / gh-proxy.com / ghproxy.net 三个镜像；\n  全都拿不到就退回原来的 pip，不会因此装不上。\n- **每一步都标出「本来就慢」和大概耗时**：步骤列表里给慢步骤加旁注 ——\n  `下载并解压约 29MB，1~3 分钟`、`装几十个包，2~6 分钟`、`下载约 200MB，5~20 分钟`、\n  `装 Python 依赖，5~20 分钟（最慢的一步，没输出是正常的）`。\n  部署中的提示也改成「当前：安装 AstrBot 与 WebUI。这一步已经 3 分钟没有新内容输出，\n  装 Python 依赖 5~20 分钟（最慢的一步，没输出是正常的），没输出是正常的……」\n- **依赖安装期间每 45 秒打一行心跳**：`[sandbox] 仍在安装依赖…（时间）`。\n  以前这一步可能几分钟零输出，界面显示「日志 N 分钟没有新内容」，用户以为卡死就强杀，\n  结果永远装不完。\n\n### 修复\n\n- **卡住的时候也能上传日志了**：以前只有「部署失败」才出现「上传错误日志」按钮；\n  现在部署还在跑、但日志 4 分钟没动时，红框下面同样会出现这条询问 ——\n  「这次像是卡住了（日志已经 N 分钟没有新内容）。要把现场发给作者看看吗？」\n  这样卡在第 6 步这种情形也能把现场发出来，而不是干看着。",
           "link": "",
           "text": ""
         }
@@ -1259,7 +1259,7 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
       ]
     }
   ],
-  "updated": "2026-10-17 14:06:37"
+  "updated": "2026-10-18 16:27:23"
 }
 __ASTRBOT_DL_STATIC__
 log "离线兜底内容已装到 $SCRIPTS/astrbot_download_sync.fallback.json"

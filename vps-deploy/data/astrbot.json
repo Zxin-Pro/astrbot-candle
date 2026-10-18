@@ -11,9 +11,9 @@
       "cards": [
         {
           "icon": "📦",
-          "title": "AstrBot烛版 1.1.14（最新版）",
-          "desc": "文件名 AstrBot-1.1.14.apk（下载下来就是这个名字）\n安卓安装包 · 24.1 MB · 2026-10-17\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
-          "link": "/downloads/AstrBot-1.1.14.apk",
+          "title": "AstrBot烛版 1.1.17（最新版）",
+          "desc": "文件名 AstrBot-1.1.17.apk（下载下来就是这个名字）\n安卓安装包 · 24.1 MB · 2026-10-18\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
+          "link": "/downloads/AstrBot-1.1.17.apk",
           "text": ""
         },
         {
@@ -21,7 +21,7 @@
           "title": "复制下载直链",
           "desc": "点这张卡就把地址复制下来，可以直接发给别人或贴进浏览器。",
           "link": "",
-          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.1.14.apk"
+          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.1.17.apk"
         },
         {
           "icon": "🕘",
@@ -32,10 +32,10 @@
         },
         {
           "icon": "🔐",
-          "title": "SHA-256 校验值（v1.1.14）",
+          "title": "SHA-256 校验值（v1.1.17）",
           "desc": "点这张卡复制，然后和下载到的文件比对，一样就说明没被改过。",
           "link": "",
-          "text": "7af87af9efc4763453a2d37da184a4930b11962b5fa5f6d7bd2763be90775400"
+          "text": "6cf9ef78e5ef2a054efdfb0eb1f6f69f0ed4888a4ede67975a893eaf6f1946fc"
         }
       ]
     },
@@ -112,6 +112,27 @@
       "cards": [
         {
           "icon": "📝",
+          "title": "v1.1.17  ·  2026-10-18",
+          "desc": "## AstrBot 烛版 v1.1.17\n\n## [1.1.17] - 2026-10-18\n\n只修一处文案错位，但它是会让人**第一次登录就被拒**的那种：终端提示里的 Token 和实际生效的\nToken 不是一个词。\n\n### 修复\n\n- **部署汇总与 `qqbot-help` 里打印的 NapCat WebUI Token 写错了**：一直写「Token 填 `qqbot`」，\n  而实际生成到 `webui.json` / `bots.json` 里的是 **`zhuxin`**（1.1.x 品牌改名时改的）。\n  Java 侧（新建实例默认 `zhuxin`、老设备迁移）与界面（实例卡回退值 `zhuxin`）当时都跟上了，\n  只有 `steps/90-summary.sh` 和 `steps/70-launcher.sh` 这两处终端提示漏了 —— 照提示填 `qqbot`\n  会被 NapCat WebUI 直接拒绝，用户很容易误判成「装坏了」。\n- **默认实例的播种值同步改成 `zhuxin`**：`opt/qqbot/link.sh`、`opt/qqbot/sandbox/link.sh`\n  生成 `bots.json` 时写的 token 由 `qqbot` 改为 `zhuxin`，与界面、`使用说明.md`、`README.md` 一致。\n\n### 说明\n\n- 存量设备不受影响：`run-napcat.sh` 里 `qqbot` / `qqbot2` … → `zhuxin` / `zhuxin2` … 的归一化\n  逻辑保留（那条规则只服务已部署过的老 `bots.json`），并补了注释说明它的存在理由。",
+          "link": "/downloads/AstrBot-1.1.17.apk",
+          "text": ""
+        },
+        {
+          "icon": "📝",
+          "title": "v1.1.16  ·  2026-10-18",
+          "desc": "### AstrBot 烛版 v1.1.16\n\n真机自检结果：三档 Xvfb 参数**全部能起来**，`/tmp` 可写、Xvfb 不缺库、qq 二进制在，\n但 6099 端口没监听、`qq-bot1.log` 停在 00:30 不再增长 —— 说明不是参数问题，\n而是 QQ 压根没被拉起来（或起来就退了）。这一版针对「显示号被残留进程占着」和\n「看不到守护到底在干什么」两个盲区。\n\n### 修复\n\n- **守护启动时先清扫上次残留的 Xvfb / QQ 进程和 X 锁文件**：上次守护被强杀、或 proot 整个重启后，\n  老的 Xvfb 还攥着 `/tmp/.X11-unix/NN`。新 Xvfb 一启动就 `Server is already active for display N`\n  秒退，三档参数全部失败 —— 现象和我们看到的完全一致。\n- **一个显示号三档都失败时，换下一个显示号再整套试一遍**（最多 3 个号）。\n  之前一个号失败就放弃本轮，而 `pick_display` 只看 socket 文件在不在，文件被清掉但号还被占着时\n  会一直挑到同一个坏号。\n- **X 就绪后按实际使用的显示号启动 QQ**：`start_xvfb` 换过号时，`DISPLAY` 变量以前不会跟着更新。\n- **失败时打印进程表**：所有 Xvfb / QQ 进程的 cmdline 和 `/tmp/.X11-unix` 内容，\n  直接看出「X 有没有在跑、QQ 有没有真的活着」。\n\n### 自检增强\n\n- 「检查运行环境」现在还会打印 **`supervisor.log` 末 30 行**、**`qq-*.log` 末 30 行**、\n  以及当前所有 Xvfb / QQ 进程的完整命令行。以前只报文件大小，最关键的内容看不到。",
+          "link": "/downloads/AstrBot-1.1.16.apk",
+          "text": ""
+        },
+        {
+          "icon": "📝",
+          "title": "v1.1.15  ·  2026-10-18",
+          "desc": "### AstrBot 烛版 v1.1.15\n\n上一版把「X 起不来就不要启 QQ」这条补上了，但真机上还是起不来 —— 说明 **Xvfb 自己就没起来**。\n这一版不再赌一种参数，而是逐档回退，并且把 Xvfb 自己说的话摆到用户面前。\n\n### 修复\n\n- **Xvfb 三档参数逐档回退**：`1x1x8 +GLX +render` → `640x480x24`（不要求 GLX）→ `1280x800x24`。\n  真机上最可能的情况是 arm64 的 rootfs 用 `--no-install-recommends` 装出来没有 mesa 的 GLX 模块，\n  Xvfb 一加 `+extension GLX` 就 `Fatal server error: could not enable GLX extension` 秒退；\n  而原来失败后只会拿同一套参数再试一次，等于试了个寂寞。现在第二档不要求 GLX，纯软件也能起。\n- **每档失败都把 Xvfb 自己的报错打出来**（前 14 行），并清掉它残留的 `/tmp/.X<n>-lock` 与 socket，\n  否则 `pick_display` 会一直跳过那个号，重试几次把 40~99 全占满。\n- **补装 mesa / xkb 相关包**：`libgl1 libglx-mesa0 libgl1-mesa-dri xkb-data x11-xkb-utils`\n  （只对新装环境生效，老环境靠上面的回退）。\n- **`trap '' PIPE`**：照参考项目的做法。QQ 往已关闭的日志管道写时会被 SIGPIPE 直接打死，\n  症状正是「刚起来就没了、日志里什么都没有」。\n\n### 新增\n\n- **设置页 → 维护 → 检查运行环境**：`doctor.sh` 只读自检，报告 proot / supervisor / 三个端口 /\n  NapCat 日志，并**在沙盒里真的把三档 Xvfb 各起一次**（各 10 秒），把 Xvfb 的输出原样列出来。\n  结果存成 `~/.qqbot/doctor.txt`。\n- **错误报告带上 NapCat 与 Xvfb 日志**：`upload-log.sh` 现在还会打包 `qq-*.log` 末 120 行、\n  每个实例的 `run/xvfb-*.log` 前 60 行、以及 `doctor.txt`。以前 NapCat 起不来的报告里\n  一条相关线索都没有，只能靠猜。",
+          "link": "/downloads/AstrBot-1.1.15.apk",
+          "text": ""
+        },
+        {
+          "icon": "📝",
           "title": "v1.1.14  ·  2026-10-17",
           "desc": "### AstrBot 烛版 v1.1.14\n\n真机日志把「NapCat 一直起不来」的真相说清楚了 —— 不是慢，是 QQ 每轮都在失败退出：\n\n```\n[17152:...:ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:256] Missing X server or $DISPLAY\n[17152:...:ERROR:ui/aura/env.cc:257] The platform failed to initialize.  Exiting.\n```\n\nQQ 起来后等 20 多秒连不上 X，就退出；supervisor 5 秒后再拉一遍，于是看起来「十分钟都没启动好」。\n也就是 Xvfb 根本没起来（或者起来又死了），而我们以前照旧把 QQ 拉起来 —— QQ 只能等死。\n\n### 修复\n\n- **Xvfb 起不来就不再硬拉 QQ**：先换显示号重试一次，仍失败就本轮跳过，5 秒后由 supervisor 再来，\n  并把 Xvfb 的报错原样写进容器日志（`[xvfb] ...` 缩进行），下次截图就能看到它为什么起不来。\n- **等待时间从 6 秒放宽到 20 秒**：真机上 Xvfb 冷启动可能更久，以前等到 6 秒就硬启 QQ。\n- **Xvfb 加 `-ac -nolisten tcp`**：关掉访问控制，不再需要 Xauthority cookie（xvfb-run 会临时生成，\n  QQ 那边拿不到就连不上）；只走 unix socket，少一层失败可能。\n- **失败时清掉 `/tmp/.XN-lock` 和 `/tmp/.X11-unix/XN`**：否则 pick_display 会一直跳过这个号，\n  重试几次就把 40~99 占满。",
           "link": "/downloads/AstrBot-1.1.14.apk",
@@ -121,34 +142,13 @@
           "icon": "📝",
           "title": "v1.1.13  ·  2026-10-17",
           "desc": "### AstrBot 烛版 v1.1.13\n\n真机上 NapCat 启动要十几分钟。照着参考项目 [AstrBot-Bubble-Android-App](https://github.com/MuFengDR/AstrBot-Bubble-Android-App)，\n把它启动 QQ 的方式搬了过来。\n\n### 修复\n\n- **不再用 `xvfb-run`，自己起 Xvfb**：`xvfb-run` 是脚本，会先跑 mcookie/xauth、再用 `-a` 从 99 往下试号，\n  每次启动都多几秒，proot 里 xauth 偶发卡住还会让 QQ 一直等 X。\n  现在自己起 Xvfb，等 `/tmp/.X11-unix/XN` 出现就直接拉 QQ（最多等 6 秒，超时也照启，日志写进 `xvfb-<实例>.log`）。\n- **虚拟屏幕从 1280x800x24 改成 1x1x8**：QQ 根本不需要真的画东西，1 个像素 8 位就够。\n  1024x768x24 那种帧缓冲只会让 Electron 的软件渲染白干活 —— 在 arm64 手机上这一步能慢到分钟级。\n- **每个实例固定分配自己的显示号（40~99 里找空的）**，启动前清掉 `X<n>-lock` 和 `/tmp/.X11-unix/XN` 残留，\n  避免上次崩溃留下的旧 X 让新实例连不上。\n- **停止 / 退出时把 Xvfb 一起收掉**：它和 QQ 不是一个进程组，以前只 kill QQ 会留下 Xvfb 占着显示号。\n- **装机时预热字体缓存**（`fc-cache -f`）：QQ 第一次启动会自己扫一遍系统字体，手机上这步能吃掉几分钟，\n  表现出来就是「NapCat 十分钟都没起来」。现在第 3 步顺手扫完。",
-          "link": "/downloads/AstrBot-1.1.13.apk",
+          "link": "",
           "text": ""
         },
         {
           "icon": "📝",
           "title": "v1.1.12  ·  2026-10-17",
           "desc": "### AstrBot 烛版 v1.1.12\n\n第 2 步的硬链接问题解决了（体检判定后自动走 `--link2symlink`），真机上第 2~5 步一路通过：\nrootfs、运行依赖、Linux QQ、NapCat 全部装好。现在卡在第 6 步 —— 装 AstrBot 的 Python 依赖。\n\n### 变更\n\n- **改用 uv 装 Python 依赖**：pip 在这台手机上要解析上百个包的依赖树，真机实测几分钟没有任何输出。\n  换成 uv（单个静态二进制，astral-sh/uv，参考项目也用它），解析 + 下载通常一分钟内完成。\n  uv 从 GitHub 下载，失败会自动换 ghfast.top / gh-proxy.com / ghproxy.net 三个镜像；\n  全都拿不到就退回原来的 pip，不会因此装不上。\n- **每一步都标出「本来就慢」和大概耗时**：步骤列表里给慢步骤加旁注 ——\n  `下载并解压约 29MB，1~3 分钟`、`装几十个包，2~6 分钟`、`下载约 200MB，5~20 分钟`、\n  `装 Python 依赖，5~20 分钟（最慢的一步，没输出是正常的）`。\n  部署中的提示也改成「当前：安装 AstrBot 与 WebUI。这一步已经 3 分钟没有新内容输出，\n  装 Python 依赖 5~20 分钟（最慢的一步，没输出是正常的），没输出是正常的……」\n- **依赖安装期间每 45 秒打一行心跳**：`[sandbox] 仍在安装依赖…（时间）`。\n  以前这一步可能几分钟零输出，界面显示「日志 N 分钟没有新内容」，用户以为卡死就强杀，\n  结果永远装不完。\n\n### 修复\n\n- **卡住的时候也能上传日志了**：以前只有「部署失败」才出现「上传错误日志」按钮；\n  现在部署还在跑、但日志 4 分钟没动时，红框下面同样会出现这条询问 ——\n  「这次像是卡住了（日志已经 N 分钟没有新内容）。要把现场发给作者看看吗？」\n  这样卡在第 6 步这种情形也能把现场发出来，而不是干看着。",
-          "link": "/downloads/AstrBot-1.1.12.apk",
-          "text": ""
-        },
-        {
-          "icon": "📝",
-          "title": "v1.1.11  ·  2026-10-17",
-          "desc": "### AstrBot 烛版 v1.1.11\n\n按用户给的参考项目 [AstrBot-Bubble-Android-App](https://github.com/MuFengDR/AstrBot-Bubble-Android-App) 的做法，\n补上了硬链接不可用时的解法：**proot 的 `--link2symlink`**。\n\n那个项目在启动 proot 时无条件带 `--link2symlink`，apt 就能在红米这类「link(2) 直接 EPERM」的机器上正常工作。\n\n### 修复\n\n- **存储不支持硬链接时不再判死**：体检发现目标目录、HOME、cache 三处都建不了硬链接时，\n  不再报「必须卸载重装」，而是写下 `~/.qqbot/link2symlink` 标记并继续部署。\n- **`qq_proot` 读到标记就加 `--link2symlink`**：proot 会用 rename + symlink 模拟硬链接，\n  不依赖底层文件系统，dpkg 备份 `/var/lib/dpkg/status` 这一步就能过了。\n- **默认仍然关闭**：只有在真的需要时才开，避免正常机器上多出一堆 `.l2s.*` 符号链接。\n  rootfs 解压始终在宿主侧完成、不经过 proot，所以不会像早期那样把 libc 换成悬空符号链接。",
-          "link": "/downloads/AstrBot-1.1.11.apk",
-          "text": ""
-        },
-        {
-          "icon": "📝",
-          "title": "v1.1.10  ·  2026-10-17",
-          "desc": "### AstrBot 烛版 v1.1.10\n\n用户真机（Redmi / Android 16 / arm64）上传的报告把第 2 步的真因抓出来了：\n\n```\n目录权限: drwx------ 16 10521 10521 .../files/home/ubuntu   ← 属主就是应用自己\n写测试: 通过\n硬链接: 失败   ln: ... Permission denied\n```\n\n写是能写的，但 `link(2)` 被系统拒绝。dpkg 每次装包第一步就要给 `/var/lib/dpkg/status` 建硬链接备份，\n建不了就整条链全挂 —— 这正是之前第 3 步 `error creating new backup file '/var/lib/dpkg/status-old'` 的根因。\n\n### 新增\n\n- **体检横向对照**：不再只测沙盒目录，而是一次测 HOME、`~/.qqbot/cache`、`$PREFIX/tmp`、沙盒目录四个位置，\n  分别记「可以 / 不行（错误原文）/ 写不进去」。这样能分清是「这台手机的存储整体不支持硬链接」\n  还是「这个目录被弄脏了」——两者的处理方式完全不同。\n- **报告里加上 SELinux 状态和标签**：`getenforce`、`/proc/sys/fs/protected_hardlinks`、`ls -Zd` 的目录标签，\n  下一次报告就能看出是不是安全策略在拦。\n\n### 修复\n\n- **体检提前到下载之前**：以前是先下 29 MB、解压完才测，白等几分钟；现在进第 2 步就测，几秒出结论。\n- **沙盒目录脏了会自动重建**：如果只有沙盒目录建不了硬链接、而 HOME / cache 可以，说明是这棵树的问题，\n  会自动删掉重建再试一次（重建后必定重新解压，不会拿半棵树继续）。\n- **报错文案分场景**：设备整体不支持时，直接说清「应用数据要放内部存储」并提示把这份日志发给作者，\n  不再让用户对着「不支持硬链接」瞎猜。",
-          "link": "",
-          "text": ""
-        },
-        {
-          "icon": "📝",
-          "title": "v1.1.9  ·  2026-10-17",
-          "desc": "### AstrBot 烛版 v1.1.9\n\n真机上第 2 步开始报「沙盒目录不可写，或者它所在的文件系统不支持硬链接」—— 那句是 1.1.8 新加的\n体检，但把「写不进去」和「不能建硬链接」两种完全不同的毛病混成了一句话，用户拿着它没法处理，\n作者也判断不了。这一版把体检拆细，并加上「把现场发给作者」的一键上传。\n\n### 新增\n\n- **失败后可以一键上传错误日志**：部署失败时，红框下面会出现一行询问 ——\n  「这次失败要发给作者看看吗？」。点「上传错误日志」会把这次失败的现场打包上传：机型、\n  安卓版本、架构、剩余空间、目录体检结果（含 `ls -ldn`、`df`、挂载选项）、`deploy.error`、\n  部署日志末 300 行、服务日志末 60 行。**不含任何聊天内容**（本应用也读不到 QQ 消息），\n  `bots.json` 里的 token 会打码。上传后显示一个编号，方便对上；上传失败会把报告留在手机上，\n  网络好了可以再点一次。\n- **目录体检分项报告**：写测试、硬链接测试、剩余空间各自单独测、单独说，失败时明确是\n  「写不进去（带错误原文）」还是「这个文件系统不支持硬链接」，并给对应的处理办法。\n\n### 修复\n\n- **第 2 步不再报那句含混的话**：改成调用统一的 `qq_fsprobe`，能自己修就先修（补权限位、\n  chmod 关键目录后重试），修不好才失败，且失败原因精确到具体哪一项。\n- **空间不足会单独提示**：剩余空间低于 50 MB 时直接说「先清一点空间再试」，不再伪装成权限问题。",
           "link": "",
           "text": ""
         }
@@ -184,5 +184,5 @@
       ]
     }
   ],
-  "updated": "2026-10-18 00:38:55"
+  "updated": "2026-10-18 16:27:23"
 }
