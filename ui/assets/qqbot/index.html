@@ -358,6 +358,37 @@ input::placeholder{color:#5f6879}
 .step .mk{width:14px;flex:0 0 auto;text-align:center}
 .dsum{font-size:13px;color:#9fb0d8;line-height:1.5}
 
+/* ===== 顶部启动条 =====
+   打开应用后容器是自动拉起的，以前界面上只有主页那几个磁贴会从灰变绿，
+   用户以为「没反应」。这条横幅把「正在起 / 起好了 / 起不来」直接摆在最上面。 */
+.bootbar{
+  margin:0 0 var(--sp3);padding:11px 14px;border-radius:var(--r-md);
+  border:1px solid var(--line-2);background:rgba(255,255,255,.045);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06), 0 8px 20px rgba(0,0,0,.22);
+  display:flex;align-items:center;gap:11px;
+  animation:tabIn .28s var(--ease);
+}
+.bootbar .bi{flex:0 0 auto;width:18px;height:18px;display:flex;align-items:center;justify-content:center;color:var(--accent)}
+.bootbar.ok{border-color:rgba(52,211,153,.42);background:linear-gradient(180deg,rgba(52,211,153,.14),rgba(6,78,59,.16))}
+.bootbar.ok .bi{color:var(--ok)}
+.bootbar.bad{border-color:rgba(255,110,130,.42);background:linear-gradient(180deg,rgba(255,90,110,.14),rgba(140,20,36,.16))}
+.bootbar.bad .bi{color:#ff8a9a}
+.bootbar .bt{flex:1;min-width:0}
+.bootbar .bt b{display:block;font-size:13px;color:var(--txt);font-weight:600;line-height:1.35}
+.bootbar .bt span{display:block;font-size:11.5px;color:var(--txt-3);margin-top:2px;line-height:1.4}
+.bootbar .bclose{flex:0 0 auto;background:none;border:none;color:var(--txt-3);font-size:16px;line-height:1;padding:4px 6px;min-height:0;box-shadow:none;border-radius:var(--r-xs)}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid rgba(111,157,255,.28);border-top-color:var(--accent);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* 重装进度：复用主页 .bar，只是把阶段清单排成两列更省高度 */
+.rebox{margin-top:var(--sp3);padding:12px 14px;border-radius:var(--r-md);border:1px solid var(--line-2);background:rgba(255,255,255,.04)}
+.rebox.ok{border-color:rgba(52,211,153,.4)}
+.rebox.bad{border-color:rgba(255,110,130,.4)}
+.rebox .rh{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;color:var(--txt-2)}
+.rebox .rh b{color:var(--txt);font-weight:600}
+.rebox .rsteps{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:9px}
+.rebox .rsteps .step{width:auto;font-size:12px;padding:2px 0}
+
 /* ===== 并排日志 ===== */
 .duo{display:flex;gap:var(--sp3);flex-wrap:wrap;margin-top:var(--sp3)}
 .duo-col{flex:1 1 300px;min-width:0}
@@ -548,6 +579,12 @@ button.locked{box-shadow:none;transform:none}
   <div class="pills" id="pills"></div>
 </header>
 <main>
+
+  <div class="bootbar" id="bootBar" style="display:none">
+    <span class="bi" id="bootIcon"><span class="spin"></span></span>
+    <div class="bt"><b id="bootTitle">正在启动容器…</b><span id="bootSub"></span></div>
+    <button class="bclose" id="bootClose" data-act="bootclose" aria-label="关闭提示" style="display:none">×</button>
+  </div>
 
   <section class="tab on" id="tab-home">
     <div class="card" id="deployCard">
@@ -800,6 +837,12 @@ button.locked{box-shadow:none;transform:none}
     <div class="card">
       <h2>组件重装</h2>
       <div class="hint" style="margin-top:0">重装会先停掉对应容器、删掉已安装的文件再重新下载安装，耗时几分钟，期间那个容器不可用。端口与登录数据保留。进度见日志页「其它日志文件」里的 reinstall.log。</div>
+      <div class="rebox" id="reBox" style="display:none">
+        <div class="rh"><b id="reTitle">重装中…</b><span id="rePct">0%</span></div>
+        <div class="bar" style="margin-top:8px"><i id="reBar"></i></div>
+        <div class="rsteps" id="reSteps"></div>
+        <div class="hint" style="margin:8px 0 0" id="reHint"></div>
+      </div>
       <div class="btns" style="margin-top:10px">
         <button class="small" data-act="reinstall" data-arg="napcat">重装 NapCat</button>
         <button class="small" data-act="reinstall" data-arg="astrbot">重装 AstrBot</button>
@@ -1388,6 +1431,8 @@ function refreshAll(){
      放在 refreshDeploy() 之后才不会用到旧值。 */
   var dInf = S.deployInfo;
   setTile("t-deploy", S.deployDone ? "ok" : "mute", (S.deployDone && dInf) ? (dInf.doneCount + "/" + dInf.total + " 步") : "");
+  paintBoot(st);
+  paintReinstall();
   autoLink();
   /* 所有控件的置灰外观放在最后统一刷：上面每个 render 都可能刚重建过 DOM，
      新节点上没有 .locked。这里每轮重算，部署完成那一刻下一轮就自动解锁。 */
@@ -1411,6 +1456,145 @@ function autoLink(){
     if (r.indexOf("已提交") >= 0) S.linked = true;
     setTimeout(refresh, 6000);
   }, 1200);
+}
+
+/* ---------- 顶部启动提示 ----------
+   应用一打开，start-sandbox.sh 就在后台把 proot / Xvfb / QQ / AstrBot 一路拉起来，
+   耗时 30~60 秒。这段时间以前界面上没有任何反馈（磁贴要从灰变绿得自己盯着看），
+   用户不知道「是没动，还是在起」。这条横幅：
+     起的过程中 → 转圈 + 已就绪几个 + 经过多少秒
+     起来了      → 绿色「容器已就绪」，8 秒后自动收起
+     超时没起来  → 红色，给出可操作的一句话（去日志页看 / 点重试）
+   横幅只在「本次打开应用」这一段出现：起来过之后就不再打扰，用户手动关掉也记住。 */
+var BOOT = { at: 0, readyAt: 0, closed: false, toastDone: false };
+var BOOT_TIMEOUT = 120;   /* 超过 2 分钟还没全绿就不再装作「正在启动」 */
+
+function paintBoot(st){
+  if (!BOOT.at) BOOT.at = Date.now();
+  var bar = el("bootBar");
+  if (!bar) return;
+  /* 没部署完时有部署台管着，横幅不掺和；用户手动关掉就不再弹 */
+  if (!st || !st.deployDone || BOOT.closed) { bar.style.display = "none"; return; }
+
+  var napOk = !!st.napcatUp || !!st.napcatOff;   /* 用户主动关掉也算「定了」，不算还在起 */
+  var astOk = !!st.astrbotUp || !!st.astrbotOff;
+  var supOk = !!st.supervisorAlive;
+  var readyN = (napOk ? 1 : 0) + (astOk ? 1 : 0);
+  var elapsed = Math.round((Date.now() - BOOT.at) / 1000);
+  var allOk = supOk && napOk && astOk;
+
+  if (allOk && !BOOT.readyAt) {
+    BOOT.readyAt = Date.now();
+    /* 起来的那一刻给一条 toast：很多用户不会一直盯着顶部看 */
+    if (!BOOT.toastDone) {
+      BOOT.toastDone = true;
+      var bits = [];
+      bits.push(st.napcatOff ? "NapCat 已关闭" : "NapCat 在线");
+      bits.push(st.astrbotOff ? "AstrBot 已关闭" : "AstrBot 在线");
+      try { Android.toast("容器已就绪：" + bits.join(" · ")); } catch (e) {}
+    }
+  }
+
+  if (BOOT.readyAt) {
+    var since = Math.round((Date.now() - BOOT.readyAt) / 1000);
+    if (since > 8) { bar.style.display = "none"; return; }   /* 亮 8 秒就收，别长期占地方 */
+    bar.className = "bootbar ok";
+    el("bootIcon").innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+    el("bootTitle").textContent = "容器已就绪";
+    var sub = [];
+    sub.push(st.napcatOff ? "NapCat 已手动关闭" : "NapCat 在线");
+    sub.push(st.astrbotOff ? "AstrBot 已手动关闭" : "AstrBot 在线");
+    el("bootSub").textContent = sub.join("  ·  ") + "（本次启动共 " + Math.round((BOOT.readyAt - BOOT.at) / 1000) + " 秒）";
+    el("bootClose").style.display = "";
+    bar.style.display = "";
+    return;
+  }
+
+  if (elapsed > BOOT_TIMEOUT) {
+    bar.className = "bootbar bad";
+    el("bootIcon").innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v5"/><circle cx="12" cy="16.6" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="9"/></svg>';
+    el("bootTitle").textContent = "容器没能在 2 分钟内起来";
+    var miss = [];
+    if (!supOk) miss.push("后台服务");
+    if (!napOk) miss.push("NapCat");
+    if (!astOk) miss.push("AstrBot");
+    el("bootSub").textContent = (miss.length ? miss.join(" / ") + " 还没就绪。 " : "")
+      + "去「日志」页看 supervisor.log，或点主页的「重启服务」再来一次。";
+    el("bootClose").style.display = "";
+    bar.style.display = "";
+    return;
+  }
+
+  /* 启动中 */
+  bar.className = "bootbar";
+  el("bootIcon").innerHTML = '<span class="spin"></span>';
+  el("bootTitle").textContent = "正在启动容器…（" + elapsed + " 秒）";
+  var s2 = [];
+  s2.push(supOk ? "后台服务 ✓" : "后台服务 …");
+  s2.push(napOk ? (st.napcatOff ? "NapCat 已关闭" : "NapCat ✓") : "NapCat 启动中（约 20~40 秒）");
+  s2.push(astOk ? (st.astrbotOff ? "AstrBot 已关闭" : "AstrBot ✓") : "AstrBot 启动中");
+  el("bootSub").textContent = s2.join("  ·  ");
+  el("bootClose").style.display = "none";
+  bar.style.display = "";
+}
+
+function closeBoot(){
+  BOOT.closed = true;
+  var bar = el("bootBar");
+  if (bar) bar.style.display = "none";
+}
+
+/* ---------- 设置页：重装进度 ----------
+   重装全程 1~5 分钟，以前只有一个 toast「进度见日志页」，用户得自己翻日志。
+   这里把 reinstall.sh 的几个固定阶段折算成进度条，每 1.5 秒拉一次。 */
+var RE = { timer: null, seenAt: 0 };
+
+function paintReinstall(){
+  var box = el("reBox");
+  if (!box) return;
+  var d = null;
+  try { d = JSON.parse(Android.reinstallInfo()); } catch (e) { d = null; }
+  if (!d || d.error || d.state === "none") { box.style.display = "none"; stopReTimer(); return; }
+  box.style.display = "";
+  var running = !!d.running;
+  var pct = running ? (d.pct || 0) : 100;
+  el("reBar").style.width = pct + "%";
+  el("rePct").textContent = (running ? pct : 100) + "%";
+  var nameCn = (d.comp === "astrbot") ? "AstrBot" : "NapCat";
+  if (running) {
+    box.className = "rebox";
+    el("reTitle").textContent = "正在重装 " + nameCn + "…";
+    var hint = d.label ? ("当前：" + d.label) : "准备中…";
+    var age = d.logAge || 0;
+    if (age >= 45) hint += "（已经 " + Math.round(age / 60 < 1 ? age + " 秒" : Math.round(age / 60) + " 分钟") + " 没有新输出，装依赖时偶尔会这样）";
+    el("reHint").textContent = hint + "。期间该容器不可用，装完会自动拉起来。";
+    startReTimer();
+  } else {
+    var ok = (d.ok === true);
+    box.className = "rebox" + (ok ? " ok" : " bad");
+    el("reTitle").textContent = ok ? ("重装 " + nameCn + " 完成") : ("重装 " + nameCn + " 失败（退出码 " + d.rc + "）");
+    el("reHint").textContent = ok
+      ? ("完成于 " + (d.endedAt || "-") + "，容器会在几秒内自动拉起，状态看主页磁贴。")
+      : "看下面的阶段清单停在哪儿；详细报错在「日志」页的 reinstall.log。";
+    stopReTimer();
+  }
+  var h = [];
+  var steps = d.steps || [];
+  for (var i = 0; i < steps.length; i++) {
+    h.push('<div class="step' + (steps[i].done ? " done" : "") + '"><span class="mk">' + (steps[i].done ? "✓" : "○") + '</span><span>' + esc(steps[i].label) + '</span></div>');
+  }
+  setHtml(el("reSteps"), h.join(""));
+}
+
+function startReTimer(){
+  if (RE.timer) return;
+  RE.timer = setInterval(function(){ try { paintReinstall(); } catch (e) {} }, 1500);
+}
+
+function stopReTimer(){
+  if (!RE.timer) return;
+  clearInterval(RE.timer);
+  RE.timer = null;
 }
 
 function refreshDeploy(){
@@ -2404,6 +2588,7 @@ else if (act === "uploadlogs") doUploadLogs();
   else if (act === "settings") showTab("settings");
   else if (act === "backhome") showTab("home");
   else if (act === "reinstall") doReinstall(arg);
+  else if (act === "bootclose") closeBoot();
   else if (act === "portsauto") autoPorts();
   else if (act === "portssave") savePorts();
   else if (act === "deploytoggle") toggleDeploy();
@@ -2448,7 +2633,9 @@ function doReinstall(arg){
   var r;
   try { r = String(Android.action("reinstall:" + a)); } catch (e) { r = "重装失败：" + e; }
   Android.toast(r);
-  /* 重装是后台跑的（日志写进 cache/logs/reinstall.log），过几秒刷一次让日志列表跟上 */
+  /* 立刻把进度框画出来（脚本刚起，可能还没写日志，先显示「准备中」），
+     之后 paintReinstall 自己每 1.5 秒刷一次。 */
+  setTimeout(function(){ try { paintReinstall(); } catch (e) {} }, 800);
   setTimeout(refresh, 3000);
 }
 

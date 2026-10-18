@@ -1086,9 +1086,9 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
       "cards": [
         {
           "icon": "📦",
-          "title": "AstrBot烛版 1.1.20（最新版）",
-          "desc": "文件名 AstrBot-1.1.20.apk（下载下来就是这个名字）\n安卓安装包 · 24.1 MB · 2026-10-18\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
-          "link": "/downloads/AstrBot-1.1.20.apk",
+          "title": "AstrBot烛版 1.1.21（最新版）",
+          "desc": "文件名 AstrBot-1.1.21.apk（下载下来就是这个名字）\n安卓安装包 · 24.1 MB · 2026-10-18\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
+          "link": "/downloads/AstrBot-1.1.21.apk",
           "text": ""
         },
         {
@@ -1096,7 +1096,7 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
           "title": "复制下载直链",
           "desc": "点这张卡就把地址复制下来，可以直接发给别人或贴进浏览器。",
           "link": "",
-          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.1.20.apk"
+          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.1.21.apk"
         },
         {
           "icon": "🕘",
@@ -1107,10 +1107,10 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
         },
         {
           "icon": "🔐",
-          "title": "SHA-256 校验值（v1.1.20）",
+          "title": "SHA-256 校验值（v1.1.21）",
           "desc": "点这张卡复制，然后和下载到的文件比对，一样就说明没被改过。",
           "link": "",
-          "text": "fb781b2abe38fe4e7506ebf3677433177bacbfd689668d720f935677a8daaf9a"
+          "text": "ab17f958b73221a4cee78766bca49538eefa47af36fb8f2595f590fc26ac06c2"
         }
       ]
     },
@@ -1187,6 +1187,13 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
       "cards": [
         {
           "icon": "📝",
+          "title": "v1.1.21  ·  2026-10-18",
+          "desc": "## AstrBot 烛版 1.1.21\n\n## [1.1.21] - 2026-10-18\n\n1.1.20 ???? Xvfb ? GPU ????NapCat ??????????????Worker ???\n`???: 11`?SIGSEGV?????????????????????????????????\n????????????????\n\n### ??\n\n- **??????????**?????????????????????????\n  ?????????N ??????????`???? ?` ? `NapCat ?` ? `AstrBot ?`?\n  ??????????????? ? NapCat ?? ? AstrBot ???????? N ????\n  8 ????????????? ????????????????????????????\n- **?????**???????? NapCat / ?? AstrBot??????????50%~100%\n  ? `reinstall.log` ???????????????????? ? ????? ?\n  ?? NapCat ? QQ ? ?? OneBot ?????????????????? ? ??? HH:MM:SS??\n  ?????????????????????????????\n- **?????????????? ? ??**????????????????????\n  ??????????????????????????????\n\n### ??\n\n- **QQ ???????**?`sandbox/run-napcat.sh`???? `$QQBOT_HOME/qq-args.txt`\n  ???????????????? QQ?????????????????????\n  APK?????????????????????????????????\n- **???????????**?QQ ?????????????????????\n  ?? `Worker????` ???? NapCat ? Worker ??? SIGSEGV?? X ? GPU ????\n  ?? `GPU process isn't usable` ??????? 24 ?????/proc ?? GPU ?????\n\n### ??\n\n- ?? Redmi 24069RA21C?Android 16?? 1.1.20 ???????Xvfb 24 ?????\n  GPU/EGL ?????NapCat ?? `NapCat.Core Version: 4.18.38`??? Worker ??\n  `???: 11` ??????????supervisor ????? `Trace/b…",
+          "link": "/downloads/AstrBot-1.1.21.apk",
+          "text": ""
+        },
+        {
+          "icon": "📝",
           "title": "v1.1.20  ·  2026-10-18",
           "desc": "## AstrBot 烛版 1.1.20\n\n## [1.1.20] - 2026-10-18\n\n1.1.19 把 QQ 的启动参数做成阶梯（`--disable-gpu` 之类）去绕 GPU 崩溃，真机上照样崩。\n这一版找到了真病因：**Xvfb 的色深**。\n\n### 修复\n\n- **Xvfb 一律用 24 位色深**（`sandbox/run-napcat.sh` 的 `XVFB_VARIANTS`）：8 位屏没有可用的\n  GL 配置，16 位配不出 EGL config，只有 24 位能让 QQ 里 Chromium 的 GPU 子进程初始化成功。\n  原来那档 `1x1x8 +extension GLX +render` 是照抄参考项目 AstrBot-Bubble-Android-App 的，\n  我们跟着抄错了一整版。同一台模拟器、同一份 rootfs 只换色深实测：8 位打出 20 条\n  ANGLE/EGL 报错，16 位报 `No suitable EGL configs found`，24 位一条 GL 报错都没有、\n  二维码正常输出。\n- **`--disable-gpu` 从参数阶梯里删掉**：它只是不让 Chromium *用* 硬件加速，GPU 进程照样起、\n  EGL 照样初始化；而一旦带了它，GPU 进程崩掉时判定「没有软件合成可退」，直接\n  `GPU process isn't usable. Goodbye.` 把主进程带走 —— 1.1.19 就是栽在这上面。现在第一档\n  是「什么额外参数都不加」，后面几档（`--disable-gpu-sandbox`、swiftshader、`--in-process-gpu`）\n  只作别的机型兜底。\n- **自检脚本同步**（`doctor.sh`）：逐档试起 Xvfb 的参数也从 8 位改成 24 位，否则用户在\n  「检查运行环境」里看到的仍是必然失败的组合，还会误以为是环境坏了。\n\n### 说明\n\n- GPU 进程退出时常伴随 `sandbox/linux/services/proc_util.cc:114 Check failed: . :\n  Operation not permitted`，那是它退出时的清理动作（枚举 `/proc/self/fd` 做沙箱自检），\n  是症状不是病因，别再被它带偏。\n\n---",
           "link": "/downloads/AstrBot-1.1.20.apk",
@@ -1210,20 +1217,13 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
           "icon": "📝",
           "title": "v1.1.17  ·  2026-10-18",
           "desc": "## AstrBot 烛版 v1.1.17\n\n## [1.1.17] - 2026-10-18\n\n只修一处文案错位，但它是会让人**第一次登录就被拒**的那种：终端提示里的 Token 和实际生效的\nToken 不是一个词。\n\n### 修复\n\n- **部署汇总与 `qqbot-help` 里打印的 NapCat WebUI Token 写错了**：一直写「Token 填 `qqbot`」，\n  而实际生成到 `webui.json` / `bots.json` 里的是 **`zhuxin`**（1.1.x 品牌改名时改的）。\n  Java 侧（新建实例默认 `zhuxin`、老设备迁移）与界面（实例卡回退值 `zhuxin`）当时都跟上了，\n  只有 `steps/90-summary.sh` 和 `steps/70-launcher.sh` 这两处终端提示漏了 —— 照提示填 `qqbot`\n  会被 NapCat WebUI 直接拒绝，用户很容易误判成「装坏了」。\n- **默认实例的播种值同步改成 `zhuxin`**：`opt/qqbot/link.sh`、`opt/qqbot/sandbox/link.sh`\n  生成 `bots.json` 时写的 token 由 `qqbot` 改为 `zhuxin`，与界面、`使用说明.md`、`README.md` 一致。\n\n### 说明\n\n- 存量设备不受影响：`run-napcat.sh` 里 `qqbot` / `qqbot2` … → `zhuxin` / `zhuxin2` … 的归一化\n  逻辑保留（那条规则只服务已部署过的老 `bots.json`），并补了注释说明它的存在理由。",
-          "link": "/downloads/AstrBot-1.1.17.apk",
+          "link": "",
           "text": ""
         },
         {
           "icon": "📝",
           "title": "v1.1.16  ·  2026-10-18",
           "desc": "### AstrBot 烛版 v1.1.16\n\n真机自检结果：三档 Xvfb 参数**全部能起来**，`/tmp` 可写、Xvfb 不缺库、qq 二进制在，\n但 6099 端口没监听、`qq-bot1.log` 停在 00:30 不再增长 —— 说明不是参数问题，\n而是 QQ 压根没被拉起来（或起来就退了）。这一版针对「显示号被残留进程占着」和\n「看不到守护到底在干什么」两个盲区。\n\n### 修复\n\n- **守护启动时先清扫上次残留的 Xvfb / QQ 进程和 X 锁文件**：上次守护被强杀、或 proot 整个重启后，\n  老的 Xvfb 还攥着 `/tmp/.X11-unix/NN`。新 Xvfb 一启动就 `Server is already active for display N`\n  秒退，三档参数全部失败 —— 现象和我们看到的完全一致。\n- **一个显示号三档都失败时，换下一个显示号再整套试一遍**（最多 3 个号）。\n  之前一个号失败就放弃本轮，而 `pick_display` 只看 socket 文件在不在，文件被清掉但号还被占着时\n  会一直挑到同一个坏号。\n- **X 就绪后按实际使用的显示号启动 QQ**：`start_xvfb` 换过号时，`DISPLAY` 变量以前不会跟着更新。\n- **失败时打印进程表**：所有 Xvfb / QQ 进程的 cmdline 和 `/tmp/.X11-unix` 内容，\n  直接看出「X 有没有在跑、QQ 有没有真的活着」。\n\n### 自检增强\n\n- 「检查运行环境」现在还会打印 **`supervisor.log` 末 30 行**、**`qq-*.log` 末 30 行**、\n  以及当前所有 Xvfb / QQ 进程的完整命令行。以前只报文件大小，最关键的内容看不到。",
-          "link": "",
-          "text": ""
-        },
-        {
-          "icon": "📝",
-          "title": "v1.1.15  ·  2026-10-18",
-          "desc": "### AstrBot 烛版 v1.1.15\n\n上一版把「X 起不来就不要启 QQ」这条补上了，但真机上还是起不来 —— 说明 **Xvfb 自己就没起来**。\n这一版不再赌一种参数，而是逐档回退，并且把 Xvfb 自己说的话摆到用户面前。\n\n### 修复\n\n- **Xvfb 三档参数逐档回退**：`1x1x8 +GLX +render` → `640x480x24`（不要求 GLX）→ `1280x800x24`。\n  真机上最可能的情况是 arm64 的 rootfs 用 `--no-install-recommends` 装出来没有 mesa 的 GLX 模块，\n  Xvfb 一加 `+extension GLX` 就 `Fatal server error: could not enable GLX extension` 秒退；\n  而原来失败后只会拿同一套参数再试一次，等于试了个寂寞。现在第二档不要求 GLX，纯软件也能起。\n- **每档失败都把 Xvfb 自己的报错打出来**（前 14 行），并清掉它残留的 `/tmp/.X<n>-lock` 与 socket，\n  否则 `pick_display` 会一直跳过那个号，重试几次把 40~99 全占满。\n- **补装 mesa / xkb 相关包**：`libgl1 libglx-mesa0 libgl1-mesa-dri xkb-data x11-xkb-utils`\n  （只对新装环境生效，老环境靠上面的回退）。\n- **`trap '' PIPE`**：照参考项目的做法。QQ 往已关闭的日志管道写时会被 SIGPIPE 直接打死，\n  症状正是「刚起来就没了、日志里什么都没有」。\n\n### 新增\n\n- **设置页 → 维护 → 检查运行环境**：`doctor.sh` 只读自检，报告 proot / supervisor / 三个端口 /\n  NapCat 日志，并**在沙盒里真的把三档 Xvfb 各起一次**（各 10 秒），把 Xvfb 的输出原样列出来。\n  结果存成 `~/.qqbot/doctor.txt`。\n- **错误报告带上 NapCat 与 Xvfb 日志**：`upload-log.sh` 现在还会打包 `qq-*.log` 末 120 行、\n  每个实例的 `run/xvfb-*.log` 前 60 行、以及 `doctor.txt`。以前 NapCat 起不来的报告里\n  一条相关线索都没有，只能靠猜。",
           "link": "",
           "text": ""
         }
@@ -1259,7 +1259,7 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
       ]
     }
   ],
-  "updated": "2026-10-18 21:08:23"
+  "updated": "2026-10-18 23:16:48"
 }
 __ASTRBOT_DL_STATIC__
 log "离线兜底内容已装到 $SCRIPTS/astrbot_download_sync.fallback.json"

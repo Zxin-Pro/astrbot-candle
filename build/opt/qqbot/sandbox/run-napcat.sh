@@ -609,6 +609,23 @@ PY
              "--use-gl=angle --use-angle=swiftshader"
              "--in-process-gpu" )
 
+  # 参数覆写文件：手机上现成的「不重装也能换参数」开关。
+  # 用法（应用里 更多 → 终端）：
+  #   echo '--disable-dev-shm-usage' > /data/data/com.termux/files/home/.qqbot/qq-args.txt
+  #   bash /data/data/com.termux/files/usr/opt/qqbot/stop-sandbox.sh
+  #   nohup setsid bash /data/data/com.termux/files/usr/opt/qqbot/start-sandbox.sh >/dev/null 2>&1 &
+  # 内容非空时只试这一档，不再走上面的阶梯 —— 方便一台机器一种参数地试到能跑为止。
+  # 想回到自动阶梯，把文件删掉或清空即可。
+  _ovr="$QQBOT_HOME/qq-args.txt"
+  if [ -s "$_ovr" ]; then
+    _ov="$(tr -d '\r' < "$_ovr" | tr '\n' ' ')"
+    case "$_ov" in
+      "-") _ov="" ;;
+    esac
+    QQ_TRIES=( "$_ov" )
+    log "实例 $id 使用 $QQBOT_HOME/qq-args.txt 里指定的参数: ${_ov:-无}"
+  fi
+
   write_onebot "$CONF" "$op"
 
   # token 与 WebUI 端口都以 bots.json 里「本实例」的字段为准（多实例各用各的 token，
@@ -732,10 +749,21 @@ PY
     if [ -n "${XPIDS[$id]:-}" ]; then kill -TERM "${XPIDS[$id]}" 2>/dev/null; fi
     unset "XPIDS[$id]"
     log "实例 $id 的 QQ 各档参数全部没能活下来，本轮放弃（5 秒后自动重试）"
-    log "  若上面紧邻的日志里有 'GLX is not present' 或 'Initialization of all EGL display types failed'："
-    log "  说明 Xvfb 的色深不是 24 位（8 位没有可用 GL、16 位 EGL 配不出 surface），"
-    log "  当前 X 参数是 [$XVFB_SCREEN_USED]，正常应当是 640x480x24 这类。"
-    log "  若日志里是 'GPU process isn't usable' 且色深确实是 24 位，才是 GPU 子进程被 /proc 拒了。"
+    # 按日志里出现的症状指名病根，别让人自己猜。
+    if tail -n 80 "$LOGF" 2>/dev/null | grep -q "Worker进程退出"; then
+      log "  病根：NapCat 的 Worker 子进程崩了（'Worker进程退出，退出码: 11' 就是 SIGSEGV）。"
+      log "  这一层跟 X 和 GPU 都无关，是 native 代码在 proot 里跑崩了。"
+      log "  换参数试的办法：把参数写进 $QQBOT_HOME/qq-args.txt，再重启服务，"
+      log "  例如 --disable-dev-shm-usage 或 --no-zygote，试到能跑为止（删掉文件恢复自动阶梯）。"
+    elif tail -n 80 "$LOGF" 2>/dev/null | grep -q "GPU process isn't usable"; then
+      log "  病根：GPU 进程起不来。若色深已是 24 位，就是 /proc 拒了 GPU 子进程；"
+      log "  若日志里有 'GLX is not present'，则是色深不是 24 位（当前 [$XVFB_SCREEN_USED]）。"
+    else
+      log "  若日志里有 'GLX is not present' 或 'Initialization of all EGL display types failed'："
+      log "  说明 Xvfb 的色深不是 24 位（8 位没有可用 GL、16 位 EGL 配不出 surface），"
+      log "  当前 X 参数是 [$XVFB_SCREEN_USED]，正常应当是 640x480x24 这类。"
+      log "  若日志里是 'GPU process isn't usable' 且色深确实是 24 位，才是 GPU 子进程被 /proc 拒了。"
+    fi
     return 1
   fi
   PIDS[$id]=$qq_pid

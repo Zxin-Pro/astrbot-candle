@@ -193,6 +193,132 @@ public class QqbotBridge {
         }
     }
 
+    /**
+     * 重装进度。reinstall.sh 的输出是一串固定顺序的阶段行（见脚本里的 echo），
+     * 这里按「出现到哪一行」折算成百分比，界面据此画进度条。
+     *
+     * 为什么不直接读日志给用户看：重装全程 1~5 分钟，日志里 90% 是 apt/pip 的输出，
+     * 用户要的是「装到哪一步了、还要多久」，不是滚动的安装输出。
+     *
+     * 判断「还在跑」用日志里最后一对「开始重装 / 重装结束」标记的前后顺序，
+     * 不看进程：脚本是 setsid 脱离出去的，按 pid 判断反而容易误判成已结束。
+     */
+    @JavascriptInterface
+    public String reinstallInfo() {
+        try {
+            JSONObject o = new JSONObject();
+            File f = findLog("reinstall.log");
+            if (f == null) {
+                o.put("running", false);
+                o.put("ok", JSONObject.NULL);
+                o.put("state", "none");
+                return o.toString();
+            }
+            String txt = act.tail(f, 400);
+            String[] lines = txt.split("\n");
+            // 阶段定义：key 是脚本里对应那一步的 echo 特征串，label 是给用户看的中文
+            String[][] napcatStages = new String[][] {
+                {"等待 napcat 退出", "等待旧进程退出"},
+                {"删除旧的 NapCat", "清理旧文件"},
+                {"重新安装 NapCat", "安装 NapCat 与 QQ"},
+                {"重建对接配置", "重建 OneBot 对接"},
+                {"结束（", "完成"}
+            };
+            String[][] astrbotStages = new String[][] {
+                {"等待 astrbot 退出", "等待旧进程退出"},
+                {"备份 AstrBot 的 data", "备份配置"},
+                {"重新安装 AstrBot", "安装 AstrBot 与依赖"},
+                {"用户的 data/ 已恢复", "恢复配置"},
+                {"重建对接配置", "重建 OneBot 对接"},
+                {"结束（", "完成"}
+            };
+            int lastStart = -1, lastEnd = -1;
+            String comp = "";
+            for (int i = 0; i < lines.length; i++) {
+                String l = lines[i];
+                if (l.indexOf("===== 开始重装 ") >= 0) {
+                    lastStart = i;
+                    int a = l.indexOf("开始重装 ") + 5;
+                    int b = l.indexOf('（', a);
+                    if (b > a) comp = l.substring(a, b).trim();
+                } else if (l.indexOf("===== 重装 ") >= 0 && l.indexOf(" 结束（") >= 0) {
+                    lastEnd = i;
+                }
+            }
+            boolean running = lastStart >= 0 && lastStart > lastEnd;
+            if (!running && lastEnd < 0) {
+                o.put("running", false);
+                o.put("ok", JSONObject.NULL);
+                o.put("state", "none");
+                return o.toString();
+            }
+            String[][] stages = "astrbot".equals(comp) ? astrbotStages : napcatStages;
+            // 从本段起点开始数，数到第几个阶段特征串出现过。
+            // 「结束」那一档不算进度（它本身就是 100%），所以分母减一。
+            int from = (lastStart >= 0) ? lastStart : 0;
+            int reached = 0;
+            for (int s = 0; s < stages.length; s++) {
+                boolean hit = false;
+                for (int i = from; i < lines.length; i++) {
+                    if (lines[i].indexOf(stages[s][0]) >= 0) { hit = true; break; }
+                }
+                if (hit) reached = s + 1;
+            }
+            /* 「当前在干哪一步」= 第一个还没出现的阶段。
+               reached 是「已经出现过的最后一条阶段特征」，它对应的工作已经做完了，
+               现在跑的是它后面那一步 —— 直接拿 reached 当提示，会一直说「正在清理旧文件」，
+               而实际上早在装 NapCat 了。 */
+            String cur = stages[Math.min(reached, stages.length - 1)][1];
+            int total = stages.length - 1;         // 不含「完成」这一档
+            int doneCount = Math.min(reached, total);
+            if (!running && lastEnd >= 0) { doneCount = total; }
+            int pct = total > 0 ? Math.round(doneCount * 100f / total) : 0;
+            o.put("running", running);
+            o.put("comp", comp);
+            o.put("stage", doneCount);
+            o.put("doneCount", doneCount);
+            o.put("total", total);
+            o.put("pct", pct);
+            o.put("label", cur);
+            // 每一档的展示文案 + 是否已过，界面直接渲染成小清单
+            JSONArray list = new JSONArray();
+            for (int s = 0; s < total; s++) {
+                JSONObject e = new JSONObject();
+                e.put("label", stages[s][1]);
+                e.put("done", s < doneCount);
+                list.put(e);
+            }
+            o.put("steps", list);
+            o.put("logAge", (System.currentTimeMillis() - f.lastModified()) / 1000L);
+            // 结束时间 / 退出码：读最后一行「重装 X 结束（时间，退出码 N）」
+            String endedAt = "";
+            int rc = 0;
+            for (int i = lines.length - 1; i >= 0; i--) {
+                String l = lines[i];
+                int p = l.indexOf(" 结束（");
+                if (p < 0) continue;
+                int a = p + 4;
+                int b = l.indexOf('）', a);
+                if (b > a) {
+                    String inner = l.substring(a, b);
+                    int k = inner.indexOf("退出码 ");
+                    if (k >= 0) {
+                        try { rc = Integer.parseInt(inner.substring(k + 4).trim()); } catch (Throwable ignored) {}
+                        endedAt = inner.substring(0, k).replace("，", "").replace(",", "").trim();
+                    } else endedAt = inner.trim();
+                }
+                break;
+            }
+            o.put("endedAt", endedAt);
+            o.put("rc", rc);
+            o.put("ok", running ? JSONObject.NULL : (rc == 0));
+            o.put("state", running ? "running" : (rc == 0 ? "done" : "failed"));
+            return o.toString();
+        } catch (Exception e) {
+            return errJson("读取重装进度失败", e);
+        }
+    }
+
     @JavascriptInterface
     public String readLog(String name, int lines) {
         if (name == null) return "";
