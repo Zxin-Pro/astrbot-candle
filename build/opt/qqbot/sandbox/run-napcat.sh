@@ -583,6 +583,13 @@ PY
   rm -f "$CONF/webui.json" "$CONF/onebot11.json"
   mkdir -p "$INSTHOME"
   EXTRA="--user-data-dir=$INSTHOME/.config/QQ"
+  # QQ 的「能活下来」的参数阶梯，见下面启动段的长注释。第一档就该用
+  # --disable-gpu：Xvfb 里根本没有 GLX，让 Chromium 去初始化 EGL 只会白撞三回。
+  # 最后一档「-」= 什么额外参数都不加（1.1.18 及更早的原始行为），留作兜底。
+  QQ_TRIES=( "--disable-gpu"
+             "--disable-gpu --in-process-gpu"
+             "--disable-gpu --in-process-gpu --disable-dev-shm-usage --no-zygote"
+             "-" )
 
   write_onebot "$CONF" "$op"
 
@@ -627,15 +634,70 @@ PY
   # 参考项目的 launcher 里有一句 trap "" SIGPIPE：QQ 往已经关掉的日志管道里写时
   # 会被 SIGPIPE 直接打死，症状是「刚起来就没了」且日志里什么都没有。
   trap '' PIPE
-  HOME="$INSTHOME" DISPLAY=":$DISP" \
-  NAPCAT_WEBUI_SECRET_KEY="$tok" \
-  NAPCAT_WEBUI_JWT_SECRET_KEY="${tok}_jwt" \
-  NAPCAT_WEBUI_PREFERRED_PORT="$np" \
-  "$QQDIR/qq" --no-sandbox $EXTRA >> "$LOGF" 2>&1 &
-  PIDS[$id]=$!
+  #
+  # QQ 是 Electron 壳，它的 Chromium 在 Android 上要做两件 proot 里注定失败的事：
+  #   1) 起 GPU 子进程并初始化 EGL/GL。Xvfb 没有 GLX，于是必然打出
+  #      "GLX is not present" / "Initialization of all EGL display types failed"；
+  #   2) 枚举那个子进程的 /proc/<pid>/fd 来校验沙箱。Android 10 起 /proc 对非本进程
+  #      大幅收紧，这里直接 EPERM 撞死：
+  #        FATAL:sandbox/linux/services/proc_util.cc:114
+  #        Check failed: . : Operation not permitted (1)
+  # 连撞三次后 gpu_data_manager 打出 "GPU process isn't usable. Goodbye."，
+  # 把主进程一起带走，在 shell 里的表现就是 "Trace/breakpoint trap"（SIGTRAP）。
+  # 真机（Redmi 24069RA21C / Android 16 / SDK 36）必现；x86_64 模拟器上 /proc 的
+  # 规则不同，同样参数能跑起来 —— 所以这个坑在模拟器上永远测不出来，只能照着
+  # 「别让 Chromium 另起 GPU 子进程」这个方向绕，并且逐档试到有一档能活下来为止。
+  QQ_OK=0
+  QQ_USED="-"
+  for qf in "${QQ_TRIES[@]}"; do
+    [ "$qf" = "-" ] && qf=""
+    log "实例 $id 启动 QQ（附加参数: ${qf:-无}）"
+    # shellcheck disable=SC2086
+    HOME="$INSTHOME" DISPLAY=":$DISP" \
+    NAPCAT_WEBUI_SECRET_KEY="$tok" \
+    NAPCAT_WEBUI_JWT_SECRET_KEY="${tok}_jwt" \
+    NAPCAT_WEBUI_PREFERRED_PORT="$np" \
+    "$QQDIR/qq" --no-sandbox "$EXTRA" $qf >> "$LOGF" 2>&1 &
+    qq_pid=$!
+    qq_n=0
+    qq_live=1
+    qq_seen=0
+    while [ "$qq_n" -lt 60 ]; do
+      if ! kill -0 "$qq_pid" 2>/dev/null; then qq_live=0; break; fi
+      # QQ 会往自己日志里写二进制，先 tr 掉 NUL，否则命令替换会断在半截上。
+      # QQ 走到 resourcesPath 就说明 Chromium 主体已经活过初始化，是成功的强信号，
+      # 能比死等 30 秒早得多（实测崩在 19 秒左右，成功档 5~10 秒就能确认）。
+      qq_chunk=$(tail -c 16000 "$LOGF" 2>/dev/null | tr -d '\000')
+      case "$qq_chunk" in *resourcesPath:*) qq_seen=1; break ;; esac
+      qq_n=$((qq_n + 1))
+      sleep 0.5 &
+      wait $! 2>/dev/null
+    done
+    # 撑满 30 秒还活着也算成功：慢机器上可能还没写到 resourcesPath 那一行
+    if [ "$qq_seen" = 1 ] || [ "$qq_live" = 1 ]; then
+      QQ_OK=1
+      QQ_USED="${qf:--}"
+      break
+    fi
+    log "实例 $id 这一档没活下来（pid $qq_pid 已退出），换下一档参数重试"
+    kill -KILL "$qq_pid" 2>/dev/null
+    wait "$qq_pid" 2>/dev/null
+  done
+
+  if [ "$QQ_OK" != 1 ]; then
+    # 一条路都没走通：不能登记 pid（否则主循环以为它还活着，从此只管重启不重试参数），
+    # 顺手把自己刚起的 Xvfb 收掉，不然每 5 秒重来一次会把 40~99 的显示号逐个占满。
+    if [ -n "${XPIDS[$id]:-}" ]; then kill -TERM "${XPIDS[$id]}" 2>/dev/null; fi
+    unset "XPIDS[$id]"
+    log "实例 $id 的 QQ 四档参数全部没能活下来，本轮放弃（5 秒后自动重试）"
+    log "  上面紧邻的日志里若有 proc_util.cc 或 GPU process isn't usable，就是 Chromium 的 GPU 子进程被 /proc 拒了"
+    return 1
+  fi
+  PIDS[$id]=$qq_pid
   QDIR[$id]="$QQDIR"
   STOP[$id]=0
-  echo "${PIDS[$id]}" > "$RUNDIR/$id.pid"
+  echo "$qq_pid" > "$RUNDIR/$id.pid"
+  log "实例 $id 的 QQ 已跑起来（参数: ${QQ_USED}）"
   sleep 3 &
   wait $! 2>/dev/null
   return 0

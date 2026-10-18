@@ -11,6 +11,31 @@
 
 ---
 
+## [1.1.19] - 2026-10-18
+
+接 1.1.18 往下修：Xvfb 在真机上总算起来了，但 QQ 自己秒退，表现成
+`Trace/breakpoint trap`，NapCat 照样起不来。
+
+### 修复
+
+- **QQ 启动改成参数阶梯**（`sandbox/run-napcat.sh`）：真机（Redmi 24069RA21C / Android 16）
+  上 QQ 的 Chromium 会先起一个 GPU 子进程去初始化 EGL —— Xvfb 里没有 GLX，这一步必然打出
+  `GLX is not present` / `Initialization of all EGL display types failed`；紧接着它还要枚举
+  那个子进程的 `/proc/<pid>/fd` 来校验沙箱，而 Android 10 起 `/proc` 对非本进程大幅收紧，
+  `fstatat()` 直接 EPERM：`FATAL:sandbox/linux/services/proc_util.cc:114
+  Check failed: . : Operation not permitted (1)`。连撞三次后
+  `GPU process isn't usable. Goodbye.` 把主进程一起带走。现在按
+  `--disable-gpu` → `--disable-gpu --in-process-gpu` →
+  再加 `--disable-dev-shm-usage --no-zygote` → 原样（1.1.18 的行为）四档依次试，留下第一档
+  能活过观察期的，并把最终采用的参数写进服务日志，下次排障一眼就能看到走的哪一档。
+- **「设置 → 维护」增加常驻的「上传错误日志」**：这个入口原来只挂在「部署失败 / 卡住」的
+  弹窗上，可真实场景恰恰是「部署成功、服务起不来」，于是最需要它的时候偏偏找不到。
+
+### 说明
+
+- x86_64 模拟器的 `/proc` 规则和真机不同，同样的参数在模拟器上能跑起来，所以这个问题
+  在模拟器上复现不了，只能在真机上验。
+
 ## [1.1.18] - 2026-10-18
 
 修掉「真机上 NapCat 怎么都起不来、AstrBot 却一切正常」的根因。一句话：**部署期和运行期用的

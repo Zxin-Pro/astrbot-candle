@@ -840,6 +840,7 @@ button.locked{box-shadow:none;transform:none}
         <button class="small" data-act="status">查看状态</button>
         <button class="small" data-act="fixdpkg">修复沙盒依赖</button>
         <button class="small" data-act="doctor">检查运行环境</button>
+        <button class="small primary" data-act="uploadlogs" id="btnUploadLogs">上传错误日志</button>
         <button class="small danger" data-act="resetdeploy">重置部署标记</button>
       </div>
       <pre id="cmdOut" style="max-height:30vh"></pre>
@@ -1202,6 +1203,9 @@ var NO_LOCK_ACTS = [
   "copylog", "deploytoggle", "uploadlog", "uploadskip",
   /* 自检是排障入口，本来就只在「起不来」的时候有人点它。 */
   "doctor",
+  /* 维护页那个常驻的「上传错误日志」：部署是成功的前提下，服务照样可能起不来，
+     而失败弹窗里的那个入口只有部署失败/卡住时才会出现，正好错开了最需要它的场景。 */
+  "uploadlogs",
   "settings", "backhome", "showlogs",
   "pickbg", "clearbg", "bgpreset", "glass",
   "reload", "slim", "rmcard",
@@ -1866,6 +1870,29 @@ function skipErrAsk(){
   if (box) box.style.display = "none";
   Android.toast("好，这次不上传");
 }
+/* 维护页的常驻上传入口。
+   跟部署失败弹窗里那个走同一个 Android.uploadLog()，区别只是结果直接写进
+   「维护」卡片下面那块 cmdOut，不靠 toast —— 编号有十几位，toast 会被截掉，
+   而用户要把编号念给作者听。 */
+function doUploadLogs(){
+  if (UPLOADING) { Android.toast("正在上传，请稍候"); return; }
+  if (typeof Android === "undefined" || !Android.uploadLog) {
+    Android.toast("这个安装包不支持上传，请到官网装最新版"); return;
+  }
+  UPLOADING = true;
+  var b = el("btnUploadLogs"), out = el("cmdOut");
+  if (b) { b.disabled = true; b.textContent = "正在打包上传…"; }
+  if (out) { out.style.display = ""; out.textContent = "正在打包上传（部署日志 + 各服务日志 + 机型信息），大约 10 秒，期间别退出应用…"; }
+  setTimeout(function(){
+    var r = "";
+    try { r = String(Android.uploadLog()); } catch (e) { r = "上传失败：" + e; }
+    UPLOADING = false;
+    if (b) { b.disabled = false; b.textContent = "上传错误日志"; }
+    if (out) out.textContent = r || "没有回音";
+    var first = String(r || "").split("\n")[0] || "没有回音";
+    Android.toast(first.slice(0, 90));
+  }, 60);
+}
 
 /* ---------- 部署自动续跑 ----------
    最常见的「卡在第三步」其实是：部署进程在 apt 装到一半时被打断（切走应用、锁屏、
@@ -2325,6 +2352,7 @@ document.addEventListener("click", function(ev){
   else if (act === "copylog") doCopyDeployLog();
   else if (act === "doctor") doDoctor();
   else if (act === "uploadlog") doUploadLog();
+else if (act === "uploadlogs") doUploadLogs();
   else if (act === "uploadskip") skipErrAsk();
   else if (act === "saveproxy") saveProxy();
   else if (act === "clearproxy") { if (el("inProxy")) el("inProxy").value = ""; saveProxy(); }
