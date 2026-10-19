@@ -71,6 +71,29 @@ echo $$ > "$QQBOT_HOME/supervisor.pid"
 rm -rf "$LOCK" 2>/dev/null
 unset LD_PRELOAD
 export PROOT_TMP_DIR="$QQBOT_PTMP"
+# v1.1.27：起沙盒之前，先用「打了补丁的 loader」跑一次最短自检（就一句 echo）。
+# 补丁只是给 loader 清了节头表，正常情况下必然能过；万一某台设备的 proot 不认这份
+# 替代 loader，这里立刻退回系统 loader 并留下 off 标记，绝不把「补丁不兼容」变成
+# 「沙盒起不来」—— 那是比 NapCat 崩溃严重得多的故障。
+if [ -n "${PROOT_LOADER:-}" ]; then
+  mkdir -p "$QQBOT_LOGS" 2>/dev/null
+  _probe_ok=0
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 20 "$QQBOT_PROOT" -0 /system/bin/echo qqbot-loader-probe >"$QQBOT_LOGS/loader-probe.log" 2>&1 && _probe_ok=1
+  else
+    "$QQBOT_PROOT" -0 /system/bin/echo qqbot-loader-probe >"$QQBOT_LOGS/loader-probe.log" 2>&1 && _probe_ok=1
+  fi
+  if [ "$_probe_ok" = 1 ]; then
+    echo "[start] proot loader 补丁可用（PROOT_LOADER=$PROOT_LOADER）"
+  else
+    echo "[start] proot loader 补丁跑不通，已退回系统 loader（以后不再尝试，除非删掉 $QQBOT_HOME/proot-loader.off）"
+    echo "[start] 补丁现场里的 proot 输出见 $QQBOT_LOGS/loader-probe.log"
+    unset PROOT_LOADER
+    unset PROOT_LOADER_32
+    : > "$QQBOT_HOME/proot-loader.off" 2>/dev/null
+    rm -f "$QQBOT_PROOT_LOADER_FIX" "$QQBOT_PROOT_LOADER_FIX32" 2>/dev/null
+  fi
+fi
 # 关于 --link2symlink：运行期必须和部署期（qq_proot）一致。
 # 体检判定「这台手机的存储建不了硬链接」时（真机 Redmi / Android 16 实测 link(2)
 # 直接 EPERM），qq_fsprobe 会写 $QQBOT_HOME/link2symlink，部署期的 apt/dpkg 靠它

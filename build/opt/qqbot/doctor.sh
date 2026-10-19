@@ -72,13 +72,15 @@ fi
   # proot 在 Termux 里是按架构命名的（proot-aarch64 / proot-x86_64），没有叫 proot 的，
   # 所以不能查 command -v proot —— 那会永远显示「缺失」，把人往错的方向带。
   echo "proot    : $(ls -1 "$PREFIX"/bin/proot* 2>/dev/null | tr '\n' ' ')"
-  # v1.1.26：proof 侧 loader 补丁是否生效（决定 NapCat 的 native 模块会不会崩）
+  # v1.1.26 起：proot 侧 loader 补丁是否生效（决定 NapCat 的 native 模块会不会崩）
   _ld_src="$PREFIX/libexec/proot/loader"
   _ld_dst="$QQBOT_HOME/proot-loader"
   _ld_src_shoff=$(dd if="$_ld_src" bs=1 skip=40 count=8 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n')
   _ld_state="无（不是 Termux 的 proot，无需补丁）"
   if [ -f "$_ld_src" ]; then
-    if [ -n "${PROOT_LOADER:-}" ] && qq_loader_patched "${PROOT_LOADER:-/nonexistent}"; then
+    if [ -f "$QQBOT_HOME/proot-loader.off" ]; then
+      _ld_state="已停用（proot-loader.off 存在：这份 proot 不认替代 loader；删掉该文件可重试）"
+    elif [ -n "${PROOT_LOADER:-}" ] && qq_loader_patched "${PROOT_LOADER:-/nonexistent}"; then
       _ld_state="已启用（PROOT_LOADER=$PROOT_LOADER）"
     elif [ -f "$_ld_dst" ] && qq_loader_patched "$_ld_dst"; then
       _ld_state="已生成但本次没挂上（未生效）"

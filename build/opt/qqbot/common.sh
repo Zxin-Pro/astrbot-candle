@@ -405,6 +405,11 @@ qq_proot_fix_loader() {
   # 内置静态 x86_64 proot 没有独立 loader 文件，直接跳过
   [ "$QQBOT_PROOT" = "$PREFIX/bin/proot" ] || return 0
   [ -f "$QQBOT_PROOT_LOADER_SRC" ] || return 0
+  # v1.1.27：运行时发现这份补丁跟当前 proot 不兼容，会留下这个标记文件，
+  # 之后一律不再尝试（删掉标记即可重新试）。宁可没有这层保护，也不能让沙盒起不来。
+  if [ -f "$QQBOT_HOME/proot-loader.off" ]; then
+    return 0
+  fi
   # 源文件更新过（Termux 升级了 proot）或者补丁丢了就重做
   if [ ! -f "$QQBOT_PROOT_LOADER_FIX" ] \
      || [ "$QQBOT_PROOT_LOADER_SRC" -nt "$QQBOT_PROOT_LOADER_FIX" ] \
@@ -650,6 +655,7 @@ qq_proot_selftest() {
     unset PROOT_LOADER_32
     if _qq_proot_selftest_once; then
       rm -f "$QQBOT_PROOT_LOADER_FIX" "$QQBOT_PROOT_LOADER_FIX32" 2>/dev/null
+      : > "$QQBOT_HOME/proot-loader.off" 2>/dev/null
       printf '[QQBot] loader 补丁与当前 proot 不兼容（自检失败），已回退到系统 loader；' >&2
       printf '原补丁现场见 %s\n' "$_qq_selftest_patched_log" >&2
       return 0
