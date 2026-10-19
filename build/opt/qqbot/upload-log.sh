@@ -131,6 +131,17 @@ have() { command -v "$1" >/dev/null 2>&1; }
   echo
   echo "----- NapCat 安装包缓存 -----"
   ls -l "$QQBOT_CACHE/NapCat.Shell.zip" 2>/dev/null || echo "(缺 NapCat.Shell.zip：断网或第 2 步没下完)"
+  echo "----- proot loader 补丁（v1.1.26：防 native 模块读越界节头表 SIGSEGV）-----"
+  _ld="$PREFIX/libexec/proot/loader"
+  if [ -f "$_ld" ]; then
+    echo "系统 loader : $_ld（$(wc -c < "$_ld" 2>/dev/null) 字节，e_shoff=$(dd if="$_ld" bs=1 skip=40 count=8 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n')）"
+  else
+    echo "系统 loader : 不存在（内置静态 proot 没有独立 loader，正常）"
+  fi
+  echo "PROOT_LOADER: ${PROOT_LOADER:-（未设置）}"
+  if [ -n "${PROOT_LOADER:-}" ] && [ -f "${PROOT_LOADER:-}" ]; then
+    echo "补丁 loader : $(wc -c < "$PROOT_LOADER" 2>/dev/null) 字节，e_shoff=$(dd if="$PROOT_LOADER" bs=1 skip=40 count=8 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n')"
+  fi
   echo "--- QQ 启动参数覆写 (qq-args.txt) ---"
   cat "$QQBOT_CACHE/qq-args.txt" 2>/dev/null || echo "(没有覆写，走内置阶梯)"
   echo

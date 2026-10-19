@@ -11,6 +11,43 @@
 
 ---
 
+## [1.1.26] - 2026-10-19
+
+1.1.25 的判断被真机报告推翻了：`NAPCAT_FORCE_NODE_PROCESS=1`（走 fork）**没有**绕开崩溃，
+真机装上 1.1.25 后日志变成了 `[NapCat] [Fork] Worker进程意外退出`，退出码依旧是 11。
+这一版找到了真正的根因，并且不用改 NapCat、不用换 QQ、不用重装沙盒。
+
+### 修复
+
+- **真根因：proot 的 loader 节头表在映射之外**。Termux 那份 proot 会把
+  `$PREFIX/libexec/proot/loader`（18136 字节，`e_shoff=0x45d8`）映进每个被追踪的进程，
+  但只映射该文件的两段 PT_LOAD：
+  `00200000-00201000 r--p off 0`（这一段 filesz 只有 0x120）和
+  `5400000000-5400001000 r-xp off 0x4000`。而这个 loader 的节头表在文件偏移 0x45d8，
+  落在两段映射之外。NapCat 注入的 frida-gum 在枚举模块时把 0x200000 当模块基址、
+  按 `e_shoff` 去读节头，算出来的 `0x200000 + 0x45d8 = 0x2045d8` 没有任何映射，
+  于是 `SIGSEGV / SEGV_MAPERR`，`si_addr` 正是 `0x2045d8` —— 与真机崩溃记录逐字节吻合。
+  崩溃指令随后的拷贝步长正好是 64 字节（`Elf64_Shdr` 的大小），进一步印证。
+- **修法：给 loader 打一份「节头清零」的副本**。把 loader 复制到 `~/.qqbot/proot-loader`，
+  把 `e_shoff`(偏移 0x28) 与 `e_shnum`/`e_shstrndx`(偏移 0x3C) 清零，再用 `PROOT_LOADER`
+  指向这份副本。内核执行时只看 program header，节头表只是给工具看的，清零不影响 proot；
+  gum 拿不到节头（`e_shnum=0` 时它直接跳过整段拷贝循环），也就不会再越界读。
+  **不改 Termux 的安装文件**，删掉这个环境变量即可完全回退。
+- **自检带自动回退**：如果某台设备的 proot 不认这份替代 loader，`qq_proot_selftest()`
+  会发现自检失败，自动退回系统 loader 再试一次（并把原报错存到 `proot-selftest.log.patched`），
+  宁可少一层保护，也不让沙盒起不来。
+- **诊断补全**：「检查运行环境」新增一行 `loader补丁:`（已启用 / 已生成但没挂上 / 未启用，
+  并打印原 loader 的 `e_shoff`）；「上传错误日志」新增 `proot loader 补丁` 段，
+  下次再有崩溃能直接看出补丁到底有没有生效。
+
+### 说明
+
+- 1.1.25 的 `NAPCAT_FORCE_NODE_PROCESS=1` 保留（上游推荐路径，无害）；真正的修复与它无关。
+- x86_64 模拟器上不走这条逻辑：那边用随包内置的静态 proot，没有独立 loader 文件，
+  本来就不会踩到这个坑。
+- 这一版**不需要重装沙盒**：脚本随 APK 的 `assets/qqbot-scripts.zip` 下发，装上新 APK 后
+  `syncScripts()` 会覆盖到 `$PREFIX/opt/qqbot`，重启服务即生效。
+
 ## [1.1.25] - 2026-10-19
 
 真机上 NapCat 的 Worker 子进程「退出码 11」这一版**修掉了**。根因不是我们打包的问题，

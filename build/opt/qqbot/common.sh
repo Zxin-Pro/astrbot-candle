@@ -352,6 +352,85 @@ fi
 # 不设会报 "can't create temporary file: Permission denied"）
 export PROOT_TMP_DIR="$QQBOT_PTMP"
 
+# ---------------------------------------------------------------------------
+# proot loader 补丁（v1.1.26）：让 frida-gum 不去读越界的节头表
+#
+# 现象（真机 arm64，Redmi 24069RA21C / Android 16）：NapCat 一 dlopen
+#   /opt/QQ/resources/app/app_launcher/napcat/native/napi2native/napi2native.linux.arm64.node
+# 就 SIGSEGV，worker 退出码 11。crashwatch 抓到的现场：
+#   signal=11 SIGSEGV si_code=1(SEGV_MAPERR) si_addr=0x2045d8
+#   pc  = 模块基址 + 0x39EE44（= gum_elf_module_load+0x880，指令是 ldr w1,[x20]）
+#   同一条指令随后按 64 字节步长（Elf64_Shdr 的大小）把节头一项项拷走。
+#
+# 原因：Termux 仓库那份 proot（5.1.107.98）会把它自己的 loader 映进每个 tracee，
+# 但只映射文件里两个 PT_LOAD 覆盖的页：
+#   00200000-00201000 r--p off 0x0      （这个段 filesz 只有 0x120）
+#   5400000000-5400001000 r-xp off 0x4000
+# 而该 loader 的节头表在文件偏移 0x45d8（文件 18136 B，e_shoff=0x45d8），正好落在
+# 上面两段映射之外。frida-gum 枚举模块时把 0x200000 当模块基址、按 e_shoff 去读节头，
+# 0x200000 + 0x45d8 = 0x2045d8 —— 没有任何映射，于是 SEGV_MAPERR，si_addr 一模一样。
+# 这也解释了为什么 x86_64 模拟器一直好好的：那边用的是随包内置的静态 proot，
+# 没有这个独立 loader 文件，压根没有这段映射。
+#
+# 修法：复制一份 loader 到 $QQBOT_HOME，把 e_shoff(0x28, 8B) / e_shnum+e_shstrndx
+# (0x3C, 4B) 清零，再用 PROOT_LOADER 指过去。内核执行时只看 program header，节头表
+# 只是给工具看的，清零不影响 proot 启动；gum 拿不到节头就不再去读那 256 字节。
+# 只改我们自己复制的那份，不动 Termux 的安装文件；清掉这个环境变量即可完全回退。
+# ---------------------------------------------------------------------------
+QQBOT_PROOT_LOADER_SRC="$PREFIX/libexec/proot/loader"
+QQBOT_PROOT_LOADER_SRC32="$PREFIX/libexec/proot/loader32"
+QQBOT_PROOT_LOADER_FIX="$QQBOT_HOME/proot-loader"
+QQBOT_PROOT_LOADER_FIX32="$QQBOT_HOME/proot-loader32"
+
+# 判断一个 loader 文件是否已经被清零过（偏移 40 的 8 字节、60 的 4 字节全 NUL）。
+# 不用 od：Termux 基础环境不保证有，dd + tr 一定有。
+qq_loader_patched() {
+  [ -s "$1" ] || return 1
+  _h=$(dd if="$1" bs=1 skip=40 count=8 2>/dev/null | tr -d '\000')
+  [ -z "$_h" ] || return 1
+  _h=$(dd if="$1" bs=1 skip=60 count=4 2>/dev/null | tr -d '\000')
+  [ -z "$_h" ]
+}
+
+# 复制并清零；失败返回非 0（调用方负责继续用原 loader，不能让整个部署挂掉）
+qq_make_loader_fix() {
+  cp -f "$1" "$2" 2>/dev/null || return 1
+  chmod 755 "$2" 2>/dev/null
+  dd if=/dev/zero of="$2" bs=1 seek=40 count=8 conv=notrunc 2>/dev/null || return 1
+  dd if=/dev/zero of="$2" bs=1 seek=60 count=4 conv=notrunc 2>/dev/null || return 1
+  qq_loader_patched "$2"
+}
+
+qq_proot_fix_loader() {
+  # 内置静态 x86_64 proot 没有独立 loader 文件，直接跳过
+  [ "$QQBOT_PROOT" = "$PREFIX/bin/proot" ] || return 0
+  [ -f "$QQBOT_PROOT_LOADER_SRC" ] || return 0
+  # 源文件更新过（Termux 升级了 proot）或者补丁丢了就重做
+  if [ ! -f "$QQBOT_PROOT_LOADER_FIX" ] \
+     || [ "$QQBOT_PROOT_LOADER_SRC" -nt "$QQBOT_PROOT_LOADER_FIX" ] \
+     || ! qq_loader_patched "$QQBOT_PROOT_LOADER_FIX"; then
+    if qq_make_loader_fix "$QQBOT_PROOT_LOADER_SRC" "$QQBOT_PROOT_LOADER_FIX"; then
+      printf '[QQBot] proot loader 补丁就绪：节头表已清零（%s）\n' "$QQBOT_PROOT_LOADER_FIX" >&2
+    else
+      rm -f "$QQBOT_PROOT_LOADER_FIX" 2>/dev/null
+      printf '[QQBot] proot loader 补丁失败，继续用原 loader（NapCat native 模块可能仍会 SIGSEGV）\n' >&2
+      return 0
+    fi
+  fi
+  export PROOT_LOADER="$QQBOT_PROOT_LOADER_FIX"
+  # loader32 只在跑 32 位 tracee 时才用得上，有就打、没有就算了
+  if [ -f "$QQBOT_PROOT_LOADER_SRC32" ]; then
+    if [ ! -f "$QQBOT_PROOT_LOADER_FIX32" ] \
+       || [ "$QQBOT_PROOT_LOADER_SRC32" -nt "$QQBOT_PROOT_LOADER_FIX32" ] \
+       || ! qq_loader_patched "$QQBOT_PROOT_LOADER_FIX32"; then
+      qq_make_loader_fix "$QQBOT_PROOT_LOADER_SRC32" "$QQBOT_PROOT_LOADER_FIX32" >/dev/null 2>&1 || true
+    fi
+    [ -f "$QQBOT_PROOT_LOADER_FIX32" ] && export PROOT_LOADER_32="$QQBOT_PROOT_LOADER_FIX32"
+  fi
+  return 0
+}
+qq_proot_fix_loader
+
 # 按架构决定资源名
 QQBOT_ROOTFS_TAR="ubuntu-base-24.04.5-base-$QQBOT_ARCH.tar.gz"
 QQBOT_QQ_DEB_NAME="linuxqq_${QQBOT_QQ_VER}_${QQBOT_ARCH}.deb"
@@ -554,11 +633,29 @@ qq_proot_selftest() {
     printf 'proot 不存在或不可执行：%s\n' "$QQBOT_PROOT" > "$QQBOT_SELFTEST_LOG" 2>/dev/null
     return 1
   fi
-  if command -v timeout >/dev/null 2>&1; then
-    timeout 25 "$QQBOT_PROOT" -0 /system/bin/echo qqbot-proot-ok > "$QQBOT_SELFTEST_LOG" 2>&1
-  else
-    "$QQBOT_PROOT" -0 /system/bin/echo qqbot-proot-ok > "$QQBOT_SELFTEST_LOG" 2>&1
+  _qq_proot_selftest_once() {
+    if command -v timeout >/dev/null 2>&1; then
+      timeout 25 "$QQBOT_PROOT" -0 /system/bin/echo qqbot-proot-ok > "$QQBOT_SELFTEST_LOG" 2>&1
+    else
+      "$QQBOT_PROOT" -0 /system/bin/echo qqbot-proot-ok > "$QQBOT_SELFTEST_LOG" 2>&1
+    fi
+  }
+  _qq_proot_selftest_once && return 0
+  # v1.1.26：打了 loader 补丁却起不来 proot，说明这份 proot 不认我们的替代 loader。
+  # 立刻回退到原 loader 再试一次 —— 少一层 native 崩溃保护，也好过整个沙盒起不来。
+  if [ -n "${PROOT_LOADER:-}" ]; then
+    _qq_selftest_patched_log="$QQBOT_SELFTEST_LOG.patched"
+    cp -f "$QQBOT_SELFTEST_LOG" "$_qq_selftest_patched_log" 2>/dev/null
+    unset PROOT_LOADER
+    unset PROOT_LOADER_32
+    if _qq_proot_selftest_once; then
+      rm -f "$QQBOT_PROOT_LOADER_FIX" "$QQBOT_PROOT_LOADER_FIX32" 2>/dev/null
+      printf '[QQBot] loader 补丁与当前 proot 不兼容（自检失败），已回退到系统 loader；' >&2
+      printf '原补丁现场见 %s\n' "$_qq_selftest_patched_log" >&2
+      return 0
+    fi
   fi
+  return 1
 }
 
 # 自检失败时把 proot 自己的报错原样打到日志里（缩进四格，便于和 [QQBot] 行区分）。
