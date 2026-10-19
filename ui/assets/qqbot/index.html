@@ -383,7 +383,12 @@ input::placeholder{color:#5f6879}
 /* 重装进度：复用主页 .bar，只是把阶段清单排成两列更省高度 */
 .rebox{margin-top:var(--sp3);padding:12px 14px;border-radius:var(--r-md);border:1px solid var(--line-2);background:rgba(255,255,255,.04)}
 .rebox.ok{border-color:rgba(52,211,153,.4)}
-.rebox.bad{border-color:rgba(255,110,130,.4)}
+.rebox.bad{border-color:rgba(255,110,130,.4);background:rgba(255,110,130,.06)}
+/* 失败时进度条必须变红：绿条 + 铁青的事实（退出码 1）最误导人，用户以为装好了 */
+.rebox.bad .bar i{background:linear-gradient(90deg,#f87171,var(--bad));box-shadow:0 0 14px rgba(255,132,148,.42)}
+.rebox.bad .rh b{color:var(--bad)}
+.step.fail{color:var(--bad)}
+.step.fail .mk{font-weight:700}
 .rebox .rh{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;color:var(--txt-2)}
 .rebox .rh b{color:var(--txt);font-weight:600}
 .rebox .rsteps{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:9px}
@@ -1557,9 +1562,11 @@ function paintReinstall(){
   if (!d || d.error || d.state === "none") { box.style.display = "none"; stopReTimer(); return; }
   box.style.display = "";
   var running = !!d.running;
-  var pct = running ? (d.pct || 0) : 100;
+  // 失败时不能写 100%：后端已经把「失败的那一档」从已完成里扣掉了，直接用它给的 pct。
+  var ok0 = (!running && d.ok === true);
+  var pct = running ? (d.pct || 0) : (ok0 ? 100 : (d.pct || 0));
   el("reBar").style.width = pct + "%";
-  el("rePct").textContent = (running ? pct : 100) + "%";
+  el("rePct").textContent = pct + "%";
   var nameCn = (d.comp === "astrbot") ? "AstrBot" : "NapCat";
   if (running) {
     box.className = "rebox";
@@ -1575,13 +1582,17 @@ function paintReinstall(){
     el("reTitle").textContent = ok ? ("重装 " + nameCn + " 完成") : ("重装 " + nameCn + " 失败（退出码 " + d.rc + "）");
     el("reHint").textContent = ok
       ? ("完成于 " + (d.endedAt || "-") + "，容器会在几秒内自动拉起，状态看主页磁贴。")
-      : "看下面的阶段清单停在哪儿；详细报错在「日志」页的 reinstall.log。";
+      : ((d.label ? d.label + "；" : "") + "详细报错在「日志」页的 reinstall.log。");
     stopReTimer();
   }
   var h = [];
   var steps = d.steps || [];
   for (var i = 0; i < steps.length; i++) {
-    h.push('<div class="step' + (steps[i].done ? " done" : "") + '"><span class="mk">' + (steps[i].done ? "✓" : "○") + '</span><span>' + esc(steps[i].label) + '</span></div>');
+    var st = steps[i];
+    var bad = !!st.failed;
+    h.push('<div class="step' + (st.done ? " done" : "") + (bad ? " fail" : "") + '">' +
+           '<span class="mk">' + (bad ? "✗" : (st.done ? "✓" : "○")) + '</span>' +
+           '<span>' + esc(st.label) + '</span></div>');
   }
   setHtml(el("reSteps"), h.join(""));
 }

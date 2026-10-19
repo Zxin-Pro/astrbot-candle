@@ -141,10 +141,29 @@ case "$COMP" in
     # NapCat 自己的 config/ 不用留：run-napcat.sh 每次启动都会删掉重写
     # webui.json / onebot11.json。
     echo "[reinstall] 删除旧的 NapCat 与各实例的 QQ 副本（保留 QQ 登录数据）"
-    qq_proot "rm -rf /opt/QQ/resources/app/app_launcher/napcat /opt/qqbot-inst" || RC=$?
+    # 不用 rm -rf：50-napcat.sh 是 set -e，中途任一步失败就会留下「napcat 目录已经没了、
+    # 新的又没装进来」的状态，于是 loadNapCat.js 报 ERR_MODULE_NOT_FOUND，QQ 连 GUI
+    # 都起不来（真机 1.1.22 就这样把 NapCat 弄没的）。改成先改名备份，装完再删。
+    qq_proot "rm -rf /root/napcat.bak /opt/qqbot-inst; _n=/opt/QQ/resources/app/app_launcher/napcat; if [ -d \"\$_n\" ]; then mv \"\$_n\" /root/napcat.bak && echo '[sandbox] 旧的 NapCat 已备份到 /root/napcat.bak'; fi" || RC=$?
 
     echo "[reinstall] 重新安装 NapCat 并注入 Linux QQ"
     [ "$RC" = 0 ] && { qq_sandbox "50-napcat.sh" || RC=$?; }
+
+    # 装完必须实际校验：set -e 只保证「脚本没中途退出」，不保证文件真的落到位置。
+    _NDIR="$QQBOT_ROOTFS/opt/QQ/resources/app/app_launcher/napcat"
+    if [ -f "$_NDIR/napcat.mjs" ] && [ -f "$_NDIR/package.json" ]; then
+      echo "[reinstall] 校验通过：napcat.mjs 在位（$(wc -c < "$_NDIR/napcat.mjs" 2>/dev/null) 字节），package.json 在位"
+    else
+      echo "[reinstall] 校验失败：$_NDIR 里的 napcat.mjs / package.json 不齐"
+      echo "[reinstall]   安装包：$(ls -l "$QQBOT_CACHE/NapCat.Shell.zip" 2>/dev/null || echo '缺 NapCat.Shell.zip')"
+      qq_proot "echo '--- 目标目录 ---'; ls -la /opt/QQ/resources/app/app_launcher/napcat 2>&1 | head -n 20; echo '--- 解压临时目录 /tmp/napcat ---'; ls -la /tmp/napcat 2>&1 | head -n 20; echo '--- 找到的 napcat.mjs ---'; find /tmp/napcat -maxdepth 3 -name napcat.mjs 2>/dev/null | head" 2>/dev/null || true
+      # 装不回去就把备份挪回原位，至少别让 NapCat 变成「目录都没有」
+      if [ -d "$QQBOT_ROOTFS/root/napcat.bak" ]; then
+        echo "[reinstall] 新装的不完整，回滚到重装前的 NapCat（至少还能跑）"
+        qq_proot "rm -rf /opt/QQ/resources/app/app_launcher/napcat; mv /root/napcat.bak /opt/QQ/resources/app/app_launcher/napcat && echo '[sandbox] 已回滚到重装前的 NapCat'" || true
+      fi
+      [ "$RC" = 0 ] && RC=1
+    fi
     ;;
 esac
 

@@ -11,9 +11,9 @@
       "cards": [
         {
           "icon": "📦",
-          "title": "AstrBot烛版 1.1.22（最新版）",
-          "desc": "文件名 AstrBot-1.1.22.apk（下载下来就是这个名字）\n安卓安装包 · 24.1 MB · 2026-10-18\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
-          "link": "/downloads/AstrBot-1.1.22.apk",
+          "title": "AstrBot烛版 1.1.23（最新版）",
+          "desc": "文件名 AstrBot-1.1.23.apk（下载下来就是这个名字）\n安卓安装包 · 24.1 MB · 2026-10-19\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
+          "link": "/downloads/AstrBot-1.1.23.apk",
           "text": ""
         },
         {
@@ -21,7 +21,7 @@
           "title": "复制下载直链",
           "desc": "点这张卡就把地址复制下来，可以直接发给别人或贴进浏览器。",
           "link": "",
-          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.1.22.apk"
+          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.1.23.apk"
         },
         {
           "icon": "🕘",
@@ -32,10 +32,10 @@
         },
         {
           "icon": "🔐",
-          "title": "SHA-256 校验值（v1.1.22）",
+          "title": "SHA-256 校验值（v1.1.23）",
           "desc": "点这张卡复制，然后和下载到的文件比对，一样就说明没被改过。",
           "link": "",
-          "text": "8dfe43d74cb607c197325fd4313d0d495e71f2d5ed709b1f6a07ec45289631af"
+          "text": "8cac082b1635ea3bb06d18473da1ae1d2d05c1acd86d754f002673730f69e119"
         }
       ]
     },
@@ -112,6 +112,13 @@
       "cards": [
         {
           "icon": "📝",
+          "title": "v1.1.23  ·  2026-10-19",
+          "desc": "## AstrBot 烛版 1.1.23\n\n## [1.1.23] - 2026-10-19\n\n真机上的 NapCat 现在停在「`/opt/QQ/.../app_launcher/napcat/napcat.mjs` 找不到」——\n重装那一步把旧 NapCat 删掉了、新的没装进来，而界面还显示「100% + 四个绿勾」，\n看着像装好了，其实是失败（退出码 1）。\n\n### 修复\n\n- **重装失败不再伪装成成功**：以前不管成功失败，进度条一律打满、四个阶段全打绿勾。\n  现在失败时进度条变成红色、失败的那一步打红叉、百分比只算它前面已经完成的步骤，\n  标题下面直接写「卡在「安装 NapCat 与 QQ」」。\n- **重装中途失败不再把 NapCat 弄没**：`reinstall.sh` 原来直接 `rm -rf` 掉整个 napcat\n  目录再装，`50-napcat.sh` 又是 `set -e`，中途任何一步失败就留下「目录空了、新的没来」\n  的死状态。改成先把旧目录改名成 `/root/napcat.bak`，装完**实际校验**\n  `napcat.mjs` 与 `package.json` 是否在位；校验不过自动把备份挪回去 ——\n  最坏情况是「装的还是旧的」，而不是「彻底没有」。\n- **错误报告带上重装日志**：`upload-log.sh` 新增「重装日志尾部 150 行」、\n  「组件关键文件是否在位」（napcat.mjs / package.json / loadNapCat.js / app/package.json\n  的 `main` 字段）、`app_launcher/napcat` 目录内容、`NapCat.Shell.zip` 是否还在、\n  `qq-args.txt` 有没有覆写、崩溃记录目录清单。以前 `reinstall.log` 根本没进报告，\n  只有一个退出码 1，完全看不出死在哪一行。\n\n### 说明\n\n- 上一版（1.1.22）卸掉了 Worker SIGSEGV 那一层：崩溃记录器已经在真机上跑起来了\n  （报告里的「崩溃现场」段现在是空的，说明 QQ 根本没崩过，是模块压根没加载）。\n  这一版修的是它后面那一层。\n\n---",
+          "link": "/downloads/AstrBot-1.1.23.apk",
+          "text": ""
+        },
+        {
+          "icon": "📝",
           "title": "v1.1.22  ·  2026-10-18",
           "desc": "## AstrBot 烛版 1.1.22\n\n## [1.1.22] - 2026-10-19\n\n真机上 NapCat 的 Worker 子进程一启动就 SIGSEGV（退出码 11），但日志只告诉我们「它崩了」，\n不告诉我们在哪崩的。这一版加了崩溃现场记录器，把调用栈弄回来；同时把「改对接要不要重启\nAstrBot」这件事分清楚了。\n\n### 新增\n\n- **崩溃现场记录器（`sandbox/crashwatch.c`）**：一个用 `LD_PRELOAD` 注入 QQ 的小型动态库，\n  首次编译在手机上用 `g++` 现场完成（不额外打包二进制）。捕获 SIGSEGV/SIGABRT/SIGBUS/\n  SIGILL/SIGFPE/SIGTRAP 时，把信号、`si_code`、出错地址、RIP/RSP/RBP、栈内容、\n  `/proc/self/maps` 里的模块基址、以及**用 `dladdr` + `backtrace` 解出来的可读调用栈**\n  写进 `cache/crashes/crash-<pid>-sigN.log`。信号处理函数里只做异步信号安全的事\n  （预开 fd、静态缓冲、`write`），不会因为崩溃处理器自己再崩一次而丢掉现场。\n  每个实例按 tag 分开落盘，单文件上限 256 KB。\n- **错误报告带上崩溃现场**：上传日志现在会附上最新的崩溃文件，并额外采集运行期信息\n  （磁盘/内存、proot 命令行、会不会是 link(2) 问题、沙箱各目录大小、端口监听情况、\n  最近改动过的文件、dmesg 里的被杀记录）。以后再排查不用再猜。\n\n### 修复\n\n- **改对接不再重启 AstrBot**（`sandbox/link.sh`）：以前只要平台端口清单和现有配置不一致\n  就 `kill -TERM` 掉 AstrBot 重启一次，约 30 秒，其它号的连接一起断。现在只有\n  「**新增实例**，需要 AstrBot 多监听一个端口」才重启一次；**删除实例**只在 AstrBot 里留下\n  一个没人连的监听口，不影响任何功能，等下次因为别的原因重启时顺手清掉；停用实例、\n  改 token 之类端口清单根本没变，AstrBot 一个信号都不收。\n  （查过 AstrBot 的代码：`astrbot/dashboard/api/platform.py` 与\n  `services/platform_service.py` 只有 webhook 注册，运行期没有任何「新增 aiocqhttp 监听口」\n  的热加载入口，所以这一处重启没法省。）\n- **另外两个路径 bug**：`qq-args.txt` 覆写开关和崩溃目录都写在沙盒里，而沙盒内\n  `$QQBOT_HOME` 是空的（它是 Termux…",
           "link": "/downloads/AstrBot-1.1.22.apk",
@@ -135,20 +142,13 @@
           "icon": "📝",
           "title": "v1.1.19  ·  2026-10-18",
           "desc": "## AstrBot 烛版 1.1.19\n\n## [1.1.19] - 2026-10-18\n\n接 1.1.18 往下修：Xvfb 在真机上总算起来了，但 QQ 自己秒退，表现成\n`Trace/breakpoint trap`，NapCat 照样起不来。\n\n### 修复\n\n- **QQ 启动改成参数阶梯**（`sandbox/run-napcat.sh`）：真机（Redmi 24069RA21C / Android 16）\n  上 QQ 的 Chromium 会先起一个 GPU 子进程去初始化 EGL —— Xvfb 里没有 GLX，这一步必然打出\n  `GLX is not present` / `Initialization of all EGL display types failed`；紧接着它还要枚举\n  那个子进程的 `/proc/<pid>/fd` 来校验沙箱，而 Android 10 起 `/proc` 对非本进程大幅收紧，\n  `fstatat()` 直接 EPERM：`FATAL:sandbox/linux/services/proc_util.cc:114\n  Check failed: . : Operation not permitted (1)`。连撞三次后\n  `GPU process isn't usable. Goodbye.` 把主进程一起带走。现在按\n  `--disable-gpu` → `--disable-gpu --in-process-gpu` →\n  再加 `--disable-dev-shm-usage --no-zygote` → 原样（1.1.18 的行为）四档依次试，留下第一档\n  能活过观察期的，并把最终采用的参数写进服务日志，下次排障一眼就能看到走的哪一档。\n- **「设置 → 维护」增加常驻的「上传错误日志」**：这个入口原来只挂在「部署失败 / 卡住」的\n  弹窗上，可真实场景恰恰是「部署成功、服务起不来」，于是最需要它的时候偏偏找不到。\n\n### 说明\n\n- x86_64 模拟器的 `/proc` 规则和真机不同，同样的参数在模拟器上能跑起来，所以这个问题\n  在模拟器上复现不了，只能在真机上验。",
-          "link": "/downloads/AstrBot-1.1.19.apk",
+          "link": "",
           "text": ""
         },
         {
           "icon": "📝",
           "title": "v1.1.18  ·  2026-10-18",
           "desc": "## AstrBot 烛版 1.1.18\n\n## [1.1.18] - 2026-10-18\n\n修掉「真机上 NapCat 怎么都起不来、AstrBot 却一切正常」的根因。一句话：**部署期和运行期用的\nproot 参数不一致**，运行期把 `--link2symlink` 丢了。\n\n### 修复\n\n- **运行期沙盒启动补回 `--link2symlink`**（`opt/qqbot/start-sandbox.sh`）：真机上 `link(2)` 直接\n  返回 EPERM，而 Xvfb 起显示号的第一步就是给 `/tmp/.X<n>-lock` 建硬链接，建不了就\n  `Lock file ... failed: Permission denied` + `【Fatal】 server error: Failed to establish socket`\n  秒退，于是 NapCat 永远拉不起来。部署期（`qq_proot`）本来就按 `$QQBOT_HOME/link2symlink`\n  标记加了这个参数，运行期却硬编码不加 —— 同一个手机，apt 装得上、QQ 起不来。AstrBot 是纯\n  Python 用不到 `link(2)`，所以看起来「只有 NapCat 坏了」。\n- **标记丢了会自愈**：运行期不再只信标记文件，标记不在时会在宿主侧实测一次 `link(2)`，\n  判不出来就写回标记，避免「清过数据 / 换过安装路径」之后再踩一次。\n- **Xvfb 多两档 `-nolock` 兜底**（`sandbox/run-napcat.sh`）：`XVFB_VARIANTS` 从 3 档扩到 5 档，\n  后两档带 Xvfb 自己的 `-nolock`（`-help` 原文 \"disable the locking mechanism\"），完全不碰\n  锁文件，从 X 服务器这层绕过去，与 proot 参数无关。正常设备行为不变（前 3 档仍然是原来的\n  参数和顺序）。\n\n### 说明\n\n- **覆盖安装即可，不用重装、不丢数据**：`syncScripts()` 会按 APK 的 `lastUpdateTime` 覆盖\n  `$PREFIX` 下的脚本，并自动重启容器让新参数生效。装完后 `logs/scripts.log` 里的\n  `synced=N failed=0` 就是脚本已下发的证据。\n- 早期那条「绝不能加 `--link2symlink`」的警告已删除：它只适用于「rootfs 在 proot **内部**\n  用 tar 解压」的旧流程（tar 会为压缩包里的硬链接调 `link()`，被换成指向宿主绝对路径的\n  `.l2s.*` 符号链接，导致 `libc.so.6` 悬空）。现在解压全部在宿主侧完成，运…",
-          "link": "",
-          "text": ""
-        },
-        {
-          "icon": "📝",
-          "title": "v1.1.17  ·  2026-10-18",
-          "desc": "## AstrBot 烛版 v1.1.17\n\n## [1.1.17] - 2026-10-18\n\n只修一处文案错位，但它是会让人**第一次登录就被拒**的那种：终端提示里的 Token 和实际生效的\nToken 不是一个词。\n\n### 修复\n\n- **部署汇总与 `qqbot-help` 里打印的 NapCat WebUI Token 写错了**：一直写「Token 填 `qqbot`」，\n  而实际生成到 `webui.json` / `bots.json` 里的是 **`zhuxin`**（1.1.x 品牌改名时改的）。\n  Java 侧（新建实例默认 `zhuxin`、老设备迁移）与界面（实例卡回退值 `zhuxin`）当时都跟上了，\n  只有 `steps/90-summary.sh` 和 `steps/70-launcher.sh` 这两处终端提示漏了 —— 照提示填 `qqbot`\n  会被 NapCat WebUI 直接拒绝，用户很容易误判成「装坏了」。\n- **默认实例的播种值同步改成 `zhuxin`**：`opt/qqbot/link.sh`、`opt/qqbot/sandbox/link.sh`\n  生成 `bots.json` 时写的 token 由 `qqbot` 改为 `zhuxin`，与界面、`使用说明.md`、`README.md` 一致。\n\n### 说明\n\n- 存量设备不受影响：`run-napcat.sh` 里 `qqbot` / `qqbot2` … → `zhuxin` / `zhuxin2` … 的归一化\n  逻辑保留（那条规则只服务已部署过的老 `bots.json`），并补了注释说明它的存在理由。",
           "link": "",
           "text": ""
         }
@@ -184,5 +184,5 @@
       ]
     }
   ],
-  "updated": "2026-10-19 07:55:49"
+  "updated": "2026-10-19 08:43:39"
 }

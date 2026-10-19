@@ -253,11 +253,13 @@ public class QqbotBridge {
                 return o.toString();
             }
             String[][] stages = "astrbot".equals(comp) ? astrbotStages : napcatStages;
+            int total = stages.length - 1;         // 不含「完成」这一档
             // 从本段起点开始数，数到第几个阶段特征串出现过。
-            // 「结束」那一档不算进度（它本身就是 100%），所以分母减一。
+            // 只数真正的阶段：最后一档「结束（」是结束标记，它一出现就说明整段跑完了，
+            // 要是也算进 reached，失败时会被错算成「卡在最后一步」。
             int from = (lastStart >= 0) ? lastStart : 0;
             int reached = 0;
-            for (int s = 0; s < stages.length; s++) {
+            for (int s = 0; s < total; s++) {
                 boolean hit = false;
                 for (int i = from; i < lines.length; i++) {
                     if (lines[i].indexOf(stages[s][0]) >= 0) { hit = true; break; }
@@ -268,29 +270,9 @@ public class QqbotBridge {
                reached 是「已经出现过的最后一条阶段特征」，它对应的工作已经做完了，
                现在跑的是它后面那一步 —— 直接拿 reached 当提示，会一直说「正在清理旧文件」，
                而实际上早在装 NapCat 了。 */
-            String cur = stages[Math.min(reached, stages.length - 1)][1];
-            int total = stages.length - 1;         // 不含「完成」这一档
-            int doneCount = Math.min(reached, total);
-            if (!running && lastEnd >= 0) { doneCount = total; }
-            int pct = total > 0 ? Math.round(doneCount * 100f / total) : 0;
-            o.put("running", running);
-            o.put("comp", comp);
-            o.put("stage", doneCount);
-            o.put("doneCount", doneCount);
-            o.put("total", total);
-            o.put("pct", pct);
-            o.put("label", cur);
-            // 每一档的展示文案 + 是否已过，界面直接渲染成小清单
-            JSONArray list = new JSONArray();
-            for (int s = 0; s < total; s++) {
-                JSONObject e = new JSONObject();
-                e.put("label", stages[s][1]);
-                e.put("done", s < doneCount);
-                list.put(e);
-            }
-            o.put("steps", list);
-            o.put("logAge", (System.currentTimeMillis() - f.lastModified()) / 1000L);
-            // 结束时间 / 退出码：读最后一行「重装 X 结束（时间，退出码 N）」
+            // 结束时间 / 退出码：读最后一行「重装 X 结束（时间，退出码 N）」。
+            // 必须先解析 rc 再算进度：失败时不能把所有阶段都打勾（以前就是这样，
+            // 退出码 1 却显示 100% + 四个绿勾，看起来像成功）。
             String endedAt = "";
             int rc = 0;
             for (int i = lines.length - 1; i >= 0; i--) {
@@ -311,6 +293,41 @@ public class QqbotBridge {
             }
             o.put("endedAt", endedAt);
             o.put("rc", rc);
+            /* 进度怎么算：reached 表示「某个阶段的特征行出现过了」，它只说明这一步
+               *开始*了，不说明做完了。所以分两种：
+                 - 成功（rc==0）：全部打勾、100%
+                 - 失败（rc!=0）：最后出现的那个阶段就是失败的那一步，它**不算完成**，
+                   百分比也只算它前面那些。以前不管成功失败一律 doneCount=total，
+                   结果是退出码 1 也显示满格绿条 + 四个绿勾，看着像装好了。 */
+            boolean finished = !running && lastEnd >= 0;
+            boolean failed = finished && rc != 0;
+            int reachedCount = Math.min(reached, total);
+            int doneCount = failed ? Math.max(0, reachedCount - 1) : reachedCount;
+            if (finished && !failed) doneCount = total;
+            int failIdx = failed ? Math.max(0, Math.min(reachedCount, total) - 1) : -1;
+            int pct = total > 0 ? Math.round(doneCount * 100f / total) : 0;
+            o.put("running", running);
+            o.put("comp", comp);
+            o.put("stage", doneCount);
+            o.put("doneCount", doneCount);
+            o.put("total", total);
+            o.put("pct", pct);
+            o.put("failAt", failIdx);
+            String cur = failed
+                    ? ("卡在「" + stages[failIdx][1] + "」")
+                    : stages[Math.min(reached, stages.length - 1)][1];
+            o.put("label", cur);
+            // 每一档的展示文案 + 状态，界面直接渲染成小清单
+            JSONArray list = new JSONArray();
+            for (int s = 0; s < total; s++) {
+                JSONObject e = new JSONObject();
+                e.put("label", stages[s][1]);
+                e.put("done", s < doneCount);
+                e.put("failed", s == failIdx);
+                list.put(e);
+            }
+            o.put("steps", list);
+            o.put("logAge", (System.currentTimeMillis() - f.lastModified()) / 1000L);
             o.put("ok", running ? JSONObject.NULL : (rc == 0));
             o.put("state", running ? "running" : (rc == 0 ? "done" : "failed"));
             return o.toString();

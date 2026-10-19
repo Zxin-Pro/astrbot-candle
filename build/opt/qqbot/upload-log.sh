@@ -107,6 +107,36 @@ have() { command -v "$1" >/dev/null 2>&1; }
   echo "----- 崩溃记录器编译日志 (cw-build.log) -----"
   tail -n 20 "$QQBOT_CACHE/crashes/cw-build.log" 2>/dev/null || echo "(无)"
   echo
+  echo "----- 重装日志尾部 150 行 (reinstall.log) -----"
+  # 「重装失败（退出码 1）」以前只留一个退出码，看不出死在哪一步；
+  # 50-napcat.sh 是 set -e，具体哪一行失败只有这份日志记着。
+  tail -n 150 "$QQBOT_CACHE/logs/reinstall.log" 2>/dev/null || echo "(无)"
+  echo
+  echo "----- 组件关键文件是否在位 -----"
+  _APP="$QQBOT_ROOTFS/opt/QQ/resources/app"
+  for p in "$_APP/app_launcher/napcat/napcat.mjs" \
+           "$_APP/app_launcher/napcat/package.json" \
+           "$_APP/loadNapCat.js" \
+           "$_APP/package.json"; do
+    if [ -f "$p" ]; then
+      echo "有  $p（$(wc -c < "$p" 2>/dev/null) 字节）"
+    else
+      echo "缺  $p"
+    fi
+  done
+  echo "--- app_launcher/napcat 目录内容 ---"
+  ls -1 "$_APP/app_launcher/napcat" 2>/dev/null | head -n 40 || echo "(目录不存在)"
+  echo "--- app/package.json 的 main 字段 ---"
+  grep -o '"main"[[:space:]]*:[[:space:]]*"[^"]*"' "$_APP/package.json" 2>/dev/null || echo "(读不到)"
+  echo
+  echo "----- NapCat 安装包缓存 -----"
+  ls -l "$QQBOT_CACHE/NapCat.Shell.zip" 2>/dev/null || echo "(缺 NapCat.Shell.zip：断网或第 2 步没下完)"
+  echo "--- QQ 启动参数覆写 (qq-args.txt) ---"
+  cat "$QQBOT_CACHE/qq-args.txt" 2>/dev/null || echo "(没有覆写，走内置阶梯)"
+  echo
+  echo "----- 崩溃记录目录 -----"
+  ls -l "$QQBOT_CACHE/crashes" 2>/dev/null || echo "(无)"
+  echo
   echo "----- 沙盒自检结果 (doctor.txt) -----"
   cat "$QQBOT_HOME/doctor.txt" 2>/dev/null || echo "(还没跑过「检查运行环境」)"
 } > "$TMP" 2>&1
