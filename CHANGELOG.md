@@ -11,6 +11,108 @@
 
 ---
 
+## [1.1.30] - 2026-10-19
+
+NapCat 在真机上跑稳之后，这一版补齐「装得上、看得懂、断了自己能爬回来」的一整套：
+新图标 + 18 项功能。全部改动都在本机与自建服务端，不引入任何第三方 SDK，
+不增依赖、不改包名、不动端口与实例算法，也不碰 proot loader 补丁。
+
+### 新增
+
+- **应用图标**：换成原画「烛心♡」（猫耳少女 + 竖排霓虹「烛心」+ 白猫）。
+  `tools/make-icons.py` 从 1254×1254 源图按每档 LANCZOS 直接缩放，出方形
+  `mipmap-{mdpi..xxxhdpi}/ic_launcher.png`（48/72/96/144/192）、圆形
+  `ic_launcher_round.png`（内容 84% 居中）、自适应前景
+  `drawable-{mdpi..xxxhdpi}/ic_foreground.png`（108/162/216/324/432，内容 72% 居中再右移 2.5%，
+  按 86% 会把左侧「烛」字剪掉）；≤96px 档做 UnsharpMask + 亮度提升 + 灯管芯辉光，
+  48px 下仍能认出「烛」字。背景 `drawable/ic_launcher_background.xml` 为深紫近黑 `#FF1A0A12`。
+  `build-ui.ps1` 第 3d 段负责把 `ui/assets/icon/res/**` 烤进 `_apkwork`，并先删掉会压过 PNG 的
+  矢量 `ic_foreground.xml`，整个过程幂等。
+- **重启补登（功能 3）**：`QqbotBootReceiver` 收到 `BOOT_COMPLETED / QUICKBOOT_POWERON /
+  MY_PACKAGE_REPLACED` 后拉起前台服务，`QqbotGuardTask` 在 `state/offline` 不存在时恢复沙盒，
+  5 分钟内回到在线；启动路径加 `static synchronized` 防双容器。
+- **网络切换自愈（功能 2）**：`NetworkWatch` 注册 `NetworkCallback`，30 秒 debounce（系统补发
+  的瞬时抖动会被 `lastTriggerMs` 吃掉），`NetRecover` 先等 NapCat 端口再启 AstrBot；
+  Wi-Fi ↔ 移动数据来回切之后不需要手动重启。
+- **风控识别（功能 4）**：沙盒 `qq_risk_scan` 增量扫 `qq-$id.log`（`.off` 偏移），命中
+  `build/opt/qqbot/sandbox/risk-words.txt`（84 词，可热改）就写 `state/risk.json` 并**暂停自动重启**；
+  主页红横幅 + 通知（与「进程崩溃」区分），原生 `Android.riskInfo()/riskClear()` 对接。
+- **省电引导（功能 5）**：`PowerGuide` 按 `MANUFACTURER` 分支跳对应省电设置页（小米 HyperOS、
+  华为 EMUI、OPPO ColorOS、vivo OriginOS、三星 One UI…），失败退回应用详情页；每个版本首次打开
+  在主页出琥珀色提醒条（`#powBar`），「知道了」写 `power.json` 不再重复；`更多` 页另有常驻卡片。
+- **电量/温度降载（功能 6）**：`BatteryMon` 走 `ACTION_BATTERY_CHANGED`，电量 <15% 或温度 >42℃
+  写 `state/degrade`（看门狗轮询 15→30 秒、暂停日志轮转、只记 warn），回到 >25% 且 <38℃ 自动撤销，
+  带迟滞、可逆、不删数据。
+- **紧急下线（功能 9）**：`stop-sandbox.sh` 保留登录态，通知栏 / 桌面小组件 / 快捷磁贴 / 控制台
+  四处入口统一先弹二次确认（Activity extra `confirm_stop` / `toggle`，`AskStop`、`AskToggle` 具名
+  Runnable 打 `window.askStop()/askToggle()`），确认后写 `state/offline` + `cache/svc/watchdog.off`，
+  10 秒内 6099/6185 不可连；再点一次启动即恢复。
+- **常驻通知卡片（功能 11）**：`QqbotGuardService.buildNoti` 显示在线实例数与最近自检时间，
+  四个 Action（重启 / 看日志 / 扫码 / 下线）。
+- **桌面小组件（功能 12）**：`QqbotWidgetProvider` + `res/layout/widget_status.xml`（2×1，
+  在线状态灯 + 时长 + 启停按钮），点击进应用，按钮走同一套确认。
+- **快捷磁贴（功能 13）**：`QqbotTileService`（`BIND_QUICK_SETTINGS_TILE`），显示「在线 x/y」，
+  点按走 `startActivityAndCollapse(PendingIntent)`。
+- **今日概览（功能 15）**：`TodayStats` 汇总今日在线时长/消息数/异常数/流量，跨天清零，读取 <50ms。
+- **深色模式（功能 16）**：light / dark / auto 三档，CSS 变量 + `prefers-color-scheme` + `data-theme`，
+  二维码在两种主题下都可扫。
+- **实例卡片（功能 17）**：`InstancesState` + `AvatarCache`（LRU 50），显示头像、昵称、
+  已运行时长、最近掉线时间。
+- **新手引导（功能 18）**：装好 → 扫码 → 拉群 → 发测试 → 开保活，五步按真实状态判定，
+  可跳过（`localStorage.qqbot_onboard_done`）。
+- **一键备份 / 恢复（功能 50）**：`sandbox/backup.sh`、`restore.sh` 打 tar.gz + sha256，
+  SAF 选目录/选文件（`REQ_BACKUP_SAVE` / `REQ_RESTORE_OPEN`），恢复前自动快照、失败回滚。
+- **存储占用（功能 54）**：`storage.sh` 统计五个目录 + top10 大文件 + 一键清缓存
+  （只清 apt/pip/npm 缓存与旧日志，不碰登录、配置、插件）。
+- **应用内公告（功能 56）**：`/api/announce` + ETag/304、5 秒超时静默、可关顶部条，最小版本只提示。
+- **崩溃聚合看板（功能 58）**：`CrashBoard` 把崩溃按「模块 + 偏移 + 信号」归并成签名，
+  `state/crash-counts.json` 计数；上报默认关闭，只发签名 + 版本 + 次数。
+- **匿名统计（功能 59）**：默认关闭，首次开启弹说明，安装随机 UUID（`state/stats-id`）可重置，
+  只统计在线时长、消息数、异常数、版本、OS、架构。
+- **服务端**：新增 `vps-deploy/atom/`（systemd `qqbot-atom`，127.0.0.1:8800），nginx 精确匹配反代
+  `/api/announce`、`/api/crash`、`/api/stats`、`/api/atom-health`、`/api/app-config.json`；
+  POST 需带 `X-Qqbot-Atom: 1`，60 秒 20 次限流；crash 按 `sig+ver` 合并、stats 按 `id+day+ver` 覆盖。
+
+### 修改
+
+- **构建链**：`build-ui.ps1` 新增第 3e 段，把 `ui/assets/android-res/**` 拷进 `_apkwork/res`，
+  并把 `ui/assets/android/widget-manifest.xml` 插到 `</application>` 之前（已有 provider 就跳过，
+  幂等；ps1 仍保持纯 ASCII）；`build-apk.ps1` 新增 2b 段，打包前把根 `VERSION` 写进
+  `build/opt/qqbot/VERSION`，zip 完再删掉 —— 崩溃聚合与 doctor 读的就是它。
+- **停止链路**：`stop-sandbox.sh` 在参数解析后**立刻**写 `watchdog.off` 与 `state/offline`
+  （原来是最后写，中间 4~14 秒的窗口会让看门狗把刚停的沙盒又拉起来）；`watchdog.sh` 主循环
+  同时认 `state/offline`，`restart_sandbox` 不再 `rm` 掉停止标记；`stop-sandbox.sh` 优雅窗口
+  30→4 秒（整条停止从 19 秒降到 10 秒内）。
+- **守护任务**：`QqbotGuardTask` 每 tick 写 `state/ui.json`，异常类状态全部走
+  `StateIO` 原子写；新增 6 小时周期的 `UploadState.periodic` 上报。
+- **控制台**（`ui/assets/qqbot/index.html` 3925 → 5260 行）：主页省电提醒条、风控红横幅、
+  崩溃横幅、今日概览、新手引导、实例卡；`更多` 页备份/存储/崩溃看板/统计/省电策略卡；
+  自动更新弹窗、深色模式三档、隐私政策弹窗。
+
+### 修复
+
+- **「从文件恢复」点了没反应**：JS 调 `brCall1("restorePick","all")`，而桥上是无参的
+  `restorePick()`（带参的是 `restorePickScope(String)`），异常被 `brCall1` 吞掉后页面照样提示
+  「已打开文件选择器」。改成先试 `restorePickScope` 再退回无参，返回空就报错。
+- **停止后沙盒自己又活了**：见上面「停止链路」；四入口二次确认也统一成「入口只唤起面板、
+  由面板判状态」，避免服务在 targetSdk 28 下被 `Background activity launch blocked` 拦掉。
+- **下线确认只改 UI 不改进程**：`stopDo()` 原来把「桥没回话」当成功，界面显示已下线而沙盒照跑；
+  改成 `ok === false` 或空返回一律报「下线失败：原生没有响应」。
+- **小组件文案与事实相反**：卡片用 `alive && serviceAlive` 判断，沙盒已下线仍显示「停止」；
+  改成 `alive && serviceAlive && online > 0`。
+- **页面 4 秒自动刷新会把用户顶走**：`refreshAll()` 记录/恢复 `pageYOffset`，二次确认弹框在
+  刷新后也能保持展开。
+- **`更多 → 从文件选择恢复` 按钮文案与行为不符**：统一成「在浏览器打开 / 恢复」口径。
+
+### 说明
+
+- 从 1.1.29 升上来只需装新 APK、重启服务；沙盒脚本会随 APK 自动同步
+  （`scripts.log` 里 `synced=40 failed=0`）。
+- 图标换成 PNG 之后安装包增大 430,601 B（图标 398,270 B + 新代码约 32 KB），
+  超出最初「增量 ≤300 KB」的预算，属于质量优先的取舍：48px 下仍能认字靠的就是这些档位。
+- 匿名统计与崩溃上报**默认关闭**，开了也只发聚合后的数字与签名，不含路径、时间、账号、聊天内容。
+- 不再支持 `run-as com.termux`（1.1.28 起去掉 `debuggable`），调试请用 `adb root`。
+
 ## [1.1.29] - 2026-10-19
 
 1.1.28 是同一批改动的第一个包，发出去之后发现自动更新弹窗里的更新说明带了两行废字

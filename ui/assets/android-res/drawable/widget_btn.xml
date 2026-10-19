@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 桌面小组件「启动 / 停止」按钮底板（功能 12）：主色 #2563EB + 12dp 圆角。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FF2563EB" />
+    <corners android:radius="12dp" />
+</shape>

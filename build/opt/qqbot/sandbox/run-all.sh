@@ -31,6 +31,34 @@ HB=/qqbot-cache/heartbeat
 beat() { date +%s > "$HB" 2>/dev/null; }
 BOTS_JSON=/qqbot-cache/bots.json
 
+# ---------- 降载 / 单实例 ----------
+# 原生层写 $QQBOT_HOME/state/degrade 表示电量或温度降载；start-sandbox.sh 把那个
+# 目录绑到 /qqbot-state，所以沙盒里直接读得到。降载时这里只停「非关键」的活：
+# 日志轮转（trim_logs）—— 它只是省磁盘，攒着不致命；两个服务照常守护。
+# 没有加「降载就不重启服务」这类逻辑：那是把降载做成了故障，服务该活着就得活着。
+degraded() { [ -f /qqbot-state/degrade ]; }
+
+# 单实例保护：原生 NetworkWatch 在网络恢复后会直接调本脚本（协议第 3 节），
+# 而 start-sandbox.sh 同一时间可能刚拉过一个；两个 supervisor 同时跑会各自去抢
+# 6099/6199，还会互相覆盖心跳文件。pid 记在 /qqbot-cache/run/ 下 ——
+# stop-sandbox.sh 与 run-napcat.sh 停止时都会清掉该目录里的 *.pid，
+# 所以「停止 = 允许重新拉起」不用额外处理。
+RUNPID=/qqbot-cache/run/run-all.pid
+if [ -f "$RUNPID" ]; then
+  _op=$(cat "$RUNPID" 2>/dev/null)
+  case "$_op" in
+    ''|*[!0-9]*) : ;;
+    *)
+      if [ -d "/proc/$_op" ]; then
+        { _oc=$(<"/proc/$_op/cmdline"); } 2>/dev/null
+        case "$_oc" in
+          *run-all.sh*) echo "[supervisor] 已有守护在跑（pid $_op），本次退出"; exit 0 ;;
+        esac
+      fi ;;
+  esac
+fi
+echo $$ > "$RUNPID"
+
 # ---------- 端口探测 ----------
 # bash 的 /dev/tcp 在没编译 net 重定向时会报 "No such file or directory"；
 # 端口没人监听时报的是 "Connection refused"（说明探测可用）。靠错误文本区分。
@@ -124,6 +152,8 @@ cleanup() {
   for p in "$NP" "$AB"; do [ -n "$p" ] && kill -TERM -"$p" 2>/dev/null; done
   sleep 1
   for p in "$NP" "$AB"; do [ -n "$p" ] && kill -KILL -"$p" 2>/dev/null; done
+  # 退出时把单实例的 pid 也删掉，否则下一次启动会误判「已有守护在跑」直接退出。
+  rm -f "$RUNPID" 2>/dev/null
   exit 0
 }
 trap cleanup TERM INT
@@ -131,7 +161,7 @@ trap cleanup TERM INT
 echo "[supervisor] 开始守护（TZ=${TZ:-未设置}，当前时间 $(date '+%F %T %Z')）"
 beat
 trim_logs
-( while true; do sleep 60; trim_logs; done ) &
+( while true; do sleep 60; degraded || trim_logs; done ) &
 
 NP=""
 AB=""

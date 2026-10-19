@@ -88,6 +88,13 @@ if ($LASTEXITCODE -ne 0) { throw "RepackBootstrap failed" }
 # features (timezone sync, watchdog, per-instance supervisor) never reach the user.
 # QqbotActivity.syncScripts() unpacks this asset over $PREFIX whenever the APK lastUpdateTime
 # changes. Keep it small: a zip of build/opt/qqbot + build/etc/profile.d/50-qqbot-sandbox.sh.
+# 2b) stamp the sandbox-side version file. The repo-root VERSION only names the APK; the
+#     scripts read $PREFIX/opt/qqbot/VERSION (crash aggregation, doctor), so it has to ship.
+$VERF = Join-Path $BUILD "opt\qqbot\VERSION"
+$rootVer = (Get-Content (Join-Path $ROOT "VERSION") -Raw).Trim()
+[System.IO.File]::WriteAllText($VERF, $rootVer + "`n")
+Write-Host ("     version file: {0}" -f $rootVer)
+
 Write-Host "[3/5] pack deploy scripts asset"
 $SCRIPTSZIP = Join-Path $OUT "qqbot-scripts.zip"
 Remove-Item -Force $SCRIPTSZIP -ErrorAction SilentlyContinue
@@ -105,6 +112,8 @@ foreach ($f in $sfiles) {
   $zs.Dispose()
 }
 $zout.Dispose()
+# The stamped VERSION file must not linger in build/ (it is generated, not source).
+Remove-Item -Force $VERF -ErrorAction SilentlyContinue
 Write-Host ("     {0} files -> {1} ({2} bytes)" -f $sfiles.Count, $SCRIPTSZIP, (Get-Item $SCRIPTSZIP).Length)
 
 # 4) swap the .so inside the APK and add the scripts asset

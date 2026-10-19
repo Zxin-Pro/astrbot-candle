@@ -79,6 +79,78 @@ New-Item -ItemType Directory -Force -Path "$ROOT\_apkwork\assets\qqbot" | Out-Nu
 Copy-Item "$ROOT\ui\assets\qqbot\index.html" "$ROOT\_apkwork\assets\qqbot\index.html" -Force
 Write-Host 'smali + asset copied'
 
+# 3d) app icon: copy ui\assets\icon\res into _apkwork\res before apktool b.
+#     ASCII only (PowerShell 5.1 reads this file as GBK when it has no BOM).
+#     Idempotent: re-running just overwrites the same files again.
+$iconRoot = "$ROOT\ui\assets\icon\res"
+if ((Test-Path "$ROOT\ui\assets\icon\source.png") -and (Test-Path $iconRoot)) {
+  # the stock drawable/ic_foreground.xml is a vector bubble in the default config;
+  # it wins over drawable-*/ic_foreground.png, so it must go.
+  $fgXml = "$ROOT\_apkwork\res\drawable\ic_foreground.xml"
+  if (Test-Path $fgXml) {
+    Remove-Item $fgXml -Force -ErrorAction SilentlyContinue
+    Write-Host '[icon] OK  removed _apkwork\res\drawable\ic_foreground.xml (vector shadows the png)'
+  } else {
+    Write-Host '[icon] OK  _apkwork\res\drawable\ic_foreground.xml already absent'
+  }
+  $iconFiles = @(Get-ChildItem $iconRoot -Recurse -File)
+  $pngCount = @($iconFiles | Where-Object { $_.Extension -eq '.png' }).Count
+  Write-Host ('[icon] Plan copy ' + $pngCount + ' png + background xml from ui\assets\icon\res to _apkwork\res')
+  foreach ($f in $iconFiles) {
+    $rel = $f.FullName.Substring($iconRoot.Length + 1)
+    $dst = Join-Path "$ROOT\_apkwork\res" $rel
+    $dstDir = Split-Path $dst -Parent
+    if (-not (Test-Path $dstDir)) { New-Item -ItemType Directory -Force -Path $dstDir | Out-Null }
+    Copy-Item $f.FullName $dst -Force
+    Write-Host ('[icon]   OK ' + $rel)
+  }
+  $bgXml = Join-Path $iconRoot 'drawable\ic_launcher_background.xml'
+  if (Test-Path $bgXml) {
+    Copy-Item $bgXml "$ROOT\_apkwork\res\drawable\ic_launcher_background.xml" -Force
+    Write-Host '[icon] OK  _apkwork\res\drawable\ic_launcher_background.xml = #FF1A0A12'
+  }
+  Write-Host ('[icon] done: ' + $pngCount + ' png + 1 background xml')
+} else {
+  Write-Host '[icon] missing ui\assets\icon\res or source.png, skip'
+}
+
+# 3e) widget + quick-settings tile resources and manifest entries (features 12 / 13).
+#     Source of truth: ui\assets\android-res\** and ui\assets\android\widget-manifest.xml.
+#     The manifest snippet lives in a UTF-8 file because PowerShell 5.1 reads a BOM-less
+#     .ps1 as GBK and would corrupt the Chinese label. ASCII only in this file.
+#     Idempotent: the snippet is skipped when the manifest already mentions the receiver.
+$andRes = "$ROOT\ui\assets\android-res"
+if (Test-Path $andRes) {
+  $andFiles = @(Get-ChildItem $andRes -Recurse -File)
+  foreach ($f in $andFiles) {
+    $rel = $f.FullName.Substring($andRes.Length + 1)
+    $dst = Join-Path "$ROOT\_apkwork\res" $rel
+    $dstDir = Split-Path $dst -Parent
+    if (-not (Test-Path $dstDir)) { New-Item -ItemType Directory -Force -Path $dstDir | Out-Null }
+    Copy-Item $f.FullName $dst -Force
+  }
+  Write-Host ('[res] copied ' + $andFiles.Count + ' android res files into _apkwork\res')
+} else {
+  Write-Host '[res] ui\assets\android-res missing, skip'
+}
+$snippet = "$ROOT\ui\assets\android\widget-manifest.xml"
+if ((Test-Path $snippet) -and (Test-Path $mf)) {
+  $mfNow = Get-Content $mf -Raw -Encoding UTF8
+  if ($mfNow -match 'QqbotWidgetProvider') {
+    Write-Host '[res] manifest already has widget receiver, skip'
+  } else {
+    $snip = (Get-Content $snippet -Raw -Encoding UTF8) -replace '(?s)^\s*<!--.*?-->\s*', ''
+    $snip = $snip.TrimEnd() + "`r`n"
+    $idx = $mfNow.LastIndexOf('</application>')
+    if ($idx -lt 0) { Write-Host '[res] </application> not found, manifest not patched'; exit 1 }
+    $mfOut = $mfNow.Substring(0, $idx) + $snip + '    ' + $mfNow.Substring($idx)
+    [System.IO.File]::WriteAllText($mf, $mfOut, (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host '[res] manifest: added widget receiver + tile service'
+  }
+} else {
+  Write-Host '[res] widget-manifest.xml missing, skip'
+}
+
 # 4) apktool b
 New-Item -ItemType Directory -Force -Path "$ROOT\out" | Out-Null
 & "$JDK\java.exe" -jar "$ROOT\_sdk\apktool.jar" b -f -o "$ROOT\out\termux-ui-unsigned.apk" "$ROOT\_apkwork" 2>$null

@@ -11,12 +11,12 @@
 | --- | --- |
 | 应用名 | **AstrBot烛版** |
 | 控制台标题 | **烛之控制台** |
-| 安装包 | `AstrBot-1.1.29.apk`（文件名末尾就是版本号，大小 **25279662** 字节） |
+| 安装包 | `AstrBot-1.1.30.apk`（文件名末尾就是版本号，大小 **25755319** 字节） |
 | 包名 | `com.termux` |
-| 当前版本 | **v1.1.29**（versionCode `10129`） |
-| 安装包 SHA-256 | `e0da800f670719605ff979c429aa7e076293c4610f8465a1d32c516706b81f50` |
+| 当前版本 | **v1.1.30**（versionCode `10130`） |
+| 安装包 SHA-256 | `130e6d94c18ee458370edea6450ade2ac5f939ac23ce493b1119e14f07b99770` |
 | 项目地址 | [github.com/Zxin-Pro/astrbot-candle](https://github.com/Zxin-Pro/astrbot-candle) |
-| 下载安装包 | 官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的 AstrBot 下载页里的 `AstrBot-1.1.29.apk`（**站内直接下载，不用跳 GitHub**），或 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 里的同名文件 |
+| 下载安装包 | 官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的 AstrBot 下载页里的 `AstrBot-1.1.30.apk`（**站内直接下载，不用跳 GitHub**），或 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 里的同名文件 |
 | 官方网站 | [烛心.xyz](https://烛心.xyz) |
 | 官方 QQ 群 | **1127997343** |
 
@@ -30,6 +30,7 @@
 - 在沙盒里自动部署 **Linux QQ 3.2.34-53644** + **NapCat v4.18.38** + **AstrBot v4.28.2**；
 - 三者**出厂即预接线**：NapCat 通过反向 WebSocket 连到 AstrBot 的 aiocqhttp 平台（`ws://127.0.0.1:6199/ws`）；
 - 用户界面是一个**本地 HTML 控制台**（WebView 加载 `file:///android_asset/qqbot/index.html`），有 **主页 / 机器人 / 日志 / 更多** 四个页签，扫码、开关服务、看日志、改端口全在界面里点。
+- 从 **1.1.30** 起：新增 18 项功能（应用图标、重启自启、网络自愈、风控识别、省电引导、降载、紧急下线、常驻通知卡片、桌面小组件、快捷磁贴、今日概览、深色模式、实例卡片、新手引导、备份恢复、存储占用、应用内公告、崩溃看板、匿名统计）
 - 从 **1.1.29** 起：控制台**每次打开都会静默检查更新**（有新版本才弹窗，可在弹窗里选「以后再说」）；
   NapCat 面板与 AstrBot 控制台改由**系统默认浏览器**打开；AstrBot 冷启动的 40–60 秒里界面会显示
   「AstrBot 正在启动」；内置**《隐私政策》**（`更多 → 关于与支持 → 隐私政策`），逐条写清权限用途与数据去向。
@@ -46,7 +47,7 @@
 2. **注入脚本**：Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 是一个 **ELF 头 + 内嵌 ZIP 段** 的混合体（ELF 头 1328 字节，内嵌 ZIP 段 29388903 字节，文件总长 29392992 字节）。我们用一个**自己写的 Java 工具** `RepackBootstrap` 打开这个内嵌 ZIP，把 `build/` 目录下的沙盒脚本（部署流程、启停脚本、守护循环、`profile.d` 钩子）作为新条目塞进去，再按原布局写回。
    - 内嵌 ZIP 段在原始包里是**填满的**，所以要塞进新文件就必须删掉一些用不到的条目（man/info/doc 文档、C 头文件、测试二进制等），这些被删的条目部署流程永远不会执行，安全。
 3. **换回 APK**：用 `ApkReplace` 把重新打包好的 `.so` 换回 APK 的 `lib/arm64-v8a/` 下。
-4. **重新签名**：用 [uber-apk-signer](https://github.com/patrickfav/uber-apk-signer) 重新签名，产出可安装的 `AstrBot-<版本号>.apk`（当前版本即 `AstrBot-1.1.29.apk`）。
+4. **重新签名**：用 [uber-apk-signer](https://github.com/patrickfav/uber-apk-signer) 重新签名，产出可安装的 `AstrBot-<版本号>.apk`（当前版本即 `AstrBot-1.1.30.apk`）。
 5. **原生控制台**：`ui/src/` 下的 Java 源码（`com.termux.qqbot.*`）编译成 dex、转成 smali、和 `ui/assets/qqbot/index.html` 一起由 apktool 打进 APK。
 
 装到手机上以后：
@@ -77,7 +78,7 @@
 1. **先卸载官方 Termux**。
    本应用的包名同样是 `com.termux`，和官方版 / 应用商店版 / F-Droid 版 Termux **不能共存**，不卸载会直接安装失败或互相覆盖。
    > 卸载 Termux 会一并删掉它原有的 `$PREFIX` 数据。如果你在里面有重要东西，先备份。
-2. 到官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的下载页（或 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest)）下载 `AstrBot-1.1.29.apk`（文件名后缀就是版本号），传到手机，点击安装。
+2. 到官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的下载页（或 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest)）下载 `AstrBot-1.1.30.apk`（文件名后缀就是版本号），传到手机，点击安装。
 3. 安装时系统会提示「**未知来源应用**」，需要允许安装。
    - **小米 / Redmi（HyperOS）用户**：如果被拦下、提示「应用缺少隐私政策」且没有「继续安装」，
      这是小米安装器的风险提示，不是包坏了。关掉手机管家的「安装监控 / 安全守护 / 应用防护」、

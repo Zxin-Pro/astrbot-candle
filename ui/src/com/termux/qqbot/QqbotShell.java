@@ -19,8 +19,26 @@ public class QqbotShell {
 
     public static File qqbotDir(File filesDir) { return new File(homeDir(filesDir), ".qqbot"); }
 
+    /** 跨层状态目录：$HOME/.qqbot/state（= 沙盒里的 /qqbot-cache/state）。 */
+    public static File stateDir(File filesDir) { return new File(qqbotDir(filesDir), "state"); }
+
     public static String bashPath(File filesDir) {
         return usrDir(filesDir).getAbsolutePath() + "/bin/bash";
+    }
+
+    /** 探一下本机端口是否可连（只用于状态展示，超时给得很短，不会卡住调用方）。 */
+    public static boolean portOpen(int port, int timeoutMs) {
+        if (port <= 0 || port > 65535) return false;
+        java.net.Socket sock = null;
+        try {
+            sock = new java.net.Socket();
+            sock.connect(new java.net.InetSocketAddress("127.0.0.1", port), Math.max(50, timeoutMs));
+            return true;
+        } catch (Throwable t) {
+            return false;
+        } finally {
+            if (sock != null) { try { sock.close(); } catch (Throwable ignored) {} }
+        }
     }
 
     public static boolean bootstrapReady(File filesDir) {
@@ -139,8 +157,12 @@ public class QqbotShell {
 
     /* ---------- 与应用无关的动作：守护服务与界面都调用这里 ---------- */
 
-    /** 拉起沙盒（NapCat + AstrBot）。已在跑就什么都不做。 */
-    public static boolean startSandbox(File filesDir, StringBuilder note) {
+    /**
+     * 拉起沙盒（NapCat + AstrBot）。已在跑就什么都不做。
+     * v1.1.30 起加 synchronized：网络自愈、通知栏「重启」和守护自检会在三个线程里同时调它，
+     * 「先查 pid 再拉起」不加锁会两边都查到没运行、各拉一份容器（正是要避免的双开）。
+     */
+    public static synchronized boolean startSandbox(File filesDir, StringBuilder note) {
         if (!bootstrapReady(filesDir)) { if (note != null) note.append("Termux 环境未就绪"); return false; }
         File qq = qqbotDir(filesDir);
         File pid = new File(qq, "supervisor.pid");
@@ -156,11 +178,17 @@ public class QqbotShell {
                 + "sleep 3; echo ok", 30);
         boolean ok = pidAlive(pid, "proot");
         if (note != null) note.append(ok ? "已重新拉起沙盒" : "拉起沙盒失败");
+        // 记一笔「上次成功拉起 / 上次失败原因」到 state/boot.json，供 bootInfo() 与排障用。
+        // 只有真正走到拉起这一步才记，前面两个早退（环境未就绪 / 已在运行）不算一次尝试。
+        try {
+            BootState.noteStart(filesDir, ok, ok ? "" : (note == null ? "" : note.toString()));
+        } catch (Throwable ignored) {
+        }
         return ok;
     }
 
-    /** 拉起 Termux 侧的看门狗（它负责沙盒整体被回收后的重启）。 */
-    public static boolean startWatchdog(File filesDir, StringBuilder note) {
+    /** 拉起 Termux 侧的看门狗（它负责沙盒整体被回收后的重启）。同样要防并发重复启动。 */
+    public static synchronized boolean startWatchdog(File filesDir, StringBuilder note) {
         File qq = qqbotDir(filesDir);
         File pid = new File(qq, "watchdog.pid");
         if (pidAlive(pid, "watchdog.sh")) return false;

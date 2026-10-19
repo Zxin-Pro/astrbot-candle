@@ -25,13 +25,26 @@ import java.io.File;
  * 它还持有 PARTIAL_WAKE_LOCK：息屏后 CPU 不再进深度睡眠，NapCat 才能继续
  * 维持 QQ 长连接。可以在「更多 → 后台守护」里关掉这个唤醒。
  *
- * 内部由 QqbotGuardTask 每 60 秒自检一次：沙盒没了就拉起来，看门狗没了就补上。
+ * v1.1.30 起它同时是三个「自救」子系统的宿主：网络切换自愈（NetworkWatch）、
+ * 电量/温度降载（BatteryMon）、风控暂停（RiskReader），并对外提供常驻通知卡片
+ * （重启 / 看日志 / 扫码三个 Action）。这些子系统都跟着服务的 onCreate/onDestroy
+ * 注册与注销，服务没了它们也没有意义。
  * d8 处理匿名内部类会崩，本文件不出现匿名类。
  */
 public class QqbotGuardService extends Service {
 
     public static final String CHANNEL_ID = "qqbot_guard";
     public static final int NOTI_ID = 42310;
+
+    /** 通知栏「重启」：PendingIntent.getService 打回本服务（协议里也写作 com.termux.qqbot.ACTION_RESTART）。 */
+    public static final String ACTION_RESTART = "com.termux.app.GUARD_RESTART";
+    public static final String ACTION_RESTART_LEGACY = "com.termux.qqbot.ACTION_RESTART";
+    public static final String ACTION_WAKE = "com.termux.app.GUARD_WAKE";
+    /** 通知栏「下线」（折叠菜单里的第 4 个）：等价于 emergencyStop，但要自己写 offline 标记。 */
+    public static final String ACTION_STOP = "com.termux.app.GUARD_STOP";
+    /** 桌面小组件「启动/停止」：PendingIntent.getService 打回本服务（协议文档里的旧名字也认）。 */
+    public static final String ACTION_WIDGET_TOGGLE = "com.termux.app.WIDGET_TOGGLE";
+    public static final String ACTION_WIDGET_TOGGLE_LEGACY = "com.termux.qqbot.WIDGET_TOGGLE";
 
     /** 供界面查询：守护是否在跑、最近一次动作。 */
     public static volatile boolean guardRunning = false;
@@ -41,14 +54,21 @@ public class QqbotGuardService extends Service {
     private QqbotGuardTask task;
     private Thread thread;
 
+    /* 通知节流：同一条文案 30 秒内不重复 notify()，换文案立刻发（协议：30 秒或状态变化时更新）。 */
+    private String lastNotiText = "";
+    private long lastNotiMs = 0L;
+
     /* ---------- 静态入口 ---------- */
 
-    public static void start(Context c) {
+    /** 返回是否真的把启动请求发出去了：API 31+ 的后台启动限制会在这里抛异常。 */
+    public static boolean start(Context c) {
         try {
             Intent i = new Intent(c, QqbotGuardService.class);
             if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i);
             else c.startService(i);
-        } catch (Throwable ignored) {
+            return true;
+        } catch (Throwable t) {
+            return false;
         }
     }
 
@@ -71,8 +91,20 @@ public class QqbotGuardService extends Service {
 
     /** 按当前开关状态决定起还是停，启动/保存设置后都调它。 */
     public static void apply(Context c) {
-        if (offFlag(c).isFile()) stop(c);
-        else start(c);
+        applyEx(c);
+    }
+
+    /**
+     * 与 apply 相同，但返回「启动请求是否发出去了」。开机广播用它判断要不要补试一次：
+     * API 31+ 在后台起前台服务会抛 ForegroundServiceStartNotAllowedException，
+     * start() 把异常吞了的话调用方永远不知道失败，补试就永远不会发生。
+     */
+    public static boolean applyEx(Context c) {
+        if (offFlag(c).isFile()) {
+            stop(c);
+            return true; // 用户自己关了守护，不算失败，不必重试
+        }
+        return start(c);
     }
 
     public static boolean enabled(Context c) {
@@ -93,14 +125,92 @@ public class QqbotGuardService extends Service {
     /** 切换「息屏保持运行」：写/删标记文件后带 ACTION 再叫一次服务，就地生效。 */
     public static String setWake(Context c, boolean on) {
         mark(wakeOffFlag(c), !on);
-        Intent i = new Intent(c, QqbotGuardService.class);
-        i.setAction("com.termux.app.GUARD_WAKE");
+        sendAction(c, ACTION_WAKE);
+        return on ? "已开启息屏保持运行" : "已关闭息屏保持运行";
+    }
+
+    /**
+     * 立刻让守护循环跑一次重启（紧急下线后恢复、通知栏「重启」都用它）。
+     * 守护关着时什么都不做——否则用户关掉的守护会被自己偷偷打开。
+     */
+    public static void kick(Context c) {
+        if (!enabled(c)) return;
+        sendAction(c, ACTION_RESTART);
+    }
+
+    private static void sendAction(Context c, String action) {
         try {
+            Intent i = new Intent(c, QqbotGuardService.class);
+            i.setAction(action);
             if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i);
             else c.startService(i);
         } catch (Throwable ignored) {
         }
-        return on ? "已开启息屏保持运行" : "已关闭息屏保持运行";
+    }
+
+    /**
+     * 把面板拉到前台弹「紧急下线」确认（功能 9：通知栏 / 小组件 / 磁贴三处入口都要二次确认）。
+     * 用 ACTION_VIEW + confirm_stop 这个 extra，singleTask 的页面收到 onNewIntent 就会弹框。
+     */
+    public static void askStopConfirm(Context c) {
+        try {
+            Intent i = new Intent(c, QqbotActivity.class);
+            i.setAction(Intent.ACTION_VIEW);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            i.putExtra("confirm_stop", true);
+            c.startActivity(i);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 实例方法版：服务内部调用，省一次 getApplicationContext()。 */
+    private void askStopConfirm() {
+        askStopConfirm(getApplicationContext());
+    }
+
+    /**
+     * 把面板拉到前台处理「启停切换」（小组件 / 磁贴的启动·停止按钮，功能 12 / 13）。
+     * 入口不判状态，页面读一次真实状态再决定弹确认还是直接启动，见 AskToggle。
+     */
+    public static void askToggle(Context c) {
+        try {
+            Intent i = new Intent(c, QqbotActivity.class);
+            i.setAction(Intent.ACTION_VIEW);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            i.putExtra("toggle", true);
+            c.startActivity(i);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 磁贴用：带 toggle=1 的 PendingIntent（startActivityAndCollapse 的 API 34+ 重载）。 */
+    public static PendingIntent togglePi(Context c) {
+        Intent i = new Intent(c, QqbotActivity.class);
+        i.setAction(Intent.ACTION_VIEW);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        i.putExtra("toggle", true);
+        return PendingIntent.getActivity(c, 15, i,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    /**
+     * 弹「紧急下线」确认的 PendingIntent（功能 9，四处入口共用）。
+     * 为什么不用服务里 startActivity：targetSdk 28 在后台起 Activity 会被系统
+     * BAL（Background activity launch blocked）拦掉，logcat 里就是
+     * 「Background activity launch blocked! … targetSdk: 28」。改成通知 Action /
+     * 磁贴 / 小组件直接持有这个 PendingIntent，由系统代发，就不受 BAL 限制。
+     */
+    public static PendingIntent stopConfirmPi(Context c) {
+        Intent i = new Intent(c, QqbotActivity.class);
+        i.setAction(Intent.ACTION_VIEW);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        i.putExtra("confirm_stop", true);
+        return PendingIntent.getActivity(c, 14, i,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
     /** 开关文件就是「存在＝关闭」的标记，创建/删除它即可。 */
@@ -148,6 +258,9 @@ public class QqbotGuardService extends Service {
         } catch (Throwable ignored) {
         }
         acquireWake();
+        // 两个子系统都挂在服务上：服务在它们才有意义，服务一停立刻注销，不留泄漏的监听。
+        try { NetworkWatch.start(this); } catch (Throwable ignored) {}
+        try { BatteryMon.start(this); } catch (Throwable ignored) {}
         task = new QqbotGuardTask(this);
         thread = new Thread(task, "qqbot-guard");
         thread.setDaemon(true);
@@ -155,9 +268,31 @@ public class QqbotGuardService extends Service {
     }
 
     public int onStartCommand(Intent i, int flags, int startId) {
-        // 界面上切换「常驻唤醒」时带着 ACTION 再叫一次服务，就地生效。
-        if (i != null && "com.termux.app.GUARD_WAKE".equals(i.getAction())) {
+        String a = (i == null || i.getAction() == null) ? "" : i.getAction();
+        if (ACTION_WAKE.equals(a)) {
+            // 界面上切换「常驻唤醒」时带着 ACTION 再叫一次服务，就地生效。
             if (wakeEnabled(this)) acquireWake(); else releaseWake();
+        } else if (ACTION_RESTART.equals(a) || ACTION_RESTART_LEGACY.equals(a)) {
+            // 通知栏「重启」：停+起要等 proot 自己退，必须丢后台线程
+            try {
+                Thread th = new Thread(new GuardRestart(this), "qqbot-restart");
+                th.setDaemon(true);
+                th.start();
+            } catch (Throwable ignored) {
+            }
+        } else if (ACTION_STOP.equals(a)) {
+            /* 通知栏「下线」：v1.1.30 功能 9 要求三处入口二次确认，所以这里不再直接停服，
+               改成把面板拉到前台弹「紧急下线」确认；真正的 stop-sandbox.sh 在用户点确认后
+               由页面的 Android.emergencyStop() 执行。 */
+            askStopConfirm();
+        } else if (ACTION_WIDGET_TOGGLE.equals(a) || ACTION_WIDGET_TOGGLE_LEGACY.equals(a)) {
+            /* 老版本小组件/磁贴的 PendingIntent 还会打到这里（新版本一律直接拉起面板并带
+               toggle=1）。服务这边不判状态、也不自己 startActivity —— 服务在后台起
+               Activity 会被 targetSdk 28 的 BAL 拦掉。只把意图转交给页面，由页面读一次
+               真实状态决定「弹下线确认」还是「启动沙盒」。 */
+            askToggle(getApplicationContext());
+            QqbotWidgetProvider.refreshAsync(this);
+            return START_STICKY;
         }
         // 被系统回收后自动重来；就算重来时沙盒好好的，任务循环也只是一直空转。
         return START_STICKY;
@@ -166,7 +301,21 @@ public class QqbotGuardService extends Service {
     public void onDestroy() {
         guardRunning = false;
         if (task != null) task.stop();
+        try { NetworkWatch.stop(); } catch (Throwable ignored) {}
+        try { BatteryMon.stop(this); } catch (Throwable ignored) {}
         releaseWake();
+        // 前台服务停了就必须把常驻卡片收掉，否则通知栏会留一条点不开的僵尸通知。
+        try { stopForeground(true); } catch (Throwable ignored) {}
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) nm.cancel(NOTI_ID);
+        } catch (Throwable ignored) {}
+        // ui.json 里的 serviceAlive 要落成 false，但 onDestroy 在主线程，写盘丢后台线程。
+        try {
+            Thread th = new Thread(new StateFlush(this, UiState.online(), UiState.total(), false), "qqbot-uiflush");
+            th.setDaemon(true);
+            th.start();
+        } catch (Throwable ignored) {}
         super.onDestroy();
     }
 
@@ -195,23 +344,40 @@ public class QqbotGuardService extends Service {
 
     /** 界面上切换「常驻唤醒」后立刻生效，不用等服务重启。 */
     public static void applyWake(Context c) {
+        sendAction(c, ACTION_WAKE);
+    }
+
+    /* ---------- 通知 ---------- */
+
+    /**
+     * 更新常驻通知正文。节流：文案没变且距上次 notify 不到 30 秒就跳过，
+     * 但 lastNote 永远更新（界面读的是 lastNote，不是通知）。
+     */
+    public void setNote(String text) {
+        lastNote = text;
         try {
-            Intent i = new Intent(c, QqbotGuardService.class);
-            i.setAction("com.termux.app.GUARD_WAKE");
-            if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i);
-            else c.startService(i);
+            long now = System.currentTimeMillis();
+            String t = (text == null) ? "" : text;
+            boolean changed = !t.equals(lastNotiText);
+            if (!changed && (now - lastNotiMs) < 30000L) return;
+            lastNotiText = t;
+            lastNotiMs = now;
+            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) nm.notify(NOTI_ID, buildNoti(t));
         } catch (Throwable ignored) {
         }
     }
 
-
-    /* ---------- 通知 ---------- */
-
-    public void setNote(String text) {
-        lastNote = text;
+    /**
+     * 强制刷新一次常驻通知（不受 30 秒节流限制）。
+     * 在线实例数变了的时候要立刻看到，否则标题会滞后整整一个自检周期。
+     */
+    public void refreshNoti() {
         try {
+            lastNotiText = lastNote == null ? "" : lastNote;
+            lastNotiMs = System.currentTimeMillis();
             NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-            if (nm != null) nm.notify(NOTI_ID, buildNoti(text));
+            if (nm != null) nm.notify(NOTI_ID, buildNoti(lastNotiText));
         } catch (Throwable ignored) {
         }
     }
@@ -232,22 +398,66 @@ public class QqbotGuardService extends Service {
         }
     }
 
+    /**
+     * 常驻卡片：标题带在线实例数（state/ui.json 的 online，读不到用「?」），
+     * 正文是当前自检结论，右侧三个 Action：重启 / 看日志 / 扫码。
+     * 全部用平台 API（Notification.Builder.addAction），minSdk 24 可用，不引入 androidx。
+     */
     public Notification buildNoti(String text) {
         ensureChannel();
-        Intent i = new Intent(this, QqbotActivity.class);
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        PendingIntent pi = PendingIntent.getActivity(this, 0, i, PendingIntent.FLAG_IMMUTABLE);
+        Intent main = new Intent(this, QqbotActivity.class);
+        main.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent pi = PendingIntent.getActivity(this, 0, main, PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder b;
         if (Build.VERSION.SDK_INT >= 26) b = new Notification.Builder(this, CHANNEL_ID);
         else b = new Notification.Builder(this);
-        b.setContentTitle("AstrBot烛版正在后台守护");
-        b.setContentText(text == null || text.length() == 0 ? "沙盒运行中" : text);
+        int online = UiState.online();
+        String n = (online < 0) ? "?" : String.valueOf(online);
+        b.setContentTitle("烛之控制台 · " + n + " 个实例在线");
+        b.setContentText(text == null || text.length() == 0 ? "NapCat ✓ AstrBot ✓" : text);
         b.setOngoing(true);
         b.setOnlyAlertOnce(true);
         b.setShowWhen(false);
         b.setContentIntent(pi);
+        int icon;
         try {
-            b.setSmallIcon(getApplicationInfo().icon);
+            icon = getApplicationInfo().icon;
+        } catch (Throwable t) {
+            icon = android.R.drawable.stat_notify_sync;
+        }
+        try {
+            b.setSmallIcon(icon);
+        } catch (Throwable ignored) {
+        }
+        // Action 1 重启：打回本服务（服务已在跑，startService 一定成功）
+        try {
+            Intent r = new Intent(this, QqbotGuardService.class);
+            r.setAction(ACTION_RESTART);
+            PendingIntent pr = PendingIntent.getService(this, 11, r, PendingIntent.FLAG_IMMUTABLE);
+            b.addAction(icon, "重启", pr);
+        } catch (Throwable ignored) {
+        }
+        // Action 2 看日志 / Action 3 扫码：带 tab extra 唤起 Activity（singleTask，会走 onNewIntent）
+        try {
+            Intent l = new Intent(this, QqbotActivity.class);
+            l.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            l.putExtra("tab", "logs");
+            PendingIntent pl = PendingIntent.getActivity(this, 12, l, PendingIntent.FLAG_IMMUTABLE);
+            b.addAction(icon, "看日志", pl);
+        } catch (Throwable ignored) {
+        }
+        try {
+            Intent s = new Intent(this, QqbotActivity.class);
+            s.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            s.putExtra("tab", "bot");
+            PendingIntent ps = PendingIntent.getActivity(this, 13, s, PendingIntent.FLAG_IMMUTABLE);
+            b.addAction(icon, "扫码", ps);
+        } catch (Throwable ignored) {
+        }
+        // Action 4「下线」：Android 7+ 会把第 4 个收进折叠区，正好适合低频且危险的操作。
+        // 直接指向「确认下线」的 Activity PendingIntent——不经过服务中转，绕开 BAL 拦截。
+        try {
+            b.addAction(icon, "下线", stopConfirmPi(this));
         } catch (Throwable ignored) {
         }
         return b.build();

@@ -3,6 +3,11 @@
 
 QQBOT_HOME="$HOME/.qqbot"
 QQBOT_CACHE="$QQBOT_HOME/cache"
+# 原生层（App）和脚本层共享的状态目录：风控命中（risk.json / risk-<id>.flag）、
+# 降载标记（degrade）、紧急下线标记（offline）都在这里，协议见
+# docs/接口约定-1.1.30.md 第 2 / 4 节。start-sandbox.sh 用
+# -b "$QQBOT_STATE:/qqbot-state" 把它绑进沙盒，所以沙盒里同一批文件叫 /qqbot-state/*。
+QQBOT_STATE="$QQBOT_HOME/state"
 QQBOT_LOGS="$QQBOT_HOME/logs"
 QQBOT_STEPS="$QQBOT_HOME/steps"
 QQBOT_OPT="$PREFIX/opt/qqbot"
@@ -29,7 +34,7 @@ QQBOT_TUNA="https://mirrors.tuna.tsinghua.edu.cn"
 QQBOT_PYPI="$QQBOT_TUNA/pypi/simple"
 QQBOT_GH_MIRRORS="https://ghfast.top/ https://gh-proxy.com/ https://ghproxy.net/ https://github.moeyy.xyz/ https://gh.llkk.cc/ https://ghproxy.cc/ https://gh.xxooo.cf/ https://gh-proxy.net/ https://hub.gitmirror.com/"
 
-mkdir -p "$QQBOT_HOME" "$QQBOT_CACHE" "$QQBOT_LOGS" "$QQBOT_STEPS" "$QQBOT_PTMP" "$QQBOT_DEVDIR/shm" 2>/dev/null
+mkdir -p "$QQBOT_HOME" "$QQBOT_CACHE" "$QQBOT_STATE" "$QQBOT_LOGS" "$QQBOT_STEPS" "$QQBOT_PTMP" "$QQBOT_DEVDIR/shm" 2>/dev/null
 chmod 1777 "$QQBOT_DEVDIR/shm" 2>/dev/null
 
 qqlog()  { printf '\033[36m[QQBot]\033[0m %s\n' "$*"; }
@@ -711,4 +716,433 @@ qq_sandbox() {
   # 否则沙盒里跑的是无参版本，脚本只会打印用法然后什么都不做。
   local s="$1"; shift
   qq_proot "bash /qqbot-opt/sandbox/$s $*"
+}
+
+# ---------------------------------------------------------------------------
+# 端口探测 / 网络自愈（协议：docs/接口约定-1.1.30.md 第 3 节）
+# ---------------------------------------------------------------------------
+
+# 本机端口是否可连。Termux 的 bash 一般带 /dev/tcp；万一这台设备的 bash 没编译
+# 网络重定向，就退到 nc；两个都没有时返回 0（当作「通」）—— 探测能力缺失不能
+# 变成「永远等不到端口」，那会把 AstrBot 挡在门外。
+_QQ_PORT_PROBE=""
+qq_port_open() {
+  local p="${1:-}"
+  case "$p" in ''|*[!0-9]*) return 1 ;; esac
+  if [ -z "$_QQ_PORT_PROBE" ]; then
+    _e=$( ( exec 3<>"/dev/tcp/127.0.0.1/1" ) 2>&1 )
+    case "$_e" in
+      *"No such file"*|*"not supported"*) _QQ_PORT_PROBE=0 ;;
+      *) _QQ_PORT_PROBE=1 ;;
+    esac
+  fi
+  if [ "$_QQ_PORT_PROBE" = 1 ]; then
+    ( exec 3<>"/dev/tcp/127.0.0.1/$p" ) >/dev/null 2>&1 && return 0
+    return 1
+  fi
+  if command -v nc >/dev/null 2>&1; then
+    nc -z -w 2 127.0.0.1 "$p" >/dev/null 2>&1 && return 0
+    return 1
+  fi
+  return 0
+}
+
+# bots.json 里所有实例的 NapCat WebUI 端口（可能多个，一行一个）。
+# 一个都读不到就退回 qq_napcat_port（当前实例的端口，最后兜底 6099）。
+qq_napcat_ports() {
+  local ps
+  ps=$(grep -o '"napcatPort"[[:space:]]*:[[:space:]]*[0-9]\+' "$(qq_bots_json)" 2>/dev/null | grep -o '[0-9]\+$' | sort -u)
+  [ -n "$ps" ] || ps=$(qq_napcat_port 2>/dev/null)
+  printf '%s\n' "$ps"
+}
+
+# 网络恢复后先等 NapCat 的 WebUI 端口可连，再交给调用方去启 AstrBot。
+#   用法: qq_net_wait_napcat [最多等几秒，默认 60]
+#   返回: 0 = 至少一个 NapCat 端口可连；1 = 超时
+# 原生 NetworkWatch 只在「无网→有网」或默认网络切换时触发（30 秒 debounce），
+# 顺序固定是「先等 NapCat，再启 AstrBot」，本函数就是那个「等」。
+# 幂等：只做只读探测，不启动、不杀死任何进程，重复调用只是再等一轮。
+qq_net_wait_napcat() {
+  local wait="${1:-60}" spent=0 p
+  case "$wait" in ''|*[!0-9]*) wait=60 ;; esac
+  while [ "$spent" -lt "$wait" ]; do
+    for p in $(qq_napcat_ports 2>/dev/null); do
+      if qq_port_open "$p"; then return 0; fi
+    done
+    sleep 2 2>/dev/null || sleep 1
+    spent=$((spent + 2))
+  done
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# 电量 / 温度降载（协议：docs/接口约定-1.1.30.md 第 6 节）
+# 读的方向：原生层写 $QQBOT_STATE/degrade（内容一般是 battery / thermal），
+# 存在即降载。脚本层只做「少干活」的反应，绝不改写这个文件。
+# ---------------------------------------------------------------------------
+
+# 是否正在降载。返回 0 = 降载中。
+qq_degrade_state() {
+  [ -f "$QQBOT_STATE/degrade" ]
+}
+
+# 降载原因（battery / thermal / 空），只取第一行，供日志用。
+qq_degrade_reason() {
+  head -n 1 "$QQBOT_STATE/degrade" 2>/dev/null | tr -d '\r\n'
+}
+
+# ---------------------------------------------------------------------------
+# 风控 / 验证识别（协议：docs/接口约定-1.1.30.md 第 2 节）
+#
+# 分工：这里是「宿主侧」实现，由 watchdog.sh 每轮调用一遍。沙盒内的 run-napcat.sh
+# 没法 source 本文件（这是 Termux 路径下的脚本，沙盒里看不到），另有一份精简实现；
+# 两边读写的是同一批文件（$QQBOT_HOME/state 与沙盒内的 /qqbot-state 是同一个目录），
+# 偏移文件只允许往前推进，所以双写既不会漏报，也不会把旧事件当成新事件再报一遍。
+# ---------------------------------------------------------------------------
+
+# 实例 id 转成安全的文件名片段（id 来自 bots.json，可能有奇怪字符）
+qq_risk_id() { printf '%s' "${1:-}" | tr -c 'A-Za-z0-9._-' '_'; }
+
+# 确保状态目录与可变词表存在。出厂词表在 $QQBOT_OPT/sandbox/risk-words.txt，
+# 第一次复制到 $QQBOT_HOME/state/risk-words.txt；之后改 state 里那份即可热生效。
+# 返回 0 = 词表可用。
+qq_risk_init() {
+  local src="$QQBOT_OPT/sandbox/risk-words.txt" dst="$QQBOT_STATE/risk-words.txt"
+  mkdir -p "$QQBOT_STATE" 2>/dev/null
+  if [ ! -s "$dst" ] && [ -s "$src" ]; then
+    cp -f "$src" "$dst" 2>/dev/null
+  fi
+  [ -s "$dst" ]
+}
+
+# JSON 字符串转义（去掉控制字符、转义反斜杠与双引号）。
+# 风控 `line` 字段可能带 QQ 输出里的任意字节，不转义会让原生层解析失败。
+qq_risk_esc() {
+  printf '%s' "${1:-}" | tr -d '\000-\037' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+}
+
+# 通知通道：原生层读 risk.json 后自己会发通知，这里只是「能补就补」。
+# 优先用 $QQBOT_STATE/notify（可执行脚本，自定义通道），其次 termux-api 的
+# termux-notification；两个都没有就只写状态文件，什么都不做。
+qq_risk_notify() {
+  local msg="${1:-}"
+  if [ -x "$QQBOT_STATE/notify" ]; then
+    "$QQBOT_STATE/notify" "$msg" >/dev/null 2>&1 || true
+    return 0
+  fi
+  command -v termux-notification >/dev/null 2>&1 || return 0
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 5 termux-notification -t "QQBot 风控" -c "$msg" >/dev/null 2>&1 || true
+  else
+    termux-notification -t "QQBot 风控" -c "$msg" >/dev/null 2>&1 || true
+  fi
+  return 0
+}
+
+# 写风控状态（字段严格照协议第 2 节：ok/risk/instance/word/line/since/file）。
+# file 用沙盒内路径（/qqbot-cache/logs/...），和原生层看到的一致。
+qq_risk_write() {
+  local id="$1" word="$2" line="$3" file="$4" now tmp
+  case "$file" in
+    "$QQBOT_CACHE"/*) file="/qqbot-cache/${file#"$QQBOT_CACHE"/}" ;;
+  esac
+  now=$(date +%s)
+  tmp="$QQBOT_STATE/risk.json.$$"
+  printf '{"ok":true,"risk":true,"instance":"%s","word":"%s","line":"%s","since":%s,"file":"%s"}\n' \
+    "$(qq_risk_esc "$id")" "$(qq_risk_esc "$word")" "$(qq_risk_esc "${line:0:200}")" \
+    "$now" "$(qq_risk_esc "$file")" > "$tmp" 2>/dev/null && mv -f "$tmp" "$QQBOT_STATE/risk.json" 2>/dev/null
+  rm -f "$tmp" 2>/dev/null
+  return 0
+}
+
+# 扫一个实例日志的「新增部分」，命中风控词就写 risk.json + 打暂停标记。
+#   用法: qq_risk_scan <logfile> <instance>
+#   返回: 0 = 该实例当前处于风控暂停态（本轮命中，或之前已经命中过）；1 = 正常
+# 只扫新增字节（偏移记在 risk-<id>.off），所以每 15 秒调一次也不费电；
+# 同一实例 60 秒内只写一次 risk.json（debounce 记在 risk-<id>.last）。
+qq_risk_scan() {
+  local logf="${1:-}" raw="${2:-}" id words flag off_f last_f word_f
+  local sz off cur word line2 _l2
+  [ -n "$logf" ] && [ -n "$raw" ] && [ -f "$logf" ] || return 1
+  id="$(qq_risk_id "$raw")"
+  qq_risk_init || return 1
+  words="$QQBOT_STATE/risk-words.txt"
+  flag="$QQBOT_STATE/risk-$id.flag"
+  off_f="$QQBOT_STATE/risk-$id.off"
+  last_f="$QQBOT_STATE/risk-$id.last"
+  word_f="$QQBOT_STATE/risk-$id.word"
+
+  sz=$(wc -c < "$logf" 2>/dev/null)
+  case "$sz" in ''|*[!0-9]*) return 1 ;; esac
+  off=$(cat "$off_f" 2>/dev/null)
+  case "$off" in ''|*[!0-9]*) off=0 ;; esac
+  if [ "$sz" -lt "$off" ]; then
+    # 日志被原地截断（run-all.sh 的 trim_logs）或换了个文件：从当前位置接着扫，
+    # 不回头重扫 —— 截断后留在文件里的那 2MB 是已经看过的旧内容，重扫只会把
+    # 很久以前的风控词当成刚发生的事再报一遍。
+    echo "$sz" > "$off_f" 2>/dev/null
+  fi
+  if [ "$sz" -le "$off" ]; then
+    [ -f "$flag" ] && return 0
+    return 1
+  fi
+
+  # 只取新增部分：tail -c +N 是「从第 N 字节开始」，所以偏移要 +1。
+  # 词表里的 # 注释行不是关键词，先滤掉（grep -f 会把注释也当模式）。
+  word=$(tail -c "+$((off + 1))" "$logf" 2>/dev/null \
+    | grep -a -o -i -F -m 1 -f <(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$words" 2>/dev/null | tr -d '\r') 2>/dev/null \
+    | head -n 1)
+
+  # 偏移先推进：这一段无论有没有命中，都已经看过了。只前进不后退（沙盒里那份
+  # 实现也写同一个文件，两边并发时靠这条「取大」规则避免把偏移改回去）。
+  cur=$(cat "$off_f" 2>/dev/null)
+  case "$cur" in ''|*[!0-9]*) cur=0 ;; esac
+  [ "$sz" -gt "$cur" ] && echo "$sz" > "$off_f" 2>/dev/null
+
+  if [ -z "$word" ]; then
+    [ -f "$flag" ] && return 0
+    return 1
+  fi
+
+  # 命中了：标记一定补上（幂等），risk.json 按 debounce 写。
+  : > "$flag" 2>/dev/null
+  printf '%s\n' "$word" > "$word_f" 2>/dev/null
+  cur=$(cat "$last_f" 2>/dev/null)
+  case "$cur" in ''|*[!0-9]*) cur=0 ;; esac
+  if [ "$cur" -gt 0 ] && [ $(( $(date +%s) - cur )) -lt 60 ]; then
+    return 0
+  fi
+  line2=$(tail -c "+$((off + 1))" "$logf" 2>/dev/null \
+    | grep -a -i -F -m 1 -e "$word" 2>/dev/null | head -n 1)
+  [ -n "$line2" ] || line2="$word"
+  # 长行截断后再清一次非法 UTF-8：截断可能正好切在一个汉字的三个字节中间，
+  # 那会让原生层的 JSON 解析直接抛异常。
+  line2=$(printf '%s' "$line2" | tr -d '\000-\037' | cut -c1-600 2>/dev/null)
+  if command -v iconv >/dev/null 2>&1; then
+    _l2="$(printf '%s' "$line2" | iconv -f UTF-8 -t UTF-8 -c 2>/dev/null)"
+    [ -n "$_l2" ] && line2="$_l2"
+  fi
+  qq_risk_write "$raw" "$word" "$line2" "$logf"
+  date +%s > "$last_f" 2>/dev/null
+  qq_risk_notify "实例 $raw 可能需要验证，已暂停自动重启（命中「$word」）"
+  qqlog "[risk] 实例 $raw 命中风控词「$word」，已暂停自动重启"
+  return 0
+}
+
+# 扫 bots.json 里所有实例的日志。返回 0 = 至少有一个实例处于风控暂停态。
+# 实例 id 同时从沙盒用的 $QQBOT_CACHE/bots.json 和界面写的 $QQBOT_HOME/bots.json
+# 取并集：这两份在过渡期可能不一致，漏掉任何一个实例就等于漏掉一次风控告警。
+qq_risk_scan_all() {
+  local ids id n=0
+  ids=$(
+    for _bf in "$QQBOT_CACHE/bots.json" "$QQBOT_HOME/bots.json"; do
+      [ -s "$_bf" ] || continue
+      grep -o '"id"[[:space:]]*:[[:space:]]*"[^"]*"' "$_bf" 2>/dev/null \
+        | sed -n 's/.*"\([^"]*\)"$/\1/p'
+    done | sort -u
+  )
+  [ -n "$ids" ] || return 1
+  for id in $ids; do
+    [ -n "$id" ] || continue
+    qq_risk_scan "$QQBOT_CACHE/logs/qq-$id.log" "$id" && n=$((n + 1))
+  done
+  [ "$n" -gt 0 ]
+}
+
+# 该实例是否被风控暂停（原生层 riskClear() 删掉 flag 就恢复）。
+qq_risk_blocked() {
+  local id
+  id="$(qq_risk_id "${1:-}")"
+  [ -n "${1:-}" ] && [ -f "$QQBOT_STATE/risk-$id.flag" ]
+}
+
+# 当前所有被风控暂停的实例 id（一行一个），给 watchdog.sh 打日志用。
+qq_risk_blocked_list() {
+  local f id
+  for f in "$QQBOT_STATE"/risk-*.flag; do
+    [ -f "$f" ] || continue
+    id=${f##*/}; id=${id#risk-}; id=${id%.flag}
+    printf '%s\n' "$id"
+  done
+}
+
+# 解除风控暂停：删 risk.json 与所有 risk-*.flag（原生层 riskClear() 也走同一批文件）。
+# 偏移文件不删而是重置到「当前日志末尾」：删成 0 会让下一次扫描把整份旧日志重扫一遍，
+# 几十秒前刚被解除的那条命中会立刻又报一次，等于永远清不掉。
+qq_risk_clear() {
+  local f id logf
+  rm -f "$QQBOT_STATE/risk.json" 2>/dev/null
+  for f in "$QQBOT_STATE"/risk-*.off; do
+    [ -f "$f" ] || continue
+    id=${f##*/}; id=${id#risk-}; id=${id%.off}
+    logf="$QQBOT_CACHE/logs/qq-$id.log"
+    if [ -f "$logf" ]; then
+      wc -c < "$logf" 2>/dev/null | tr -d ' ' > "$f" 2>/dev/null
+    else
+      rm -f "$f" 2>/dev/null
+    fi
+  done
+  rm -f "$QQBOT_STATE"/risk-*.flag "$QQBOT_STATE"/risk-*.last "$QQBOT_STATE"/risk-*.word 2>/dev/null
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# 存储统计 / 备份 / 崩溃聚合的公用小工具（功能 54 / 50 / 58，协议第 7、8、9 节）
+# ---------------------------------------------------------------------------
+
+# JSON 字符串转义（和 qq_risk_esc 同一套规则，只是名字更通用，给新脚本复用）
+qq_json_esc() { qq_risk_esc "${1:-}"; }
+
+# AstrBot 的数据目录（宿主侧路径）。真机上 AstrBot 装在 rootfs 的 /opt/AstrBot，
+# 数据就在 /opt/AstrBot/data（run-astrbot.sh:32 cd /opt/AstrBot，60-astrbot.sh:211
+# mkdir -p /opt/AstrBot/data）；文档和老版本写作 /root/astrbot/data。这里「哪个
+# 存在用哪个」，两个都不存在时返回首选路径，调用方按 0 字节处理，不会因此报错。
+qq_astrbot_data_dir() {
+  local a="$QQBOT_ROOTFS/opt/AstrBot/data" b="$QQBOT_ROOTFS/root/astrbot/data"
+  if [ -d "$b" ] && [ ! -d "$a" ]; then
+    printf '%s' "$b"
+  else
+    printf '%s' "$a"
+  fi
+}
+
+# 路径字节数合计（文件或目录，可传多个）。GNU du 有 -b 就用 -sb，没有就 -sk×1024。
+# 单个路径失败按 0 计 —— 统计和清理都不能因为某个目录读不了就整体失败。
+qq_du_bytes() {
+  local t n s=0
+  if [ -z "${QQ_DU_B:-}" ]; then
+    if du -sb "$QQBOT_HOME" >/dev/null 2>&1; then QQ_DU_B=1; else QQ_DU_B=0; fi
+  fi
+  for t in "$@"; do
+    [ -e "$t" ] || continue
+    if [ "$QQ_DU_B" = "1" ]; then
+      n=$(du -sb "$t" 2>/dev/null | sed 's/[[:space:]].*//')
+    else
+      n=$(du -sk "$t" 2>/dev/null | sed 's/[[:space:]].*//')
+      case "$n" in ''|*[!0-9]*) n=0 ;; *) n=$((n * 1024)) ;; esac
+    fi
+    case "$n" in ''|*[!0-9]*) n=0 ;; esac
+    s=$((s + n))
+  done
+  printf '%s\n' "$s"
+}
+
+# 从 stdin 读文本算 sha1 前 12 位（功能 58 的崩溃签名）。
+# sha1sum 不在就退到 openssl，再不行用 md5sum —— 签名只要求「同崩溃同签名」，
+# 不要求密码学强度，别为了它引入新依赖。
+qq_sha1_12() {
+  local h=""
+  if command -v sha1sum >/dev/null 2>&1; then
+    h=$(sha1sum 2>/dev/null | sed 's/[[:space:]].*//')
+  elif command -v openssl >/dev/null 2>&1; then
+    h=$(openssl dgst -sha1 2>/dev/null | sed 's/.*=[[:space:]]*//')
+  elif command -v md5sum >/dev/null 2>&1; then
+    h=$(md5sum 2>/dev/null | sed 's/[[:space:]].*//')
+  fi
+  printf '%s' "${h:0:12}"
+}
+
+# 崩溃聚合（功能 58，协议第 9 节）。
+#
+# 输入：crashwatch 写的现场文件，默认 $QQBOT_CACHE/crashes/crash-<tid>-sig<sig>.log
+#       （格式见 sandbox/crashwatch.c:278-365：tag / signal / pc / "--- pc 所在段 ---"
+#       后面跟一行 /proc/self/maps 原始内容）。也兼容老的 $QQBOT_HOME/crash/*.txt。
+# 归并：签名 = sha1(模块名 + 归一化 pc 偏移 + 信号) 前 12 位。地址、时间、pid/tid、
+#       完整路径都不进签名，换设备换安装路径也只是同一类。组件名取 crashwatch 的
+#       tag（run-napcat.sh 传的 QQBOT_CRASH_TAG 是实例 id），没有就写 napcat。
+# 输出：$QQBOT_CACHE/crash-counts.json，按 count 降序取前 50 类；样本每类留 3 条。
+# 顺带打印一行 `[crash-agg] N 类 / M 次`（watchdog.sh 每 30 分钟调一次）。
+qq_crash_agg() {
+  local dir="${QQBOT_CRASH_DIR:-$QQBOT_CACHE/crashes}"
+  local legacy="$QQBOT_HOME/crash"
+  local out="$QQBOT_CACHE/crash-counts.json" tmp="$out.$$"
+  local now ver dev f tag signame pc line lo mod off nstr key mt ns
+  local cnt total=0 ncls=0 sep="" ordered samples sp
+  declare -A K_CNT=() K_FIRST=() K_LAST=() K_SIG=() K_COMP=() K_SIGL=() K_SAMP=() K_NS=()
+
+  mkdir -p "$QQBOT_CACHE" 2>/dev/null
+  now=$(date +%s)
+  ver="?"
+  [ -s "$QQBOT_OPT/VERSION" ] && ver="$(head -n 1 "$QQBOT_OPT/VERSION" 2>/dev/null | tr -d '\r')"
+  [ -n "$ver" ] || ver="?"
+  dev="$(getprop ro.product.model 2>/dev/null | tr -d '\r')"
+  [ -n "$dev" ] || dev="?"
+
+  for f in "$dir"/crash-*.log "$dir"/crash-*.txt "$legacy"/*.log "$legacy"/*.txt; do
+    [ -f "$f" ] || continue
+    tag="$(sed -n 's/^tag[[:space:]]*=[[:space:]]*//p' "$f" 2>/dev/null | head -n 1 | tr -d '\r')"
+    [ -n "$tag" ] || tag="napcat"
+    signame="$(sed -n 's/^signal[[:space:]]*=[[:space:]]*[0-9]*[[:space:]]*(\([A-Za-z0-9_]*\)).*/\1/p' "$f" 2>/dev/null | head -n 1)"
+    [ -n "$signame" ] || signame="SIG?"
+    pc="$(sed -n 's/^pc[[:space:]]*=[[:space:]]*\(0x[0-9a-fA-F][0-9a-fA-F]*\).*/\1/p; s/^rip[[:space:]]*=[[:space:]]*\(0x[0-9a-fA-F][0-9a-fA-F]*\).*/\1/p' "$f" 2>/dev/null | head -n 1)"
+    line="$(grep -a -A1 -F -- '--- pc 所在段 ---' "$f" 2>/dev/null | sed -n '2p')"
+    mod="[anon]"; off=0
+    if [ -n "$line" ]; then
+      # maps 行格式：start-end perms offset dev inode pathname
+      lo="${line%%-*}"; lo="${lo#0x}"
+      mod="$(printf '%s\n' "$line" | sed 's/^[^ ]* *[^ ]* *[^ ]* *[^ ]* *[^ ]* *//')"
+      case "$mod" in *" (deleted)") mod="${mod% (deleted)}" ;; esac
+      mod="$(basename "$mod" 2>/dev/null)"
+      [ -n "$mod" ] || mod="[anon]"
+      if [ -n "$pc" ]; then
+        case "$lo" in
+          ''|*[!0-9a-fA-F]*) off=0 ;;
+          *) off=$(( pc - 0x$lo )) 2>/dev/null || off=0 ;;
+        esac
+        [ "$off" -ge 0 ] 2>/dev/null || off=0
+      fi
+    fi
+    key="$tag|$mod+0x$(printf '%x' "$off")|$signame"
+    K_CNT[$key]=$(( ${K_CNT[$key]:-0} + 1 ))
+    if [ -z "${K_SIG[$key]:-}" ]; then
+      nstr="$mod+0x$(printf '%x' "$off")|$signame"
+      K_SIG[$key]="$(printf '%s' "$nstr" | qq_sha1_12)"
+      K_COMP[$key]="$tag"
+      K_SIGL[$key]="$signame"
+    fi
+    # crashwatch 不写时间戳，用文件 mtime 当 first/last
+    mt="$(stat -c %Y "$f" 2>/dev/null)"
+    case "$mt" in ''|*[!0-9]*) mt="$now" ;; esac
+    if [ -z "${K_FIRST[$key]:-}" ] || [ "$mt" -lt "${K_FIRST[$key]}" ]; then K_FIRST[$key]="$mt"; fi
+    if [ "$mt" -gt "${K_LAST[$key]:-0}" ]; then K_LAST[$key]="$mt"; fi
+    K_NS[$key]=$(( ${K_NS[$key]:-0} + 1 ))
+    ns="${K_NS[$key]}"
+    if [ "$ns" -le 3 ]; then
+      K_SAMP[$key]="${K_SAMP[$key]:-}$f"$'\n'
+    fi
+  done
+
+  for key in "${!K_CNT[@]}"; do
+    total=$((total + ${K_CNT[$key]}))
+  done
+  ordered="$(for key in "${!K_CNT[@]}"; do
+    printf '%s\t%s\n' "${K_CNT[$key]}" "$key"
+  done | sort -rn | head -n 50)"
+
+  {
+    printf '{"ts":%s,"classes":[' "$now"
+    while IFS=$'\t' read -r cnt key; do
+      [ -n "${key:-}" ] || continue
+      [ -n "${K_SIG[$key]:-}" ] || continue
+      ncls=$((ncls + 1))
+      samples=""
+      sp=""
+      while IFS= read -r sp; do
+        [ -n "$sp" ] || continue
+        samples="${samples:+$samples,}\"$(qq_json_esc "$sp")\""
+      done <<EOF
+${K_SAMP[$key]:-}
+EOF
+      printf '%s{"sig":"%s","component":"%s","signal":"%s","count":%s,"first":%s,"last":%s,"ver":"%s","device":"%s","samples":[%s]}' \
+        "$sep" "${K_SIG[$key]}" "$(qq_json_esc "${K_COMP[$key]}")" "$(qq_json_esc "${K_SIGL[$key]}")" \
+        "$cnt" "${K_FIRST[$key]}" "${K_LAST[$key]}" "$(qq_json_esc "$ver")" "$(qq_json_esc "$dev")" "$samples"
+      sep=","
+    done <<EOF2
+$ordered
+EOF2
+    printf ']}\n'
+  } > "$tmp" 2>/dev/null && mv -f "$tmp" "$out" 2>/dev/null
+  rm -f "$tmp" 2>/dev/null
+  printf '[crash-agg] %s 类 / %s 次\n' "$ncls" "$total"
+  return 0
 }

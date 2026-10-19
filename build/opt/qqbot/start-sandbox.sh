@@ -40,7 +40,9 @@ if [ -f "$QQBOT_HOME/supervisor.pid" ]; then
   fi
 fi
 
-mkdir -p "$QQBOT_CACHE/logs" "$QQBOT_PTMP" "$QQBOT_DEVDIR/shm"
+# $QQBOT_STATE 必须真实存在：下面要把它绑进沙盒（-b .../state:/qqbot-state），
+# proot 绑定一个不存在的宿主目录会直接失败，整个沙盒就起不来了。
+mkdir -p "$QQBOT_CACHE/logs" "$QQBOT_PTMP" "$QQBOT_DEVDIR/shm" "$QQBOT_STATE"
 chmod 1777 "$QQBOT_DEVDIR/shm" 2>/dev/null
 
 # 同步系统时区（写 rootfs 的 /etc/localtime + /etc/timezone，并回传 TZ 值）
@@ -142,8 +144,15 @@ _px_env=""
 if [ -n "$_px" ]; then
   _px_env="http_proxy=$_px https_proxy=$_px all_proxy=$_px HTTP_PROXY=$_px HTTPS_PROXY=$_px ALL_PROXY=$_px no_proxy=127.0.0.1,localhost,::1 NO_PROXY=127.0.0.1,localhost,::1"
 fi
+# 紧急下线标记：走到这里说明前面所有检查都过了、沙盒确实要起来了，所以现在才算
+# 「启动成功」并解除标记（协议第 4 节，原生 emergencyResume 也看这个文件）。
+# 必须放在 exec 之前 —— exec 之后进程映像就被 proot 替换，再也回不到这一行。
+rm -f "$QQBOT_STATE/offline" 2>/dev/null
+# -b "$QQBOT_STATE:/qqbot-state"：把原生层写的状态目录（风控 risk.json / risk-<id>.flag、
+# 降载 degrade、下线 offline）暴露给沙盒，run-napcat.sh 才能读到风控暂停标记。
+# 没绑上也不会崩：沙盒里的 [ -f /qqbot-state/... ] 判断自然为假，行为退回到「不启用」。
 exec "$QQBOT_PROOT" --kill-on-exit -0 -r "$QQBOT_ROOTFS" $_l2s -b /dev -b "$QQBOT_DEVDIR/shm:/dev/shm" -b /proc -b /sys \
-  -b "$QQBOT_CACHE:/qqbot-cache" -b "$QQBOT_OPT:/qqbot-opt" -w /root \
+  -b "$QQBOT_CACHE:/qqbot-cache" -b "$QQBOT_OPT:/qqbot-opt" -b "$QQBOT_STATE:/qqbot-state" -w /root \
   /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
   QQBOT_ARCH="$QQBOT_ARCH" _PYTHON_HOST_PLATFORM="$QQBOT_GUEST_PLATFORM" \
   TERM=xterm-256color LANG=C.UTF-8 LC_ALL=C.UTF-8 TMPDIR=/tmp TZ="$_tz" $_px_env \

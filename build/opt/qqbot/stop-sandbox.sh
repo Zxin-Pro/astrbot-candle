@@ -21,8 +21,30 @@ PIDF="$QQBOT_HOME/supervisor.pid"
 
 # --sweep-only：只清残留进程，不碰 supervisor.pid 指向的进程。
 # start-sandbox.sh 启动前用它保证没有旧进程占着端口。
+# --no-offline：不要写紧急下线标记。看门狗自己重启沙盒（stop → start，间隔几秒）
+# 时用它 —— 那是脚本内部的重启，不是用户要下线，写标记会让原生层一闪而过地
+# 显示「已停止」，还可能被当成「用户主动停的」而不再自动拉起。
 SWEEP_ONLY=0
-[ "$1" = "--sweep-only" ] && SWEEP_ONLY=1
+NO_OFFLINE=0
+for _a in "$@"; do
+  case "$_a" in
+    --sweep-only) SWEEP_ONLY=1 ;;
+    --no-offline) NO_OFFLINE=1 ;;
+  esac
+done
+
+# 停止标记必须最先落盘，不能等杀完进程再写。
+# 为什么：下面光「等 supervisor 退出 + 扫残留 + 等端口落」就要 4~14 秒，而看门狗
+# 每 15 秒轮一次 —— 它看到 supervisor 没了就会走 restart_sandbox() 把沙盒重新拉
+# 起来（实测 16:23 那次：用户点停止 3 秒后看门狗把沙盒拉起来，停止脚本反而把新
+# 起来的进程当成残留扫掉，最后状态是「界面显示已停止、后台还在跑」）。
+# 把标记写在最前面，看门狗下一轮就先看见开关、不再重启。
+mkdir -p "$QQBOT_CACHE/svc" 2>/dev/null
+if [ "$SWEEP_ONLY" = "0" ] && [ "$NO_OFFLINE" = "0" ]; then
+  : > "$QQBOT_CACHE/svc/watchdog.off" 2>/dev/null
+  mkdir -p "$QQBOT_STATE" 2>/dev/null
+  date +%s > "$QQBOT_STATE/offline" 2>/dev/null
+fi
 
 is_sandbox_proc() {
   case "$1" in
@@ -80,12 +102,22 @@ if [ "$SWEEP_ONLY" = "0" ] && [ -f "$PIDF" ]; then
     echo "[stop] 通知 supervisor 退出（PID $PID）"
     kill -TERM "$PID" 2>/dev/null
     i=0
-    while [ -d "/proc/$PID" ] && [ "$i" -lt 30 ]; do
+    while [ -d "/proc/$PID" ] && [ "$i" -lt 4 ]; do
       sleep 1 2>/dev/null || true
       i=$((i + 1))
+      # 紧急下线要求「10 秒内 6099/6185 不可连」（协议第 4 节）：优雅窗口只给 4 秒。
+      # 之前给 10 秒时实测整条停止要 19 秒才落端口 —— supervisor 的 TERM trap 会等
+      # 子进程收尾才退，而子进程本来就要靠下面的 sweep 收拾，白等没有意义。
+      # 端口一旦全落就立刻往下走（proot 退得比子进程收尾快是常态）。
+      [ "$i" -ge 4 ] && break
+      _any=1
+      for _p in 6099 6185 6199; do
+        qq_port_open "$_p" && { _any=0; break; }
+      done
+      [ "$_any" = "1" ] && break
     done
     if [ -d "/proc/$PID" ]; then
-      echo "[stop] supervisor 没有响应 TERM，强制结束"
+      echo "[stop] supervisor 没有响应 TERM（已等 ${i} 秒），强制结束"
       kill -KILL "$PID" 2>/dev/null
     fi
   fi
@@ -98,12 +130,46 @@ sleep 2 2>/dev/null || true
 N2=$(sweep KILL)
 [ "$N2" -gt 0 ] 2>/dev/null && echo "[stop] 强制清理残留进程 $N2 个"
 
+# 最后再确认一次端口真的落了（协议第 4 节要求 10 秒内 6099/6185 不可连）。
+# 为什么还要这一步：proot 退了、子进程却还挂在 LISTEN 上是见过的故障，
+# 紧接着的 start-sandbox.sh 会绑定失败，现场表现就是「停止以后再也起不来」。
+# 最多再等 10 秒，边等边补扫；仍然落不下去就如实报出来（多半是别的 App 占着）。
+wait_ports_closed() {
+  local deadline open p
+  qq_port_open 1 >/dev/null 2>&1
+  # /dev/tcp 和 nc 都没有时探测恒为「通」，那就别在这儿空转 10 秒、也别误报。
+  [ "${_QQ_PORT_PROBE:-}" = "0" ] && return 0
+  deadline=$(( $(date +%s) + 10 ))
+  while :; do
+    open=""
+    for p in 6099 6185 6199; do
+      qq_port_open "$p" && open="$open $p"
+    done
+    [ -z "$open" ] && return 0
+    [ "$(date +%s)" -ge "$deadline" ] && break
+    sleep 1 2>/dev/null || true
+    sweep KILL >/dev/null 2>&1
+  done
+  echo "[stop] 端口仍未释放：$open"
+  return 1
+}
+wait_ports_closed
+
 if [ "$SWEEP_ONLY" = "0" ]; then
-  # 给看门狗留停止开关：否则刚停掉就会被 watchdog.sh 自动拉起来。
-  # start-sandbox.sh 启动时会删掉这个文件，控制台的「启动」按钮同样走那条路径。
-  mkdir -p "$QQBOT_CACHE/svc" 2>/dev/null
-  : > "$QQBOT_CACHE/svc/watchdog.off" 2>/dev/null
+  # 标记已经在脚本开头写过了（见上面的说明），这里只做收尾。
+  # 但还要再补一刀：等端口的那十来秒里，看门狗有可能已经按上一轮的判断把沙盒
+  # 重新拉起来了（它读开关的时机比我们写标记晚一点点）。收尾前再扫一次、再确认
+  # 一次端口，把这种「刚起来又被漏掉」的进程清掉，保证界面说停了就是真停了。
+  N3=$(sweep KILL)
+  [ "$N3" -gt 0 ] 2>/dev/null && echo "[stop] 收尾清理残留进程 $N3 个"
   rm -f "$PIDF" 2>/dev/null
   rm -f "$QQBOT_CACHE/run"/*.pid 2>/dev/null
-  echo "[stop] 已停止（自动守护已暂停，下次启动会恢复）"
+  if ! wait_ports_closed; then
+    echo "[stop] 警告：端口仍被占用，可能有别的程序的进程占着 6099/6185/6199"
+  fi
+  if [ "$NO_OFFLINE" = "0" ]; then
+    echo "[stop] 已停止（自动守护已暂停，下次启动会恢复）"
+  else
+    echo "[stop] 已停止（看门狗内部重启，不写停止标记）"
+  fi
 fi

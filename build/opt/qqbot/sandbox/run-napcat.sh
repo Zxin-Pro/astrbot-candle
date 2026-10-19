@@ -26,6 +26,9 @@ unset NAPCAT_DISABLE_BYPASS NAPCAT_DISABLE_TIME_SYNC NAPCAT_ENABLE_VERBOSE_LOG
 
 LOGDIR=/qqbot-cache/logs
 RUNDIR=/qqbot-cache/run
+# 原生层（App）与脚本层共享的状态目录，宿主侧是 $HOME/.qqbot/state，
+# start-sandbox.sh 用 -b 绑进来。风控的 risk.json / risk-<id>.flag 就在这里。
+STATE_DIR=/qqbot-state
 INSTBASE=/opt/qqbot-inst
 QQBASE=/opt/QQ
 BOTS_JSON=/qqbot-cache/bots.json
@@ -38,10 +41,90 @@ if [ ! -s "$BOTS_JSON" ]; then
   mv -f "$BOTS_JSON.$$.tmp" "$BOTS_JSON"
 fi
 
-declare -A PIDS QDIR STOP PURGE XPIDS
+declare -A PIDS QDIR STOP PURGE XPIDS RISK_SAID
 CLEANED=0
 
 log() { echo "[napcat] $*"; }
+
+# ---------- 风控识别（沙盒侧，协议：docs/接口约定-1.1.30.md 第 2 节） ----------
+# 沙盒里 source 不到宿主的 common.sh（那是 Termux 路径下的脚本，沙盒看不见），
+# 所以这里有一份精简实现，和宿主侧 watchdog.sh 读写的是同一批文件
+# （/qqbot-state 就是宿主 $QQBOT_HOME/state）。两边共用一个偏移文件、且偏移只
+# 前进不后退（取大），所以双写既不会漏报，也不会把旧事件重报一遍。
+risk_id() { printf '%s' "${1:-}" | tr -c 'A-Za-z0-9._-' '_'; }
+
+# 该实例是否处于风控暂停态（原生 riskClear() 删掉 flag 就恢复）
+risk_blocked() {
+  local i
+  i=$(risk_id "${1:-}")
+  [ -n "${1:-}" ] && [ -f "$STATE_DIR/risk-$i.flag" ]
+}
+
+# 命中的词（给日志文案用；可能为空）
+risk_word() { head -n 1 "$STATE_DIR/risk-$(risk_id "${1:-}").word" 2>/dev/null; }
+
+# 扫日志新增部分，命中就写 risk.json 并打暂停标记。
+#   用法: risk_scan <logfile> <instance>
+#   返回: 0 = 处于风控暂停态；1 = 正常
+risk_scan() {
+  local f="${1:-}" raw="${2:-}" id sz off cur w line2 tmp _l2
+  [ -n "$raw" ] && [ -f "$f" ] || return 1
+  id=$(risk_id "$raw")
+  mkdir -p "$STATE_DIR" 2>/dev/null
+  # 词表：宿主侧 qq_risk_init 会放一份；沙盒先起来时这里自己补一次。
+  # 之后直接改 /qqbot-state/risk-words.txt 即可热生效。
+  if [ ! -s "$STATE_DIR/risk-words.txt" ] && [ -s /qqbot-opt/sandbox/risk-words.txt ]; then
+    cp -f /qqbot-opt/sandbox/risk-words.txt "$STATE_DIR/risk-words.txt" 2>/dev/null
+  fi
+  [ -s "$STATE_DIR/risk-words.txt" ] || return 1
+  sz=$(wc -c < "$f" 2>/dev/null)
+  case "$sz" in ''|*[!0-9]*) return 1 ;; esac
+  off=$(cat "$STATE_DIR/risk-$id.off" 2>/dev/null)
+  case "$off" in ''|*[!0-9]*) off=0 ;; esac
+  if [ "$sz" -lt "$off" ]; then
+    # 日志被 trim_logs 原地截断：从当前位置接着看，不回头重扫 ——
+    # 截断后留下的那 2MB 是已经看过的旧内容，重扫会把很久以前的事当成刚发生。
+    echo "$sz" > "$STATE_DIR/risk-$id.off" 2>/dev/null
+  fi
+  if [ "$sz" -le "$off" ]; then
+    risk_blocked "$raw" && return 0
+    return 1
+  fi
+  # grep 的 -f 会把 # 注释行也当成模式，所以先滤掉注释和空行。
+  w=$(tail -c "+$((off + 1))" "$f" 2>/dev/null \
+      | grep -a -o -i -F -m 1 -f <(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$STATE_DIR/risk-words.txt" 2>/dev/null | tr -d '\r') 2>/dev/null \
+      | head -n 1)
+  # 偏移先推进（只前进不后退）：这一段无论有没有命中都已经看过了。
+  cur=$(cat "$STATE_DIR/risk-$id.off" 2>/dev/null)
+  case "$cur" in ''|*[!0-9]*) cur=0 ;; esac
+  [ "$sz" -gt "$cur" ] && echo "$sz" > "$STATE_DIR/risk-$id.off" 2>/dev/null
+  [ -n "$w" ] || { risk_blocked "$raw" && return 0; return 1; }
+
+  : > "$STATE_DIR/risk-$id.flag" 2>/dev/null
+  printf '%s\n' "$w" > "$STATE_DIR/risk-$id.word" 2>/dev/null
+  # 60 秒内只写一次 risk.json（原生层靠它弹通知）；标记本身每轮都补，幂等。
+  cur=$(cat "$STATE_DIR/risk-$id.last" 2>/dev/null)
+  case "$cur" in ''|*[!0-9]*) cur=0 ;; esac
+  if [ "$cur" -gt 0 ] && [ $(( $(date +%s) - cur )) -lt 60 ]; then
+    return 0
+  fi
+  line2=$(tail -c "+$((off + 1))" "$f" 2>/dev/null | grep -a -i -F -m 1 -e "$w" 2>/dev/null | head -n 1)
+  [ -n "$line2" ] || line2="$w"
+  line2=$(printf '%s' "$line2" | tr -d '\000-\037' | cut -c1-600 2>/dev/null)
+  # 截断可能正好切在一个汉字的三个字节中间，那会让原生层 JSON 解析抛异常。
+  if command -v iconv >/dev/null 2>&1; then
+    _l2=$(printf '%s' "$line2" | iconv -f UTF-8 -t UTF-8 -c 2>/dev/null)
+    [ -n "$_l2" ] && line2="$_l2"
+  fi
+  tmp="$STATE_DIR/risk.json.$$"
+  printf '{"ok":true,"risk":true,"instance":"%s","word":"%s","line":"%s","since":%s,"file":"/qqbot-cache/logs/qq-%s.log"}\n' \
+    "$raw" "$(printf '%s' "$w" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')" \
+    "$(printf '%s' "$line2" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')" \
+    "$(date +%s)" "$raw" > "$tmp" 2>/dev/null && mv -f "$tmp" "$STATE_DIR/risk.json" 2>/dev/null
+  rm -f "$tmp" 2>/dev/null
+  date +%s > "$STATE_DIR/risk-$id.last" 2>/dev/null
+  return 0
+}
 
 # 把当前所有 Xvfb / QQ 进程的显示号打出来。NapCat 起不来时，
 # 「X 到底有没有在跑、QQ 有没有真的活着」比任何参数都重要。
@@ -515,9 +598,15 @@ sweep_orphans() {
 }
 
 purge_inst() {
-  local id="$1"
+  local id="$1" rid
+  rid=$(risk_id "$id")
   log "清理实例 $id 的数据（QQ 副本 / 登录数据 / 日志）"
   rm -rf "$INSTBASE/$id" "/root/qqinst/$id" "$LOGDIR/qq-$id.log" "$RUNDIR/$id.pid"
+  # 实例都删了，它的风控标记/偏移/命中词也一起清掉，否则原生层会一直显示
+  # 「某个已经不存在的实例需要验证」。这里是「用户删实例」才走到的路径，
+  # 和降载无关，降载期间也不会主动触发。
+  rm -f "$STATE_DIR/risk-$rid.flag" "$STATE_DIR/risk-$rid.off" \
+        "$STATE_DIR/risk-$rid.last" "$STATE_DIR/risk-$rid.word" 2>/dev/null
 }
 
 stop_inst() {
@@ -989,9 +1078,21 @@ while true; do
     fi
   done
 
-  # 3) 启用的实例没在跑就启动
+  # 3) 启用的实例没在跑就启动 —— 但风控命中过的实例除外
+  #    先扫一遍该实例日志的新增部分：命中就写 risk.json + 打 risk-<id>.flag。
+  #    flag 在的时候不拉起它：反复重登会把「需要验证」升级成封号，
+  #    解除只能由用户 / 原生层 riskClear()（删掉 flag）来做。
   for e in "${EN_LINES[@]}"; do
     id="${e%%|*}"
+    risk_scan "$LOGDIR/qq-$id.log" "$id"
+    if risk_blocked "$id"; then
+      if [ "${RISK_SAID[$id]:-0}" != "1" ]; then
+        log "[risk] 实例 $id 命中风控词「$(risk_word "$id")」，已暂停自动重启"
+        RISK_SAID[$id]=1
+      fi
+      continue
+    fi
+    unset "RISK_SAID[$id]" 2>/dev/null
     [ -n "${PIDS[$id]:-}" ] && continue
     [ "${PURGE[$id]:-0}" = "1" ] && continue
     start_inst "$e"

@@ -159,10 +159,286 @@ journalctl -u zhuxin-astrbot-dl.service -n 30 --no-pager   # 看这次跑了什�
 
 1. 标题是「**AstrBot烛版**」、副标题「手机上一键跑起 AstrBot + NapCat」；
 2. 有四个子栏：下载 / 这是什么 / 怎么用 / 更新日志（外加原样保留的人格栏，共 5 个）；
-3. 「下载」栏第一张卡的链接指向站内的 `downloads/AstrBot-<版本号>.apk`（当前仓库快照里是 `downloads/AstrBot-1.1.29.apk`），且版本号与线上最新一致；
+3. 「下载」栏第一张卡的链接指向站内的 `downloads/AstrBot-<版本号>.apk`（当前仓库快照里是 `downloads/AstrBot-1.1.30.apk`），且版本号与线上最新一致；
 4. 「下载」栏最后一张「SHA-256 校验值」卡点一下能复制出 64 位十六进制串；
 5. 「更新日志」栏第一张卡是当前最新版，正文是中文、**没有乱码**。
 
 > 踩过的坑：早先建 v1.1.0 release 时，正文里一行中文是在 PowerShell 脚本里内联写的，
 > 而 PS 5.1 按 ANSI 读无 BOM 的 `.ps1`，于是那行存成了 `鐑涚増`（「烛版」被按 GBK 解码的乱码）。
 > 已用 REST API 修好。**以后凡是往线上写中文，都必须先把文本用 UTF-8 落盘、再按 UTF-8 字节提交，不能写进 .ps1 字面量。**
+
+---
+
+## 七、公告与上报服务（qqbot-atom，8800）
+
+上面那些讲的是**下载页**（纯静态，一个 JSON 就是一页）。站上另外还跑着一个很小的服务
+`qqbot-atom`，是给 AstrBot 烛版 App 的 **v1.1.30** 用的：
+
+| 接口 | 用途 |
+| --- | --- |
+| `GET /api/announce?ver=<客户端版本>` | 应用内公告列表（App 启动时拉一次） |
+| `GET /api/app-config.json` | 同一份公告的另一种形状，对应 `docs/接口约定-1.1.30.md` 第 11 节 |
+| `POST /api/crash` | 崩溃聚合上报（同类崩溃在客户端先归并成一条，只报 sig + 次数） |
+| `POST /api/stats` | 匿名日统计（在线秒数、消息数、错误数、事件计数） |
+| `GET /api/atom-health` | 运维用，看收了多少条 |
+
+它**只吐 JSON，站点页面里不塞任何脚本**。监听 `127.0.0.1:8800`，由 nginx 反代到 443 上，
+和已有的 `qqbot-errdump`（8799）是同一个套路：单元文件、`X-QQBot-*` 头挡爬虫、只绑回环。
+
+> **客户端契约以 `docs/接口约定-1.1.30.md` 为准**（那份是给 Java 与控制台看的唯一契约）。
+> 服务端为了兼容，**同时接受**两套字段名：`module` 与 `component`、`onlineSec/msgs/errors`
+> 与 `events` 两种形状都收；`/api/app-config.json` 只是 `/api/announce` 的**扁平别名**，
+> 新代码请用 `GET /api/announce?ver=<版本>`。（详见下面「关于『两种形状』」一节。）
+
+架构上和 errdump 保持一致的几点：
+
+- 纯 **python3 标准库**（`http.server` + `socketserver.ThreadingTCPServer`），没有第三方依赖，
+  服务器上不装 pip 也能跑；
+- 只监听 `127.0.0.1`，外网一律经 nginx；
+- `ProtectSystem=strict` + `ReadWritePaths=/opt/qqbot-atom`，服务只能写自己那个目录。
+
+### 数据落在哪
+
+| 路径 | 是什么 | 谁写 |
+| --- | --- | --- |
+| `/opt/qqbot-atom/server.py` | 服务本体 | `install.sh` 覆盖 |
+| `/opt/qqbot-atom/announce.json` | 公告内容 | **人工维护**，服务只读不写 |
+| `/opt/qqbot-atom/crash.jsonl` | 崩溃聚合，**一类一行**（按 `sig+ver` 合并） | 服务合并重写 |
+| `/opt/qqbot-atom/stats.jsonl` | 日统计，**一台机器一天一行**（按 `id+day+ver` 覆盖） | 服务覆盖重写 |
+| `/etc/systemd/system/qqbot-atom.service` | systemd 单元 | `install.sh` 覆盖 |
+
+`announce.json` 和两个 `.jsonl` 都是**增量数据，`install.sh` 永远不碰**——重装只换代码，
+公告不会被覆盖、统计不会被清空。
+
+两个 `.jsonl` 每条记录都会自动补两列：`received_at`（服务器收到的 epoch 秒）和
+`ip`（访客 IP 的 **sha1 前 12 位**，原始 IP 不落盘）。所以同一台设备多次上报能对上，
+但反查不出是谁。
+
+**这两个文件不是「追加」而是「归并」，行数 = 类别数，不是上报次数**：
+
+| 文件 | 归并键 | 重复上报时 |
+| --- | --- | --- |
+| `crash.jsonl` | `sig` + `ver` | **合并成一行**，`count` 累加，`received_at` 取最近一次，`first` 取最早、`last` 取最晚。同一崩溃不管报多少次都只占一行——看板要的是「这一类崩了几次」，重复行会把统计冲稀 |
+| `stats.jsonl` | `id` + `day` + `ver` | **覆盖当天那条**（后到的整条替换先到的）。否则同一台机器一天报十几次，日活和在线时长会算重 |
+
+所以 `/api/atom-health` 的 `crash` / `stats` 读的是**类别数**：
+`crash` = 一共有多少种崩溃（sig+ver 组合），`stats` = 一共有多少个「设备×天」。
+想看总上报次数就看 `count` 累加值，或者看 journal。
+
+合并是「读-改-写 + `.tmp` 再 `os.replace`」，断电不会留半截文件；写入用一把锁串行化，
+并发请求不会互相覆盖。手改文件时写到一半被读到也不会炸——坏行会被跳过。
+
+### 怎么部署
+
+三个文件在 `vps-deploy/atom/` 下（`server.py` / `qqbot-atom.service` / `install.sh`），
+传上去跑 `install.sh` 即可：
+
+```bash
+# 本机 → 服务器（端口换成你自己的）
+scp -P <端口> -r vps-deploy/atom root@<服务器>:/tmp/qqbot-atom-src
+
+# 服务器上
+bash /tmp/qqbot-atom-src/install.sh
+```
+
+本仓库平时的习惯是用 `out/shh.py` 把本地脚本 base64 之后推到服务器上跑
+（`python out/shh.py <本地.sh>`），效果一样，好处是不依赖 scp。
+
+`install.sh` 是**幂等**的，重跑只会把 `server.py` / unit 覆盖成最新、把 nginx 里那段 location
+整块替换；nginx 配置没变化时它会直接跳过（不备份、不 reload）。开关：
+
+| 参数 | 作用 |
+| --- | --- |
+| `--no-nginx` | 只装服务，nginx 自己改（会把这四段 location 打出来） |
+| `--prefix=PATH` | 改安装目录（默认 `/opt/qqbot-atom`） |
+| `--nginx-conf=PATH` | 改要动的 nginx 配置文件（默认 `/etc/nginx/conf.d/zhuxin-site.conf`） |
+
+它会先 `cp -p` 备份成 `zhuxin-site.conf.bak-atom-<时间戳>` 再改，`nginx -t` 不过就自动还原。
+插入位置靠哨兵注释 `# >>> qqbot-atom begin` / `# <<< qqbot-atom end` 标记，
+重跑时按哨兵整块替换，所以**不会越插越多**。要改这四段，改仓库里的 `install.sh`，别直接改线上。
+
+### 加一条公告
+
+直接编辑 `/opt/qqbot-atom/announce.json`，**不用重启服务**——每次请求都现读这个文件。
+格式：
+
+```json
+{
+  "items": [
+    {
+      "id": "v1130-release",
+      "title": "烛版 1.1.30 已发布",
+      "body": "正文，一两句就够。",
+      "level": "info",
+      "minVer": "1.1.30",
+      "until": ""
+    }
+  ]
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `id` | 唯一标识，客户端拿它去重/记「已读」。建议 `v<版本>-<主题>` |
+| `title` / `body` | 标题与正文，纯文本 |
+| `level` | `info`（普通）或 `warn`（醒目），其它值按 `info` 处理 |
+| `minVer` | 最低客户端版本。留空 = 所有版本都能看到；填 `"1.1.30"` = 只有 ≥1.1.30 的才看得到 |
+| `until` | 到期日 `YYYY-MM-DD`。留空 = 永不过期；填了就是**到那天为止（含当天）** |
+
+一个最省事的流程：
+
+```bash
+cp -p /opt/qqbot-atom/announce.json /opt/qqbot-atom/announce.json.bak
+vi /opt/qqbot-atom/announce.json
+python3 -m json.tool /opt/qqbot-atom/announce.json > /dev/null && echo "JSON OK"
+curl -sS 'http://127.0.0.1:8800/api/announce?ver=1.1.30'
+```
+
+JSON 写坏了不会让服务挂，也不会让客户端拿到空数组：读不出来（语法错、编码错、没有 `items` 数组）
+就**退回代码里内置的那条 1.1.30 公告**，同时往 stderr / journal 记一行
+`announce.json 读取失败，退回内置公告：<原因>`。这是刻意的——公告接口挂了会让 App 每次启动都报错，
+代价比"多看到一条旧公告"大得多。**但还是要改完看一眼 `curl` 的输出**，别只看文件。
+
+因为服务对返回内容做了 `ETag`（内容 sha1）和 `Cache-Control: public, max-age=60`，
+**改完最多 60 秒内客户端就一定能看到新的**；客户端的 `If-None-Match` 命中时服务回 `304`，省流量。
+
+### 怎么清理
+
+```bash
+# 只删某一条公告：编辑 announce.json，把那个对象从数组里去掉
+# 全部停掉公告（客户端拿到空数组）：把 items 改成 []
+echo '{"items": []}' > /opt/qqbot-atom/announce.json
+
+# 清统计（先备份再清）
+cp -p /opt/qqbot-atom/stats.jsonl /root/stats.jsonl.bak-$(date +%F)
+: > /opt/qqbot-atom/stats.jsonl
+
+# 清崩溃
+cp -p /opt/qqbot-atom/crash.jsonl /root/crash.jsonl.bak-$(date +%F)
+: > /opt/qqbot-atom/crash.jsonl
+```
+
+用 `: > 文件` 清空而不是 `rm`——文件的属主和权限保持不变，服务不用重启。
+清完 `curl -sS https://xn--15t839a.xyz/api/atom-health` 的计数会归零。
+
+顺手看一眼日志：
+
+```bash
+journalctl -u qqbot-atom -n 50 --no-pager
+systemctl status qqbot-atom --no-pager
+```
+
+### nginx 加的那四段
+
+`install.sh` 会往 `zhuxin-site.conf` 的 `server{}` 里插这五段（插在「静态资源缓存 7 天」前面），
+写法和上面 `/api/errdump` 那段一模一样，只是端口是 8800、`proxy_pass` 不带尾斜杠
+（要保留原始 URI 里的 `?ver=`）：
+
+```nginx
+location = /api/announce {
+    proxy_pass http://127.0.0.1:8800;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_read_timeout 15s;
+}
+location = /api/crash {
+    client_max_body_size 64k;
+    proxy_pass http://127.0.0.1:8800;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_read_timeout 15s;
+}
+location = /api/stats {
+    client_max_body_size 64k;
+    proxy_pass http://127.0.0.1:8800;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_read_timeout 15s;
+}
+location = /api/atom-health {
+    proxy_pass http://127.0.0.1:8800;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_read_timeout 15s;
+}
+location = /api/app-config.json {
+    proxy_pass http://127.0.0.1:8800;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_read_timeout 15s;
+}
+```
+
+用 `location =`（精确匹配）而不是前缀匹配，是为了不让它们落到站点那个 `location /`
+的 `try_files` 兜底上——否则 `GET /api/crash` 会返回一页 HTML 而不是 JSON。
+
+### 验证
+
+```bash
+curl -sS -i https://xn--15t839a.xyz/api/atom-health
+curl -sS    'https://xn--15t839a.xyz/api/announce?ver=1.1.30'
+curl -sS -X POST -H 'X-Qqbot-Atom: 1' -H 'Content-Type: application/json' \
+  -d '{"id":"test","ver":"1.1.30","sig":"0123456789abcdef","module":"napi2native","signal":11,"count":1,"ts":1792400000}' \
+  https://xn--15t839a.xyz/api/crash
+tail -1 /opt/qqbot-atom/crash.jsonl
+```
+
+两个 `POST` 都要求请求头 `X-Qqbot-Atom: 1`（缺了回 `403`，挡掉随手扫的爬虫，
+和 errdump 的 `X-Qqbot-Report: 1` 一个思路）。body 上限 64KB（nginx 和 Python 两侧都卡，
+超了是 `413`）。按 IP 限流 **60 秒 20 次**，超了回 `429`；限流表在内存里，重启就清空——这个量级不用落盘。
+
+字段校验是白名单：
+
+| 字段 | 规则 |
+| --- | --- |
+| `id` | `^[A-Za-z0-9_-]{1,64}$` |
+| `ver` | `^[0-9A-Za-z._-]{1,32}$` |
+| `sig` | `^[0-9a-fA-F]{8,40}$` |
+| `module` | `^[A-Za-z0-9_.:/-]{1,64}$`（`component` 也收，落盘统一叫 `module`） |
+| `device` | `^[A-Za-z0-9_.-]{0,16}$`，可选 |
+| `signal` | 整数，-128 ~ 255 |
+| `count` | 整数，1 ~ 1000000 |
+| `ts` | 整数，0 ~ 4102444800（2100 年） |
+| `day` | `^\d{4}-\d{2}-\d{2}$` |
+| `onlineSec` | 整数，0 ~ 172800（2 天） |
+| `msgs` / `errors` | 整数，分别 0 ~ 1e8 / 0 ~ 1e6 |
+| `os` / `arch` | `[A-Za-z0-9 ._+-]{0,32}` / `[A-Za-z0-9_.-]{0,16}`，可以不传 |
+| `events` | 对象，可选；事件名 `^[a-z][a-z0-9_]{0,31}$`，值 0 ~ 1e8，最多 32 条 |
+
+任何一条不合规回 `400` + `{"ok":false,"error":"<哪个字段>..."}`，
+不会出现 500 空 body——所有异常都被 `try/except` 兜住并转成 JSON。
+
+### 关于「两种形状」（重要）
+
+仓库里 `docs/接口约定-1.1.30.md` 在 2026-10-19 16:00 先定了一版跨层契约，它和服务端这次的需求书
+在字段名上有出入。**服务端目前两种都收**，谁先落地都不用改对面：
+
+| | 需求书（本服务主形状） | `docs/接口约定-1.1.30.md` |
+| --- | --- | --- |
+| 公告 | `GET /api/announce?ver=1.1.30` → `{"ok":true,"items":[{id,title,body,level,minVer,until}]}` | `GET /api/app-config.json` → `{"ver":1,"minVer":"1.1.0","ann":{id,text,level,until},"flags":{...}}` |
+| 崩溃 | `{"id","ver","sig","module","signal","count","ts"}` | `{"id","ver","sig","component","signal","count","device","first","last"}` |
+| 统计 | `{"id","ver","day","onlineSec","msgs","errors","os","arch"}` | `{"id","ver","day","events":{"open":12,...}}` |
+
+具体怎么兼容的：
+
+- `/api/crash`：`module` 和 `component` 都认，**优先 `module`**，落盘统一叫 `module`；
+  `device` / `first` / `last` 有就原样存，没有不影响；
+  **`ts` 缺省时先用客户端给的 `last`，再没有才用服务器当前时间**
+  （直接用 `now` 会把「上个月崩的那次」算成今天）。
+  最小可用形状就是 `{"id","ver","sig","module","signal","count"}`，五个字段之外全可省。
+- `/api/stats`：`onlineSec` / `msgs` / `errors` 缺省按 `0` 落（不再因为少报一项就整条拒收）；
+  额外接受 `events` 映射，事件名限 `^[a-z][a-z0-9_]{0,31}$`、最多 32 条、每项是整数。
+- `/api/app-config.json` 和 `/api/announce` **读同一份 `announce.json`**，
+  前者只取第一条公告摊平成约定的形状，`until` 会从 `YYYY-MM-DD` 换算成 epoch 秒（空 → `0`）。
+
+**决策（2026-10-19）**：以 `docs/接口约定-1.1.30.md` 为**唯一客户端契约**，
+双形兼容保留不删（两种形状客户端都可能用），但**新代码一律用 `GET /api/announce?ver=`**，
+`/api/app-config.json` 只作为扁平别名存在，不再往它上面加功能。
+
+两边都保留是有意的：这个版本离客户端上传层落地还有距离，
+先用最小代价把路铺通，等 `docs/接口约定-1.1.30.md` 定稿再决定砍掉哪一边。
+
+> 该契约文件第 3 行写着「任何一方想改字段，先改本文件并通知其他层」。
+> 如果最终以契约为准，把 `announce.json` 的心智模型保留、把 `/api/announce` 标成兼容层即可；
+> 反过来以需求书为准，就把 `/api/app-config.json` 当成旧客户端的兼容口。

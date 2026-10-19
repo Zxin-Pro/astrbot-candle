@@ -107,6 +107,10 @@ public class QqbotBridge {
             o.put("guardWake", QqbotGuardService.wakeEnabled(act));
             o.put("guardRunning", QqbotGuardService.guardRunning);
             o.put("guardNote", QqbotGuardService.lastNote == null ? "" : QqbotGuardService.lastNote);
+            // v1.1.30：降载标记（battery / thermal / 空）与紧急下线标记。
+            // 都是内存读 + 一次 stat，不改老字段，只增。
+            o.put("degrade", BatteryMon.degradeLabel());
+            o.put("offline", StateIO.file(act.filesDirPub(), "offline").isFile());
             o.put("appVersion", appVersion());
             // 日志分两处：沙盒内服务写 $HOME/.qqbot/cache/logs（= 沙盒 /qqbot-cache/logs），
             // 宿主侧的部署/守护进程写 $HOME/.qqbot/logs。两处都要列出来。
@@ -802,5 +806,377 @@ public class QqbotBridge {
         File f = new File(act.qqbotDir(), "doctor.txt");
         if (!f.exists()) return "";
         return act.tail(f, 200);
+    }
+
+    /* ================= v1.1.30 第一批：自愈 / 风控 / 省电 / 降载 / 下线 ================= */
+    /* 这一批的方法全部返回 JSON（成功 {"ok":true,...}，失败 {"ok":false,"err":"中文原因"}），
+       并且全部只读内存或几百字节的小文件，毫秒级返回；要起进程/写脚本的一律丢后台线程。 */
+
+    /** 失败 JSON：和 errJson 一样做转义，但字段按 v1.1.30 的约定用 ok/err。
+     *  改成包内可见：BackupFlow / CrashBoard / StatsId 也要拼同一种失败 JSON，
+     *  复制一份转义逻辑迟早会漏掉某个控制字符。 */
+    static String failJson(String m) {
+        String s = (m == null) ? "" : m;
+        StringBuilder b = new StringBuilder("{\"ok\":false,\"err\":\"");
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '"' || c == '\\') b.append('\\').append(c);
+            else if (c == '\n') b.append("\\n");
+            else if (c == '\r') b.append("\\r");
+            else if (c == '\t') b.append("\\t");
+            else if (c < 0x20) b.append(' ');
+            else b.append(c);
+        }
+        return b.append("\"}").toString();
+    }
+
+    /** 网络状态：纯内存快照，由 NetworkWatch 的系统回调维护。 */
+    @JavascriptInterface
+    public String netInfo() {
+        return NetworkWatch.infoJson();
+    }
+
+    /** 开机/启动记录：$HOME/.qqbot/state/boot.json。 */
+    @JavascriptInterface
+    public String bootInfo() {
+        return BootState.bootInfo(act.filesDirPub());
+    }
+
+    /** 风控：沙盒层写的 state/risk.json 原样带回，没有就 {"ok":true,"risk":false}。 */
+    @JavascriptInterface
+    public String riskInfo() {
+        return RiskReader.riskInfo(act.filesDirPub());
+    }
+
+    /** 「我知道了」：删 risk.json 与所有 risk-*.flag，撤销通知，恢复自动重启。 */
+    @JavascriptInterface
+    public String riskClear() {
+        String r = RiskReader.clear(act, act.filesDirPub());
+        // 风控暂停期间沙盒可能已经被停掉；用户清完标记就立刻补一轮，不用等 60 秒自检
+        try {
+            if (!act.pidAlive(new File(act.qqbotDir(), "supervisor.pid"))) QqbotGuardService.kick(act);
+        } catch (Throwable ignored) {
+        }
+        return r;
+    }
+
+    /** 厂商省电引导状态（manufacturer / hint / shown），前端据此决定要不要自动提示。 */
+    @JavascriptInterface
+    public String powerState() {
+        return PowerGuide.powerState(act.filesDirPub(), appVersion());
+    }
+
+    /** 用户点了「去设置」：按厂商逐个试跳转，全失败退应用详情页。 */
+    @JavascriptInterface
+    public String powerGuide() {
+        return PowerGuide.powerGuide(act, appVersion());
+    }
+
+    /** 前端弹过提示（用户关掉横幅）也记一笔，避免同一版本反复打扰。 */
+    @JavascriptInterface
+    public String powerAck() {
+        return PowerGuide.ack(act.filesDirPub(), appVersion());
+    }
+
+    /** 电量/温度/降载状态（BatteryMon 的内存快照）。 */
+    @JavascriptInterface
+    public String powerInfo() {
+        return BatteryMon.powerInfo();
+    }
+
+    /**
+     * 紧急下线：先写 state/offline（守护循环与网络自愈看到它就不再拉起沙盒），
+     * 再丢后台线程跑 stop-sandbox.sh（脚本要等 proot 自己退，同步跑会把 JS 线程卡死）。
+     * 只停进程，绝不删配置/登录数据/AstrBot data。
+     */
+    @JavascriptInterface
+    public String emergencyStop() {
+        try {
+            File filesDir = act.filesDirPub();
+            // 标记必须最先落盘：哪怕下面的脚本不存在，也不能让守护把沙盒重新拉起来
+            StateIO.writeStamp(StateIO.file(filesDir, "offline"));
+            File stop = new File(new File(filesDir, "usr"), "opt/qqbot/stop-sandbox.sh");
+            if (!stop.isFile()) return failJson("缺少 stop-sandbox.sh，请先完成部署");
+            Thread th = new Thread(new EmergencyStop(filesDir), "qqbot-emergency-stop");
+            th.setDaemon(true);
+            th.start();
+            return "{\"ok\":true}";
+        } catch (Throwable t) {
+            return failJson("下线失败：" + t);
+        }
+    }
+
+    /** 恢复：删 offline 标记，按守护开关拉起服务，并立刻踢一轮自检。 */
+    @JavascriptInterface
+    public String emergencyResume() {
+        try {
+            File filesDir = act.filesDirPub();
+            StateIO.delete(StateIO.file(filesDir, "offline"));
+            QqbotGuardService.apply(act);
+            // 守护开着就立刻跑一次重启，不用等下一个 60 秒自检周期
+            QqbotGuardService.kick(act);
+            return "{\"ok\":true}";
+        } catch (Throwable t) {
+            return failJson("恢复失败：" + t);
+        }
+    }
+
+    /* ================= v1.1.30 第二批：今日概览 / 实例卡片 ================= */
+    /* 这三个同样只读内存或几百字节的小文件；真正要扫日志/联网的活儿都由守护循环的后台线程干。 */
+
+    /**
+     * 今日概览：day/onlineSec/msgs/errors/rxBytes/txBytes + warm。
+     * warm:false 表示守护循环还没跑完第一轮统计，前端应显示「统计中」而不是一排 0。
+     */
+    @JavascriptInterface
+    public String todayStats() {
+        return TodayStats.todayStats();
+    }
+
+    /** 实例卡片数据：state/instances.json 原样带回，读不到给空表（前端照常渲染空卡片）。 */
+    @JavascriptInterface
+    public String instancesInfo() {
+        return InstancesState.info(act.filesDirPub());
+    }
+
+    /** 头像：只查本地缓存，未命中就丢后台下载，本轮返回空路径（前端下次轮询自然命中）。 */
+    @JavascriptInterface
+    public String avatarPath(String uin) {
+        return AvatarCache.avatarPath(act.filesDirPub(), uin);
+    }
+
+    /* ================= v1.1.30 第三批：备份 / 恢复（功能 50） ================= */
+    /* 这一批一律 start + poll：备份要打包几百 MB、恢复要停服解包再重启，
+       同步等会把 WebView 的 JS 线程卡死几十秒。全部结果落 state/backup.json、
+       state/restore.json，poll 只读内存和这两个几百字节的小文件。 */
+
+    /** 立即整机备份（scope=all）：后台跑 backup.sh，进度看 backupPoll()。 */
+    @JavascriptInterface
+    public String backupStart() {
+        return BackupFlow.startBackup(act, "all");
+    }
+
+    /** 指定范围备份：scope = all / config / plugins（其余值直接拒绝）。 */
+    @JavascriptInterface
+    public String backupStartScope(String scope) {
+        return BackupFlow.startBackup(act, scope);
+    }
+
+    /** 备份进度：state(running/done/error/idle)、pct、name、size、sha256、product、err。 */
+    @JavascriptInterface
+    public String backupPoll() {
+        return BackupFlow.pollBackup(act.filesDirPub());
+    }
+
+    /**
+     * 把备份产物「另存为」到用户挑的位置（ACTION_CREATE_DOCUMENT）。
+     * 用户选完落点后由 onActivityResult 起后台线程拷贝，结果推 window.backupPicked(json)。
+     */
+    @JavascriptInterface
+    public String backupPick() {
+        return BackupFlow.pickBackup(act);
+    }
+
+    /** 面板数据：{"ok":true,"last":{…},"restoreLast":{…}} + 目标目录大小 srcBytes。 */
+    @JavascriptInterface
+    public String backupInfo() {
+        return BackupFlow.info(act.filesDirPub());
+    }
+
+    /**
+     * 选一个备份包准备恢复（ACTION_OPEN_DOCUMENT）。选完只把文件拷进缓存并校验，
+     * 不直接开跑：结果推 window.restorePicked(json)（带 needConfirm:true），
+     * 前端弹二次确认后再调 restoreApply()。
+     */
+    @JavascriptInterface
+    public String restorePick() {
+        return BackupFlow.pickRestore(act, "all");
+    }
+
+    /** 同上，但要按范围恢复：scope = all / config / plugins。 */
+    @JavascriptInterface
+    public String restorePickScope(String scope) {
+        return BackupFlow.pickRestore(act, scope);
+    }
+
+    /** 二次确认后真的开始恢复：后台跑 restore.sh（停服/解包/重启都在脚本里）。 */
+    @JavascriptInterface
+    public String restoreApply() {
+        return BackupFlow.applyRestore(act);
+    }
+
+    /** 恢复进度：state(running/picked/done/error/idle)、pct、needConfirm、err。 */
+    @JavascriptInterface
+    public String restorePoll() {
+        return BackupFlow.pollRestore(act.filesDirPub());
+    }
+
+    /* ================= v1.1.30 第三批：崩溃聚合（功能 58） ================= */
+    /* 采集在沙盒脚本里（crash-agg.sh），这里只读脚本写的 counts 文件、维护开关、清空。
+       v1.1.30 起原生层会真的上报：开关默认关；关着时一个字节都不发、连 DNS 都不解析；
+       开着时由 CrashUploadTask 把聚合类逐条 POST 到 /api/crash（每天最多成功一次）。 */
+
+    /** 崩溃统计：{"ok":true,"items":[{sig,module,signal,count,last}],"total":N}；没崩过给空数组。 */
+    @JavascriptInterface
+    public String crashInfo() {
+        return CrashBoard.info(act.filesDirPub());
+    }
+
+    /** 契约（docs §9）里的名字，和 crashInfo 同一个实现，前端用哪个都行。 */
+    @JavascriptInterface
+    public String crashBoard() {
+        return CrashBoard.info(act.filesDirPub());
+    }
+
+    /** 崩溃上报开关：只落盘，打开时不立刻发请求；默认 false。真正发请求的时机是冷启动 / 6 小时巡检 / 手动点「立即上报」。 */
+    @JavascriptInterface
+    public String crashReportOn(boolean on) {
+        return CrashBoard.setReport(act.filesDirPub(), on);
+    }
+
+    /** 契约里的名字，等价 crashReportOn。 */
+    @JavascriptInterface
+    public String crashUploadSet(boolean on) {
+        return CrashBoard.setReport(act.filesDirPub(), on);
+    }
+
+    @JavascriptInterface
+    public String crashReportState() {
+        return CrashBoard.state(act.filesDirPub());
+    }
+
+    /**
+     * 手动「立即上报」：开关开着就起后台线程真发一次，并立刻回 {"ok":true,"queued":true}；
+     * 本方法自身不做网络 IO、不等结果，桥线程不会被卡住。
+     * 开关关着回 {"ok":false,"err":"崩溃上报开关是关的","queued":false}，且不解析 DNS。
+     */
+    @JavascriptInterface
+    public String crashUploadNow() {
+        return CrashBoard.queue(act.filesDirPub(), appVersion());
+    }
+
+    /** 清空崩溃计数：两个布局的 counts 文件都删。 */
+    @JavascriptInterface
+    public String crashClear() {
+        return CrashBoard.clear(act.filesDirPub());
+    }
+
+    /* ================= v1.1.30 第三批：匿名统计（功能 59） ================= */
+    /* 只维护「开关 + 一个随机安装 ID」，默认关、关时 id 为空串。
+       v1.1.30 起原生层会真的上报：开关开着时 StatsUploadTask 每天 POST 一条今日概览到
+       /api/stats（events.open 是启动累计次数）；关着一个字节都不发、连 DNS 都不解析。 */
+
+    /** 开关：打开时没有 ID 就生成一个 UUID 落 state/stats-id，返回 {"ok":true,"id":"…","on":true}。 */
+    @JavascriptInterface
+    public String statsOn(boolean on) {
+        return StatsId.on(act.filesDirPub(), on);
+    }
+
+    /** 契约里的名字，等价 statsOn。 */
+    @JavascriptInterface
+    public String statsSet(boolean on) {
+        return StatsId.on(act.filesDirPub(), on);
+    }
+
+    /** 当前状态：{"ok":true,"id":"…","on":bool,"atomOn":true,"lastSentDay":"…","lastErr":"…","lastAt":N}；未开启时 id 为空串。 */
+    @JavascriptInterface
+    public String statsId() {
+        return StatsId.id(act.filesDirPub());
+    }
+
+    /** 契约里的名字，等价 statsId。 */
+    @JavascriptInterface
+    public String statsState() {
+        return StatsId.id(act.filesDirPub());
+    }
+
+    /** 重新生成安装 ID（旧 ID 作废），返回新 id；开关状态不变。 */
+    @JavascriptInterface
+    public String statsReset() {
+        return StatsId.reset(act.filesDirPub());
+    }
+
+    /** 事件流水：原生层不落事件表，只回空数组 + 今日在线秒数。 */
+    @JavascriptInterface
+    public String statsEvents() {
+        return StatsId.events(act.filesDirPub());
+    }
+
+    /* ================= v1.1.30 第四批：存储占用（功能 54） ================= */
+    /* 数字全部来自沙盒脚本 $PREFIX/opt/qqbot/storage.sh（它自己 du 五个固定目录，
+       写 $QQBOT_HOME/cache/storage.json）。原生只负责「在后台线程跑脚本 + 归一化 + 缓存」，
+       绝不在桥线程上做任何文件遍历。 */
+
+    /**
+     * 存储占用：{"ok":true,"warm":bool,"stale":bool,"ts":N,"total":N,
+     *            "dirs":[{"key","name","path","bytes"}],"top":[{"path","name","bytes"}]}。
+     * 第一次调用没有缓存时立刻回 warm:false（dirs/top 为空）并在后台起 StorageStatsTask；
+     * 缓存超过 60 秒会边回旧数据（stale:true）边重算。本方法不阻塞。
+     */
+    @JavascriptInterface
+    public String storageStats() {
+        return StorageStatsTask.stats(act.filesDirPub());
+    }
+
+    /** 契约里的别名（前端 storageStats / storageInfo 都认）。 */
+    @JavascriptInterface
+    public String storageInfo() {
+        return StorageStatsTask.stats(act.filesDirPub());
+    }
+
+    /** 强制重算：只起线程，立刻回 {"ok":true,"started":true}。 */
+    @JavascriptInterface
+    public String storageRefreshStart() {
+        return StorageStatsTask.refreshStart(act.filesDirPub());
+    }
+
+    /** 契约里的别名（storageRefreshStart / storageRefresh 都认）。 */
+    @JavascriptInterface
+    public String storageRefresh() {
+        return StorageStatsTask.refreshStart(act.filesDirPub());
+    }
+
+    /**
+     * 清理缓存：同步等脚本（要 du 前后两次，慢的十几秒），返回
+     * {"ok":true,"freed":N,"kept":["登录数据","配置","插件"],"log":"<脚本最后一行>"}；
+     * 失败 {"ok":false,"err":"…"}。只走脚本自己的白名单，
+     * 登录数据 / 配置 / 插件 / 实例目录 / bots.json / rootfs 一律不动。
+     */
+    @JavascriptInterface
+    public String storageClean() {
+        return StorageStatsTask.clean(act.filesDirPub());
+    }
+
+    /* ================= v1.1.30 第四批：公告（功能 56） ================= */
+    /* 全应用唯一「只读」的出口：GET /api/announce?ver=<versionName>，
+       带 If-None-Match；URL 里只有版本号，不带任何设备标识。5 秒超时、失败静默、
+       结果缓存到 state/ann.json（etag + items），距上次成功刷新不足 5 分钟不发请求。 */
+
+    /**
+     * 公告：{"ok":true,"warm":bool,"cached":bool,"stale":bool,"ts":N,
+     *        "items":[{"id","title","body","level","minVer","until"}]}。
+     * 没缓存时立刻回 items:[] 并在后台起 AnnounceTask；本方法不阻塞。
+     */
+    @JavascriptInterface
+    public String ann() {
+        return AnnounceTask.ann(act.filesDirPub(), appVersion());
+    }
+
+    /** 契约里的别名（前端 ann / announcement 都认）。 */
+    @JavascriptInterface
+    public String announcement() {
+        return AnnounceTask.ann(act.filesDirPub(), appVersion());
+    }
+
+    /** 强制刷新公告（用户手动点）：只起线程，立刻回 {"ok":true,"started":true}。 */
+    @JavascriptInterface
+    public String annRefreshStart() {
+        return AnnounceTask.refreshStart(act.filesDirPub(), appVersion());
+    }
+
+    /** 契约里的别名（annRefreshStart / annRefresh 都认）。 */
+    @JavascriptInterface
+    public String annRefresh() {
+        return AnnounceTask.refreshStart(act.filesDirPub(), appVersion());
     }
 }

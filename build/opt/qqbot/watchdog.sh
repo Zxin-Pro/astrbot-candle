@@ -18,10 +18,19 @@
 LOG="$QQBOT_HOME/logs/watchdog.log"
 WDPID="$QQBOT_HOME/watchdog.pid"
 OFFMARK="$QQBOT_CACHE/svc/watchdog.off"
+# 紧急下线标记（原生层「停止」写的就是它）。看门狗必须也认它：
+# 停止脚本从「发 TERM」到「写开关」之间有几秒空窗，光认 OFFMARK 的话，
+# 看门狗正好在这几秒里判断「supervisor 没了」就会把沙盒重新拉起来 ——
+# 用户看到的是「点了停止，过一会儿又自己活了」。两个标记任一存在就暂停守护。
+USEROFF="$QQBOT_STATE/offline"
 
 mkdir -p "$QQBOT_HOME/logs" "$QQBOT_CACHE/svc" 2>/dev/null
 
-say() { printf '[%s] %s\n' "$(date '+%F %T')" "$*" >> "$LOG" 2>/dev/null; }
+# 日志级别：say 是 info，sayw 是 warn。降载（battery / thermal）期间 say 直接不写，
+# 只留 sayw 那几行真正要事后追查的（重启、风控命中、降载切换），省 CPU 也省闪存写入。
+# 现有脚本只有这一个写日志的地方，没有完整的分级系统，所以这里做的是「按需过滤」。
+say()  { [ -n "${DEGRADE:-}" ] && return 0; printf '[%s] %s\n' "$(date '+%F %T')" "$*" >> "$LOG" 2>/dev/null; }
+sayw() { printf '[%s] [warn] %s\n' "$(date '+%F %T')" "$*" >> "$LOG" 2>/dev/null; }
 
 # 单实例。pid 会被系统复用，所以除了 /proc 里有没有，还要确认 cmdline 真是本脚本。
 if [ -f "$WDPID" ]; then
@@ -78,17 +87,23 @@ hb_age() {
 }
 
 restart_sandbox() {
-  say "$1 —— 重启沙盒"
-  rm -f "$OFFMARK" 2>/dev/null
-  bash "$QQBOT_OPT/stop-sandbox.sh" >> "$LOG" 2>&1
+  sayw "$1 —— 重启沙盒"
+  # 注意：这里故意不删 OFFMARK / USEROFF。
+  # 老写法在重启前 rm -f OFFMARK，本意是「这次重启是我自己发起的，别被自己的
+  # 停止开关挡住」，但它同时会把用户刚按下的停止开关一起删掉 —— 于是用户点停止、
+  # 看门狗恰好在这一轮判活失败，开关就被清掉，接着沙盒被拉起来，重启还失败。
+  # 真正需要「放行」的地方在下面：只有两个开关都不存在时才会走到这里，所以不用删。
+  # --no-offline：这是看门狗自己的重启（几秒后就会 start 回来），不是用户要下线，
+  # 不能写紧急下线标记。
+  bash "$QQBOT_OPT/stop-sandbox.sh" --no-offline >> "$LOG" 2>&1
   sleep 3
   nohup setsid bash "$QQBOT_OPT/start-sandbox.sh" >> "$QQBOT_HOME/logs/supervisor.log" 2>&1 < /dev/null &
   sleep 25
   if sv_alive; then
-    say "沙盒已恢复（supervisor PID $(cat "$QQBOT_HOME/supervisor.pid" 2>/dev/null)）"
+    sayw "沙盒已恢复（supervisor PID $(cat "$QQBOT_HOME/supervisor.pid" 2>/dev/null)）"
     return 0
   fi
-  say "沙盒仍未起来"
+  sayw "沙盒仍未起来"
   return 1
 }
 
@@ -96,18 +111,67 @@ say "看门狗启动（pid $$，系统时区 $(qq_tz)）"
 WAS_OFF=""
 WAS_DEPLOY=""
 FAILS=0
+DEGRADE=""
+RISK_BLK=""
+SLEEP=15
+CRASH_LAST=0
+CRASH_EVERY=1800
 while true; do
-  rotate
-  if [ -f "$OFFMARK" ]; then
+  # ---------- 降载（原生层写 $QQBOT_HOME/state/degrade） ----------
+  # 幂等、可逆：文件在就少干活，文件一消失下一轮就恢复常规节奏，不用重启看门狗。
+  # 降载期间：轮询 15 秒→30 秒、停掉日志轮转、跳过崩溃聚合、日志只留 warn
+  # （say 被吞掉，sayw 照写）。下面这些被暂停的都是「只省磁盘/CPU、攒着不致命」的活，
+  # 服务本身照常守护 —— 降载不是降级成不能用。
+  if qq_degrade_state; then
+    if [ -z "$DEGRADE" ]; then
+      DEGRADE=1
+      sayw "进入降载（原因：$(qq_degrade_reason)）—— 轮询 15→30 秒、暂停日志轮转、只记 warn"
+    fi
+    SLEEP=30
+  else
+    if [ -n "$DEGRADE" ]; then
+      DEGRADE=""
+      sayw "退出降载，恢复常规轮询与日志轮转"
+    fi
+    SLEEP=15
+  fi
+  [ -z "$DEGRADE" ] && rotate
+
+  # ---------- 风控识别（协议第 2 节） ----------
+  # 扫一遍各实例日志的新增部分。命中后照常重启沙盒（AstrBot 得活着才能把
+  # 「需要验证」告诉用户），但沙盒里的 run-napcat.sh 看到 risk-<id>.flag
+  # 就不会再拉起那个实例了。
+  qq_risk_scan_all >/dev/null 2>&1
+  _bl=$(qq_risk_blocked_list 2>/dev/null | tr '\n' ' ')
+  _bl=${_bl% }
+  if [ -n "$_bl" ] && [ "$_bl" != "$RISK_BLK" ]; then
+    for _id in $_bl; do
+      sayw "[risk] 实例 $_id 命中风控词「$(head -n 1 "$QQBOT_STATE/risk-$_id.word" 2>/dev/null)」，已暂停自动重启"
+    done
+  fi
+  RISK_BLK="$_bl"
+
+  # ---------- 崩溃聚合（协议第 9 节） ----------
+  # 每 30 分钟扫一次 crashwatch 的现场文件，归并成 crash-counts.json 给看板用。
+  # 降载时跳过 —— 这个活要遍历一堆崩溃文件，正是「非关键任务」。
+  # 启动后第一轮就会跑（CRASH_LAST 初值 0），这样刚升级完立刻有数据。
+  _now=$(date +%s)
+  if [ -z "$DEGRADE" ] && [ $((_now - CRASH_LAST)) -ge "$CRASH_EVERY" ]; then
+    CRASH_LAST=$_now
+    _ca=$(qq_crash_agg 2>&1)
+    [ -n "$_ca" ] && sayw "$_ca"
+  fi
+
+  if [ -f "$OFFMARK" ] || [ -f "$USEROFF" ]; then
     if [ -z "$WAS_OFF" ]; then say "收到停止开关，暂停守护"; WAS_OFF=1; fi
-    sleep 15
+    sleep "$SLEEP"
     continue
   fi
   WAS_OFF=""
   # 部署期间什么都别做，只等着。见 deploy_running() 上面的说明。
   if deploy_running; then
     if [ -z "$WAS_DEPLOY" ]; then say "部署正在进行，暂停守护（部署期间重启沙盒会打断 apt，留下半配置的包）"; WAS_DEPLOY=1; fi
-    sleep 15
+    sleep "$SLEEP"
     continue
   fi
   if [ -n "$WAS_DEPLOY" ]; then say "部署已结束，恢复守护"; WAS_DEPLOY=""; fi
@@ -126,5 +190,5 @@ while true; do
     continue
   fi
   FAILS=0
-  sleep 15
+  sleep "$SLEEP"
 done

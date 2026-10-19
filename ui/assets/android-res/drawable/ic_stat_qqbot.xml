@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  通知栏小图标 / 快捷磁贴图标（功能 11、13）。
+  通知栏小图标会被系统按 alpha 染色，所以这里画纯白实心「烛 + 火焰」。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 火焰 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,2.6 C14.32,5.22 15.6,7.18 15.6,9.05 C15.6,11.02 13.99,12.6 12,12.6 C10.01,12.6 8.4,11.02 8.4,9.05 C8.4,7.18 9.68,5.22 12,2.6 Z" />
+    <!-- 蜡烛主体 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M9.6,13.2 H14.4 C15.06,13.2 15.6,13.74 15.6,14.4 V20.8 C15.6,21.46 15.06,22 14.4,22 H9.6 C8.94,22 8.4,21.46 8.4,20.8 V14.4 C8.4,13.74 8.94,13.2 9.6,13.2 Z" />
+</vector>

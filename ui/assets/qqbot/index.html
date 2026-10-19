@@ -3,7 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="light dark">
+<script>
+/* 主题必须在样式表解析前落定：读 localStorage 的 qqbot_theme（auto/light/dark），
+   auto 交给系统的 prefers-color-scheme，把结果写到 <html data-theme>。
+   否则首屏会先按亮色画一遍、再跳成深色（或反过来），闪一下很难看。 */
+(function () {
+  var pref = "auto";
+  try { pref = String(localStorage.getItem("qqbot_theme") || "auto"); } catch (e) {}
+  if (pref !== "light" && pref !== "dark") pref = "auto";
+  var dark = pref === "dark";
+  if (pref === "auto") {
+    try { dark = !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches); } catch (e) {}
+  }
+  var root = document.documentElement;
+  root.setAttribute("data-theme", dark ? "dark" : "light");
+  root.setAttribute("data-theme-pref", pref);
+})();
+</script>
 <title>AstrBot烛版</title>
 <style>
 /* ==========================================================================
@@ -18,20 +35,6 @@
   --r-xs:9px; --r-sm:12px; --r-md:16px; --r-lg:20px; --r-xl:26px; --r-full:999px;
   /* 间距阶梯（8 的倍数节奏） */
   --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp5:20px; --sp6:24px;
-  /* 文字 */
-  --txt:#eef1f7; --txt-2:#a8b2c6; --txt-3:#7f889b;
-  /* 描边与面 */
-  --line:rgba(255,255,255,.085);
-  --line-2:rgba(255,255,255,.135);
-  --line-3:rgba(255,255,255,.20);
-  --surface:rgba(255,255,255,.055);
-  --surface-2:rgba(255,255,255,.09);
-  /* 语义色 */
-  --accent:#6f9dff; --accent-2:#8b6cff;
-  --ok:#5ee6a8; --warn:#ffcb5c; --bad:#ff8494;
-  /* 阴影：只用两级，避免每层都在发光 */
-  --sh-1:inset 0 1px 0 rgba(255,255,255,.055), 0 10px 28px rgba(0,0,0,.34);
-  --sh-2:0 2px 8px rgba(0,0,0,.34), 0 20px 48px rgba(0,0,0,.46);
   /* 动效 */
   --ease:cubic-bezier(.22,.9,.3,1);
   --ease-pop:cubic-bezier(.34,1.32,.5,1);
@@ -39,12 +42,303 @@
   --dur-2:.26s;
   --font:-apple-system,"SF Pro Text","PingFang SC","HarmonyOS Sans SC","Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Roboto Mono","Courier New",monospace;
+
+  /* ==========================================================================
+     配色令牌 · 亮色为基准
+     组件只准引用这里的变量，不再写字面颜色；暗色在 [data-theme="dark"] 整体覆盖。
+     由主题脚本把 <html data-theme> 解析成 light / dark：auto 跟随系统，
+     系统切换时由 matchMedia("(prefers-color-scheme: dark)") 实时改写。
+     ========================================================================== */
+  color-scheme:light;
+  /* 画布与氛围 */
+  --bg:#f3f6fc;
+  --bg-glow-1:radial-gradient(128% 78% at 50% -12%, rgba(37,99,235,.10), rgba(255,255,255,0) 62%);
+  --bg-glow-2:radial-gradient(120% 72% at 50% 114%, rgba(124,58,237,.09), rgba(255,255,255,0) 64%);
+  --bg-veil:linear-gradient(180deg, rgba(255,255,255,.42), rgba(247,250,255,.58));
+  --bgimg-glow-1:radial-gradient(128% 78% at 50% -12%, rgba(37,99,235,.10), rgba(255,255,255,0) 62%);
+  --bgimg-glow-2:radial-gradient(120% 72% at 50% 114%, rgba(124,58,237,.08), rgba(255,255,255,0) 64%);
+  --bgimg-veil:linear-gradient(180deg, rgba(255,255,255,.62), rgba(255,255,255,.68));
+  --hasimg-txt:#334155; --hasimg-txt-2:#64748b;
+  --hasimg-ts:0 1px 2px rgba(255,255,255,.65);
+  /* 文字 */
+  --txt:#0f172a; --txt-2:#475569; --txt-3:#5a6478;
+  --h1:#0b1220; --h2:#0f172a; --v:#0f172a; --tv:#1e293b;
+  --prn:#0f172a; --dsum:#475569; --hint-b:#1d4ed8; --slow:#475569;
+  /* 描边与面 */
+  --line:rgba(15,23,42,.12);
+  --line-2:rgba(15,23,42,.18);
+  --line-3:rgba(15,23,42,.28);
+  --surface:rgba(15,23,42,.04);
+  --surface-2:rgba(15,23,42,.07);
+  --press:rgba(15,23,42,.06);
+  --gloss:inset 0 1px 0 rgba(255,255,255,.92);
+  /* 语义色 */
+  --accent:#2563eb; --accent-2:#7c3aed;
+  --ok:#047857; --warn:#b45309; --bad:#b91c1c;
+  --ok-line:rgba(5,150,105,.32); --ok-bg:linear-gradient(180deg, rgba(16,185,129,.14), rgba(16,185,129,.05));
+  --bad-line:rgba(220,38,38,.32); --bad-bg:linear-gradient(180deg, rgba(239,68,68,.13), rgba(239,68,68,.05));
+  --warn-line:rgba(217,119,6,.30); --warn-bg:linear-gradient(180deg, rgba(245,158,11,.16), rgba(245,158,11,.05));
+  --acc-txt:#1d4ed8; --acc-line:rgba(37,99,235,.45);
+  --acc-bg:linear-gradient(180deg, rgba(37,99,235,.14), rgba(37,99,235,.07));
+  --acc-line-2:rgba(37,99,235,.32);
+  --acc-bg-2:linear-gradient(180deg, rgba(37,99,235,.12), rgba(37,99,235,.05));
+  --tag-on-txt:#1d4ed8;
+  --on-accent:#fff;
+  /* 阴影 */
+  --sh-1:inset 0 1px 0 rgba(255,255,255,.9), 0 8px 26px rgba(15,23,42,.08);
+  --sh-2:0 2px 8px rgba(15,23,42,.08), 0 20px 48px rgba(15,23,42,.22);
+  /* 顶栏 / 底栏 */
+  --hdr-bg:linear-gradient(180deg, rgba(255,255,255,.90), rgba(248,250,255,.80));
+  --hdr-sh:inset 0 1px 0 rgba(255,255,255,.95), 0 10px 30px rgba(15,23,42,.07);
+  --nav-bg:linear-gradient(180deg, rgba(255,255,255,.88), rgba(244,248,255,.94));
+  --nav-sh:inset 0 1px 0 rgba(255,255,255,.95), 0 -6px 20px rgba(15,23,42,.05);
+  --nav-knob:#ffffff;
+  --nav-on-txt:#1d4ed8; --nav-on-line:rgba(37,99,235,.20);
+  --nav-on-bg:linear-gradient(180deg, rgba(37,99,235,.14), rgba(37,99,235,.07));
+  --nav-on-sh:0 0 18px rgba(37,99,235,.12), inset 0 1px 0 rgba(255,255,255,.9);
+  --mark-bg:linear-gradient(145deg,#4f8ef7,#2563eb 78%);
+  --mark-sh:0 4px 14px rgba(37,99,235,.30), inset 0 1px 0 rgba(255,255,255,.45);
+  /* 卡片 */
+  --card-bg:linear-gradient(180deg, rgba(255,255,255,.88), rgba(255,255,255,.72));
+  --card-gloss:linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.95), rgba(255,255,255,0));
+  --card-solid:linear-gradient(180deg,#ffffff,#f7fafd);
+  --tile-bg:linear-gradient(180deg, rgba(15,23,42,.035), rgba(15,23,42,.015));
+  /* 胶囊 / 按钮 / 分段 */
+  --pill-bg:linear-gradient(180deg,#ffffff,#f1f5f9);
+  --pill-txt:#334155; --pill-gloss:inset 0 1px 0 rgba(255,255,255,.95);
+  --pill-solid:#ffffff;
+  --btn-bg:linear-gradient(180deg,#ffffff,#f1f5f9);
+  --btn-solid:linear-gradient(180deg,#ffffff,#f1f5f9);
+  --btn-sh:inset 0 1px 0 rgba(255,255,255,.95), 0 2px 8px rgba(15,23,42,.07);
+  --pri-bg:linear-gradient(180deg,#3b82f6,#2563eb); --pri-line:rgba(255,255,255,.35);
+  --pri-sh:0 6px 18px rgba(37,99,235,.26), inset 0 1px 0 rgba(255,255,255,.30);
+  --okbtn-bg:linear-gradient(180deg, rgba(16,185,129,.16), rgba(16,185,129,.08));
+  --okbtn-line:rgba(5,150,105,.32); --okbtn-txt:#047857;
+  --dngbtn-bg:linear-gradient(180deg, rgba(239,68,68,.13), rgba(239,68,68,.07));
+  --dngbtn-line:rgba(220,38,38,.30); --dngbtn-txt:#b91c1c;
+  --focus-outline:rgba(37,99,235,.55);
+  --seg-bg:#eef2f9; --seg-line:rgba(15,23,42,.10);
+  --seg-txt:#475569; --seg-on-txt:#1d4ed8;
+  --seg-on-bg:linear-gradient(180deg,#ffffff,#eff4ff);
+  --seg-on-sh:inset 0 1px 0 rgba(255,255,255,1), 0 1px 4px rgba(15,23,42,.12);
+  --sw-on-line:rgba(255,255,255,.9); --sw-on-glow:0 0 18px rgba(37,99,235,.35);
+  --sw-bg:linear-gradient(180deg,#e7edf6,#cbd6e4);
+  --mute-txt:#64748b; --tile-mute-txt:#64748b; --mute-dot:#94a3b8;
+  --mute-bg:linear-gradient(180deg, rgba(15,23,42,.05), rgba(15,23,42,.02));
+  /* 状态点 */
+  --dot:#94a3b8; --dot-halo:rgba(15,23,42,.07);
+  --dot-ok:#10b981; --dot-ok-glow:rgba(16,185,129,.45);
+  --dot-bad:#ef4444; --dot-bad-glow:rgba(239,68,68,.42);
+  --dot-warn:#f59e0b; --dot-warn-glow:rgba(245,158,11,.42);
+  --rebox-ok-line:rgba(5,150,105,.35);
+  /* 表单 */
+  --input-bg:#ffffff; --input-line:rgba(15,23,42,.18);
+  --input-sh:inset 0 1px 2px rgba(15,23,42,.05);
+  --focus-line:#2563eb; --focus-ring:rgba(37,99,235,.16);
+  --ph:#7c8798;
+  /* 终端 / 代码 */
+  --term-bg:linear-gradient(180deg,#fbfcfe,#eef2f8);
+  --term-bg-2:#f4f7fb;
+  --term-txt:#334155; --term-gloss:inset 0 1px 0 rgba(255,255,255,.9);
+  --pre-solid:#f8fafc;
+  --code:#b45309;
+  --tok-bg:#f8fafc; --tok-sh:inset 0 1px 3px rgba(15,23,42,.05);
+  /* 实例卡 */
+  --bot-bg:linear-gradient(180deg, rgba(15,23,42,.035), rgba(15,23,42,.012));
+  --bot-sh:inset 0 1px 0 rgba(255,255,255,.9), 0 2px 8px rgba(15,23,42,.05);
+  --bot-active-line:rgba(37,99,235,.45);
+  --bot-active-sh:inset 0 1px 0 rgba(255,255,255,.95), 0 6px 18px rgba(37,99,235,.14);
+  /* 提示 / 进度 */
+  --confirm-bg:linear-gradient(180deg, rgba(239,68,68,.09), rgba(239,68,68,.05));
+  --confirm-line:rgba(220,38,38,.30); --confirm-txt:#9f1239;
+  --confirm-sh:inset 0 1px 0 rgba(255,255,255,.9), 0 8px 20px rgba(15,23,42,.07);
+  --err-bg:#fef2f2; --err-line:#fecaca; --err-txt:#991b1b;
+  --up-bg:#eff6ff; --up-line:#bfdbfe; --up-txt:#1e40af;
+  --bar-bg:rgba(15,23,42,.08); --bar-sh:inset 0 1px 3px rgba(15,23,42,.07);
+  --bar-fill:linear-gradient(90deg,#2563eb,#10b981);
+  --bar-glow:0 0 12px rgba(37,99,235,.25);
+  --bar-bad-glow:0 0 12px rgba(220,38,38,.30);
+  --bar-bad-a:#ef4444;
+  --boot-bg:#ffffff;
+  --boot-sh:inset 0 1px 0 rgba(255,255,255,.95), 0 8px 20px rgba(15,23,42,.06);
+  --boot-ok-line:rgba(5,150,105,.32);
+  --boot-ok-bg:linear-gradient(180deg, rgba(16,185,129,.12), rgba(16,185,129,.05));
+  --boot-bad-line:rgba(220,38,38,.32);
+  --boot-bad-bg:linear-gradient(180deg, rgba(239,68,68,.11), rgba(239,68,68,.05));
+  --boot-bad-ic:#dc2626;
+  --risk-line:#fca5a5;
+  --risk-bg:linear-gradient(180deg,#fff5f5,#fee2e2);
+  --risk-sh:inset 0 1px 0 rgba(255,255,255,.9), 0 8px 20px rgba(220,38,38,.10);
+  --risk-ic:#dc2626; --risk-txt:#7f1d1d; --risk-strong:#991b1b;
+  --rebox-bg:rgba(15,23,42,.025);
+  --rebox-bad-line:rgba(220,38,38,.35); --rebox-bad-bg:rgba(239,68,68,.06);
+  --spin-track:rgba(37,99,235,.22);
+  /* 其他组件 */
+  --lkic-bg:linear-gradient(180deg,#ffffff,#f1f5f9); --lkic-txt:#334155;
+  --tgl-bg:linear-gradient(180deg,#e2e8f0,#cfd8e5); --tgl-line:rgba(15,23,42,.18);
+  --tgl-sh:inset 0 1px 3px rgba(15,23,42,.14);
+  --tgl-knob:linear-gradient(180deg,#ffffff,#f1f5f9);
+  --tgl-off-knob:linear-gradient(180deg,#cbd5e1,#94a3b8);
+  --tgl-knob-sh:0 1px 4px rgba(15,23,42,.28);
+  --tgl-on-bg:linear-gradient(180deg,#10b981,#059669);
+  --tgl-on-line:rgba(5,150,105,.42);
+  --tgl-on-sh:0 0 14px rgba(16,185,129,.24), inset 0 1px 0 rgba(255,255,255,.4);
+  --tgl-on-knob:#fff;
+  --qr-bg:#fff;
+  --qr-sh:0 14px 34px rgba(15,23,42,.14);
+  /* 弹窗 */
+  --mask-bg:rgba(15,23,42,.38);
+  --dlg-bg:linear-gradient(180deg,#ffffff,#f7fafd);
+  --dlg-solid:linear-gradient(180deg,#ffffff,#f7fafd);
+  --dlg-sh:0 24px 60px rgba(15,23,42,.22), inset 0 1px 0 rgba(255,255,255,.95);
+  --dlg-body:#334155; --dlg-strong:#0f172a;
+  /* 滚动条 */
+  --sb-1:linear-gradient(180deg, rgba(15,23,42,.18), rgba(15,23,42,.10));
+  --sb-2:rgba(15,23,42,.28);
+  /* 不支持 backdrop-filter 时的回退底 */
+  --hdr-solid:linear-gradient(180deg,#ffffff,#f7fafd);
+  --nav-solid:linear-gradient(180deg,#ffffff,#f4f8ff);
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#05060a;
+  --bg-glow-1:radial-gradient(128% 78% at 50% -12%, rgba(110,145,255,.15), rgba(0,0,0,0) 62%);
+  --bg-glow-2:radial-gradient(120% 72% at 50% 114%, rgba(146,108,255,.12), rgba(0,0,0,0) 64%);
+  --bg-veil:linear-gradient(180deg, rgba(0,0,0,.40), rgba(0,0,0,.46));
+  --bgimg-glow-1:radial-gradient(128% 78% at 50% -12%, rgba(110,145,255,.13), rgba(0,0,0,0) 62%);
+  --bgimg-glow-2:radial-gradient(120% 72% at 50% 114%, rgba(146,108,255,.11), rgba(0,0,0,0) 64%);
+  --bgimg-veil:linear-gradient(180deg, rgba(0,0,0,.60), rgba(0,0,0,.60));
+  --hasimg-txt:#b3bdd2; --hasimg-txt-2:#7d8697;
+  --hasimg-ts:0 1px 3px rgba(0,0,0,.82);
+  --txt:#eef1f7; --txt-2:#a8b2c6; --txt-3:#7f889b;
+  --h1:#f2f5fc; --h2:#dde4f1; --v:#e9edf6; --tv:#cfd6e4;
+  --prn:#dfe5f2; --dsum:#9fb0d8; --hint-b:#9fb0d8; --slow:#8fa3c0;
+  --line:rgba(255,255,255,.085);
+  --line-2:rgba(255,255,255,.135);
+  --line-3:rgba(255,255,255,.20);
+  --surface:rgba(255,255,255,.055);
+  --surface-2:rgba(255,255,255,.09);
+  --press:rgba(255,255,255,.08);
+  --gloss:inset 0 1px 0 rgba(255,255,255,.06);
+  --accent:#6f9dff; --accent-2:#8b6cff;
+  --ok:#5ee6a8; --warn:#ffcb5c; --bad:#ff8494;
+  --ok-line:rgba(94,230,168,.34); --ok-bg:linear-gradient(180deg, rgba(94,230,168,.15), rgba(94,230,168,.045));
+  --bad-line:rgba(255,132,148,.34); --bad-bg:linear-gradient(180deg, rgba(255,132,148,.15), rgba(255,132,148,.045));
+  --warn-line:rgba(255,203,92,.32); --warn-bg:linear-gradient(180deg, rgba(255,203,92,.14), rgba(255,203,92,.045));
+  --acc-txt:#dbe7ff; --acc-line:rgba(111,157,255,.55);
+  --acc-bg:linear-gradient(180deg, rgba(111,157,255,.28), rgba(80,110,230,.14));
+  --acc-line-2:rgba(111,157,255,.40);
+  --acc-bg-2:linear-gradient(180deg, rgba(111,157,255,.20), rgba(111,157,255,.07));
+  --tag-on-txt:#9fc3ff;
+  --on-accent:#fff;
+  --sh-1:inset 0 1px 0 rgba(255,255,255,.055), 0 10px 28px rgba(0,0,0,.34);
+  --sh-2:0 2px 8px rgba(0,0,0,.34), 0 20px 48px rgba(0,0,0,.46);
+  --hdr-bg:linear-gradient(180deg, rgba(17,20,28,.66), rgba(11,13,20,.50));
+  --hdr-sh:inset 0 1px 0 rgba(255,255,255,.07), 0 10px 30px rgba(0,0,0,.30);
+  --nav-bg:linear-gradient(180deg, rgba(13,15,23,.62), rgba(8,10,16,.80));
+  --nav-sh:inset 0 1px 0 rgba(255,255,255,.06);
+  --nav-knob:#0b0d13;
+  --nav-on-txt:#fff; --nav-on-line:rgba(255,255,255,.14);
+  --nav-on-bg:linear-gradient(180deg, rgba(111,157,255,.30), rgba(80,110,230,.16));
+  --nav-on-sh:0 0 20px rgba(96,140,255,.26), inset 0 1px 0 rgba(255,255,255,.22);
+  --mark-bg:linear-gradient(145deg,#7ba7ff,#5d55e8 78%);
+  --mark-sh:0 4px 14px rgba(86,110,240,.42), inset 0 1px 0 rgba(255,255,255,.42);
+  --card-bg:linear-gradient(180deg, rgba(255,255,255,.062), rgba(255,255,255,.028));
+  --card-gloss:linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.22), rgba(255,255,255,0));
+  --card-solid:linear-gradient(180deg, rgba(22,26,36,.95), rgba(15,18,26,.92));
+  --tile-bg:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+  --pill-bg:linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.035));
+  --pill-txt:#c3cbdc; --pill-gloss:inset 0 1px 0 rgba(255,255,255,.10);
+  --pill-solid:rgba(32,36,48,.95);
+  --btn-bg:linear-gradient(180deg, rgba(255,255,255,.095), rgba(255,255,255,.04));
+  --btn-solid:linear-gradient(180deg, rgba(44,50,66,.96), rgba(28,32,44,.94));
+  --btn-sh:inset 0 1px 0 rgba(255,255,255,.12), 0 4px 14px rgba(0,0,0,.22);
+  --pri-bg:linear-gradient(180deg,#749fff,#4a6fe4); --pri-line:rgba(255,255,255,.22);
+  --pri-sh:0 6px 20px rgba(74,111,228,.40), inset 0 1px 0 rgba(255,255,255,.30);
+  --okbtn-bg:linear-gradient(180deg, rgba(52,211,153,.30), rgba(16,120,80,.40));
+  --okbtn-line:rgba(52,211,153,.40); --okbtn-txt:#dcffee;
+  --dngbtn-bg:linear-gradient(180deg, rgba(255,90,110,.24), rgba(140,24,40,.36));
+  --dngbtn-line:rgba(255,110,130,.38); --dngbtn-txt:#ffd9de;
+  --focus-outline:rgba(111,157,255,.75);
+  --seg-bg:rgba(255,255,255,.045); --seg-line:rgba(255,255,255,.135);
+  --seg-txt:#9aa4b8; --seg-on-txt:#fff;
+  --seg-on-bg:linear-gradient(180deg, rgba(111,157,255,.38), rgba(80,110,230,.20));
+  --seg-on-sh:inset 0 1px 0 rgba(255,255,255,.22);
+  --sw-on-line:rgba(255,255,255,.52); --sw-on-glow:0 0 18px rgba(111,157,255,.5);
+  --sw-bg:linear-gradient(180deg,#333,#111);
+  --mute-txt:#9aa3b5; --tile-mute-txt:#8e97aa; --mute-dot:#8b93a6;
+  --mute-bg:linear-gradient(180deg, rgba(255,255,255,.075), rgba(255,255,255,.028));
+  --dot:#5b6376; --dot-halo:rgba(255,255,255,.05);
+  --dot-ok:#34d399; --dot-ok-glow:rgba(52,211,153,.7);
+  --dot-bad:#f87171; --dot-bad-glow:rgba(248,113,113,.65);
+  --dot-warn:#fbbf24; --dot-warn-glow:rgba(251,191,36,.65);
+  --rebox-ok-line:rgba(52,211,153,.4);
+  --input-bg:rgba(255,255,255,.045); --input-line:rgba(255,255,255,.135);
+  --input-sh:inset 0 2px 8px rgba(0,0,0,.40);
+  --focus-line:rgba(111,157,255,.62); --focus-ring:rgba(111,157,255,.16);
+  --ph:#5f6879;
+  --term-bg:linear-gradient(180deg, rgba(5,7,12,.74), rgba(5,7,12,.58));
+  --term-bg-2:rgba(5,7,12,.55);
+  --term-txt:#c2cbdb; --term-gloss:inset 0 1px 0 rgba(255,255,255,.045);
+  --pre-solid:rgba(6,8,14,.95);
+  --code:#ffd479;
+  --tok-bg:rgba(255,255,255,.045); --tok-sh:inset 0 2px 10px rgba(0,0,0,.32);
+  --bot-bg:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.018));
+  --bot-sh:inset 0 1px 0 rgba(255,255,255,.075), 0 6px 20px rgba(0,0,0,.24);
+  --bot-active-line:rgba(111,157,255,.48);
+  --bot-active-sh:inset 0 1px 0 rgba(255,255,255,.12), 0 10px 26px rgba(60,100,220,.24);
+  --confirm-bg:linear-gradient(180deg, rgba(255,90,110,.16), rgba(140,20,36,.18));
+  --confirm-line:rgba(255,110,130,.38); --confirm-txt:#ffd9de;
+  --confirm-sh:inset 0 1px 0 rgba(255,255,255,.12), 0 10px 24px rgba(0,0,0,.28);
+  --err-bg:rgba(255,92,92,.10); --err-line:rgba(255,120,120,.36); --err-txt:#ffb4b4;
+  --up-bg:rgba(90,150,255,.08); --up-line:rgba(120,170,255,.30); --up-txt:#b9c9e6;
+  --bar-bg:rgba(0,0,0,.38); --bar-sh:inset 0 1px 3px rgba(0,0,0,.5);
+  --bar-fill:linear-gradient(90deg,#6f9dff,#34d399);
+  --bar-glow:0 0 14px rgba(111,157,255,.45);
+  --bar-bad-glow:0 0 14px rgba(255,132,148,.42);
+  --bar-bad-a:#f87171;
+  --boot-bg:rgba(255,255,255,.045);
+  --boot-sh:inset 0 1px 0 rgba(255,255,255,.06), 0 8px 20px rgba(0,0,0,.22);
+  --boot-ok-line:rgba(52,211,153,.42);
+  --boot-ok-bg:linear-gradient(180deg,rgba(52,211,153,.14),rgba(6,78,59,.16));
+  --boot-bad-line:rgba(255,110,130,.42);
+  --boot-bad-bg:linear-gradient(180deg,rgba(255,90,110,.14),rgba(140,20,36,.16));
+  --boot-bad-ic:#ff8a9a;
+  --risk-line:rgba(255,110,130,.46);
+  --risk-bg:linear-gradient(180deg,rgba(255,90,110,.16),rgba(120,16,32,.20));
+  --risk-sh:inset 0 1px 0 rgba(255,255,255,.06), 0 8px 20px rgba(0,0,0,.24);
+  --risk-ic:#ff8a9a; --risk-txt:#ffe1e5; --risk-strong:#fff;
+  --rebox-bg:rgba(255,255,255,.04);
+  --rebox-bad-line:rgba(255,110,130,.4); --rebox-bad-bg:rgba(255,110,130,.06);
+  --spin-track:rgba(111,157,255,.28);
+  --lkic-bg:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.04)); --lkic-txt:#b9c6e2;
+  --tgl-bg:linear-gradient(180deg,rgba(18,22,32,.74),rgba(10,13,19,.84));
+  --tgl-line:rgba(255,255,255,.135);
+  --tgl-sh:inset 0 2px 7px rgba(0,0,0,.55);
+  --tgl-knob:linear-gradient(180deg,#eef2fa,#b9c2d4);
+  --tgl-off-knob:linear-gradient(180deg,#aab2c2,#79829a);
+  --tgl-knob-sh:0 2px 8px rgba(0,0,0,.5);
+  --tgl-on-bg:linear-gradient(180deg,rgba(52,211,153,.92),rgba(16,140,100,.90));
+  --tgl-on-line:rgba(94,230,168,.46);
+  --tgl-on-sh:0 0 20px rgba(52,211,153,.34),inset 0 1px 0 rgba(255,255,255,.36);
+  --tgl-on-knob:#fff;
+  --qr-bg:#fff;
+  --qr-sh:0 14px 34px rgba(0,0,0,.46);
+  --mask-bg:rgba(4,6,11,.62);
+  --dlg-bg:linear-gradient(180deg, rgba(24,28,40,.94), rgba(15,18,27,.94));
+  --dlg-solid:linear-gradient(180deg,#1a1e2a,#11141d);
+  --dlg-sh:0 2px 8px rgba(0,0,0,.34), 0 20px 48px rgba(0,0,0,.46), inset 0 1px 0 rgba(255,255,255,.10);
+  --dlg-body:#c4cddd; --dlg-strong:#e6ecf8;
+  --sb-1:linear-gradient(180deg,rgba(255,255,255,.20),rgba(255,255,255,.10));
+  --sb-2:rgba(255,255,255,.30);
+  --hdr-solid:linear-gradient(180deg, rgba(14,17,24,.97), rgba(10,12,18,.94));
+  --nav-solid:linear-gradient(180deg, rgba(14,16,24,.98), rgba(9,11,17,.97));
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
 body{
   min-height:100vh;padding-bottom:108px;
-  background:#05060a;color:var(--txt);
+  background:var(--bg);color:var(--txt);
   font-family:var(--font);font-size:15px;line-height:1.55;
   -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
   overscroll-behavior-y:none;
@@ -53,48 +347,42 @@ h1,h2,h3,p{margin:0}
 b,strong{font-weight:600}
 
 /* ===== 背景层 ===== */
-#bgLayer{position:fixed;inset:0;z-index:-2;background-color:#05060a;background-size:cover;background-position:center;background-repeat:no-repeat}
+#bgLayer{position:fixed;inset:0;z-index:-2;background-color:var(--bg);background-size:cover;background-position:center;background-repeat:no-repeat}
 #bgMask{
   position:fixed;inset:0;z-index:-1;pointer-events:none;
-  background:
-    radial-gradient(128% 78% at 50% -12%, rgba(110,145,255,.15), rgba(0,0,0,0) 62%),
-    radial-gradient(120% 72% at 50% 114%, rgba(146,108,255,.12), rgba(0,0,0,0) 64%),
-    linear-gradient(180deg, rgba(0,0,0,.40), rgba(0,0,0,.46));
+  background:var(--bg-glow-1), var(--bg-glow-2), var(--bg-veil);
 }
 /* 自定义图片背景：加深遮罩，保证亮照片上的文字对比度 */
 body.hasimg #bgMask{
-  background:
-    radial-gradient(128% 78% at 50% -12%, rgba(110,145,255,.13), rgba(0,0,0,0) 62%),
-    radial-gradient(120% 72% at 50% 114%, rgba(146,108,255,.11), rgba(0,0,0,0) 64%),
-    linear-gradient(180deg, rgba(0,0,0,.60), rgba(0,0,0,.60));
+  background:var(--bgimg-glow-1), var(--bgimg-glow-2), var(--bgimg-veil);
 }
 body.hasimg h1,body.hasimg .sub,body.hasimg .k,body.hasimg .v,body.hasimg .hint,
-body.hasimg .swname,body.hasimg .field label,body.hasimg .tile .tt{text-shadow:0 1px 3px rgba(0,0,0,.82)}
-body.hasimg .hint,body.hasimg .k,body.hasimg .sub,body.hasimg .field label,body.hasimg .tile .tt{color:#b3bdd2}
-body.hasimg input::placeholder{color:#7d8697}
+body.hasimg .swname,body.hasimg .field label,body.hasimg .tile .tt{text-shadow:var(--hasimg-ts)}
+body.hasimg .hint,body.hasimg .k,body.hasimg .sub,body.hasimg .field label,body.hasimg .tile .tt{color:var(--hasimg-txt)}
+body.hasimg input::placeholder{color:var(--hasimg-txt-2)}
 
 /* ===== 顶栏 ===== */
 header{
   position:sticky;top:0;z-index:30;padding:13px 16px 11px;
-  background:linear-gradient(180deg, rgba(17,20,28,.66), rgba(11,13,20,.50));
+  background:var(--hdr-bg);
   -webkit-backdrop-filter:blur(var(--glassBlur)) saturate(180%);
   backdrop-filter:blur(var(--glassBlur)) saturate(180%);
   border-bottom:1px solid var(--line);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.07), 0 10px 30px rgba(0,0,0,.30);
+  box-shadow:var(--hdr-sh);
 }
 .hdrow{display:flex;align-items:center;gap:var(--sp3)}
 .hdmain{flex:1;min-width:0}
 .brand{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
 .mark{
   flex:0 0 auto;width:30px;height:30px;border-radius:10px;display:grid;place-items:center;
-  background:linear-gradient(145deg,#7ba7ff,#5d55e8 78%);
-  box-shadow:0 4px 14px rgba(86,110,240,.42), inset 0 1px 0 rgba(255,255,255,.42);
-  color:#fff;
+  background:var(--mark-bg);
+  box-shadow:var(--mark-sh);
+  color:var(--on-accent);
 }
 .mark svg{width:17px;height:17px;display:block}
 h1{
   margin:0;font-size:18px;font-weight:650;letter-spacing:-.02em;
-  color:#f2f5fc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  color:var(--h1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .sub{color:var(--txt-3);font-size:12px;margin-top:2px;letter-spacing:.005em}
 .iconbtn{
@@ -103,24 +391,24 @@ h1{
 }
 .iconbtn svg{width:19px;height:19px;display:block}
 #btnSettings.on{
-  color:#dbe7ff;border-color:rgba(111,157,255,.55);
-  background:linear-gradient(180deg, rgba(111,157,255,.28), rgba(80,110,230,.14));
+  color:var(--acc-txt);border-color:var(--acc-line);
+  background:var(--acc-bg);
 }
 .pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
 
 /* ===== 状态胶囊 ===== */
 .pill{
   display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:500;
-  padding:3px 10px 3px 9px;border-radius:var(--r-full);color:#c3cbdc;
-  background:linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.035));
+  padding:3px 10px 3px 9px;border-radius:var(--r-full);color:var(--pill-txt);
+  background:var(--pill-bg);
   border:1px solid var(--line-2);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.10);
+  box-shadow:var(--pill-gloss);
   -webkit-backdrop-filter:blur(10px) saturate(160%);backdrop-filter:blur(10px) saturate(160%);
 }
 .pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:0 0 auto;box-shadow:0 0 6px currentColor}
-.pill.ok{color:var(--ok);border-color:rgba(94,230,168,.34);background:linear-gradient(180deg, rgba(94,230,168,.15), rgba(94,230,168,.045))}
-.pill.bad{color:var(--bad);border-color:rgba(255,132,148,.34);background:linear-gradient(180deg, rgba(255,132,148,.15), rgba(255,132,148,.045))}
-.pill.warn{color:var(--warn);border-color:rgba(255,203,92,.32);background:linear-gradient(180deg, rgba(255,203,92,.14), rgba(255,203,92,.045))}
+.pill.ok{color:var(--ok);border-color:var(--ok-line);background:var(--ok-bg)}
+.pill.bad{color:var(--bad);border-color:var(--bad-line);background:var(--bad-bg)}
+.pill.warn{color:var(--warn);border-color:var(--warn-line);background:var(--warn-bg)}
 /* 无限脉冲动画必须自带合成层：.pill / .card 上都有 backdrop-filter，
    动画元素若与祖先同层，每帧都会让祖先的毛玻璃重新栅格化（实测占满一个核）*/
 .pill.ok::before{animation:breathe 2.4s ease-in-out infinite;will-change:opacity}
@@ -131,7 +419,7 @@ main{padding:var(--sp3) var(--sp3) var(--sp2)}
 .card{
   position:relative;margin-bottom:10px;padding:var(--sp4);
   border-radius:var(--r-lg);
-  background:linear-gradient(180deg, rgba(255,255,255,.062), rgba(255,255,255,.028));
+  background:var(--card-bg);
   border:1px solid var(--line);
   box-shadow:var(--sh-1);
   -webkit-backdrop-filter:blur(var(--glassBlur)) saturate(180%);
@@ -139,16 +427,16 @@ main{padding:var(--sp3) var(--sp3) var(--sp2)}
 }
 .card::before{
   content:"";position:absolute;left:var(--sp4);right:var(--sp4);top:0;height:1px;pointer-events:none;
-  background:linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.22), rgba(255,255,255,0));
+  background:var(--card-gloss);
 }
 .card h2{
-  margin:0 0 10px;font-size:13.5px;font-weight:600;color:#dde4f1;
+  margin:0 0 10px;font-size:13.5px;font-weight:600;color:var(--h2);
   letter-spacing:.005em;display:flex;align-items:center;gap:var(--sp2);line-height:1.4;
 }
-.dot{width:7px;height:7px;border-radius:50%;background:#5b6376;flex:0 0 auto;box-shadow:0 0 0 3px rgba(255,255,255,.05)}
-.dot.ok{background:#34d399;box-shadow:0 0 9px rgba(52,211,153,.7)}
-.dot.bad{background:#f87171;box-shadow:0 0 9px rgba(248,113,113,.65)}
-.dot.warn{background:#fbbf24;box-shadow:0 0 9px rgba(251,191,36,.65)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--dot);flex:0 0 auto;box-shadow:0 0 0 3px var(--dot-halo)}
+.dot.ok{background:var(--dot-ok);box-shadow:0 0 9px var(--dot-ok-glow)}
+.dot.bad{background:var(--dot-bad);box-shadow:0 0 9px var(--dot-bad-glow)}
+.dot.warn{background:var(--dot-warn);box-shadow:0 0 9px var(--dot-warn-glow)}
 .dot.ok,.dot.warn{animation:breathe 2.6s ease-in-out infinite;will-change:opacity}
 
 /* ===== 键值行 ===== */
@@ -158,18 +446,18 @@ main{padding:var(--sp3) var(--sp3) var(--sp2)}
 }
 .row:last-child{border-bottom:none}
 .k{color:var(--txt-2);font-size:12.5px;flex:0 0 auto}
-.v{color:#e9edf6;font-size:13px;text-align:right;word-break:break-all;font-weight:500}
+.v{color:var(--v);font-size:13px;text-align:right;word-break:break-all;font-weight:500}
 .mono{font-family:var(--mono);font-size:12.5px;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
 
 /* ===== 状态磁贴 ===== */
 .tiles{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp2);margin-top:2px}
 .tile{
   padding:11px 12px;border-radius:var(--r-sm);
-  background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+  background:var(--tile-bg);
   border:1px solid var(--line);
 }
 .tile .tt{font-size:11.5px;color:var(--txt-3);display:flex;align-items:center;gap:6px;letter-spacing:.01em}
-.tile .tv{font-size:15px;font-weight:650;margin-top:5px;letter-spacing:-.01em;font-variant-numeric:tabular-nums;color:#cfd6e4}
+.tile .tv{font-size:15px;font-weight:650;margin-top:5px;letter-spacing:-.01em;font-variant-numeric:tabular-nums;color:var(--tv)}
 .tile.ok .tv{color:var(--ok)}
 .tile.bad .tv{color:var(--bad)}
 .tile.warn .tv{color:var(--warn)}
@@ -180,28 +468,28 @@ button{
   font-family:inherit;font-size:13.5px;font-weight:500;
   min-height:40px;padding:9px 15px;border-radius:var(--r-sm);
   color:var(--txt);cursor:pointer;
-  background:linear-gradient(180deg, rgba(255,255,255,.095), rgba(255,255,255,.04));
+  background:var(--btn-bg);
   border:1px solid var(--line-2);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 4px 14px rgba(0,0,0,.22);
+  box-shadow:var(--btn-sh);
   transition:transform var(--dur) var(--ease), background var(--dur) var(--ease),
              box-shadow var(--dur) var(--ease), opacity var(--dur) var(--ease);
 }
 button *{pointer-events:none}
 button:active{transform:scale(.975);opacity:.9}
 button:disabled{opacity:.42;transform:none}
-button:focus-visible{outline:2px solid rgba(111,157,255,.75);outline-offset:2px}
+button:focus-visible{outline:2px solid var(--focus-outline);outline-offset:2px}
 button.primary{
-  color:#fff;border-color:rgba(255,255,255,.22);
-  background:linear-gradient(180deg,#749fff,#4a6fe4);
-  box-shadow:0 6px 20px rgba(74,111,228,.40), inset 0 1px 0 rgba(255,255,255,.30);
+  color:var(--on-accent);border-color:var(--pri-line);
+  background:var(--pri-bg);
+  box-shadow:var(--pri-sh);
 }
 button.ok{
-  color:#dcffee;border-color:rgba(52,211,153,.40);
-  background:linear-gradient(180deg, rgba(52,211,153,.30), rgba(16,120,80,.40));
+  color:var(--okbtn-txt);border-color:var(--okbtn-line);
+  background:var(--okbtn-bg);
 }
 button.danger{
-  color:#ffd9de;border-color:rgba(255,110,130,.38);
-  background:linear-gradient(180deg, rgba(255,90,110,.24), rgba(140,24,40,.36));
+  color:var(--dngbtn-txt);border-color:var(--dngbtn-line);
+  background:var(--dngbtn-bg);
 }
 button.small{min-height:36px;padding:7px 13px;font-size:12.5px;border-radius:var(--r-xs)}
 button.tiny{min-height:0;padding:4px 10px;font-size:11.5px;border-radius:var(--r-xs)}
@@ -213,31 +501,31 @@ button.tiny{min-height:0;padding:4px 10px;font-size:11.5px;border-radius:var(--r
   border-radius:var(--r-xs);background:transparent;border:1px solid var(--line-2);
   color:var(--txt-3);box-shadow:none;
 }
-.xdel:active{background:rgba(255,255,255,.08)}
+.xdel:active{background:var(--press)}
 .dtgl{
   margin-left:auto;min-height:0;padding:2px 10px;font-size:11.5px;line-height:1.7;
   border-radius:var(--r-xs);background:transparent;border:1px solid var(--line-2);
   color:var(--txt-3);box-shadow:none;font-weight:500;
 }
-.dtgl:active{background:rgba(255,255,255,.08)}
+.dtgl:active{background:var(--press)}
 /* 部署失败原因：红框直接摆在部署卡上。以前只有一句「第 3 步没装完」，
    真正的原因（DNS / 空间 / dpkg）埋在几百行 apt 输出里，等于没告诉用户。 */
 .derr{
   margin-top:8px;padding:9px 11px;border-radius:var(--r-sm);
-  background:rgba(255,92,92,.10);border:1px solid rgba(255,120,120,.36);
-  font-family:var(--mono);font-size:11.5px;line-height:1.6;color:#ffb4b4;
+  background:var(--err-bg);border:1px solid var(--err-line);
+  font-family:var(--mono);font-size:11.5px;line-height:1.6;color:var(--err-txt);
   white-space:pre-wrap;word-break:break-word;max-height:24vh;overflow:auto;
 }
 /* 失败后的「要不要上传日志」：一块淡蓝提示 + 两个按钮，别做得像弹窗去打断人 */
 .askup{
   margin-top:8px;padding:10px 11px;border-radius:var(--r-sm);
-  background:rgba(90,150,255,.08);border:1px solid rgba(120,170,255,.30);
+  background:var(--up-bg);border:1px solid var(--up-line);
 }
-.askup .asktx{font-size:12px;line-height:1.65;color:#b9c9e6}
+.askup .asktx{font-size:12px;line-height:1.65;color:var(--up-txt)}
 /* 部署卡标题栏里的两个小按钮挨在一起：复制日志在左、展开/收起在右 */
 .dtgl + .dtgl{margin-left:6px}
 /* 慢步骤的旁注：让用户一眼看出「这一步本来就慢」，别因为没输出就强杀 */
-.slow{font-style:normal;color:#8fa3c0;font-size:11px;margin-left:6px;opacity:.92}
+.slow{font-style:normal;color:var(--slow);font-size:11px;margin-left:6px;opacity:.92}
 #btnCopyLog{margin-left:auto}
 #btnCopyLog + .dtgl{margin-left:6px;margin-right:0}
 
@@ -245,21 +533,21 @@ button.tiny{min-height:0;padding:4px 10px;font-size:11.5px;border-radius:var(--r
 .tokbox{
   display:flex;gap:var(--sp2);align-items:center;margin-top:var(--sp2);
   padding:9px 11px;border-radius:var(--r-md);
-  background:rgba(255,255,255,.045);
+  background:var(--tok-bg);
   border:1px dashed var(--line-3);
-  box-shadow:inset 0 2px 10px rgba(0,0,0,.32);
+  box-shadow:var(--tok-sh);
 }
-.tokbox code{flex:1;font-family:var(--mono);font-size:13.5px;color:#ffd479;word-break:break-all;letter-spacing:.01em}
+.tokbox code{flex:1;font-family:var(--mono);font-size:13.5px;color:var(--code);word-break:break-all;letter-spacing:.01em}
 
 /* ===== 底部导航 ===== */
 nav{
   position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;gap:4px;
   padding:8px 10px 10px;padding-bottom:calc(10px + env(safe-area-inset-bottom));
-  background:linear-gradient(180deg, rgba(13,15,23,.62), rgba(8,10,16,.80));
+  background:var(--nav-bg);
   -webkit-backdrop-filter:blur(var(--glassBlur)) saturate(180%);
   backdrop-filter:blur(var(--glassBlur)) saturate(180%);
   border-top:1px solid var(--line);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+  box-shadow:var(--nav-sh);
 }
 nav button{
   flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;
@@ -269,11 +557,12 @@ nav button{
   transition:color var(--dur) var(--ease), background var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
 nav button.on{
-  color:#fff;border-color:rgba(255,255,255,.14);
-  background:linear-gradient(180deg, rgba(111,157,255,.30), rgba(80,110,230,.16));
-  box-shadow:0 0 20px rgba(96,140,255,.26), inset 0 1px 0 rgba(255,255,255,.22);
+  color:var(--nav-on-txt);border-color:var(--nav-on-line);
+  background:var(--nav-on-bg);
+  box-shadow:var(--nav-on-sh);
 }
 nav .ic{width:21px;height:21px;display:block;color:inherit}
+nav .knob{fill:var(--nav-knob)}
 
 /* ===== 页签 ===== */
 .tab{display:none}
@@ -283,10 +572,10 @@ nav .ic{width:21px;height:21px;display:block;color:inherit}
 pre{
   margin:var(--sp2) 0 0;padding:11px;max-height:56vh;overflow:auto;
   border-radius:var(--r-md);
-  background:linear-gradient(180deg, rgba(5,7,12,.74), rgba(5,7,12,.58));
+  background:var(--term-bg);
   border:1px solid var(--line);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.045);
-  font-family:var(--mono);font-size:11.5px;line-height:1.6;color:#c2cbdb;
+  box-shadow:var(--term-gloss);
+  font-family:var(--mono);font-size:11.5px;line-height:1.6;color:var(--term-txt);
   white-space:pre-wrap;word-break:break-all;
 }
 
@@ -298,8 +587,8 @@ pre{
    所以用 pre-wrap 保留换行，别让它跟 pre 一样带滚动条 —— 这里要跟着页面一起长。 */
 .updnotes{
   margin-top:8px;padding:10px 11px;border-radius:var(--r-sm);
-  background:rgba(5,7,12,.55);border:1px solid var(--line);
-  font-family:var(--mono);font-size:11.5px;line-height:1.65;color:#c2cbdb;
+  background:var(--term-bg-2);border:1px solid var(--line);
+  font-family:var(--mono);font-size:11.5px;line-height:1.65;color:var(--term-txt);
   white-space:pre-wrap;word-break:break-word;max-height:38vh;overflow:auto;
 }
 
@@ -307,15 +596,15 @@ pre{
 select,input{
   width:100%;padding:10px 12px;border-radius:var(--r-sm);
   font-family:inherit;font-size:14px;color:var(--txt);
-  background:rgba(255,255,255,.045);border:1px solid var(--line-2);
-  box-shadow:inset 0 2px 8px rgba(0,0,0,.40);
+  background:var(--input-bg);border:1px solid var(--input-line);
+  box-shadow:var(--input-sh);
 }
-select:focus,input:focus{outline:none;border-color:rgba(111,157,255,.62);box-shadow:inset 0 2px 8px rgba(0,0,0,.40), 0 0 0 3px rgba(111,157,255,.16)}
-input::placeholder{color:#5f6879}
+select:focus,input:focus{outline:none;border-color:var(--focus-line);box-shadow:var(--input-sh), 0 0 0 3px var(--focus-ring)}
+input::placeholder{color:var(--ph)}
 .field{margin-bottom:10px}
 .field label{display:block;font-size:12px;color:var(--txt-2);margin-bottom:6px}
 .hint{font-size:11.5px;color:var(--txt-3);line-height:1.6;margin-top:7px}
-.hint b{color:#9fb0d8;font-weight:600}
+.hint b{color:var(--hint-b);font-weight:600}
 /* AstrBot 冷启动要 40~60 秒，这段时间磁贴上只有「离线」，用户容易以为装坏了。
    这句用跟「启动中」徽标同一支暖色（--warn），就绪后由 JS 收起。 */
 #astrBoot{color:var(--warn)}
@@ -323,72 +612,111 @@ input::placeholder{color:#5f6879}
 /* ===== 实例卡 ===== */
 .bot{
   margin-bottom:9px;padding:12px 13px;border-radius:var(--r-md);
-  background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.018));
+  background:var(--bot-bg);
   border:1px solid var(--line);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.075), 0 6px 20px rgba(0,0,0,.24);
+  box-shadow:var(--bot-sh);
 }
-.bot.active{border-color:rgba(111,157,255,.48);box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 10px 26px rgba(60,100,220,.24)}
+.bot.active{border-color:var(--bot-active-line);box-shadow:var(--bot-active-sh)}
 .bot .bh{display:flex;justify-content:space-between;align-items:center;gap:var(--sp2);margin-bottom:6px}
 .bot .bn{font-weight:600;font-size:14px;letter-spacing:-.01em}
 .bh-r{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
 .tag{
-  font-size:11px;padding:3px 9px;border-radius:var(--r-full);color:#c3cbdc;
-  background:linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.035));
+  font-size:11px;padding:3px 9px;border-radius:var(--r-full);color:var(--pill-txt);
+  background:var(--pill-bg);
   border:1px solid var(--line-2);
 }
-.tag.on{color:#9fc3ff;border-color:rgba(111,157,255,.40);background:linear-gradient(180deg, rgba(111,157,255,.20), rgba(111,157,255,.07))}
+.tag.on{color:var(--tag-on-txt);border-color:var(--acc-line-2);background:var(--acc-bg-2)}
 .empty{color:var(--txt-3);text-align:center;padding:26px 0;font-size:13px}
 
 /* ===== 两步确认 ===== */
 .confirm{
   margin-top:var(--sp3);padding:var(--sp3);border-radius:var(--r-md);
-  border:1px solid rgba(255,110,130,.38);
-  background:linear-gradient(180deg, rgba(255,90,110,.16), rgba(140,20,36,.18));
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 10px 24px rgba(0,0,0,.28);
+  border:1px solid var(--confirm-line);
+  background:var(--confirm-bg);
+  box-shadow:var(--confirm-sh);
   animation:popIn .18s var(--ease);
 }
-.confirm .ct{font-size:12.5px;color:#ffd9de;line-height:1.6;margin-bottom:10px}
+.confirm .ct{font-size:12.5px;color:var(--confirm-txt);line-height:1.6;margin-bottom:10px}
 
 /* ===== 进度与步骤 ===== */
 .bar{
   height:6px;margin-top:10px;border-radius:var(--r-full);overflow:hidden;
-  background:rgba(0,0,0,.38);border:1px solid var(--line);
-  box-shadow:inset 0 1px 3px rgba(0,0,0,.5);
+  background:var(--bar-bg);border:1px solid var(--line);
+  box-shadow:var(--bar-sh);
 }
-.bar i{display:block;height:100%;width:0;border-radius:var(--r-full);background:linear-gradient(90deg,#6f9dff,#34d399);box-shadow:0 0 14px rgba(111,157,255,.45);transition:width .4s var(--ease)}
+.bar i{display:block;height:100%;width:0;border-radius:var(--r-full);background:var(--bar-fill);box-shadow:var(--bar-glow);transition:width .4s var(--ease)}
 .step{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;padding:3px 0;color:var(--txt-3);line-height:1.5}
 .step.done{color:var(--ok)}
 .step .mk{width:14px;flex:0 0 auto;text-align:center}
-.dsum{font-size:13px;color:#9fb0d8;line-height:1.5}
+.dsum{font-size:13px;color:var(--dsum);line-height:1.5}
 
 /* ===== 顶部启动条 =====
    打开应用后容器是自动拉起的，以前界面上只有主页那几个磁贴会从灰变绿，
    用户以为「没反应」。这条横幅把「正在起 / 起好了 / 起不来」直接摆在最上面。 */
 .bootbar{
   margin:0 0 var(--sp3);padding:11px 14px;border-radius:var(--r-md);
-  border:1px solid var(--line-2);background:rgba(255,255,255,.045);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.06), 0 8px 20px rgba(0,0,0,.22);
+  border:1px solid var(--line-2);background:var(--boot-bg);
+  box-shadow:var(--boot-sh);
   display:flex;align-items:center;gap:11px;
   animation:tabIn .28s var(--ease);
 }
 .bootbar .bi{flex:0 0 auto;width:18px;height:18px;display:flex;align-items:center;justify-content:center;color:var(--accent)}
-.bootbar.ok{border-color:rgba(52,211,153,.42);background:linear-gradient(180deg,rgba(52,211,153,.14),rgba(6,78,59,.16))}
+.bootbar.ok{border-color:var(--boot-ok-line);background:var(--boot-ok-bg)}
 .bootbar.ok .bi{color:var(--ok)}
-.bootbar.bad{border-color:rgba(255,110,130,.42);background:linear-gradient(180deg,rgba(255,90,110,.14),rgba(140,20,36,.16))}
-.bootbar.bad .bi{color:#ff8a9a}
+.bootbar.bad{border-color:var(--boot-bad-line);background:var(--boot-bad-bg)}
+.bootbar.bad .bi{color:var(--boot-bad-ic)}
 .bootbar .bt{flex:1;min-width:0}
 .bootbar .bt b{display:block;font-size:13px;color:var(--txt);font-weight:600;line-height:1.35}
 .bootbar .bt span{display:block;font-size:11.5px;color:var(--txt-3);margin-top:2px;line-height:1.4}
 .bootbar .bclose{flex:0 0 auto;background:none;border:none;color:var(--txt-3);font-size:16px;line-height:1;padding:4px 6px;min-height:0;box-shadow:none;border-radius:var(--r-xs)}
-.spin{width:14px;height:14px;border-radius:50%;border:2px solid rgba(111,157,255,.28);border-top-color:var(--accent);animation:spin .8s linear infinite}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid var(--spin-track);border-top-color:var(--accent);animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* ===== 风控横幅 =====
+   风控命中的是「账号要验证 / 被踢下线」，进程本身没死、重启也救不了，
+   所以文案必须跟「崩溃」分开写；配色沿用 .bootbar.bad 那支红，不新造颜色。
+   位置跟 #bootBar 同一层（main 里、页签上面）：切页签也一直看得见，
+   但不会替用户切页签，也在滚动容器里、压不到底部导航。 */
+#riskBar{
+  margin:0 0 var(--sp3);padding:11px 13px;border-radius:var(--r-md);
+  border:1px solid var(--risk-line);
+  background:var(--risk-bg);
+  box-shadow:var(--risk-sh);
+  display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;
+  transition:opacity .2s var(--ease);
+}
+/* 淡入淡出是 JS 改 opacity 驱动的；关掉动效时由下面这条把过渡一起停掉 */
+@media (prefers-reduced-motion: reduce){ #riskBar{transition:none} }
+#riskBar .ri{flex:0 0 auto;width:18px;height:18px;margin-top:1px;color:var(--risk-ic)}
+#riskBar .ri svg{display:block;width:18px;height:18px}
+#riskBar .rt{flex:1 1 190px;min-width:0;font-size:12.5px;line-height:1.55;color:var(--risk-txt)}
+#riskBar .rt b{color:var(--risk-strong);font-weight:600}
+#riskBar .rt .rw{color:var(--risk-strong)}
+/* 窄屏时两个按钮换行到第二行、靠右贴边（margin-left:auto），不跟文案挤成一团 */
+#riskBar .rb{flex:0 0 auto;display:flex;gap:6px;margin-left:auto}
+#riskBar .rb button{min-height:32px;padding:5px 11px;font-size:12px;border-radius:var(--r-xs)}
+
+/* 省电提醒条（功能 5）：和风控横幅同一套排布，颜色走「提醒」而不是「告警」 ——
+   它不是故障，只是系统策略在偷偷冻结后台，用琥珀色比红色准确。 */
+#powBar{
+  margin:0 0 var(--sp3);padding:11px 13px;border-radius:var(--r-md);
+  border:1px solid var(--warn-line);
+  background:var(--warn-bg);
+  display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;
+}
+#powBar .ri{flex:0 0 auto;width:18px;height:18px;margin-top:1px;color:var(--warn)}
+#powBar .ri svg{display:block;width:18px;height:18px}
+#powBar .rt{flex:1 1 190px;min-width:0;font-size:12.5px;line-height:1.55}
+#powBar .rt b{font-weight:600;color:var(--warn)}
+#powBar .rb{flex:0 0 auto;display:flex;gap:6px;margin-left:auto}
+#powBar .rb button{min-height:32px;padding:5px 11px;font-size:12px;border-radius:var(--r-xs)}
+
 /* 重装进度：复用主页 .bar，只是把阶段清单排成两列更省高度 */
-.rebox{margin-top:var(--sp3);padding:12px 14px;border-radius:var(--r-md);border:1px solid var(--line-2);background:rgba(255,255,255,.04)}
-.rebox.ok{border-color:rgba(52,211,153,.4)}
-.rebox.bad{border-color:rgba(255,110,130,.4);background:rgba(255,110,130,.06)}
+.rebox{margin-top:var(--sp3);padding:12px 14px;border-radius:var(--r-md);border:1px solid var(--line-2);background:var(--rebox-bg)}
+.rebox.ok{border-color:var(--rebox-ok-line)}
+.rebox.bad{border-color:var(--rebox-bad-line);background:var(--rebox-bad-bg)}
 /* 失败时进度条必须变红：绿条 + 铁青的事实（退出码 1）最误导人，用户以为装好了 */
-.rebox.bad .bar i{background:linear-gradient(90deg,#f87171,var(--bad));box-shadow:0 0 14px rgba(255,132,148,.42)}
+.rebox.bad .bar i{background:linear-gradient(90deg,var(--bar-bad-a),var(--bad));box-shadow:var(--bar-bad-glow)}
 .rebox.bad .rh b{color:var(--bad)}
 .step.fail{color:var(--bad)}
 .step.fail .mk{font-weight:700}
@@ -408,7 +736,7 @@ input::placeholder{color:#5f6879}
 /* ===== 二维码 ===== */
 .qrow{display:flex;gap:var(--sp4);align-items:flex-start;flex-wrap:wrap}
 .qimg{flex:0 0 auto}
-.qimg img{display:block;width:250px;max-width:62vw;background:#fff;border-radius:var(--r-md);padding:10px;box-shadow:0 14px 34px rgba(0,0,0,.46);animation:tabIn .3s var(--ease)}
+.qimg img{display:block;width:250px;max-width:62vw;background:var(--qr-bg);border-radius:var(--r-md);padding:10px;box-shadow:var(--qr-sh);animation:tabIn .3s var(--ease)}
 .qside{flex:1 1 260px;min-width:240px}
 
 /* ===== 外观卡 ===== */
@@ -420,24 +748,24 @@ input::placeholder{color:#5f6879}
 .sw{
   width:44px;height:44px;min-height:0;padding:0;border-radius:var(--r-sm);
   border:1px solid var(--line-3);
-  background-image:linear-gradient(180deg,#333,#111);
+  background-image:var(--sw-bg);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.20), 0 6px 14px rgba(0,0,0,.28);
   backdrop-filter:none;-webkit-backdrop-filter:none;
   transition:box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease);
 }
-.sw.on{border-color:rgba(255,255,255,.52);box-shadow:0 0 0 2px var(--accent), 0 0 18px rgba(111,157,255,.5), inset 0 1px 0 rgba(255,255,255,.22)}
+.sw.on{border-color:var(--sw-on-line);box-shadow:0 0 0 2px var(--accent), var(--sw-on-glow), inset 0 1px 0 rgba(255,255,255,.22)}
 .swname{font-size:10.5px;color:var(--txt-3);letter-spacing:.02em}
 .seg{
   display:flex;border-radius:var(--r-sm);overflow:hidden;
-  border:1px solid var(--line-2);background:rgba(255,255,255,.045);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+  border:1px solid var(--seg-line);background:var(--seg-bg);
+  box-shadow:var(--gloss);
 }
 .seg button{
   flex:1;min-height:0;padding:9px 15px;font-size:12.5px;border:none;border-radius:0;
-  background:none;box-shadow:none;color:#9aa4b8;backdrop-filter:none;-webkit-backdrop-filter:none;
+  background:none;box-shadow:none;color:var(--seg-txt);backdrop-filter:none;-webkit-backdrop-filter:none;
 }
 .seg button + button{border-left:1px solid var(--line)}
-.seg button.on{color:#fff;background:linear-gradient(180deg, rgba(111,157,255,.38), rgba(80,110,230,.20));box-shadow:inset 0 1px 0 rgba(255,255,255,.22)}
+.seg button.on{color:var(--seg-on-txt);background:var(--seg-on-bg);box-shadow:var(--seg-on-sh)}
 
 /* ===== 组件开关 ===== */
 .swrow{display:flex;align-items:center;gap:var(--sp3);padding:10px 0;border-bottom:1px solid var(--line)}
@@ -447,36 +775,36 @@ input::placeholder{color:#5f6879}
 .swdesc{font-size:11.5px;color:var(--txt-3);margin-top:3px;line-height:1.5}
 .swtag{
   font-size:10.5px;padding:1px 8px;border-radius:var(--r-full);font-weight:500;
-  border:1px solid var(--line-2);color:#c3cbdc;
-  background:linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.035));white-space:nowrap;
+  border:1px solid var(--line-2);color:var(--pill-txt);
+  background:var(--pill-bg);white-space:nowrap;
 }
-.swtag.on{color:var(--ok);border-color:rgba(94,230,168,.34);background:linear-gradient(180deg,rgba(94,230,168,.15),rgba(94,230,168,.045))}
-.swtag.off{color:var(--bad);border-color:rgba(255,132,148,.34);background:linear-gradient(180deg,rgba(255,132,148,.15),rgba(255,132,148,.045))}
-.swtag.wait{color:var(--warn);border-color:rgba(255,203,92,.32);background:linear-gradient(180deg,rgba(255,203,92,.14),rgba(255,203,92,.045))}
+.swtag.on{color:var(--ok);border-color:var(--ok-line);background:var(--ok-bg)}
+.swtag.off{color:var(--bad);border-color:var(--bad-line);background:var(--bad-bg)}
+.swtag.wait{color:var(--warn);border-color:var(--warn-line);background:var(--warn-bg)}
 .tgl{
   position:relative;flex:0 0 auto;width:54px;height:31px;min-height:0;padding:0;border-radius:var(--r-full);
-  border:1px solid var(--line-2);
-  background:linear-gradient(180deg,rgba(18,22,32,.74),rgba(10,13,19,.84));
-  box-shadow:inset 0 2px 7px rgba(0,0,0,.55);
+  border:1px solid var(--tgl-line);
+  background:var(--tgl-bg);
+  box-shadow:var(--tgl-sh);
   transition:background var(--dur-2) var(--ease),border-color var(--dur-2) var(--ease),box-shadow var(--dur-2) var(--ease);
 }
 .tgl::after{
   content:"";position:absolute;top:3px;left:3px;width:23px;height:23px;border-radius:50%;
-  background:linear-gradient(180deg,#eef2fa,#b9c2d4);
-  box-shadow:0 2px 8px rgba(0,0,0,.5);
+  background:var(--tgl-knob);
+  box-shadow:var(--tgl-knob-sh);
   transition:left var(--dur-2) var(--ease-pop),background var(--dur-2) var(--ease);
 }
 .tgl.on{
-  background:linear-gradient(180deg,rgba(52,211,153,.92),rgba(16,140,100,.90));
-  border-color:rgba(94,230,168,.46);
-  box-shadow:0 0 20px rgba(52,211,153,.34),inset 0 1px 0 rgba(255,255,255,.36);
+  background:var(--tgl-on-bg);
+  border-color:var(--tgl-on-line);
+  box-shadow:var(--tgl-on-sh);
 }
-.tgl.on::after{left:26px;background:#fff}
+.tgl.on::after{left:26px;background:var(--tgl-on-knob)}
 
 /* ===== 端口输入 ===== */
 .portrow{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap;padding:9px 0;border-bottom:1px solid var(--line)}
 .portrow:last-child{border-bottom:none}
-.prn{flex:1 1 100%;font-size:12.5px;color:#dfe5f2;font-weight:500}
+.prn{flex:1 1 100%;font-size:12.5px;color:var(--prn);font-weight:500}
 .prid{font-size:11px;color:var(--txt-3);margin-left:6px;font-family:var(--mono)}
 .prl{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--txt-2)}
 .pin{flex:0 0 auto;width:86px;min-height:36px;padding:6px 8px;font-size:12.5px;border-radius:var(--r-xs);text-align:center;font-variant-numeric:tabular-nums}
@@ -491,8 +819,8 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .lkrow:last-child{border-bottom:none}
 .lkic{
   flex:0 0 auto;width:34px;height:34px;border-radius:var(--r-xs);display:grid;place-items:center;
-  background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.04));
-  border:1px solid var(--line-2);color:#b9c6e2;
+  background:var(--lkic-bg);
+  border:1px solid var(--line-2);color:var(--lkic-txt);
 }
 .lkic svg{width:17px;height:17px;display:block}
 .lkbd{flex:1;min-width:0}
@@ -504,7 +832,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .dlgmask{
   position:fixed;inset:0;z-index:60;display:none;
   align-items:center;justify-content:center;padding:var(--sp4);
-  background:rgba(4,6,11,.62);
+  background:var(--mask-bg);
   -webkit-backdrop-filter:blur(12px) saturate(140%);backdrop-filter:blur(12px) saturate(140%);
   animation:fadeIn .2s var(--ease);
 }
@@ -512,18 +840,30 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .dlg{
   width:100%;max-width:520px;max-height:86vh;overflow:auto;
   padding:var(--sp5);border-radius:var(--r-xl);
-  background:linear-gradient(180deg, rgba(24,28,40,.94), rgba(15,18,27,.94));
+  background:var(--dlg-bg);
   border:1px solid var(--line-3);
-  box-shadow:var(--sh-2), inset 0 1px 0 rgba(255,255,255,.10);
+  box-shadow:var(--dlg-sh);
   animation:dlgIn .26s var(--ease-pop);
 }
 .dlg h3{font-size:16.5px;font-weight:650;letter-spacing:-.015em;margin-bottom:var(--sp2);display:flex;align-items:center;gap:9px}
-.dlg .dbody{font-size:12.5px;line-height:1.72;color:#c4cddd}
+.dlg .dbody{font-size:12.5px;line-height:1.72;color:var(--dlg-body)}
 .dlg .dbody p{margin:0 0 9px}
 .dlg .dbody ul{margin:0 0 10px;padding-left:18px}
 .dlg .dbody li{margin-bottom:5px}
-.dlg .dbody b{color:#e6ecf8}
+.dlg .dbody b{color:var(--dlg-strong)}
 .dlg .dfoot{display:flex;gap:var(--sp2);margin-top:var(--sp5)}
+
+/* ===== 今日概览 =====
+   4 个指标挤在主页顶部一行：在线时长 / 消息 / 异常 / 流量。数字来自原生层对沙盒的统计，
+   这里只负责排版；360px 一行放不下时折成 2×2，别把「15 小时 20 分」截成半个字。 */
+.today{padding:11px 14px}
+.today-grid{display:grid;grid-template-columns:1.3fr 1fr 1fr 1.2fr;gap:10px}
+.tcell{min-width:0}
+.tlabel{display:block;font-size:11px;line-height:1.35;color:var(--txt-3);letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tval{display:block;margin-top:3px;font-size:12px;font-weight:650;letter-spacing:-.02em;color:var(--tv);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:359px){
+  .today-grid{grid-template-columns:1fr 1fr;gap:8px 12px}
+}
 
 /* ===== 观感与动效 ===== */
 @keyframes breathe{0%,100%{opacity:1}50%{opacity:.38}}
@@ -536,18 +876,18 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 }
 ::-webkit-scrollbar{width:8px;height:8px}
 ::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:linear-gradient(180deg,rgba(255,255,255,.20),rgba(255,255,255,.10));border-radius:var(--r-full)}
-::-webkit-scrollbar-thumb:active{background:rgba(255,255,255,.30)}
+::-webkit-scrollbar-thumb{background:var(--sb-1);border-radius:var(--r-full)}
+::-webkit-scrollbar-thumb:active{background:var(--sb-2)}
 
 /* ===== 不支持 backdrop-filter 的旧 WebView：退回不透明底 ===== */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))){
-  header{background:linear-gradient(180deg, rgba(14,17,24,.97), rgba(10,12,18,.94))}
-  nav{background:linear-gradient(180deg, rgba(14,16,24,.98), rgba(9,11,17,.97))}
-  .card{background:linear-gradient(180deg, rgba(22,26,36,.95), rgba(15,18,26,.92))}
-  button{background:linear-gradient(180deg, rgba(44,50,66,.96), rgba(28,32,44,.94))}
-  .pill{background:rgba(32,36,48,.95)}
-  pre{background:rgba(6,8,14,.95)}
-  .dlg{background:linear-gradient(180deg,#1a1e2a,#11141d)}
+  header{background:var(--hdr-solid)}
+  nav{background:var(--nav-solid)}
+  .card{background:var(--card-solid)}
+  button{background:var(--btn-solid)}
+  .pill{background:var(--pill-solid)}
+  pre{background:var(--pre-solid)}
+  .dlg{background:var(--dlg-solid)}
 }
 
 /* ===== 未部署锁定态 =====
@@ -560,14 +900,147 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 button.locked{box-shadow:none;transform:none}
 .locked:active{transform:none;opacity:.45}
 /* 开关置灰后连滑块都要看起来是死的：绿色轨道与白色滑块都要退成灰 */
-.tgl.locked{box-shadow:inset 0 2px 7px rgba(0,0,0,.55)}
-.tgl.locked::after{background:linear-gradient(180deg,#aab2c2,#79829a)}
+.tgl.locked{box-shadow:var(--tgl-sh)}
+.tgl.locked::after{background:var(--tgl-off-knob)}
 /* 中性灰：未安装不是故障，不许用 bad 的红色 */
-.tile.mute .tv{color:#8e97aa}
-.dot.mute{background:#5b6376;box-shadow:0 0 0 3px rgba(255,255,255,.05);animation:none}
-.pill.mute{color:#9aa3b5;border-color:var(--line-2);background:linear-gradient(180deg, rgba(255,255,255,.075), rgba(255,255,255,.028))}
-.pill.mute::before{animation:none;box-shadow:none;background:#8b93a6}
-.swtag.mute{color:#9aa3b5;border-color:var(--line-2);background:linear-gradient(180deg,rgba(255,255,255,.075),rgba(255,255,255,.028))}
+.tile.mute .tv{color:var(--tile-mute-txt)}
+.dot.mute{background:var(--dot);box-shadow:0 0 0 3px var(--dot-halo);animation:none}
+.pill.mute{color:var(--mute-txt);border-color:var(--line-2);background:var(--mute-bg)}
+.pill.mute::before{animation:none;box-shadow:none;background:var(--mute-dot)}
+.swtag.mute{color:var(--mute-txt);border-color:var(--line-2);background:var(--mute-bg)}
+
+/* ===== v1.1.30 新面板：公告条 / 新手引导 / 实例卡 / 备份 / 存储 / 崩溃 / 匿名统计 =====
+   只用现有 token（--line / --surface / --bar-fill …），只补一支 --crash。
+   颜色分工是硬约定：风控 = 红 #DC2626 系（--risk-*），进程崩溃 = 琥珀 #EA580C（--crash-*）。
+   两者绝不能同色，否则用户分不清「账号要验证」和「进程挂过」。 */
+:root{
+  --crash:#EA580C;
+  --crash-line:rgba(234,88,12,.34);
+  --crash-bg:linear-gradient(180deg, rgba(234,88,12,.13), rgba(234,88,12,.045));
+  --crash-sh:inset 0 1px 0 rgba(255,255,255,.9), 0 8px 20px rgba(234,88,12,.10);
+  --crash-txt:#9a3412; --crash-strong:#7c2d12;
+  --av-bg:rgba(37,99,235,.12); --av-txt:#1d4ed8;
+}
+[data-theme="dark"]{
+  --crash:#FB923C;
+  --crash-line:rgba(251,146,60,.42);
+  --crash-bg:linear-gradient(180deg, rgba(234,88,12,.20), rgba(120,45,8,.20));
+  --crash-sh:inset 0 1px 0 rgba(255,255,255,.06), 0 8px 20px rgba(0,0,0,.24);
+  --crash-txt:#ffd6bd; --crash-strong:#fff;
+  --av-bg:rgba(111,157,255,.18); --av-txt:#cfe0ff;
+}
+
+/* --- 公告条：顶部细条，info 中性、warn 琥珀 --- */
+.annbar{
+  margin:0 0 var(--sp3);padding:8px 10px;border-radius:var(--r-sm);
+  display:flex;align-items:center;gap:9px;
+  border:1px solid var(--line-2);background:var(--surface);color:var(--txt-2);
+  font-size:12px;line-height:1.5;
+  animation:tabIn .24s var(--ease);
+}
+.annbar.warn{border-color:var(--crash-line);background:var(--crash-bg);color:var(--crash-txt)}
+.annbar .ai{flex:0 0 auto;width:15px;height:15px;color:var(--accent)}
+.annbar.warn .ai{color:var(--crash)}
+.annbar .ai svg{display:block;width:15px;height:15px}
+.annbar .at{flex:1;min-width:0;overflow-wrap:break-word}
+.annbar .at b{color:var(--txt);font-weight:600}
+.annbar.warn .at b{color:var(--crash-strong)}
+.annbar .ax{
+  flex:0 0 auto;min-height:26px;padding:2px 8px;font-size:11.5px;
+  border-radius:var(--r-xs);background:none;border:1px solid transparent;box-shadow:none;color:var(--txt-3);
+}
+.annbar .ax:active{opacity:.62}
+
+/* --- 崩溃提示条：复用 .bootbar 的排版，只换琥珀这一支颜色 --- */
+.bootbar.crash{border-color:var(--crash-line);background:var(--crash-bg);box-shadow:var(--crash-sh)}
+.bootbar.crash .bi{color:var(--crash)}
+.bootbar .rbx{flex:0 0 auto;display:flex;gap:6px}
+
+/* --- 新手引导：进度 + 五步清单 --- */
+.obhead{display:flex;align-items:baseline;gap:8px}
+.obhead b{font-size:13px;font-weight:600;letter-spacing:-.01em}
+.obhead .obpct{margin-left:auto;font-size:11.5px;color:var(--txt-3);font-variant-numeric:tabular-nums}
+.obsteps{margin-top:8px}
+.obstep{
+  display:flex;align-items:flex-start;gap:9px;padding:7px 0;
+  border-bottom:1px dashed var(--line);font-size:12.5px;line-height:1.5;color:var(--txt-2);
+}
+.obstep:last-child{border-bottom:none}
+.obmk{
+  flex:0 0 auto;width:17px;height:17px;margin-top:1px;border-radius:50%;
+  display:grid;place-items:center;
+  border:1.6px solid var(--line-3);background:var(--surface);color:transparent;
+}
+.obmk svg{width:11px;height:11px;display:block}
+.obstep.done .obmk{border-color:var(--ok);background:var(--ok);color:#fff}
+.obstep.done .obtx{color:var(--txt-3);text-decoration:line-through;text-decoration-color:var(--line-3)}
+.obtx{flex:1;min-width:0}
+.obtx em{font-style:normal;display:block;font-size:11px;color:var(--txt-3);margin-top:2px}
+.obact{flex:0 0 auto;margin-left:auto}
+
+/* --- 实例卡片：头像 / 昵称 / 在线时长 / 最近掉线 --- */
+.inst{
+  display:flex;align-items:center;gap:11px;padding:11px 0;
+  border-bottom:1px solid var(--line);cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+.inst:last-of-type{border-bottom:none}
+.inst:active{opacity:.72}
+.iav{
+  position:relative;flex:0 0 auto;width:42px;height:42px;border-radius:50%;
+  overflow:hidden;display:grid;place-items:center;
+  background:var(--av-bg);color:var(--av-txt);
+  border:1px solid var(--line-2);
+  font-size:16px;font-weight:650;letter-spacing:-.02em;
+}
+.iav img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.inb{flex:1;min-width:0}
+.inn{font-size:13.5px;font-weight:600;letter-spacing:-.01em;display:flex;align-items:center;gap:6px;min-width:0}
+.inn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inm{
+  display:flex;flex-wrap:wrap;gap:3px 10px;margin-top:3px;
+  font-size:11.5px;color:var(--txt-3);font-variant-numeric:tabular-nums;
+}
+.inm i{font-style:normal}
+.ingo{flex:0 0 auto;color:var(--txt-3);display:grid;place-items:center}
+.ingo svg{width:15px;height:15px;display:block}
+
+/* --- 备份 / 恢复 --- */
+.bkmeta{
+  display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:8px;
+  font-size:11.5px;color:var(--txt-3);font-variant-numeric:tabular-nums;
+}
+.bkmeta b{color:var(--txt);font-weight:600;font-family:var(--mono);overflow-wrap:anywhere}
+
+/* --- 存储占用：五目录条形 + top10 --- */
+.stgrow{display:flex;align-items:center;gap:9px;margin-top:9px;font-size:11.5px;color:var(--txt-2)}
+.stgname{flex:0 0 78px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stgbar{
+  flex:1;height:7px;border-radius:var(--r-full);overflow:hidden;
+  background:var(--bar-bg);border:1px solid var(--line);
+}
+.stgbar i{display:block;height:100%;border-radius:inherit;background:var(--bar-fill);transition:width .35s var(--ease)}
+.stgval{
+  flex:0 0 auto;min-width:62px;text-align:right;
+  font-family:var(--mono);font-size:11px;color:var(--txt-3);font-variant-numeric:tabular-nums;
+}
+.stgtop{margin-top:11px;border-top:1px solid var(--line);padding-top:9px}
+.stgf{
+  display:flex;align-items:baseline;gap:10px;padding:4px 0;
+  font-size:11px;color:var(--txt-2);font-family:var(--mono);
+}
+.stgf span:first-child{flex:1;min-width:0;overflow-wrap:anywhere}
+.stgf span:last-child{flex:0 0 auto;color:var(--txt-3);font-variant-numeric:tabular-nums}
+
+/* --- 崩溃看板 --- */
+.crashrow{padding:10px 0;border-bottom:1px solid var(--line)}
+.crashrow:last-child{border-bottom:none}
+.csig{font-family:var(--mono);font-size:11.5px;line-height:1.45;color:var(--txt);overflow-wrap:anywhere}
+.cmeta{
+  display:flex;flex-wrap:wrap;gap:3px 10px;margin-top:4px;
+  font-size:11px;color:var(--txt-3);font-variant-numeric:tabular-nums;
+}
+.cmeta b{color:var(--crash);font-weight:600;font-family:var(--mono)}
 </style>
 </head>
 <body>
@@ -588,13 +1061,76 @@ button.locked{box-shadow:none;transform:none}
 </header>
 <main>
 
+  <!-- 公告条（功能 56）：Android.ann() / announcement() 取最新一条，level=warn 走琥珀，
+       普通公告走中性色。关掉的 id 记在 localStorage.qqbot_ann_closed，同一条不再打扰；
+       minVer 高于当前版本时只显示「有新版本」，不展开正文。桥不在 / 超时 / 解析失败 → 整条不显示。 -->
+  <div class="annbar" id="annBar" style="display:none" role="status" aria-live="polite">
+    <span class="ai" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4a1.4 1.4 0 0 0 1.4 1.4h2L12 20V4L7.4 8.6h-2A1.4 1.4 0 0 0 4 10Z"/><path d="M17 9.2a4 4 0 0 1 0 5.6"/></svg></span>
+    <div class="at" id="annText"></div>
+    <button class="ax" data-act="annclose" aria-label="关闭公告">关闭</button>
+  </div>
+
+  <!-- 进程崩溃提示（功能 58 的入口）：跟风控红横幅刻意用两种颜色 —— 崩溃是琥珀 #EA580C，
+       风控是红 #DC2626。看到红 = 账号要验证（重启没用），看到琥珀 = 进程真的挂过。 -->
+  <div class="bootbar crash" id="crashBar" style="display:none" role="status" aria-live="polite">
+    <span class="bi" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v6"/><path d="m5.6 8.6 3.2 3.2"/><path d="m18.4 8.6-3.2 3.2"/><path d="M6.5 20h11a2 2 0 0 0 1.9-2.6l-1.6-4.8a6 6 0 0 0-11.6 0l-1.6 4.8A2 2 0 0 0 6.5 20Z"/></svg></span>
+    <div class="bt"><b id="crashBarTitle">最近有进程崩溃</b><span id="crashBarSub"></span></div>
+    <div class="rbx"><button class="small" data-act="crashopen">查看</button></div>
+  </div>
+
+  <!-- 风控横幅：默认藏着，refreshRisk() 每轮 refreshAll 问一次 Android.riskInfo()，命中才展开。
+       文案必须说「需要验证 / 已暂停自动重启」，不能写「崩溃」——风控不是进程挂了，重启没用。 -->
+  <div id="riskBar" role="status" aria-live="polite" style="display:none">
+    <span class="ri" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span>
+    <div class="rt">实例 <b id="riskInst">bot1</b> 可能需要验证：命中「<span class="rw" id="riskWord">登录异常</span>」，已暂停自动重启</div>
+    <div class="rb">
+      <button class="small" data-act="riskack" id="riskAck">我知道了</button>
+      <button class="small" data-act="riskpanel" id="riskPanel">打开面板</button>
+      <button class="small primary" data-act="riskgo" id="riskGo">查看日志</button>
+    </div>
+  </div>
+
   <div class="bootbar" id="bootBar" style="display:none">
     <span class="bi" id="bootIcon"><span class="spin"></span></span>
     <div class="bt"><b id="bootTitle">正在启动容器…</b><span id="bootSub"></span></div>
     <button class="bclose" id="bootClose" data-act="bootclose" aria-label="关闭提示" style="display:none">×</button>
   </div>
 
+  <!-- 省电提醒条（功能 5）：国产 ROM 的省电策略会冻结后台，通知还在但收不到消息。
+       每个版本只自动出现一次（PowerGuide 用 power.json 记 ver），点「知道了」写 powerAck。 -->
+  <div id="powBar" role="status" aria-live="polite" style="display:none">
+    <span class="ri" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2"/><path d="M6 11h8"/><path d="M6 5h4"/><path d="M12 5v16"/><path d="M6 21h12"/></svg></span>
+    <div class="rt"><b id="powTitle">省电策略</b>：<span id="powText">把本应用设为「不限制」，否则息屏后可能收不到消息</span></div>
+    <div class="rb">
+      <button class="small" data-act="powack" id="powAckBar">知道了</button>
+      <button class="small primary" data-act="powgo" id="powGoBar">去设置</button>
+    </div>
+  </div>
+
   <section class="tab on" id="tab-home">
+    <!-- 新手引导（功能 18）：五步全部按真实状态判定，不满足绝不打勾。
+         进度条标题里的 3/5 就是已完成步数；点「稍后再说」写 localStorage.qqbot_onboard_done，
+         以后不再出现（清应用数据可重来）。 -->
+    <div class="card" id="onboardCard" style="display:none" aria-label="新手引导">
+      <div class="obhead"><b>新手引导</b><span class="obpct" id="obCount">0/5</span></div>
+      <div class="bar" style="margin-top:8px"><i id="obBar"></i></div>
+      <div class="obsteps" id="obSteps"></div>
+      <div class="btns" style="margin-top:10px">
+        <button class="small" data-act="oblater" style="flex:1">稍后再说</button>
+      </div>
+    </div>
+
+    <!-- 今日概览：数字来自 Android.todayStats()，60 秒一轮；拿不到就整块隐藏，不显示半截。
+         首屏不等这条桥，渲染完再异步补（见 todayStart 的 300ms 延迟）。 -->
+    <div class="card today" id="todayCard" style="display:none" aria-label="今日概览">
+      <div class="today-grid">
+        <div class="tcell"><span class="tlabel">今日在线</span><b class="tval" id="tdOnline">—</b></div>
+        <div class="tcell"><span class="tlabel">消息</span><b class="tval" id="tdMsgs">—</b></div>
+        <div class="tcell"><span class="tlabel">异常</span><b class="tval" id="tdErrs">—</b></div>
+        <div class="tcell"><span class="tlabel">流量</span><b class="tval" id="tdTraffic">—</b></div>
+      </div>
+    </div>
+
     <div class="card" id="deployCard">
       <h2><span class="dot" id="d-deploying"></span>自动部署<button class="dtgl" id="btnCopyLog" data-act="copylog" title="把部署日志复制出来">复制日志</button><button class="dtgl" id="btnDeployToggle" data-act="deploytoggle" style="display:none">展开</button></h2>
       <div class="dsum" id="deploySum" style="display:none"></div>
@@ -630,6 +1166,16 @@ button.locked{box-shadow:none;transform:none}
       <div class="btns" style="margin-top:12px">
         <button class="primary" style="flex:1" data-act="showlogs">查看日志</button>
       </div>
+    </div>
+
+    <!-- 实例卡片（功能 17）：头像走 Android.avatarPath(uin) 的本地缓存（file://，断网也能看），
+         没缓存先显示首字母圆形占位，后台下载命中后下一轮自动换成真头像。
+         在线时长 = now - started（原生每 60 秒写一次 instances.json），最近掉线走 lastOffline。
+         整张卡点进「机器人」页并展开该实例的编辑区。 -->
+    <div class="card" id="instCard" style="display:none">
+      <h2><span class="dot" id="d-inst"></span>实例</h2>
+      <div class="hint" style="margin-top:0">每个 QQ 号一张卡：在线时长从进程启动时刻算起，掉线按「刚刚 / N 分钟前」显示。点一张进它的设置。</div>
+      <div id="instList" style="margin-top:6px"></div>
     </div>
 
     <div class="card">
@@ -802,6 +1348,26 @@ button.locked{box-shadow:none;transform:none}
       <div class="hint">本软件官方群 <b>1127997343</b>，发现 bug 及时反馈。</div>
     </div>
 
+    <!-- 功能 9：紧急下线。App / 通知栏 / 小组件 / 磁贴四处最终都落到这一张确认卡上：
+         先把面板叫到前台弹确认，点了「确认下线」才真跑 Android.emergencyStop()
+         （写 state/offline + stop-sandbox.sh）。只停进程，登录态、配置、AstrBot data 一律不动。 -->
+    <div class="card" id="stopCard">
+      <h2><span class="dot" id="d-stop"></span>紧急下线</h2>
+      <div class="hint" style="margin-top:0">把 NapCat 与 AstrBot 的进程停掉，端口立刻不可访问；登录状态、配置、AstrBot 数据都保留，下次照常启动。</div>
+      <div class="hint" id="stopState">当前：沙盒运行中</div>
+      <div class="btns" style="margin-top:10px">
+        <button class="danger" data-act="askstop" style="flex:1">紧急下线</button>
+      </div>
+      <div id="stopConfirm" style="display:none;margin-top:12px;padding:12px 14px;border-radius:12px;background:rgba(234,88,12,.10);border:1px solid rgba(234,88,12,.30)">
+        <div style="font-weight:600">确定要下线吗？</div>
+        <div class="hint" style="margin-top:4px">下线后 NapCat 与 AstrBot 立即停止，看门狗不会自动拉起，需要你手动启动。登录态不会被清除。</div>
+        <div class="btns" style="margin-top:10px">
+          <button class="danger" data-act="stopnow" style="flex:1">确认下线</button>
+          <button class="small" data-act="stopcancel" style="flex:1">取消</button>
+        </div>
+      </div>
+    </div>
+
     <div class="card" id="guardCard">
       <h2><span class="dot" id="d-guard"></span>后台守护</h2>
       <div class="hint">Android 在内存紧张时会冻结甚至杀掉后台应用，沙盒里的 NapCat 与 AstrBot 就会「进程还在、但完全没有反应」。开启下面的常驻守护后，本应用会保留一条常驻通知以维持前台优先级，并每分钟自检一次沙盒，掉线就自动拉起。</div>
@@ -810,6 +1376,72 @@ button.locked{box-shadow:none;transform:none}
         <button class="small" data-act="battery" style="flex:1">申请电池优化白名单</button>
       </div>
       <div class="hint" id="guardNote">—</div>
+    </div>
+
+    <!-- 厂商省电引导（功能 5）：各家的「省电策略」入口不一样，原生按 MANUFACTURER
+         分支跳对应设置页（失败退回应用详情页）。只做引导，不假装能替用户改系统设置。 -->
+    <div class="card" id="powerCard">
+      <h2><span class="dot" id="d-power"></span>省电策略</h2>
+      <div class="hint" style="margin-top:0">手机厂商的省电策略会把后台应用「冻结」：通知还在，沙盒却不再收消息。这里按机型跳到对应的设置页，把本应用设为「不限制」。</div>
+      <div class="hint" id="powerState" style="margin-top:8px">—</div>
+      <div class="btns" style="margin-top:8px">
+        <button class="small primary" data-act="powgo" id="powBtnGo">去设置</button>
+        <button class="small" data-act="powack" id="powBtnAck">知道了</button>
+      </div>
+    </div>
+
+    <!-- 备份 / 恢复（功能 50）：恢复会覆盖沙盒与配置，破坏性大，所以点「从文件恢复」
+         只展开确认区，必须再点一次「确认恢复」才真调 restorePick()——WebView 里
+         confirm() 不一定被实现，照抄日志页的两步确认。 -->
+    <div class="card" id="backupCard">
+      <h2><span class="dot" id="d-backup"></span>备份与恢复</h2>
+      <div class="hint" style="margin-top:0">把沙盒、NapCat 登录数据与 AstrBot 配置打包成一个文件。换手机、重装前先备份一次。</div>
+      <div class="bkmeta" id="bkMeta">还没有备份记录</div>
+      <div class="bar" id="bkBarWrap" style="display:none"><i id="bkBar"></i></div>
+      <div class="hint" id="bkHint" style="display:none"></div>
+      <div class="btns" style="margin-top:10px">
+        <button class="small primary" data-act="bkstart" id="bkBtnStart">立即备份</button>
+        <button class="small" data-act="bkexport" id="bkBtnExport">导出到文件</button>
+      </div>
+      <div class="btns" style="margin-top:8px">
+        <button class="small danger" data-act="bkrestoreask" id="bkBtnRestore">从文件恢复</button>
+      </div>
+      <div class="confirm" id="bkConfirm" style="display:none">
+        <div class="ct">恢复会用选中的备份文件覆盖当前沙盒与配置：NapCat 的登录状态、AstrBot 的配置与插件都会被替换，且无法撤销。确定继续吗？</div>
+        <div class="btns" style="margin-top:8px">
+          <button class="small danger" data-act="bkrestore" id="bkBtnRestoreOk">确认恢复</button>
+          <button class="small" data-act="bkcancel">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 存储占用（功能 54）：五目录条形按总量归一，下面 top10 大文件方便直接看出胖在哪。
+         「清理缓存」只删可再生成的临时文件（原生侧有白名单），不动登录数据。 -->
+    <div class="card" id="storageCard">
+      <h2><span class="dot" id="d-storage"></span>存储占用</h2>
+      <div class="hint" style="margin-top:0">沙盒里最占地方的五个目录。缓存可以直接清，只删可再生成的临时文件，不动登录数据与配置。</div>
+      <div id="stgDirs" style="margin-top:6px"></div>
+      <div class="hint" id="stgTotal" style="margin-top:8px">正在统计…</div>
+      <div class="stgtop" id="stgTopWrap" style="display:none">
+        <div class="lkt" style="font-size:12px;margin-bottom:2px">最大的 10 个文件</div>
+        <div id="stgTop"></div>
+      </div>
+      <div class="btns" style="margin-top:10px">
+        <button class="small primary" data-act="stgclean" id="stgBtnClean">清理缓存</button>
+        <button class="small" data-act="stgrefresh">重新统计</button>
+      </div>
+      <div class="hint" id="stgHint" style="display:none"></div>
+    </div>
+
+    <!-- 崩溃看板（功能 58）：同一签名聚合成一条，按次数排序。上传默认关闭，
+         只有打开下面的匿名统计才会把脱敏后的堆栈发出去。 -->
+    <div class="card" id="crashCard">
+      <h2><span class="dot" id="d-crash"></span>崩溃看板</h2>
+      <div class="hint" style="margin-top:0">同一处崩溃按签名聚合成一条。崩溃上报默认关闭：只有打开「设置 → 匿名统计」，才会把脱敏后的堆栈发出去，不含聊天内容与 QQ 号。</div>
+      <div id="crashList" style="margin-top:6px"></div>
+      <div class="btns" style="margin-top:10px">
+        <button class="small" data-act="crashclear" id="crashBtnClear">清空</button>
+      </div>
     </div>
 
     <div class="card" id="appearanceCard">
@@ -848,6 +1480,37 @@ button.locked{box-shadow:none;transform:none}
   <section class="tab" id="tab-settings">
     <div class="btns" style="margin-bottom:12px">
       <button class="small" data-act="backhome">← 返回主页</button>
+    </div>
+
+    <!-- 外观主题三档：auto 跟系统，light/dark 手动锁死。选择存 localStorage.qqbot_theme，
+         <head> 里的内联脚本和下面的 themePaint() 共用这一份偏好，避免首屏跳色。 -->
+    <div class="card" id="themeCard">
+      <h2>外观主题</h2>
+      <div class="seg" id="themeSeg" role="group" aria-label="外观主题">
+        <button data-act="theme" data-arg="auto" aria-pressed="false">跟随系统</button>
+        <button data-act="theme" data-arg="light" aria-pressed="false">浅色</button>
+        <button data-act="theme" data-arg="dark" aria-pressed="false">深色</button>
+      </div>
+      <div class="hint">「跟随系统」会跟着手机的深色模式实时切换；选择只保存在本机，不影响容器。</div>
+    </div>
+
+    <!-- 匿名统计（功能 59）：默认关闭。第一次打开必须先看说明并点「了解并开启」
+         （说明弹窗 #dlgStats），之后开关直接生效并写原生侧 statsSet(true)。
+         「重置标识」会换一个新的 installId，历史数据从此对不上这台设备。 -->
+    <div class="card" id="statsCard">
+      <h2><span class="dot" id="d-stats"></span>匿名统计</h2>
+      <div class="swrow">
+        <div class="swinfo">
+          <div class="swname">发送匿名统计<span class="swtag off" id="statsTag">已关闭</span></div>
+          <div class="swdesc" id="statsDesc">默认关闭。只发崩溃计数与功能使用次数，不含聊天内容、QQ 号、文件路径。</div>
+        </div>
+        <button class="tgl" id="statsTgl" data-act="statstoggle" title="点击切换匿名统计"></button>
+      </div>
+      <div class="hint" id="statsId" style="margin-top:8px">安装标识：-</div>
+      <div class="btns" style="margin-top:10px">
+        <button class="small" data-act="statsreset" id="statsBtnReset">重置标识</button>
+        <button class="small" data-act="privacy">查看隐私政策</button>
+      </div>
     </div>
 
     <div class="card">
@@ -1008,11 +1671,29 @@ button.locked{box-shadow:none;transform:none}
   </div>
 </div>
 
+<!-- 匿名统计首次开启说明（功能 59）：收集什么 / 不收集什么写清楚，
+     「查看隐私政策」复用现有 #dlgPrivacy（showPrivacy），不另写一份。 -->
+<div class="dlgmask" id="dlgStats">
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="statsDlgTitle">
+    <h3 id="statsDlgTitle">开启匿名统计前请先看这些</h3>
+    <div class="dbody">
+      <p><b>会发送：</b>崩溃签名与次数、功能按钮的使用次数、应用版本、机型与系统版本、匿名安装标识（随机生成，不含任何账号信息）。</p>
+      <p><b>不会发送：</b>聊天内容、图片与文件、QQ 号与昵称、手机号、IP 地址、存储路径、输入的指令文本。</p>
+      <p>用途只有一个：知道哪一步最容易崩、哪台机型问题最多。随时可以在「设置 → 匿名统计」关掉，关掉后立即停止发送。</p>
+      <p>完整范围见 <button class="small" data-act="privacy">隐私政策</button>。</p>
+    </div>
+    <div class="dfoot">
+      <button class="small" data-act="statscancel">暂不开启</button>
+      <button class="primary" style="flex:1" data-act="statsok">了解并开启</button>
+    </div>
+  </div>
+</div>
+
 <nav>
   <button class="on" data-tab="home"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.6 12 4l8 6.6V19a1 1 0 0 1-1 1h-4.2v-5.6H9.2V20H5a1 1 0 0 1-1-1z"/></svg>主页</button>
   <button data-tab="bots"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6" width="17" height="12.5" rx="3.4"/><path d="M9.5 6V4.6h5V6"/><circle cx="9.2" cy="11.4" r="1.1" fill="currentColor" stroke="none"/><circle cx="14.8" cy="11.4" r="1.1" fill="currentColor" stroke="none"/><path d="M9.4 15h5.2"/></svg>机器人</button>
   <button data-tab="logs"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3.5" width="16" height="17" rx="3.2"/><path d="M8 8.6h8M8 12h8M8 15.4h5"/></svg>日志</button>
-  <button data-tab="more"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h16M4 16h16"/><circle cx="9.6" cy="8" r="2.2" fill="#0b0d13"/><circle cx="14.4" cy="16" r="2.2" fill="#0b0d13"/></svg>更多</button>
+  <button data-tab="more"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h16M4 16h16"/><circle class="knob" cx="9.6" cy="8" r="2.2"/><circle class="knob" cx="14.4" cy="16" r="2.2"/></svg>更多</button>
 </nav>
 
 <script>
@@ -1034,6 +1715,40 @@ function lsGet(k, dflt){
 function lsSet(k, v){ try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
 function lsDel(k){ try { localStorage.removeItem(k); } catch (e) {} }
 
+/* ---------- 外观主题：跟随系统 / 浅色 / 深色（存 localStorage.qqbot_theme） ---------- */
+var THEME_KEY = "qqbot_theme";
+var themeMQ = null;
+try { themeMQ = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null; } catch (e) { themeMQ = null; }
+
+function themePref(){
+  var t = String(lsGet(THEME_KEY, "auto") || "auto");
+  return (t === "light" || t === "dark") ? t : "auto";
+}
+function themePaint(){
+  var pref = themePref();
+  var dark = pref === "dark";
+  if (pref === "auto") { try { dark = !!(themeMQ && themeMQ.matches); } catch (e) { dark = false; } }
+  var root = document.documentElement;
+  root.setAttribute("data-theme", dark ? "dark" : "light");
+  root.setAttribute("data-theme-pref", pref);
+  var bs = document.querySelectorAll("#themeSeg button");
+  for (var i = 0; i < bs.length; i++) {
+    var on = bs[i].getAttribute("data-arg") === pref;
+    bs[i].classList.toggle("on", on);
+    bs[i].setAttribute("aria-pressed", on ? "true" : "false");
+  }
+}
+function themeSet(pref){
+  if (pref !== "light" && pref !== "dark") pref = "auto";
+  lsSet(THEME_KEY, pref);
+  themePaint();
+}
+/* auto 时跟系统实时走：手机切深色，页面立刻跟着换，不用重开 */
+try {
+  if (themeMQ && themeMQ.addEventListener) themeMQ.addEventListener("change", function(){ if (themePref() === "auto") themePaint(); });
+  else if (themeMQ && themeMQ.addListener) themeMQ.addListener(function(){ if (themePref() === "auto") themePaint(); });
+} catch (e) {}
+
 function presetCss(id){
   for (var i = 0; i < BG_PRESETS.length; i++) if (BG_PRESETS[i].id === id) return BG_PRESETS[i].css;
   return BG_PRESETS[0].css;
@@ -1046,11 +1761,11 @@ function applyBg(){
   var img = S.bgImg || lsGet("qqbot.bgimg", "");
   if (img) {
     lay.style.backgroundImage = "url(" + img + ")";
-    lay.style.backgroundColor = "#06070b";
+    lay.style.backgroundColor = "";
   } else {
     S.bgPreset = lsGet("qqbot.bgpreset", "space");
     lay.style.backgroundImage = presetCss(S.bgPreset);
-    lay.style.backgroundColor = "#06070b";
+    lay.style.backgroundColor = "";
   }
   // 照片有亮有暗，预设渐变都是深色；亮照片上浅色文字会糊掉，
   // 所以用图片时给整页加深遮罩并补文字阴影（CSS 见 body.hasimg 那几条）。
@@ -1297,6 +2012,9 @@ function showTab(t){
   /* 页面滚动是四个页签共用的，不重置的话从滚到一半的主页切到日志页会落在页面中间 */
   window.scrollTo(0, 0);
   if (t === "logs") { fillQrSelect(); loadQr(); loadLog(); loadDuo(); }
+  /* v1.1.30：切到哪页就立刻补一次那页的数据，不用干等下一个 4 秒轮询。
+     extOnTab 内部自己 try/catch，桥缺了也只是空态。 */
+  extOnTab(t);
 }
 
 function pill(txt, cls){ return '<span class="pill ' + (cls || "") + '">' + esc(txt) + '</span>'; }
@@ -1335,11 +2053,24 @@ var NO_LOCK_ACTS = [
      而失败弹窗里的那个入口只有部署失败/卡住时才会出现，正好错开了最需要它的场景。 */
   "uploadlogs",
   "settings", "backhome", "showlogs",
-  "pickbg", "clearbg", "bgpreset", "glass",
+  "pickbg", "clearbg", "bgpreset", "glass", "theme",
   "reload", "slim", "rmcard",
   "checkupdate", "dlupdate", "updnotes", "updgo", "updlater",
   "copyurl", "openurl", "openqq", "copydisc", "dlgagree", "privacy", "privacyclose", "copydiscp",
-  "guardset", "battery", "terminal"
+  "guardset", "battery", "terminal", "powgo", "powack",
+  /* 风控横幅说的是账号侧的事（要验证 / 被踢下线），跟「容器装没装好」无关：
+     哪怕部署还没完成，也不能把「我知道了」「去处理」置灰 —— 那正是要处理的时刻。 */
+  "riskack", "riskgo", "riskpanel",
+  /* v1.1.30 的信息类面板：公告条、新手引导、实例卡、崩溃看板、存储占用、备份、匿名统计。
+     它们的共同点是「读状态 / 给出解释」，这时候正是最该让用户看见。
+     按钮背后的桥没实现时函数自己会兜住并提示，不需要靠置灰来表示「暂时不可用」——
+     置灰只会让用户以为是自己点错了。备份 / 清理这类真会动文件的操作，原生侧自己会拒绝。 */
+  "annclose", "oblater", "obtest", "instopen", "crashopen",
+  "bkstart", "bkexport", "bkrestoreask", "bkcancel", "bkrestore",
+  "stgclean", "stgrefresh", "crashclear",
+  "statstoggle", "statsok", "statscancel", "statsreset",
+  /* 功能 9：紧急下线是「出事时」用的入口，部署没完成也得能点（沙盒可能正是起不来才要停） */
+  "askstop", "stopnow", "stopcancel"
 ];
 
 /* 这个 act 在未部署时要不要拦 */
@@ -1398,6 +2129,121 @@ function svcTileValue(off, up){
   return up ? "在线" : "离线";
 }
 
+/* ===== 风控横幅 =====
+   风控命中 = 账号被要求验证 / 被踢下线，不是进程崩了：重启救不了，越点重启越糟。
+   所以这里的文案只说「需要验证 / 已暂停自动重启」，跟部署失败、服务起不来那些提示分开。
+   原生层 1.1.30 起才有 Android.riskInfo()/riskClear()：老安装包里这两个函数一次都不调。 */
+var RISK_ON = false;     /* 横幅当前是展开还是收起：只在翻转时放 200ms 淡入淡出 */
+var RISK_SIG = "";       /* 上一轮的 instance|word：内容没变就不碰 DOM，免得 aria-live 反复播报 */
+var RISK_TM = 0;         /* 收起动画的定时器 */
+var RISK_LAST = null;    /* 最近一次命中的风控数据：「去处理」按它的实例挑 WebUI 端口 */
+
+function riskBridgeOk(){
+  return typeof Android !== "undefined" && !!Android && typeof Android.riskInfo === "function";
+}
+function riskToast(msg){
+  try { if (typeof Android !== "undefined" && Android && Android.toast) Android.toast(msg); } catch (e) {}
+}
+
+/* 展开 / 收起都走这里：display 与 opacity 分开控制，收起要等淡出走完再 display:none，
+   否则元素瞬间消失、那 200ms 就白写了。系统开了「减少动态效果」就立刻收。 */
+function riskBarShow(on){
+  var bar = el("riskBar");
+  if (!bar || on === RISK_ON) return;
+  RISK_ON = on;
+  try { clearTimeout(RISK_TM); } catch (e) {}
+  if (on) {
+    bar.style.display = "flex";
+    bar.style.opacity = "0";
+    void bar.offsetWidth;   /* 先让浏览器记住 opacity:0，同一帧改成 1 才会真的走过渡 */
+    bar.style.opacity = "1";
+    return;
+  }
+  var reduce = false;
+  try { reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (e) {}
+  bar.style.opacity = "0";
+  if (reduce) { bar.style.display = "none"; return; }
+  RISK_TM = setTimeout(function(){ if (!RISK_ON) bar.style.display = "none"; }, 220);
+}
+
+function renderRisk(r){
+  var sig = String(r.instance || "") + "|" + String(r.word || "");
+  if (sig !== RISK_SIG) {
+    RISK_SIG = sig;
+    var inst = el("riskInst"), word = el("riskWord");
+    /* 字段缺失时给可读的占位：不能把「实例  可能需要验证」这种断句漏在页面上 */
+    if (inst) inst.textContent = String(r.instance || "").trim() || "?";
+    if (word) word.textContent = String(r.word || "").trim() || "风控词";
+  }
+  RISK_LAST = r;
+  riskBarShow(true);
+}
+
+/* 每轮 refreshAll 问一次：桥不存在 / ok:false / JSON 坏了 一律当「没风控」静默收起。
+   这里故意不写 console —— 桥没实现时每 4 秒刷一条异常日志，比横幅本身更碍事。 */
+function refreshRisk(){
+  if (!riskBridgeOk()) { riskBarShow(false); return; }
+  var r = null;
+  try { r = JSON.parse(Android.riskInfo()); } catch (e) { r = null; }
+  if (!r || r.ok === false || !r.risk) { RISK_LAST = null; riskBarShow(false); return; }
+  renderRisk(r);
+}
+
+/* 「我知道了」：真正删掉原生侧的 risk.json 与所有 .flag（自动重启才会恢复）。
+   清失败就保留横幅，不能假装已经处理完、下一轮又冒出来。 */
+function riskAck(){
+  if (!riskBridgeOk() || typeof Android.riskClear !== "function") {
+    riskToast("这个安装包还不能清除风控提示，请更新到最新版");
+    return;
+  }
+  var r = null;
+  try { r = JSON.parse(Android.riskClear()); } catch (e) { r = null; }
+  if (!r || r.ok === false) { riskToast("清除失败，请稍后再试"); return; }
+  RISK_LAST = null;
+  riskBarShow(false);
+  riskToast("已清除风控提示");
+}
+
+/* 「去处理」的地址：端口取 state() 里这个实例的真实值（主号不一定 6099），拿不到才退回
+   约定的 http://127.0.0.1:6099；带 token 跟主页「在浏览器打开 NapCat 面板」那个按钮保持一致。
+   主机固定 127.0.0.1：面板就在这台手机上，走本机回环不用管 Wi-Fi 切没切。 */
+function riskNapcatUrl(){
+  var port = 0, tok = "";
+  try {
+    var st = S.st || {};
+    var bs = validBots(S.bots.bots);
+    var want = (RISK_LAST && RISK_LAST.instance) ? String(RISK_LAST.instance) : "";
+    var i, b = null;
+    for (i = 0; i < bs.length; i++) if (want && String(bs[i].id) === want) { b = bs[i]; break; }
+    if (!b) for (i = 0; i < bs.length; i++) if (bs[i].id === S.bots.active) { b = bs[i]; break; }
+    if (!b && bs.length) b = bs[0];
+    if (b) { port = parseInt(b.napcatPort, 10) || 0; tok = String(b.token || ""); }
+    if (!port) port = parseInt(st.napcatPort, 10) || 0;
+  } catch (e) { port = 0; tok = ""; }
+  if (!port) return "http://127.0.0.1:6099";
+  return "http://127.0.0.1:" + port + (tok ? "/webui?token=" + encodeURIComponent(tok) : "");
+}
+/* 「查看日志」：切到日志页，并把日志框切到风控命中的那个文件（取不到就留在当前文件）。
+   用户点这个按钮时想看的是「到底哪一行命中了关键词」，不该让他自己翻下拉。 */
+function riskGo(){
+  var f = (RISK_LAST && RISK_LAST.file) ? String(RISK_LAST.file) : "";
+  showTab("logs");
+  try {
+    var sel = el("logSel");
+    if (sel && f && sel.options){
+      var base = f.split(/[\\/]/).pop();
+      for (var i = 0; i < sel.options.length; i++){
+        if (sel.options[i].value === base){ sel.value = base; break; }
+      }
+    }
+  } catch (e) {}
+  try { loadLog(); } catch (e2) {}
+}
+
+/* 「打开面板」：把 NapCat 的 WebUI 真的拉到系统浏览器里 —— 那里能改配置、看登录状态。
+   跟「查看日志」分成两个按钮，是因为这两件事用户通常先后做：先看日志知道哪儿错了，再去面板处理。 */
+function riskPanel(){ openExternal(riskNapcatUrl()); }
+
 /* refresh() 的整体护栏：任何一处渲染抛异常（例如状态里出现意料外的脏数据）都不该让
    这一次刷新半途中断、更不该让后面每一轮轮询跟着失效，所以整体包一层。
    原来只有 JSON.parse 那一处 try。refreshAll() 就是原来的函数体。 */
@@ -1406,6 +2252,13 @@ function refresh(){
 }
 
 function refreshAll(){
+  /* 记下滚动位置：这一轮会重写上面若干块，任何一块高度变化都会把用户正在看的那段顶走。
+     4 秒一次自动刷新，「更多」页里的按钮/确认框因此根本点不准（v1.1.30 实测踩到）。 */
+  var _sy = 0;
+  try { _sy = window.pageYOffset || document.documentElement.scrollTop || 0; } catch (e) {}
+  /* 放在最前面：后面读 state() 失败会提前 return，风控横幅不该跟着一起卡住不刷。
+     整个调用不会抛异常，不会影响下面任何一块渲染。 */
+  refreshRisk();
   var st;
   var stErr = "";
   try { st = JSON.parse(Android.state()); } catch (e) { st = null; stErr = "读取状态失败"; }
@@ -1526,9 +2379,18 @@ function refreshAll(){
   paintBoot(st);
   paintReinstall();
   autoLink();
+  /* v1.1.30 的新面板（公告 / 新手引导 / 实例卡 / 备份 / 存储 / 崩溃 / 统计）。
+     每个内部都有自己的节流与 try/catch：桥方法还没实现时只是空态，
+     绝不会把上面这些渲染一起带翻 —— 它们在 refresh() 的护栏里，这里再包一层更稳。 */
+  try { refreshExtras(st); } catch (e) {}
   /* 所有控件的置灰外观放在最后统一刷：上面每个 render 都可能刚重建过 DOM，
      新节点上没有 .locked。这里每轮重算，部署完成那一刻下一轮就自动解锁。 */
   paintLocks();
+  /* 把滚动位置还原回去（误差 2px 以内当没动过，避免和浏览器自身的平滑滚动打架） */
+  try {
+    var _ny = window.pageYOffset || document.documentElement.scrollTop || 0;
+    if (Math.abs(_ny - _sy) > 2) window.scrollTo(0, _sy);
+  } catch (e) {}
 }
 
 /* 主页自动把 NapCat 与 AstrBot 连起来：部署完成且服务在跑时自动跑一次 link.sh（幂等）。
@@ -2606,6 +3468,24 @@ document.addEventListener("click", function(ev){
   else if (act === "svcallon") doSvc("all-on");
       else if (act === "guardset") doGuard(arg);
       else if (act === "battery") { var r = ""; try { r = String(Android.action("battery")); } catch (e) { r = "失败：" + e; } Android.toast(r); setTimeout(refresh, 1500); }
+  else if (act === "powgo") {
+    /* 功能 5：按机型跳厂商省电设置；原生失败会返回原因，不要假装成功 */
+    var pr = null;
+    try { pr = normJson(Android.powerGuide()); } catch (e1) { pr = null; }
+    if (!pr || pr.ok === false){
+      extToast(pr && pr.err ? String(pr.err) : "这台机型暂时没有直达设置页，已尽量打开应用页");
+    } else if (pr.jumped === false){
+      extToast("已打开设置，请把本应用设为「不限制」");
+    }
+    setTimeout(function(){ try { refreshExtras(); } catch (e2) {} }, 1200);
+  }
+  else if (act === "powack") {
+    try { Android.powerAck(); } catch (e3) {}
+    var pbb = el("powBar");
+    if (pbb) pbb.style.display = "none";
+    extToast("已记录，不再重复提示");
+    try { refreshExtras(); } catch (e4) {}
+  }
   else if (act === "copytoken") Android.copy(el("tokText").textContent);
   else if (act === "copytok") Android.copy(arg || "");
   else if (act === "copyurl") Android.copy(arg || "");
@@ -2627,6 +3507,56 @@ document.addEventListener("click", function(ev){
   else if (act === "terminal") Android.openTerminal();
   else if (act === "openurl") openExternal(arg || "");
   else if (act === "openqq") openQqGroup(arg || "");
+  else if (act === "riskack") riskAck();
+  else if (act === "riskgo") riskGo();
+  else if (act === "riskpanel") riskPanel();
+  /* ---------- v1.1.30：公告 / 引导 / 实例卡 / 备份 / 存储 / 崩溃 / 统计 ---------- */
+  else if (act === "annclose") annClose();
+  else if (act === "oblater") {
+    lsSet(ONB_KEY, "1");
+    var obc = el("onboardCard");
+    if (obc) obc.style.display = "none";
+    extToast("已收起新手引导，随时可以在「更多」里回看步骤");
+  }
+  else if (act === "obtest") {
+    /* 「我已发送」：服务端消息计数是最准的判据，但 AstrBot 的消息计数要等它自己落盘，
+       用户刚发完可能还没统计进去。手动确认留一条本地记录，别让人卡在这一步。 */
+    lsSet(ONB_TEST_KEY, "1");
+    ext().onb.msgs = true;
+    try { refreshOnboard(S.st); } catch (e) {}
+    extToast("已记下，继续下一步");
+  }
+  else if (act === "instopen") openInst(arg);
+  else if (act === "crashopen") {
+    showTab("more");
+    var ccard = el("crashCard");
+    if (ccard && ccard.scrollIntoView){
+      try { ccard.scrollIntoView({ behavior: "smooth", block: "start" }); }
+      catch (e) { ccard.scrollIntoView(); }
+    }
+  }
+  else if (act === "bkstart") bkStart("backup");
+  else if (act === "bkexport") bkStart("export");
+  else if (act === "bkrestoreask") {
+    var bcf = el("bkConfirm");
+    if (bcf){
+      bcf.style.display = "";
+      if (bcf.scrollIntoView){ try { bcf.scrollIntoView({ behavior: "smooth", block: "nearest" }); } catch (e) {} }
+    }
+  }
+  else if (act === "bkcancel") { var bcc = el("bkConfirm"); if (bcc) bcc.style.display = "none"; }
+  else if (act === "bkrestore") { var bco = el("bkConfirm"); if (bco) bco.style.display = "none"; bkRestore(); }
+  else if (act === "stgclean") stgClean();
+  else if (act === "askstop") stopAsk(true);
+  else if (act === "stopnow") stopDo();
+  else if (act === "stopcancel") stopAsk(false);
+  else if (act === "stgrefresh") { ext().stg.at = 0; refreshStorage(true); extToast("正在重新统计…"); }
+  else if (act === "crashclear") crashClear();
+  else if (act === "statstoggle") statsToggle();
+  else if (act === "statsok") statsDialogOk();
+  else if (act === "statscancel") statsDialogCancel();
+  else if (act === "statsreset") statsReset();
+  else if (act === "theme") themeSet(arg || "auto");
   else if (act === "checkupdate") doCheckUpdate(false);
   else if (act === "dlupdate") updDownload();
   else if (act === "updnotes") updDetail();
@@ -3022,7 +3952,7 @@ function updPaint(title, noteHtml, btnText, btnDisabled, tone){
   var t = el("updText"), n = el("updNote"), b = el("updBtn");
   if (t) {
     t.textContent = title;
-    t.style.color = (tone === "ok") ? "#7ee0a6" : (tone === "bad" ? "#ff9d9d" : "");
+    t.style.color = (tone === "ok") ? "var(--ok)" : (tone === "bad" ? "var(--bad)" : "");
   }
   if (n) {
     n.innerHTML = noteHtml || "";
@@ -3335,6 +4265,1009 @@ el("qrSel").addEventListener("change", loadQr);
 if (el("portList")) el("portList").addEventListener("input", onPortTyping);
 if (el("inAstrPort")) el("inAstrPort").addEventListener("input", function(){ el("inAstrPort")._dirty = true; });
 
+/* ---------- 今日概览：Android.todayStats()，60 秒一轮 ---------- */
+var TODAY = { timer: 0 };
+
+function todayBridgeOk(){
+  return typeof Android !== "undefined" && Android && typeof Android.todayStats === "function";
+}
+function todayFmtDur(sec){
+  sec = Math.max(0, Math.floor(Number(sec) || 0));
+  var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+  /* 0 也要显示成「0 分」：新装当天本来就是 0，留空反而像坏了 */
+  return h > 0 ? (h + " 小时 " + m + " 分") : (m + " 分");
+}
+function todayFmtBytes(n){
+  n = Math.max(0, Number(n) || 0);
+  if (n < 1024) return Math.floor(n) + " B";
+  if (n < 1048576) return (Math.round(n / 102.4) / 10) + " KB";
+  if (n < 1073741824) return (Math.round(n / 104857.6) / 10) + " MB";
+  return (Math.round(n / 107374182.4) / 10) + " GB";
+}
+function todayHide(){
+  var c = el("todayCard");
+  if (c) c.style.display = "none";
+}
+function todayPaint(d){
+  var card = el("todayCard");
+  if (!card) return;
+  var o = el("tdOnline"), m = el("tdMsgs"), e = el("tdErrs"), t = el("tdTraffic");
+  if (o) o.textContent = todayFmtDur(d.onlineSec);
+  if (m) m.textContent = String(Math.max(0, Math.floor(Number(d.msgs) || 0)));
+  if (e) e.textContent = String(Math.max(0, Math.floor(Number(d.errors) || 0)));
+  if (t) {
+    var rx = Math.max(0, Number(d.rxBytes) || 0), tx = Math.max(0, Number(d.txBytes) || 0);
+    t.textContent = todayFmtBytes(rx + tx);
+    t.title = "下行 " + todayFmtBytes(rx) + " · 上行 " + todayFmtBytes(tx);
+  }
+  var day = String(d.day || "");
+  card.setAttribute("aria-label", day ? ("今日概览 " + day) : "今日概览");
+  if (card.style.display === "none") card.style.display = "";
+}
+function refreshToday(){
+  if (!todayBridgeOk()) { todayHide(); return; }
+  var r = null;
+  /* 桥还没实现时返回空串或直接抛，都当「没有数据」静默处理，不往控制台喷 */
+  try { r = JSON.parse(Android.todayStats()); } catch (e) { r = null; }
+  if (!r || r.ok === false) { todayHide(); return; }
+  /* 五个字段一个数字都没有就整块收起，避免显示一排「0」骗人 */
+  var nums = [r.onlineSec, r.msgs, r.errors, r.rxBytes, r.txBytes], has = false;
+  for (var i = 0; i < nums.length; i++) if (typeof nums[i] === "number" && isFinite(nums[i])) { has = true; break; }
+  if (!has) { todayHide(); return; }
+  todayPaint(r);
+}
+function todayStop(){ if (TODAY.timer) { clearInterval(TODAY.timer); TODAY.timer = 0; } }
+function todayStart(){
+  if (!todayBridgeOk() || TODAY.timer) return;
+  TODAY.timer = setInterval(function(){ if (!document.hidden) refreshToday(); }, 60000);
+}
+
+/* ===================== v1.1.30 新面板 =====================
+   桥方法的分工（重要）：
+     原生已经实现 —— state / todayStats / riskInfo / riskClear / instancesInfo / avatarPath /
+       bootInfo / qr / toast …
+     契约已定、原生还没跟上 —— storageStats / storageClean / backupPick / backupPoll /
+       restorePick / restorePoll / crashBoard / statsState / statsSet / statsReset / ann
+   后者一律走 brCall()：函数不存在、返回空串、抛异常、JSON 坏掉，统统当「没有数据」，
+   面板显示空态，绝不抛异常（一个未实现的桥不该让整页白屏）。
+   每个候选调用都同时认契约名与旧别名，原生按任一名字实现都能立刻用上。
+   ================================================================== */
+
+var ANN_KEY = "qqbot_ann_closed";        /* 关掉的公告 id（JSON 对象，id -> 1） */
+var ONB_KEY = "qqbot_onboard_done";      /* 用户点了「稍后再说」/ 五步走完 */
+var ONB_TEST_KEY = "qqbot_onboard_test"; /* 第 4 步手动点过「我已发送」 */
+var STATS_ACK_KEY = "qqbot_stats_ack";   /* 看过匿名统计说明并同意 */
+
+var EXT = null;
+
+function ext(){
+  if (!EXT) EXT = {
+    ann:  { at: 0, sig: "", cur: null },
+    onb:  { qrSeen: false, bootOk: false, msgs: false, qrTries: 0, qrAt: 0, bootAt: 0, msgAt: 0 },
+    inst: { at: 0, map: {}, av: {} },
+    bk:   { at: 0, meta: null, running: "", timer: 0, pickAt: 0 },
+    stg:  { at: 0, busy: false, data: null },
+    cr:   { at: 0, data: null },
+    st:   { at: 0, data: null }
+  };
+  return EXT;
+}
+
+/* ---------- 桥工具：缺方法就返回 null，永不抛 ---------- */
+function brHas(name){
+  try { return typeof Android !== "undefined" && !!Android && typeof Android[name] === "function"; }
+  catch (e) { return false; }
+}
+function normJson(v){
+  if (v == null) return null;
+  if (typeof v === "object") return v;
+  var s = String(v).replace(/^\s+|\s+$/g, "");
+  if (!s) return null;
+  try { var o = JSON.parse(s); return (o && typeof o === "object") ? o : null; }
+  catch (e) { return null; }
+}
+/* 不带参数：按候选顺序试，返回第一个能解析成对象的结果 */
+function brCall(names){
+  for (var i = 0; i < names.length; i++){
+    if (!brHas(names[i])) continue;
+    var v = null;
+    try { v = Android[names[i]](); } catch (e) { v = null; }
+    var o = normJson(v);
+    if (o) return o;
+  }
+  return null;
+}
+/* 带一个参数：只在明确要传参时用（backupPick(scope) / avatarPath(uin) 之类） */
+function brCall1(name, a1){
+  if (!brHas(name)) return null;
+  var v = null;
+  try { v = Android[name](a1); } catch (e) { v = null; }
+  return normJson(v);
+}
+function extToast(m){ try { if (brHas("toast")) Android.toast(String(m)); } catch (e) {} }
+
+/* ---------- 时间 / 版本格式化 ---------- */
+function extDur(sec){
+  sec = Math.max(0, Math.floor(Number(sec) || 0));
+  var d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
+  if (d > 0) return d + " 天 " + h + " 小时";
+  if (h > 0) return h + " 小时 " + m + " 分";
+  return m + " 分钟";
+}
+/* epoch 秒 → 刚刚 / N 分钟前 / N 小时前 / 昨天 / N 天前 */
+function extRel(sec){
+  var t = Number(sec) || 0;
+  if (t <= 0) return "—";
+  var d = Math.max(0, Math.floor((Date.now() - t * 1000) / 1000));
+  if (d < 60) return "刚刚";
+  if (d < 3600) return Math.floor(d / 60) + " 分钟前";
+  if (d < 86400) return Math.floor(d / 3600) + " 小时前";
+  if (d < 172800) return "昨天";
+  return Math.floor(d / 86400) + " 天前";
+}
+function extClock(sec){
+  var t = Number(sec) || 0;
+  if (t <= 0) return "—";
+  var d = new Date(t * 1000);
+  function p2(n){ return (n < 10 ? "0" : "") + n; }
+  return d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate()) + " " + p2(d.getHours()) + ":" + p2(d.getMinutes());
+}
+function extBytes(n){ return todayFmtBytes(n); }
+function extVerNum(v){
+  var p = String(v || "").replace(/^v/i, "").split(".");
+  return (parseInt(p[0], 10) || 0) * 10000 + (parseInt(p[1], 10) || 0) * 100 + (parseInt(p[2], 10) || 0);
+}
+function tabOn(t){
+  var s = el("tab-" + t);
+  return !!(s && s.classList && s.classList.contains("on"));
+}
+
+/* ===================== 功能 56：公告条 ===================== */
+function annClosedMap(){
+  var raw = lsGet(ANN_KEY, "");
+  if (!raw) return {};
+  try { var o = JSON.parse(raw); return (o && typeof o === "object") ? o : {}; }
+  catch (e) { return {}; }
+}
+function annHide(){ var b = el("annBar"); if (b) b.style.display = "none"; }
+
+function annPaint(it, onlyUpdate){
+  var bar = el("annBar"), tx = el("annText");
+  if (!bar || !tx) return;
+  var cls = "annbar" + (it.level === "warn" ? " warn" : "");
+  if (bar.className !== cls) bar.className = cls;
+  var title = String(it.title || ""), body = String(it.body || "");
+  var h = "";
+  if (title) h += "<b>" + esc(title) + "</b>";
+  if (body && body !== title) h += (h ? " " : "") + esc(body);
+  if (!h) h = esc("有新公告");
+  if (tx.innerHTML !== h) tx.innerHTML = h;
+  /* 用「不等于 flex 就设成 flex」而不是「等于 none 才设」：初始的 display:none 来自
+     行内 style，一旦别处把它清成空串，前者还能把条子拉回来。 */
+  if (bar.style.display !== "flex") bar.style.display = "flex";
+  ext().ann.cur = it;
+}
+
+/* 公告最长 5 分钟问一次：它变得很慢，没必要跟着 4 秒的 refresh 转。
+   原生侧自己带 5 秒超时与缓存；这里再兜一层：拿不到就整条不显示，绝不提示「公告加载失败」。 */
+function refreshAnn(force){
+  var E = ext(), now = Date.now();
+  if (!force && E.ann.at && now - E.ann.at < 300000) return;
+  E.ann.at = now;
+  if (!brHas("ann") && !brHas("announcement")) { annHide(); return; }
+  var r = brCall(["ann", "announcement"]);
+  if (!r || r.ok === false) { annHide(); return; }
+
+  var it = null, i;
+  if (r.ann && typeof r.ann === "object"){
+    var a = r.ann;
+    it = {
+      id: String(a.id || ""),
+      title: String(a.title || ""),
+      body: String(a.body || a.text || ""),
+      level: (a.level === "warn" ? "warn" : "info"),
+      minVer: String(a.minVer || r.minVer || ""),
+      until: Number(a.until || 0)
+    };
+  } else if (r.items && r.items.length){
+    for (i = 0; i < r.items.length; i++){
+      var o = r.items[i];
+      if (!o || typeof o !== "object") continue;
+      var un = Number(o.until || 0);
+      if (un > 0 && un * 1000 < now) continue;   /* 过期的不算 */
+      it = {
+        id: String(o.id || ""),
+        title: String(o.title || ""),
+        body: String(o.body || o.text || ""),
+        level: (o.level === "warn" ? "warn" : "info"),
+        minVer: String(o.minVer || ""),
+        until: un
+      };
+      break;
+    }
+  }
+  if (!it) { annHide(); return; }
+  if (it.until > 0 && it.until * 1000 < now) { annHide(); return; }
+  if (it.id && annClosedMap()[it.id]) { annHide(); return; }
+
+  /* minVer 高于当前版本：正文没有意义，只留一条「有新版本」提示 */
+  var curVer = (S.st && S.st.appVersion) ? String(S.st.appVersion) : "";
+  if (it.minVer && curVer && extVerNum(it.minVer) > extVerNum(curVer)){
+    annPaint({ id: it.id, level: "info", title: "有新版本 v" + it.minVer + " 可用", body: "更新后可以看这条公告。", minVer: it.minVer, until: it.until });
+    return;
+  }
+  annPaint(it);
+}
+function annClose(){
+  var E = ext();
+  var id = (E.ann.cur && E.ann.cur.id) ? String(E.ann.cur.id) : "";
+  if (id){ var m = annClosedMap(); m[id] = 1; lsSet(ANN_KEY, JSON.stringify(m)); }
+  annHide();
+}
+
+/* ===================== 功能 18：五步新手引导 ===================== */
+var OB_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+
+function onbSteps(st){
+  var E = ext();
+  st = st || {};
+  var installed = !!(st.deployDone || st.installed);
+  var napcatUp = !!st.napcatUp;
+  var scan = napcatUp || !!E.onb.qrSeen;           /* qrcode.png 存在 或 NapCat 已在线 */
+  var test = !!E.onb.msgs || lsGet(ONB_TEST_KEY, "") === "1";
+  var guard = !!st.guardOn || !!E.onb.bootOk;      /* 守护开着 或 开机自启成功过 */
+  return [
+    { t: "装好", d: "自动部署完成，沙盒里已经有容器", done: installed },
+    { t: "扫码登录", d: "在日志页扫码登录这个 QQ 号", done: scan },
+    { t: "拉进群", d: "把机器人拉进一个群，再 @ 它试试", done: napcatUp },
+    { t: "发一条测试消息", d: "任何一条消息被 AstrBot 收到就算过", done: test, act: true },
+    { t: "开启保活", d: "常驻后台守护 / 开机自启，息屏也不掉线", done: guard }
+  ];
+}
+
+function refreshOnboard(st){
+  var E = ext(), card = el("onboardCard");
+  if (!card) return;
+  if (lsGet(ONB_KEY, "") === "1") { card.style.display = "none"; return; }
+  var now = Date.now();
+
+  /* 保活：bootInfo() 很便宜，但没必要每 4 秒问一次，2 分钟一次足够 */
+  if (!E.onb.bootOk && brHas("bootInfo") && (!E.onb.bootAt || now - E.onb.bootAt > 120000)){
+    E.onb.bootAt = now;
+    var b = brCall(["bootInfo"]);
+    if (b && b.ok !== false && (Number(b.lastBoot || 0) > 0 || Number(b.lastStart || 0) > 0)) E.onb.bootOk = true;
+  }
+  /* 扫码：只在 NapCat 还没起来、且还没判定成功时问；至少隔 60 秒，最多试 20 次。
+     问 20 次就不再问 —— qr() 会把整张 PNG 转 base64 过桥，反复问纯属浪费。 */
+  if (!E.onb.qrSeen && !(st && st.napcatUp) && brHas("qr") && E.onb.qrTries < 20 &&
+      (!E.onb.qrAt || now - E.onb.qrAt > 60000)){
+    E.onb.qrAt = now;
+    E.onb.qrTries++;
+    var q = null;
+    try { q = normJson(Android.qr("")); } catch (e) { q = null; }
+    if (q && q.ok !== false && q.data) E.onb.qrSeen = true;
+  }
+
+  var steps = onbSteps(st), done = 0, i;
+  for (i = 0; i < steps.length; i++) if (steps[i].done) done++;
+
+  var h = [];
+  for (i = 0; i < steps.length; i++){
+    var s = steps[i];
+    h.push('<div class="obstep' + (s.done ? " done" : "") + '">'
+      + '<span class="obmk" aria-hidden="true">' + OB_CHECK + '</span>'
+      + '<span class="obtx">' + (i + 1) + ". " + esc(s.t)
+      + (s.done ? "" : '<em>' + esc(s.d) + '</em>') + '</span>'
+      + (s.act && !s.done ? '<button class="small obact" data-act="obtest">我已发送</button>' : '')
+      + '</div>');
+  }
+  setHtml(el("obSteps"), h.join(""));
+  var c = el("obCount");
+  if (c) c.textContent = done + "/5";
+  var bar = el("obBar");
+  if (bar) bar.style.width = Math.round(done / 5 * 100) + "%";
+  card.style.display = "";
+
+  /* 五步全绿：记下来，以后不再出现（状态抖一下也不会又弹出来） */
+  if (done >= 5){ lsSet(ONB_KEY, "1"); card.style.display = "none"; }
+}
+
+/* 引导进度：首页顶部那条提示（refreshExtras 里每轮重算） */
+
+/* ===================== 功能 17：实例卡片 ===================== */
+var INST_CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>';
+
+/* 头像：Android.avatarPath(uin) 只查本地缓存，命中给 file:// 路径（断网也能显示），
+   没命中返回空路径并在后台下载，下一轮自然命中。没图就先画首字母圆形占位。
+   img 加载失败（缓存被 LRU 淘汰）时把自己藏起来，底下的字母照样看得见。 */
+function instAvatar(uin, nick, id){
+  var E = ext();
+  var letter = String(nick || id || "?").replace(/^\s+|\s+$/g, "").charAt(0);
+  if (!letter) letter = "?";
+  var key = String(uin || "").replace(/\D/g, "");
+  var path = "";
+  if (key){
+    if (Object.prototype.hasOwnProperty.call(E.inst.av, key)) path = E.inst.av[key];
+    else {
+      E.inst.av[key] = "";   /* 先占位：同一个 uin 不重复过桥 */
+      var r = brHas("avatarPath") ? brCall1("avatarPath", key) : null;
+      if (r && r.ok !== false && r.path){ path = String(r.path); E.inst.av[key] = path; }
+    }
+  }
+  var img = "";
+  if (path && /^(file|data|https?):/i.test(path)){
+    img = '<img src="' + esc(path) + '" alt="" onerror="this.style.visibility=&#39;hidden&#39;">';
+  }
+  return '<span class="iav" aria-hidden="true">' + esc(letter) + img + '</span>';
+}
+
+function refreshInst(force){
+  var E = ext(), now = Date.now();
+  if (!force && E.inst.at && now - E.inst.at < 8000) return;
+  E.inst.at = now;
+  var card = el("instCard");
+  if (!card) return;
+  if (!brHas("instancesInfo")) { card.style.display = "none"; return; }
+  var r = brCall(["instancesInfo"]);
+  /* 读不到就沿用上一轮：卡片不许因为一次读失败整块消失 */
+  if (r && r.ok !== false && r.instances && typeof r.instances === "object") E.inst.map = r.instances;
+  renderInst();
+}
+
+function renderInst(){
+  var E = ext(), box = el("instList"), card = el("instCard");
+  if (!box || !card) return;
+  var map = E.inst.map || {};
+  var list = validBots((S.bots && S.bots.bots) ? S.bots.bots : []);
+  var ids = [], seen = {}, i, k;
+  for (i = 0; i < list.length; i++){ var bid = String(list[i].id); ids.push(bid); seen[bid] = 1; }
+  for (k in map){ if (Object.prototype.hasOwnProperty.call(map, k) && !seen[k]){ ids.push(k); seen[k] = 1; } }
+  if (!ids.length){ card.style.display = "none"; return; }
+
+  var now = Math.floor(Date.now() / 1000);
+  var anyAlive = false, h = [];
+  for (i = 0; i < ids.length; i++){
+    var id = ids[i], inst = map[id] || {}, bot = null;
+    for (var j = 0; j < list.length; j++) if (String(list[j].id) === id){ bot = list[j]; break; }
+    var nick = String(inst.nick || (bot && bot.name) || id);
+    var uin = String(inst.uin || (bot && bot.qq) || "").replace(/\D/g, "");
+    var alive = !!inst.alive;
+    if (alive) anyAlive = true;
+    var started = Number(inst.started || 0);
+    var upTxt = alive ? (started > 0 ? ("已运行 " + extDur(now - started)) : "在线") : "未运行";
+    var lastOff = Number(inst.lastOffline || 0);
+    var offTxt = lastOff > 0 ? extRel(lastOff) : "—";
+    h.push('<div class="inst" data-act="instopen" data-arg="' + esc(id) + '" role="button" tabindex="0">');
+    h.push(instAvatar(uin, nick, id));
+    h.push('<div class="inb"><div class="inn"><span class="dot ' + (alive ? "ok" : "mute") + '"></span><span>' + esc(nick) + '</span></div>'
+      + '<div class="inm"><i>在线 ' + esc(upTxt) + '</i><i>最近掉线 ' + esc(offTxt) + '</i>'
+      + (uin ? '<i>' + esc(uin) + '</i>' : "") + '</div></div>');
+    h.push('<span class="ingo" aria-hidden="true">' + INST_CHEV + '</span>');
+    h.push('</div>');
+  }
+  setHtml(box, h.join(""));
+  card.style.display = "";
+  paintLocks();   /* 重建出来的卡片按钮补上置灰外观 */
+  var d = el("d-inst");
+  if (d) d.className = "dot " + (anyAlive ? "ok" : "warn");
+}
+
+/* 点实例卡：切到「机器人」页并展开这个实例的编辑区（editBot 是现成入口） */
+function openInst(id){
+  try {
+    showTab("bots");
+    if (typeof editBot === "function") editBot(String(id || ""));
+  } catch (e) {}
+}
+
+/* ===================== 功能 50：备份 / 恢复 ===================== */
+var BK_LABEL = { backup: "备份", export: "导出", restore: "恢复" };
+
+function bkMetaNorm(r){
+  if (!r || r.ok === false) return null;
+  var m = (r.last && typeof r.last === "object") ? r.last : ((r.meta && typeof r.meta === "object") ? r.meta : r);
+  /* 原生 backup.json 用 ts（epoch 秒）/ bytes / sha / name 四个字段；
+     契约版可能叫 time/size/sha256。两条都认，不然「上次备份」会一直显示 —。 */
+  var t = Number(m.time || m.mtime || m.lastTime || m.ts || m.at || 0);
+  if (t > 1e12) t = Math.floor(t / 1000);
+  var size = Number(m.size || m.bytes || 0);
+  var sha = String(m.sha256 || m.sha || "");
+  var name = String(m.name || "");
+  if (!name && m.file){
+    /* file 是绝对路径，界面上只要文件名，别把 /data/data/... 摊开 */
+    name = String(m.file).replace(/^.*[\\\/]/, "");
+  }
+  var state = String(m.state || m.backupState || "");
+  /* ts/name 在「开始备份」那一刻就写进 backup.json 了；那次要是失败，
+     不能把「上次备份」刷成刚才 —— 有 state 且不是 done 的时候必须真有产物才算。 */
+  if (state && state !== "done" && state !== "idle" && !size && !sha) return null;
+  if (!t && !size && !sha && !name) return null;
+  return { time: t, size: size, sha: sha, name: name };
+}
+
+function renderBkMeta(){
+  var box = el("bkMeta");
+  if (!box) return;
+  var m = ext().bk.meta;
+  if (!m){ setHtml(box, '<span>还没有备份记录</span>'); return; }
+  var h = [];
+  h.push("<span>上次备份 <b>" + esc(extClock(m.time)) + "</b></span>");
+  h.push("<span>大小 <b>" + esc(m.size ? extBytes(m.size) : "—") + "</b></span>");
+  if (m.sha) h.push("<span>sha256 <b>" + esc(m.sha.slice(0, 12)) + "</b></span>");
+  if (m.name) h.push("<span>文件 <b>" + esc(m.name) + "</b></span>");
+  setHtml(box, h.join(""));
+}
+
+function refreshBk(force){
+  var E = ext(), now = Date.now();
+  if (!force && E.bk.at && now - E.bk.at < 60000) return;
+  E.bk.at = now;
+  var r = brCall(["backupInfo", "backupState", "backupPoll"]);
+  var m = bkMetaNorm(r);
+  if (m) E.bk.meta = m;
+  renderBkMeta();
+}
+
+function bkProgress(on, pct, txt){
+  var w = el("bkBarWrap"), b = el("bkBar"), h = el("bkHint");
+  if (w) w.style.display = on ? "" : "none";
+  if (b) b.style.width = Math.max(0, Math.min(100, Number(pct) || 0)) + "%";
+  if (h){
+    if (txt){ h.style.display = ""; h.textContent = txt; }
+    else h.style.display = "none";
+  }
+}
+
+function bkStart(kind){
+  var E = ext();
+  if (E.bk.running){ extToast("正在" + (BK_LABEL[E.bk.running] || "处理") + "，请稍候"); return; }
+
+  /* 「导出到文件」= 把上一份备份另存到用户挑的位置。原生只负责拉起系统「另存为」，
+     真正的拷贝在 onActivityResult 的后台线程里跑，结果通过 window.backupPicked 推回来。
+     这是一次拷贝、不是一次备份，所以不能开 backupPoll 轮询。 */
+  if (kind === "export"){
+    var ex = "";
+    if (brHas("backupPick")) ex = "backupPick";
+    else if (brHas("backupExport")) ex = "backupExport";
+    if (!ex){ extToast("这个安装包还不支持导出备份，请更新到最新版"); bkProgress(false, 0, ""); return; }
+    var er = null;
+    try { er = normJson(Android[ex]()); } catch (e) { er = null; }
+    if (er && er.ok === false){ extToast(String(er.err || er.error || "无法打开文件选择器")); return; }
+    bkProgress(true, 0, "已打开文件选择器：选一个位置保存备份包，选好后自动拷贝。");
+    return;
+  }
+
+  /* 「立即备份」：backupStart() 是整机备份（scope=all）；backupStartScope(scope) 才带范围参数。
+     两种方法的参数个数不同，不能混着传 —— WebView 的桥按名字+参数个数匹配，多传一个会直接报错。 */
+  var used = "";
+  if (brHas("backupStart")) used = "backupStart";
+  else if (brHas("backupStartScope")) used = "backupStartScope";
+  else if (brHas("backupNow")) used = "backupNow";
+  if (!used){ extToast("这个安装包还不支持备份，请更新到最新版"); bkProgress(false, 0, ""); return; }
+  var res = (used === "backupStartScope") ? brCall1(used, "all") : brCall([used]);
+  if (res && res.ok === false){ extToast(String(res.err || res.error || "备份启动失败")); bkProgress(false, 0, ""); return; }
+  E.bk.running = "backup";
+  bkProgress(true, 0, "正在备份…（原生后台打包，期间可以正常用）");
+  bkStartTimer();
+}
+
+/* 恢复是两段式：restorePick() 只拉起文件选择器并校验，校验完原生推 window.restorePicked；
+   真正的停服/解包/重启要再调一次 restoreApply()。确认文案在我们这张卡里已经点过了
+   （#bkConfirm 那一步），所以这里不再弹第二次。没有 restoreApply 的旧契约版
+   （restorePick 选完自己开跑）靠 restorePicked 里那段兜底继续轮询。 */
+function bkApplyRestore(){
+  var E = ext();
+  if (E.bk.running) return;
+  var r = null;
+  try { r = normJson(Android.restoreApply()); } catch (e) { r = null; }
+  if (!r || r.ok === false){
+    extToast("恢复启动失败：" + String((r && (r.err || r.error)) || "未知错误"));
+    bkProgress(false, 0, "");
+    return;
+  }
+  E.bk.running = "restore";
+  bkProgress(true, 0, "正在恢复，过程可能要几分钟，请勿退出应用…");
+  bkStartTimer();
+}
+
+function bkRestore(){
+  var E = ext();
+  if (E.bk.running){ extToast("正在处理，请稍候"); return; }
+  if (!brHas("restorePick")){ extToast("这个安装包还不支持从文件恢复"); return; }
+  /* 原生的带参版本叫 restorePickScope(scope)，无参的才是 restorePick()。
+     以前这里直接 brCall1("restorePick","all")，参数对不上 → WebView 抛异常被
+     brCall1 吞掉 → 返回 null → 界面照样显示「已打开文件选择器」，实际什么都没开。 */
+  var res = brHas("restorePickScope") ? brCall1("restorePickScope", "all") : brCall(["restorePick"]);
+  if (!res){ extToast(brHas("restorePickScope") || brHas("restorePick") ? "无法打开文件选择器" : "这个安装包还不支持从文件恢复"); return; }
+  if (res.ok === false){ extToast(String(res.err || res.error || "无法打开文件选择器")); return; }
+  if (!brHas("restoreApply")){
+    /* 旧契约：选完即开跑，直接进轮询 */
+    E.bk.running = "restore";
+    bkProgress(true, 0, "正在恢复，过程可能要几分钟，请勿退出应用…");
+    bkStartTimer();
+    return;
+  }
+  E.bk.pickAt = Date.now();
+  bkProgress(true, 0, "已打开文件选择器：选好备份包后会自动校验，校验通过就开始恢复。");
+  /* 用户可能直接按返回键取消选择器，progress 不能一直挂着 */
+  setTimeout(function(){
+    if (E.bk.pickAt && !E.bk.running){ E.bk.pickAt = 0; bkProgress(false, 0, ""); }
+  }, 90000);
+}
+
+/* 原生在「选完 / 取消」之后推这两个回调（JsPush 用 evaluateJavascript 调 window.xxx(obj)，
+   参数已经是对象，不是 JSON 串）。页面没接住也不影响：进度条那边还有 poll 兜底。 */
+window.restorePicked = function(o){
+  try {
+    var E = ext();
+    E.bk.pickAt = 0;
+    if (!o || o.ok === false){
+      extToast("没有选到可用的备份文件" + ((o && o.err) ? "：" + o.err : "（已取消）"));
+      bkProgress(false, 0, "");
+      return;
+    }
+    if (brHas("restoreApply")){ bkApplyRestore(); return; }
+    if (!E.bk.running){ E.bk.running = "restore"; bkStartTimer(); }
+  } catch (e) {}
+};
+window.backupPicked = function(o){
+  try {
+    if (!o || o.ok === false){
+      extToast("导出未完成" + ((o && o.err) ? "：" + o.err : "（已取消）"));
+      bkProgress(false, 0, "");
+      return;
+    }
+    bkProgress(true, 100, "已导出" + (o.name ? "：" + o.name + "" : "到所选位置"));
+    setTimeout(function(){ bkProgress(false, 0, ""); }, 2600);
+  } catch (e) {}
+};
+
+function bkStartTimer(){
+  var E = ext();
+  if (E.bk.timer) return;
+  E.bk.timer = setInterval(bkTick, 600);
+}
+function bkStopTimer(){
+  var E = ext();
+  if (E.bk.timer){ clearInterval(E.bk.timer); E.bk.timer = 0; }
+}
+function bkTick(){
+  var E = ext();
+  if (!E.bk.running){ bkStopTimer(); return; }
+  var kind = E.bk.running;
+  var r = brCall(kind === "restore" ? ["restorePoll"] : ["backupPoll"]);
+  if (!r){
+    bkStopTimer(); E.bk.running = "";
+    bkProgress(false, 0, "");
+    extToast("拿不到进度（原生还没提供 " + (kind === "restore" ? "restorePoll" : "backupPoll") + "）");
+    return;
+  }
+  var stt = String(r.state || (r.running ? "running" : ""));
+  var pct = Number(r.pct || 0);
+  if (stt === "picked"){
+    /* 原生已经拷进来并校验通过，但还没调 restoreApply —— 别当成功收尾 */
+    if (kind === "restore" && brHas("restoreApply")){
+      bkStopTimer(); E.bk.running = ""; bkApplyRestore(); return;
+    }
+    bkProgress(true, Math.max(pct, 90), "已选好备份包，等待开始恢复…");
+    return;
+  }
+  if (stt === "running" || stt === "started" || r.running === true){
+    bkProgress(true, pct, (BK_LABEL[kind] || "处理") + "中 " + Math.round(pct) + "%");
+    return;
+  }
+  bkStopTimer(); E.bk.running = "";
+  if (stt === "error" || r.ok === false){
+    bkProgress(false, 0, "");
+    extToast(BK_LABEL[kind] + "失败：" + String(r.err || r.error || "未知错误"));
+    return;
+  }
+  bkProgress(true, 100, (BK_LABEL[kind] || "处理") + "完成");
+  var m = bkMetaNorm(r);
+  if (m){ E.bk.meta = m; renderBkMeta(); }
+  extToast(kind === "restore" ? "已从备份恢复" : "备份完成");
+  setTimeout(function(){ bkProgress(false, 0, ""); }, 2600);
+  E.bk.at = 0;
+  setTimeout(function(){ try { refreshBk(true); } catch (e) {} }, 800);
+}
+
+/* ===================== 功能 54：存储占用 ===================== */
+var STG_DIRS = [
+  { key: "rootfs",  name: "系统根目录" },
+  { key: "astrbot", name: "AstrBot 数据" },
+  { key: "plugins", name: "插件" },
+  { key: "logs",    name: "日志" },
+  { key: "qq",      name: "QQ 数据" }
+];
+
+function stgDirsOf(r){
+  var src = (r && r.dirs) ? r.dirs : [], out = [], i, j;
+  for (i = 0; i < STG_DIRS.length; i++){
+    var k = STG_DIRS[i].key, nm = STG_DIRS[i].name, bytes = 0;
+    for (j = 0; j < src.length; j++){
+      if (src[j] && String(src[j].key) === k){
+        bytes = Number(src[j].bytes || 0);
+        if (src[j].name) nm = String(src[j].name);
+        break;
+      }
+    }
+    out.push({ key: k, name: nm, bytes: bytes });
+  }
+  return out;
+}
+
+function refreshStorage(force){
+  var E = ext(), now = Date.now();
+  if (!force && E.stg.at && now - E.stg.at < 60000) return;
+  E.stg.at = now;
+  E.stg.data = brCall(["storageStats", "storageInfo"]);
+  renderStorage();
+}
+
+function renderStorage(){
+  var E = ext(), box = el("stgDirs"), tot = el("stgTotal");
+  var topWrap = el("stgTopWrap"), top = el("stgTop");
+  if (!box) return;
+  var r = E.stg.data;
+  if (!r || r.ok === false){
+    setHtml(box, '<div class="empty">这个安装包还没有提供存储统计接口</div>');
+    if (tot) tot.textContent = "统计不可用";
+    if (topWrap) topWrap.style.display = "none";
+    return;
+  }
+  var dirs = stgDirsOf(r), i;
+  var total = Number(r.total || 0);
+  if (!total) for (i = 0; i < dirs.length; i++) total += dirs[i].bytes;
+  var h = [];
+  for (i = 0; i < dirs.length; i++){
+    var d = dirs[i];
+    var pct = total > 0 ? Math.round(d.bytes / total * 100) : 0;
+    h.push('<div class="stgrow"><span class="stgname">' + esc(d.name) + '</span>'
+      + '<span class="stgbar" aria-hidden="true"><i style="width:' + Math.max(d.bytes > 0 ? 2 : 0, pct) + '%"></i></span>'
+      + '<span class="stgval">' + esc(extBytes(d.bytes)) + '</span></div>');
+  }
+  setHtml(box, h.join(""));
+  if (tot) tot.textContent = "合计 " + extBytes(total) + (r.stale ? "（数据略旧，点「重新统计」）" : "");
+
+  var tops = (r.top && r.top.length) ? r.top.slice(0, 10) : [];
+  if (tops.length && topWrap && top){
+    var h2 = [];
+    for (i = 0; i < tops.length; i++){
+      var t = tops[i] || {};
+      h2.push('<div class="stgf"><span>' + esc(String(t.path || "")) + '</span><span>' + esc(extBytes(t.bytes)) + '</span></div>');
+    }
+    top.innerHTML = h2.join("");
+    topWrap.style.display = "";
+  } else if (topWrap) topWrap.style.display = "none";
+}
+
+function stgClean(){
+  var E = ext();
+  var hint = el("stgHint"), btn = el("stgBtnClean");
+  if (E.stg.busy){ extToast("正在清理…"); return; }
+  if (!brHas("storageClean")){
+    extToast("这个安装包还不支持清理缓存");
+    if (hint){ hint.style.display = ""; hint.textContent = "原生尚未提供 storageClean()，暂时只能看占用不能清。"; }
+    return;
+  }
+  E.stg.busy = true;
+  if (btn) btn.textContent = "清理中…";
+  var r = brCall(["storageClean"]);
+  E.stg.busy = false;
+  if (btn) btn.textContent = "清理缓存";
+  if (!r || r.ok === false){
+    if (hint){
+      hint.style.display = "";
+      hint.textContent = "清理失败" + (r && (r.err || r.error) ? "：" + String(r.err || r.error) : "，请稍后再试");
+    }
+    return;
+  }
+  var freed = Number(r.freed || 0);
+  if (hint){
+    hint.style.display = "";
+    hint.textContent = "已释放 " + extBytes(freed)
+      + (r.kept && r.kept.length ? "（保留 " + r.kept.length + " 个正在使用的文件）" : "");
+  }
+  extToast("已释放 " + extBytes(freed));
+  /* 原生重扫一盘（异步），过一会儿再取结果，别立刻拿旧数据覆盖 */
+  if (brHas("storageRefreshStart")) { try { Android.storageRefreshStart(); } catch (e) {} }
+  E.stg.at = 0;
+  setTimeout(function(){ try { refreshStorage(true); } catch (e) {} }, 900);
+}
+
+/* ===================== 功能 58：崩溃看板 ===================== */
+function crashList(){
+  var r = ext().cr.data;
+  if (!r) return [];
+  /* 原生 CrashBoard 同时给 classes 和 items（前者带 first/ver/device，后者精简）；
+     契约版只给 classes。两个都认，缺一个也不至于整张卡空掉。 */
+  if (r.classes && r.classes.length) return r.classes;
+  if (r.items && r.items.length) return r.items;
+  return [];
+}
+
+function refreshCrash(force){
+  var E = ext(), now = Date.now();
+  if (!force && E.cr.at && now - E.cr.at < 60000) return;
+  E.cr.at = now;
+  E.cr.data = brCall(["crashBoard", "crashInfo"]);
+  renderCrash();
+}
+
+function renderCrash(){
+  var box = el("crashList");
+  if (!box) return;
+  var cls = crashList(), i;
+  if (!cls.length){
+    setHtml(box, '<div class="empty">还没有崩溃记录</div>');
+    crashBarPaint();
+    return;
+  }
+  var h = [];
+  for (i = 0; i < cls.length && i < 20; i++){
+    var c = cls[i] || {};
+    var sig = String(c.sig || c.signature || "未知崩溃");
+    var comp = String(c.component || c.module || "");
+    var cnt = Number(c.count || 0);
+    var last = Number(c.last || 0);
+    h.push('<div class="crashrow"><div class="csig">' + esc(sig) + '</div><div class="cmeta">'
+      + (comp ? '<span>模块 <b>' + esc(comp) + '</b></span>' : "")
+      + '<span>次数 <b>' + cnt + '</b></span>'
+      + (last ? '<span>最近 ' + esc(extRel(last)) + '</span>' : "")
+      + (c.ver ? '<span>版本 ' + esc(String(c.ver)) + '</span>' : "")
+      + '</div></div>');
+  }
+  setHtml(box, h.join(""));
+  crashBarPaint();
+}
+
+/* 主页顶部那条琥珀色提示：只在最近 24 小时真的崩过时出现。
+   跟风控红横幅是两种颜色、两种文案，用户一眼能分开「账号要验证」和「进程挂过」。 */
+function crashBarPaint(){
+  var bar = el("crashBar");
+  if (!bar) return;
+  var cls = crashList(), now = Math.floor(Date.now() / 1000);
+  var recent = null, total = 0, i;
+  for (i = 0; i < cls.length; i++){
+    var c = cls[i] || {}, last = Number(c.last || 0);
+    if (last > 0 && now - last <= 86400){ recent = c; total += Number(c.count || 0); }
+  }
+  if (!recent){ bar.style.display = "none"; return; }
+  var t = el("crashBarTitle"), s = el("crashBarSub");
+  if (t) t.textContent = "最近有进程崩溃";
+  if (s){
+    s.textContent = (String(recent.component || recent.sig || "") + " · 共 " + total + " 次 · 最近 " + extRel(Number(recent.last || 0)));
+  }
+  bar.style.display = "";
+}
+
+function crashClear(){
+  var names = ["crashClear", "crashBoardClear", "crashReset"], used = "", i;
+  for (i = 0; i < names.length; i++) if (brHas(names[i])) { used = names[i]; break; }
+  if (!used){ extToast("这个安装包还不支持清空崩溃记录"); return; }
+  var r = null;
+  try { r = normJson(Android[used]()); } catch (e) { r = null; }
+  if (r && r.ok === false){ extToast("清空失败，请稍后再试"); return; }
+  ext().cr.data = { ok: true, classes: [] };
+  renderCrash();
+  extToast("已清空崩溃记录");
+}
+
+/* ===================== 功能 59：匿名统计 ===================== */
+function refreshStats(force){
+  var E = ext(), now = Date.now();
+  if (!force && E.st.at && now - E.st.at < 60000) return;
+  E.st.at = now;
+  E.st.data = brCall(["statsState", "statsId", "statsInfo"]);
+  renderStats();
+}
+
+function renderStats(){
+  var E = ext(), r = E.st.data;
+  var on = !!(r && r.ok !== false && r.enabled);
+  var tgl = el("statsTgl"), tag = el("statsTag"), idb = el("statsId"), desc = el("statsDesc"), d = el("d-stats");
+  if (tgl) tgl.className = "tgl" + (on ? " on" : "");
+  if (tag){
+    var tc = "swtag " + (on ? "on" : "off");
+    if (tag.className !== tc) tag.className = tc;
+    tag.textContent = on ? "已开启" : "已关闭";
+  }
+  if (desc){
+    desc.textContent = on
+      ? "已开启：只发崩溃计数与功能使用次数，不含聊天内容、QQ 号、文件路径。"
+      : "默认关闭。只发崩溃计数与功能使用次数，不含聊天内容、QQ 号、文件路径。";
+  }
+  if (idb){
+    var iid = (r && r.installId) ? String(r.installId) : "";
+    idb.textContent = "安装标识：" + (iid ? (iid.slice(0, 8) + "…") : (r ? "（尚未生成）" : "当前安装包未提供统计接口"));
+  }
+  if (d) d.className = "dot " + (on ? "ok" : "mute");
+}
+
+function statsDialogShow(){ var d = el("dlgStats"); if (d) d.classList.add("on"); }
+function statsDialogHide(){ var d = el("dlgStats"); if (d) d.classList.remove("on"); }
+
+function statsToggle(){
+  var E = ext();
+  var on = !!(E.st.data && E.st.data.ok !== false && E.st.data.enabled);
+  /* 第一次开启必须先看说明：没签过 ack 就弹窗，不直接改状态 */
+  if (!on && lsGet(STATS_ACK_KEY, "") !== "1"){ statsDialogShow(); return; }
+  statsApply(!on, false);
+}
+
+function statsApply(on, ack){
+  if (!brHas("statsSet")){ extToast("这个安装包还不支持匿名统计开关"); return; }
+  var r = null;
+  try { r = normJson(Android.statsSet(!!on)); } catch (e) { r = null; }
+  if (!r || r.ok === false){ extToast("设置失败，请稍后再试"); return; }
+  /* 崩溃堆栈上报跟统计开关同开同关：契约里是两个方法（statsSet / crashUploadSet），
+     界面上只给一个开关，不然用户得在两个地方各关一次，永远关不干净。 */
+  try { if (brHas("crashUploadSet")) Android.crashUploadSet(!!on); } catch (e) {}
+  if (ack) lsSet(STATS_ACK_KEY, "1");
+  var E = ext();
+  E.st.data = { ok: true, enabled: !!on, installId: (E.st.data && E.st.data.installId) || "" };
+  renderStats();
+  extToast(on ? "已开启匿名统计" : "已关闭匿名统计");
+  E.st.at = 0;
+  setTimeout(function(){ try { refreshStats(true); } catch (e) {} }, 500);
+}
+
+function statsDialogOk(){ statsDialogHide(); statsApply(true, true); }
+function statsDialogCancel(){ statsDialogHide(); }
+
+function statsReset(){
+  if (!brHas("statsReset")){ extToast("这个安装包还不支持重置标识"); return; }
+  var r = null;
+  try { r = normJson(Android.statsReset()); } catch (e) { r = null; }
+  if (!r || r.ok === false){ extToast("重置失败，请稍后再试"); return; }
+  var E = ext();
+  if (E.st.data && r.installId) E.st.data.installId = String(r.installId);
+  renderStats();
+  extToast("已换用新的匿名标识");
+}
+
+/* ===================== 紧急下线（功能 9） =====================
+   三处入口（App 按钮 / 通知栏「下线」/ 小组件「停止」/ 磁贴）都先走 stopAsk()，
+   只有点「确认下线」才调 Android.emergencyStop()。原生侧确认后会写 state/offline，
+   看门狗看到这个标记就不再自动拉起，用户手动启动时 start-sandbox.sh 会删掉它。 */
+function stopAsk(on){
+  try { ext().stopAsk = !!on; } catch (e0) {}
+  var box = el("stopConfirm");
+  if (box) box.style.display = on ? "block" : "none";
+  if (on){
+    /* 每次刷界面都可能把这块重画，画完要再把确认框露出来，否则用户点开两秒后就自己收起了 */
+    try { var c = el("stopCard"); if (c && c.scrollIntoView) c.scrollIntoView({block:"center"}); } catch (e) {}
+  }
+}
+function stopDo(){
+  stopAsk(false);
+  var res = null;
+  try { res = Android.emergencyStop(); } catch (e) { res = null; }
+  var o = normJson(res);
+  /* 老写法把「桥没回话」当成功，结果界面说已下线、进程还在跑 —— 那是比不做更坏的事。
+     这里改成失败即报错，只有原生明确返回 ok 才更新状态行。 */
+  if (!o || o.ok === false){
+    extToast(o && o.err ? String(o.err) : "下线失败：原生没有响应，请稍后重试");
+    return;
+  }
+  extToast("已下线：端口不再可访问，看门狗不会自动拉起");
+  var st = el("stopState");
+  if (st) st.textContent = "当前：已下线（看门狗已暂停自动拉起）";
+  setTimeout(function(){ try { refreshAll(); } catch (e) {} }, 1500);
+}
+/* 通知栏 / 小组件 / 磁贴带 confirm_stop 进来时调这个（原生 AskStop 会重试三次） */
+window.askStop = function(){
+  try { showTab("more"); } catch (e) {}
+  stopAsk(true);
+};
+/* 小组件 / 磁贴的「启动 · 停止」按钮统一调这个（原生 AskToggle 会重试三次）：
+   入口拿不准当前状态（小组件的 PendingIntent 是渲染时定死的），所以由页面读一次
+   真实状态 —— 在跑就弹紧急下线确认，没跑就直接拉起沙盒。 */
+window.askToggle = function(){
+  var st = null;
+  try { st = normJson(Android.state()); } catch (e0) { st = null; }
+  if (st && st.supervisorAlive){ window.askStop(); return; }
+  var r = "";
+  try { r = Android.action("start"); } catch (e1) { r = ""; }
+  if (!r){ extToast("启动失败：原生没有响应，请稍后重试"); return; }
+  extToast("正在启动沙盒，通常需要 20–40 秒");
+  setTimeout(function(){ try { refreshAll(); } catch (e2) {} }, 1500);
+};
+
+/* ===================== 汇总：每轮 refreshAll 调一次 ===================== */
+function refreshExtras(st){
+  var E = ext(), now = Date.now();
+  /* 发测试消息这一步：60 秒问一次 todayStats 就够，不必每 4 秒过桥 */
+  if (!E.onb.msgs && (!E.onb.msgAt || now - E.onb.msgAt > 60000)){
+    E.onb.msgAt = now;
+    try {
+      var t = brHas("todayStats") ? normJson(Android.todayStats()) : null;
+      if (t && t.ok !== false && Number(t.msgs || 0) > 0) E.onb.msgs = true;
+    } catch (e) {}
+  }
+  try { refreshOnboard(st); } catch (e2) {}
+  try { refreshInst(false); } catch (e3) {}
+  try { refreshAnn(false); } catch (e4) {}
+  try { refreshBk(false); } catch (e5) {}
+  /* 存储 / 崩溃 / 统计：不在对应页签时不主动扫盘，省电也省桥调用 */
+  if (tabOn("more")){
+    try { refreshStorage(false); } catch (e6) {}
+    try { refreshCrash(false); } catch (e7) {}
+  }
+  /* 省电提醒条 + 省电卡状态：60 秒问一次就够（只读一个小文件）。横幅挂在所有页，
+     因为「收不到消息」正是用户随手打开应用时最该看到的一句话。 */
+  if (!E.powAt || now - E.powAt > 60000){
+    E.powAt = now;
+    try {
+      var ps = brHas("powerState") ? normJson(Android.powerState()) : null;
+      if (ps && ps.ok !== false){
+        var manu = String(ps.manufacturer || "");
+        var tip = ps.hint ? String(ps.hint) : "把本应用设为「不限制」，否则息屏后可能收不到消息";
+        var pb = el("powBar");
+        if (pb){
+          var show = !ps.shown;
+          pb.style.display = show ? "flex" : "none";
+          if (show){
+            var ptt = el("powTitle");
+            if (ptt) ptt.textContent = "省电策略" + (manu && manu !== "unknown" ? "（" + manu + "）" : "");
+            var pxt = el("powText");
+            if (pxt) pxt.textContent = tip;
+          }
+        }
+        var pe = el("powerState");
+        if (pe) pe.textContent = (manu ? "机型：" + manu + "。" : "") + tip;
+      }
+    } catch (e10) {}
+  }
+  if (tabOn("settings")){ try { refreshStats(false); } catch (e8) {} }
+  /* 崩溃提示条要挂在主页，所以崩溃数据哪怕不在「更多」页也刷（读本地文件，很便宜） */
+  try { refreshCrash(false); } catch (e9) {}
+  /* 紧急下线卡片的状态行：有进程活着 / 端口通 = 运行中；offline 标记在 = 已下线 */
+  try {
+    var sst = el("stopState");
+    if (sst){
+      var alive = !!(st && (st.supervisorAlive || st.napcatUp || st.astrbotUp));
+      if (st && st.offline) sst.textContent = "当前：已下线（看门狗已暂停自动拉起）";
+      else sst.textContent = alive ? "当前：沙盒运行中" : "当前：未运行";
+    }
+    /* 确认框开着的时候，界面重画不能把它弄丢 */
+    if (E.stopAsk){ var sb = el("stopConfirm"); if (sb && sb.style.display !== "block") sb.style.display = "block"; }
+  } catch (e10) {}
+}
+
+/* 切页签时按需立刻拉一次，不用等下一个轮询周期 */
+function extOnTab(t){
+  try {
+    if (t === "home") refreshInst(true);
+    else if (t === "more"){ refreshBk(true); refreshStorage(true); refreshCrash(true); }
+    else if (t === "settings") refreshStats(true);
+  } catch (e) {}
+}
+
+/* 键盘可达：实例卡是 <div role="button" tabindex="0">，Enter / 空格得等于点击。
+   转成一个真 click 走同一条委托，不另写一套逻辑 —— 置灰（.locked / aria-disabled）
+   和点击拦截都只在委托里判一次，两边不会走岔。 */
+document.addEventListener("keydown", function(ev){
+  var k = ev.key;
+  if (k !== "Enter" && k !== " " && k !== "Spacebar") return;
+  var t = ev.target;
+  if (!t || !t.getAttribute) return;
+  if (t.getAttribute("role") !== "button") return;
+  if (t.getAttribute("aria-disabled") === "true") return;
+  ev.preventDefault();
+  try { t.click(); } catch (e) {}
+});
+
+/* 15 秒一轮：实例在线时长与「最近掉线」的分钟级更新；存储只在「更多」页刷 */
+setInterval(function(){
+  if (document.hidden) return;
+  try { refreshInst(false); } catch (e) {}
+  if (tabOn("more")){
+    try { refreshStorage(false); } catch (e2) {}
+    try { refreshCrash(false); } catch (e3) {}
+  }
+}, 15000);
+
 setInterval(function(){ if (!document.hidden) refresh(); }, 4000);
 
 /* 从后台切回前台立刻刷一次，不用干等下一轮轮询 */
@@ -3345,12 +5278,21 @@ document.addEventListener("visibilitychange", function(){
   /* refresh() 上面已经调过，里面就带 refreshDeploy()，不必再来一次 */
 });
 
+/* 今日概览的 60 秒定时器同样跟可见性走：切后台停，回前台先补一次再续上 */
+document.addEventListener("visibilitychange", function(){
+  if (document.hidden) { todayStop(); return; }
+  if (todayBridgeOk()) { refreshToday(); todayStart(); }
+});
+
 initAppearance();
+themePaint();
 loadHiddenCards();
 clearFixedCardHidden();
 applyCards();
 loadProxy();
 refresh();
+/* 今日概览要读沙盒里的统计文件，晚一拍再取，别跟首屏抢带宽 */
+setTimeout(function(){ refreshToday(); todayStart(); }, 300);
 /* 启动 1.5 秒后静默查一次更新，发现新版本会弹应用内弹窗（同版本点过「以后再说」就不再弹） */
 maybeAutoCheck();
 /* 首次启动弹免责声明；同意后写入标记，以后不再弹 */

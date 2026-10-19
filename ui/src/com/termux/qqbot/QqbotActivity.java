@@ -41,6 +41,18 @@ public class QqbotActivity extends Activity {
 
     private WebView web;
     private QqbotBridge bridge;
+    // 通知栏「看日志 / 扫码」带进来的 tab（logs / bots），页面加载完由 applyPendingTab 消费
+    private String pendingTab = "";
+
+    /* 通知栏「下线」/小组件「停止」/磁贴「停止」都不再直接停服，而是把页面拉到前台的
+       「紧急下线」二次确认；确认动作在页面里调 Android.emergencyStop()。
+       标记放在 Activity 上，页面加载完由 applyPendingStop() 消费（同 pendingTab 的套路）。 */
+    private volatile boolean pendingStop = false;
+
+    /* 小组件 / 磁贴的「启动 · 停止」按钮统一走这里：入口拿不准当前状态（小组件的
+       PendingIntent 是渲染时定死的），所以只把面板叫到前台并带 toggle=1，
+       由页面读一次 Android.state() 自己决定弹确认还是直接拉起。 */
+    private volatile boolean pendingToggle = false;
 
     public File filesDirPub() { return getFilesDir(); }
     public File usrDir() { return new File(getFilesDir(), "usr"); }
@@ -56,10 +68,24 @@ public class QqbotActivity extends Activity {
 
     /** 选背景图用的 requestCode（必须 >= 0）。 */
     private static final int REQ_PICK_BG = 7001;
+    /** 功能 50：备份「另存为」的落点（ACTION_CREATE_DOCUMENT）。 */
+    private static final int REQ_BACKUP_SAVE = 7002;
+    /** 功能 50：恢复时选备份包（ACTION_OPEN_DOCUMENT）。 */
+    private static final int REQ_RESTORE_OPEN = 7003;
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        // 备份/恢复的结果交给 BackupFlow：它只起后台线程并推 window.backupPicked /
+        // window.restorePicked，和下面的背景图处理互不干扰，所以必须先分流。
+        if (requestCode == REQ_BACKUP_SAVE) {
+            BackupFlow.onSaveResult(this, resultCode, data);
+            return;
+        }
+        if (requestCode == REQ_RESTORE_OPEN) {
+            BackupFlow.onRestoreResult(this, resultCode, data);
+            return;
+        }
         if (requestCode != REQ_PICK_BG) return;
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
         try {
@@ -148,10 +174,15 @@ public class QqbotActivity extends Activity {
         s.setAllowFileAccess(true);
         s.setAllowContentAccess(true);
         web.setBackgroundColor(0xFF0F1115);
-        web.setWebViewClient(new QqClient());
+        // 带上 this：通知栏「看日志 / 扫码」会带 tab extra 唤起本页，页面加载完要自动切过去
+        web.setWebViewClient(new QqClient(this));
         bridge = new QqbotBridge(this);
         web.addJavascriptInterface(bridge, "Android");
         setContentView(web);
+        // 通知栏点进来的 tab 要在第一次 loadUi 之前就记下来（singleTask 重入走 onNewIntent）
+        pendingTab = tabOfIntent(getIntent());
+        pendingStop = stopOfIntent(getIntent());
+        pendingToggle = toggleOfIntent(getIntent());
         // 老设备（安装时 NapCat WebUI token 默认还是 qqbot）先做一次 token 迁移，
         // 必须在触发 bootstrap / 续跑部署之前：部署与守护脚本读的都是 bots.json。
         // 只读一个几 KB 的小文件，绝大多数情况下立刻返回，不阻塞启动。
@@ -165,6 +196,13 @@ public class QqbotActivity extends Activity {
         // 用户关掉守护开关时 apply() 会自动跳过启动。
         try {
             QqbotGuardService.apply(this);
+        } catch (Throwable ignored) {
+        }
+        // v1.1.30：崩溃 / 匿名统计的真实上报（冷启动链路）。
+        // 两个开关都关着时这里只读一次 prefs 就返回：不写计数、不解析 DNS、一个字节都不发；
+        // 开着也只读两个几百字节的小文件 + 起后台线程，主线程照样零网络。
+        try {
+            UploadState.coldStart(this);
         } catch (Throwable ignored) {
         }
         // 首次启动时先确保 Termux bootstrap 已解包（本 Activity 现在是启动页）。
@@ -182,6 +220,107 @@ public class QqbotActivity extends Activity {
 
     public void loadUi() {
         if (web != null) web.loadUrl("file:///android_asset/qqbot/index.html");
+    }
+
+    /**
+     * 从 Intent 里取 tab（通知栏「看日志」「扫码」：extra tab=logs / tab=bot）。
+     * 页面里的标签按钮只有 home/bots/logs/more 四种，所以「bot」映射到「bots」，
+     * 其它值一律丢掉——这个值最终会拼进 JS，必须白名单过滤，不能原样透传。
+     */
+    private static String tabOfIntent(Intent i) {
+        if (i == null) return "";
+        String t;
+        try {
+            t = i.getStringExtra("tab");
+        } catch (Throwable e) {
+            return "";
+        }
+        if (t == null) return "";
+        t = t.trim().toLowerCase(java.util.Locale.ROOT);
+        if ("bot".equals(t)) return "bots";
+        if ("home".equals(t) || "bots".equals(t) || "logs".equals(t) || "more".equals(t)) return t;
+        return "";
+    }
+
+    /**
+     * 页面加载完（或被 onNewIntent 唤起）时把待处理的 tab 切过去。
+     * 直接点页面上的 data-tab 按钮，不改 index.html：标签切换逻辑只有页面自己知道，
+     * 从外面调用 click() 等价于用户手点，不会和页面内部状态打架。
+     */
+    public void applyPendingTab(WebView w) {
+        String tab = pendingTab;
+        if (w == null || tab == null || tab.length() == 0) return;
+        pendingTab = "";
+        try {
+            String js = "(function(){try{var b=document.querySelector('[data-tab=\"" + tab
+                    + "\"]');if(b)b.click();}catch(e){}})()";
+            w.evaluateJavascript(js, null);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent i) {
+        super.onNewIntent(i);
+        // singleTask：从通知栏再点进来不会走 onCreate，只能在这里接新的 tab
+        setIntent(i);
+        pendingTab = tabOfIntent(i);
+        pendingStop = pendingStop || stopOfIntent(i);
+        pendingToggle = pendingToggle || toggleOfIntent(i);
+        if (web != null) applyPendingTab(web);
+        if (web != null) applyPendingStop(web);
+        if (web != null) applyPendingToggle(web);
+    }
+
+    /**
+     * 是不是「启停切换」的启动：小组件 / 磁贴带 extra toggle=1 打开本页。
+     */
+    private static boolean toggleOfIntent(Intent i) {
+        if (i == null) return false;
+        try {
+            return i.getBooleanExtra("toggle", false);
+        } catch (Throwable e) {
+            return false;
+        }
+    }
+
+    /**
+     * 是不是「请用户确认紧急下线」的启动：通知栏「下线」、小组件「停止」、磁贴「停止」
+     * 都用 ACTION_VIEW 打开本页并带 extra confirm_stop=1。
+     */
+    private static boolean stopOfIntent(Intent i) {
+        if (i == null) return false;
+        try {
+            return i.getBooleanExtra("confirm_stop", false);
+        } catch (Throwable e) {
+            return false;
+        }
+    }
+
+    /**
+     * 页面加载完（或被唤起）后弹「紧急下线」确认。页面没接住就重试两次：
+     * WebView 还没 finished 时 evaluateJavascript 会被丢弃，一次没弹出来就等于没入口。
+     * 重试用具名类 AskStop 而不是匿名 Runnable —— d8 处理匿名内部类会崩（见 QqClient 注释）。
+     */
+    public void applyPendingStop(WebView w) {
+        if (w == null || !pendingStop) return;
+        pendingStop = false;
+        try {
+            w.postDelayed(new AskStop(w, 3), 250L);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * 页面加载完（或被唤起）后处理「启停切换」：页面自己读状态决定弹确认还是启动。
+     */
+    public void applyPendingToggle(WebView w) {
+        if (w == null || !pendingToggle) return;
+        pendingToggle = false;
+        try {
+            w.postDelayed(new AskToggle(w, 3), 250L);
+        } catch (Throwable ignored) {
+        }
     }
 
     @Override
@@ -1273,6 +1412,55 @@ public class QqbotActivity extends Activity {
             startActivityForResult(Intent.createChooser(i, "选择背景图片"), REQ_PICK_BG);
         } catch (Throwable t) {
             Toast.makeText(this, "无法打开图库", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    // ---------------- 功能 50：备份 / 恢复的选文件 ----------------
+    // 两个 Intent 都必须在 Activity 主线程拉起（桥方法跑在 WebView 的线程上），
+    // 所以统一走 runOnUiSync(new UiTask(...))；返回空串表示 Intent 已经发出去了，
+    // 真正的结果会晚一步回到 onActivityResult，再由 BackupFlow 起后台线程处理。
+    // 备份用 CREATE_DOCUMENT 而不是 createChooser：包一层 chooser 会丢掉
+    // 「新建文件」的语义，部分 ROM 上直接退化成「选已有文件」。
+
+    /** 「另存为」：让用户挑备份包存到哪儿（结果在 onActivityResult 里流式拷贝）。 */
+    public String doBackupSave() {
+        try {
+            Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            i.addCategory(Intent.CATEGORY_OPENABLE);
+            i.setType("application/gzip");
+            i.putExtra(Intent.EXTRA_TITLE, BackupFlow.suggestName());
+            startActivityForResult(i, REQ_BACKUP_SAVE);
+            return "";
+        } catch (Throwable t) {
+            return "这台手机没有能存文件的程序";
+        }
+    }
+
+    /** 选备份包：不少文件管理器把 .tar.gz 报成 octet-stream，所以 MIME 列一组。 */
+    public String doRestoreOpen() {
+        try {
+            Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            i.addCategory(Intent.CATEGORY_OPENABLE);
+            i.setType("*/*");
+            i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+                    "application/gzip", "application/x-gzip", "application/x-tar", "application/octet-stream"});
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivityForResult(i, REQ_RESTORE_OPEN);
+            return "";
+        } catch (Throwable t) {
+            return "这台手机没有能选文件的程序";
+        }
+    }
+
+    /**
+     * 从任意线程把结果推给页面里的全局回调（目前只有 backupPicked / restorePicked）。
+     * 用 evaluateJavascript 而不是轮询，是为了让「选完文件」这种异步事件立刻回到界面；
+     * 万一页面没监听这个函数，JsPush 里会安静跳过，前端还有 poll 兜底。
+     */
+    public void pushJs(String fn, String json) {
+        try {
+            runOnUiThread(new JsPush(web, fn, json));
+        } catch (Throwable ignored) {
         }
     }
 

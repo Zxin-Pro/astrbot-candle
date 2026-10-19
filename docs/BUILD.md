@@ -1,6 +1,6 @@
 # 从源码构建 AstrBot烛版
 
-本文说明如何从本仓库的源码重新构建出可安装的 `AstrBot-<版本号>.apk`（当前版本为 `AstrBot-1.1.29.apk`）。
+本文说明如何从本仓库的源码重新构建出可安装的 `AstrBot-<版本号>.apk`（当前版本为 `AstrBot-1.1.30.apk`）。
 
 > 构建过程**只能在一台配好工具链的 Windows 机器上**完成（脚本是 PowerShell + 本机 JDK）。
 > 构建不联网、不跑 Gradle，也不需要 Android Studio。
@@ -24,6 +24,13 @@
 > `android:debuggable="true"` 删掉（幂等，删不到就跳过）。原因：debug 包是被小米安装器判成
 > 「被重新打包 / 非官方」的显式标记，会更容易被拦下。副作用是 `adb shell run-as com.termux`
 > 从这一版起不可用，要看应用私有目录请用 `adb root`。
+> 从 **1.1.30** 起，`build-ui.ps1` 还多了两段（都幂等、ps1 本身保持纯 ASCII）：
+> **3d** 把 `ui\assets\icon\res\**` 拷进 `_apkwork\res`（先删掉会压过 PNG 的矢量
+> `drawable\ic_foreground.xml`）；**3e** 把 `ui\assets\android-res\**`（小组件布局/图标/背景）
+> 拷进去，并把 `ui\assets\android\widget-manifest.xml` 插到 `</application>` 之前。
+> 同时 `build-apk.ps1` 的 **2b** 段会在打包前把根目录 `VERSION` 写进
+> `build\opt\qqbot\VERSION`（打包后删除），崩溃聚合与 doctor 读的就是包内这个文件。
+> 所以**新增 manifest 条目或 res 资源必须写进 ps1**，直接手改 `_apkwork` 下次构建会被覆盖。
 > 不要试图加 `android:privacyPolicy` —— 这个属性在 Android 里不存在，aapt2 会直接报错。
 
 ---
@@ -90,7 +97,7 @@ powershell -ExecutionPolicy Bypass -File C:\Users\zjh19\DSH\qqbot-sandbox\build-
 ### 3. 交付
 
 `build-apk.ps1` 最后会自动把 `out\signed\termux-qqbot-aligned-debugSigned.apk` 复制到仓库根目录，
-命名为 `AstrBot-<VERSION>.apk`（`VERSION` 文件的内容就是版本号；当前 `VERSION` 是 `1.1.29`，产物即 `AstrBot-1.1.29.apk`，大小 25279662 字节），这个文件就是发布用的安装包。
+命名为 `AstrBot-<VERSION>.apk`（`VERSION` 文件的内容就是版本号；当前 `VERSION` 是 `1.1.30`，产物即 `AstrBot-1.1.30.apk`，大小 25755319 字节），这个文件就是发布用的安装包。
 
 > **两个脚本必须串行执行**：`build-ui.ps1` 会**写出** `out\termux-ui-unsigned.apk`，`build-apk.ps1` 会**读取并覆盖**它，
 > 并行跑会互相踩踏，产物不可预测。**永远先 build-ui，再 build-apk。**
@@ -140,7 +147,7 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 | 位置 | 字段 | 当前值 |
 | --- | --- | --- |
-| `_apkwork\apktool.yml` | `versionName` / `versionCode` | `1.1.29` / `10129` |
+| `_apkwork\apktool.yml` | `versionName` / `versionCode` | `1.1.30` / `10130` |
 
 规则：`versionCode = MAJOR*10000 + MINOR*100 + PATCH`。
 

@@ -1,0 +1,21 @@
+[Unit]
+Description=AstrBot 烛版 公告与上报（announce / crash / stats）
+After=network.target
+
+[Service]
+Type=simple
+# 与 qqbot-errdump 保持一致：errdump 的 unit 没有写 User=，systemd 默认就是 root
+User=root
+ExecStart=/usr/bin/python3 /opt/qqbot-atom/server.py
+Restart=always
+RestartSec=3
+
+# 除了数据目录，整机对它是只读的
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/qqbot-atom
+
+[Install]
+WantedBy=multi-user.target
