@@ -10,14 +10,18 @@ set -e
 BOTS_JSON=/qqbot-cache/bots.json
 [ -s "$BOTS_JSON" ] || { echo "[link] 缺少 $BOTS_JSON"; exit 1; }
 
-# AstrBot 只在启动时读一次平台列表：新实例的 OneBot 端口不重启它就不会监听，
-# 删掉的实例端口也会一直留着。所以先算出这次需要哪些端口，跟现有配置比对。
+# AstrBot 只在启动时读一次平台列表，运行期没有任何热加载接口（v1.1.22 查过
+# astrbot/dashboard/api/platform.py 与 services/platform_service.py，只有
+# webhook 注册，没有「新增一个 aiocqhttp 监听口」的入口）。所以：
 #
-# 端口清单取「bots.json 里的所有实例」，不看 enable：
-#   * 停用某个实例时清单不变 -> CHANGED=0 -> 整个脚本直接返回，AstrBot 一个信号都不收。
-#     以前停一个 QQ 号会连带把 AstrBot 重启（约 30 秒），其它号的连接一起断掉。
-#   * 那个端口暂时没人连是正常的：aiocqhttp 的反向 WS 服务端只是安静地听着。
-#   * 只有真的增删了实例（清单变化）才需要重启 AstrBot。
+#   * 新增实例（需要 AstrBot 多监听一个端口）—— 这是唯一必须重启的情形。
+#   * 删除实例 —— AstrBot 上那个平台就变成一个没人连的监听口，不影响任何功能。
+#     **不为此重启**（以前会重启，用户反馈「对接不该重启」）。
+#     等将来因为别的原因重启时，下面的写配置步骤会顺手把它清掉。
+#   * 停用实例 / 只改 token 之类 —— 端口清单根本没变，AstrBot 一个信号都不收。
+#
+# 端口清单取「bots.json 里的所有实例」，不看 enable：aiocqhttp 的反向 WS 服务端
+# 只是个安静听着的口，没人连完全无害。
 PLAN=$(python3 - "$BOTS_JSON" <<'PY'
 import json, os, sys
 try:
@@ -37,39 +41,56 @@ if os.path.exists(acfg):
         a = {}
     old = sorted(set(int(p.get('ws_reverse_port') or 0) for p in (a.get('platform') or [])
                      if p.get('type') == 'aiocqhttp' and str(p.get('id', '')).startswith('napcat')))
-print('%d|%s|%s' % (0 if old == ports else 1, ','.join(map(str, ports)), ','.join(map(str, old))))
+need = [p for p in ports if p not in old]
+extra = [p for p in old if p not in ports]
+print('%d|%s|%s|%s|%s' % (1 if need else 0,
+                          ','.join(map(str, ports)), ','.join(map(str, old)),
+                          ','.join(map(str, need)), ','.join(map(str, extra))))
 PY
 )
-CHANGED=${PLAN%%|*}
-NEWPORTS=$(echo "$PLAN" | cut -d'|' -f2)
-OLDPORTS=$(echo "$PLAN" | cut -d'|' -f3)
+NEEDNEW=${PLAN%%|*}
+_REST=${PLAN#*|}
+NEWPORTS=$(echo "$_REST" | cut -d'|' -f1)
+OLDPORTS=$(echo "$_REST" | cut -d'|' -f2)
+NEEDPORTS=$(echo "$_REST" | cut -d'|' -f3)
+EXTRAPORTS=$(echo "$_REST" | cut -d'|' -f4)
 echo "[link] OneBot 端口 需要 [$NEWPORTS] / 当前 [$OLDPORTS]"
 
-# CHANGED=0 就是「配置已经是对的」：什么都不做地返回，绝不去动正在跑的 AstrBot。
-if [ "$CHANGED" = "0" ]; then
-  echo "[link] 平台列表与当前配置一致，不动 AstrBot（不重启、不断开已连上的实例）"
-  exit 0
-fi
+astrbot_pid() { pgrep -f 'AstrBot/.venv/bin/python main.py' 2>/dev/null | head -n 1; }
 
-# 清单真的变了才需要重启 AstrBot：写 cmd_config.json 之前必须先停掉它，
-# 顺序不能反——AstrBot 退出时会把内存里的旧配置写回磁盘，先写后停会被它覆盖。
-# 停掉之后由外层 run-all.sh 的守护循环（wait 返回）自动把它重新拉起。
-APID=$(pgrep -f 'AstrBot/.venv/bin/python main.py' 2>/dev/null | head -n 1)
-if [ -n "$APID" ]; then
-  echo "[link] 平台列表有变化，重启 AstrBot 使其生效（约 30 秒后新端口开始监听）"
-  kill -TERM "$APID" 2>/dev/null || true
-  n=0
-  while [ "$n" -lt 20 ]; do
-    kill -0 "$APID" 2>/dev/null || break
-    sleep 0.5
-    n=$((n + 1))
-  done
-  kill -KILL "$APID" 2>/dev/null || true
+if [ "$NEEDNEW" = "0" ]; then
+  APID=$(astrbot_pid)
+  if [ -n "$EXTRAPORTS" ] && [ -z "$APID" ]; then
+    # AstrBot 没在跑：这是免费清理遗留平台的最好时机
+    echo "[link] AstrBot 没在跑，顺手清掉已删实例的遗留端口 [$EXTRAPORTS]"
+  else
+    if [ -n "$EXTRAPORTS" ]; then
+      echo "[link] 已删实例的端口 [$EXTRAPORTS] 还挂在 AstrBot 上，不影响使用，不为此重启"
+    else
+      echo "[link] 平台列表与当前配置一致，不动 AstrBot（不重启、不断开已连上的实例）"
+    fi
+    echo "[link] 完成（未触碰 AstrBot）"
+    exit 0
+  fi
 else
-  # AstrBot 被组件开关关着的时候这里必然匹配不到进程。这不是异常，也不用卡：
-  # 配置照样会被原子改写，等用户把 AstrBot 打开就生效 —— 但提示语必须说实话，
-  # 不然界面会告诉用户「已对接并重启服务」，而实际上什么都没重启。
-  echo "[link] AstrBot 当前被组件开关关闭，配置已写好，打开时自动生效（无需重启）"
+  APID=$(astrbot_pid)
+  # 写 cmd_config.json 之前必须先把它停掉：AstrBot 退出时会把内存里的旧配置
+  # 写回磁盘，先写后停会被它覆盖。停掉之后由外层 run-all.sh 的守护循环自动拉起。
+  if [ -n "$APID" ]; then
+    echo "[link] 新增实例端口 [$NEEDPORTS]，重启 AstrBot 让它开始监听（约 30 秒）"
+    kill -TERM "$APID" 2>/dev/null || true
+    n=0
+    while [ "$n" -lt 20 ]; do
+      kill -0 "$APID" 2>/dev/null || break
+      sleep 0.5
+      n=$((n + 1))
+    done
+    kill -KILL "$APID" 2>/dev/null || true
+  else
+    # AstrBot 被组件开关关着的时候这里必然匹配不到进程。这不是异常，也不用卡：
+    # 配置照样会被原子改写，等用户把 AstrBot 打开就生效 —— 但提示语必须说实话。
+    echo "[link] AstrBot 当前被组件开关关闭，配置已写好，打开时自动生效（无需重启）"
+  fi
 fi
 
 python3 - "$BOTS_JSON" <<'PY'

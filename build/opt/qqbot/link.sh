@@ -17,5 +17,7 @@ qq_sandbox link.sh
 if [ -f "$QQBOT_CACHE/svc/astrbot.off" ]; then
   qqok "对接配置已更新。AstrBot 现在被组件开关关着，打开它时会自动生效"
 else
-  qqok "对接配置已更新。重启服务后生效：qqbot-stop 然后 qqbot-start"
+  # 只有「新增实例、需要 AstrBot 多监听一个端口」才重启一次；删实例、改 token
+  # 之类都不重启（v1.1.22 起）。沙盒内的 link.sh 会把实际动作写进服务日志。
+  qqok "对接配置已更新（一般不需要重启服务；新增实例时沙盒会自动重启一次 AstrBot 让它监听新端口）"
 fi

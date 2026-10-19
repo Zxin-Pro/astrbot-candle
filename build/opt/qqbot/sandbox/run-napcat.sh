@@ -345,11 +345,22 @@ PY
 # 参考项目（AstrBot-Bubble-Android-App）是自己起 Xvfb、等 /tmp/.X11-unix/XN 出现后再拉 QQ。
 # 它用的是 1x1x8，我们照抄过，结果在真机上把 QQ 的 GPU 进程害死了 —— 色深必须 24 位，
 # 详见 XVFB_VARIANTS 上面那段实测记录。屏幕尺寸倒是真的无所谓（640x480 够用）。
+#
+# 注意 -e 与 -L 的区别（v1.1.22 修）：proot 开了 --link2symlink 之后，Xvfb 建的
+# /tmp/.X<n>-lock 是一个符号链接；Xvfb 一退出，目标没了，这个链接就变成**悬空链接**。
+# `[ -e ]` 会顺着链接看过去、判定「不存在」，于是 pick_display 把 :40 当成空闲，
+# Xvfb 一读锁就 `Can't read lock file /tmp/.X40-lock` 然后 Fatal —— 模拟器上就是这样
+# 白白烧掉两档、每轮多花 24 秒才落到 -nolock 那档。所以这里：有实体的算占用，
+# 悬空的当成上次崩溃留下的垃圾直接清掉复用。
 pick_display() {
-  local d
+  local d lock sock
   for d in $(seq 40 99); do
-    [ -e "/tmp/.X11-unix/X$d" ] && continue
-    [ -e "/tmp/.X$d-lock" ] && continue
+    lock="/tmp/.X$d-lock"; sock="/tmp/.X11-unix/X$d"
+    [ -e "$lock" ] && continue
+    [ -e "$sock" ] && continue
+    if [ -L "$lock" ] || [ -L "$sock" ]; then
+      rm -f "$lock" "$sock" 2>/dev/null
+    fi
     printf '%s' "$d"
     return 0
   done
@@ -610,20 +621,24 @@ PY
              "--in-process-gpu" )
 
   # 参数覆写文件：手机上现成的「不重装也能换参数」开关。
+  # 注意路径必须落在沙盒能看见的 /qqbot-cache 下 —— run-napcat.sh 是跑在 proot 里的，
+  # Termux 侧的 $QQBOT_HOME 在这里根本不存在（1.1.21 就是因为写成了 $QQBOT_HOME，
+  # 展开成 "/qq-args.txt"，这个开关一直没生效过）。
+  # /qqbot-cache 对应 Termux 侧 ~/.qqbot/cache。
   # 用法（应用里 更多 → 终端）：
-  #   echo '--disable-dev-shm-usage' > /data/data/com.termux/files/home/.qqbot/qq-args.txt
+  #   echo '--disable-dev-shm-usage' > /data/data/com.termux/files/home/.qqbot/cache/qq-args.txt
   #   bash /data/data/com.termux/files/usr/opt/qqbot/stop-sandbox.sh
   #   nohup setsid bash /data/data/com.termux/files/usr/opt/qqbot/start-sandbox.sh >/dev/null 2>&1 &
   # 内容非空时只试这一档，不再走上面的阶梯 —— 方便一台机器一种参数地试到能跑为止。
   # 想回到自动阶梯，把文件删掉或清空即可。
-  _ovr="$QQBOT_HOME/qq-args.txt"
+  _ovr="/qqbot-cache/qq-args.txt"
   if [ -s "$_ovr" ]; then
     _ov="$(tr -d '\r' < "$_ovr" | tr '\n' ' ')"
     case "$_ov" in
       "-") _ov="" ;;
     esac
     QQ_TRIES=( "$_ov" )
-    log "实例 $id 使用 $QQBOT_HOME/qq-args.txt 里指定的参数: ${_ov:-无}"
+    log "实例 $id 使用 qq-args.txt 里指定的参数: ${_ov:-无}"
   fi
 
   write_onebot "$CONF" "$op"
@@ -683,6 +698,33 @@ PY
   # 所以第一档就该是「什么额外参数都不加」，后面几档只在别的机型还卡 GPU 时兜底。
   QQ_OK=0
   QQ_USED="-"
+
+  # ---- 崩溃现场记录器（v1.1.22）----
+  # 真机上 NapCat 的 worker 以「退出码 11」反复退出，日志里没有任何 native 层的报错，
+  # proot 里又没有 root / debuggerd，拿不到 tombstone。这里用 LD_PRELOAD 注入一个
+  # 只负责「死前把现场写下来」的小库：信号号 / si_code / 故障地址 / pc / lr / sp /
+  # 栈顶 512B / 完整的 /proc/self/maps。LD_PRELOAD 会被 QQ 的所有子进程继承，
+  # 所以崩在 worker 里也能抓到。有了 maps，pc 减去对应段的 base 就知道崩在哪个 .so。
+  # 编译失败、源码缺失、没有 g++ 一律静默跳过 —— 它只影响诊断，绝不影响启动。
+  CRASH_DIR="/qqbot-cache/crashes"
+  mkdir -p "$CRASH_DIR" 2>/dev/null
+  _cw_src="/qqbot-opt/sandbox/crashwatch.c"
+  _cw_so="/qqbot-cache/crashwatch.so"
+  if [ -f "$_cw_src" ]; then
+    if [ ! -f "$_cw_so" ] || [ "$_cw_src" -nt "$_cw_so" ]; then
+      if command -v g++ >/dev/null 2>&1; then
+        if g++ -shared -fPIC -O2 -o "$_cw_so.tmp" "$_cw_src" 2>"$CRASH_DIR/cw-build.log"; then
+          mv -f "$_cw_so.tmp" "$_cw_so" 2>/dev/null
+          log "崩溃现场记录器就绪（$_cw_so）"
+        else
+          rm -f "$_cw_so.tmp"
+          log "警告：崩溃现场记录器编译失败，跳过（不影响启动），见 $CRASH_DIR/cw-build.log"
+        fi
+      fi
+    fi
+  fi
+  [ -f "$_cw_so" ] || _cw_so=""
+
   for qf in "${QQ_TRIES[@]}"; do
     [ "$qf" = "-" ] && qf=""
     log "实例 $id 启动 QQ（附加参数: ${qf:-无}）"
@@ -691,6 +733,8 @@ PY
     qq_off=$(wc -c < "$LOGF" 2>/dev/null | tr -d ' \n')
     [ -n "$qq_off" ] || qq_off=0
     # shellcheck disable=SC2086
+    env LD_PRELOAD="$_cw_so" \
+    QQBOT_CRASH_DIR="$CRASH_DIR" QQBOT_CRASH_TAG="$id" \
     HOME="$INSTHOME" DISPLAY=":$DISP" \
     NAPCAT_WEBUI_SECRET_KEY="$tok" \
     NAPCAT_WEBUI_JWT_SECRET_KEY="${tok}_jwt" \
@@ -753,7 +797,7 @@ PY
     if tail -n 80 "$LOGF" 2>/dev/null | grep -q "Worker进程退出"; then
       log "  病根：NapCat 的 Worker 子进程崩了（'Worker进程退出，退出码: 11' 就是 SIGSEGV）。"
       log "  这一层跟 X 和 GPU 都无关，是 native 代码在 proot 里跑崩了。"
-      log "  换参数试的办法：把参数写进 $QQBOT_HOME/qq-args.txt，再重启服务，"
+      log "  换参数试的办法：把参数写进 <Termux>/home/.qqbot/cache/qq-args.txt，再重启服务，"
       log "  例如 --disable-dev-shm-usage 或 --no-zygote，试到能跑为止（删掉文件恢复自动阶梯）。"
     elif tail -n 80 "$LOGF" 2>/dev/null | grep -q "GPU process isn't usable"; then
       log "  病根：GPU 进程起不来。若色深已是 24 位，就是 /proc 拒了 GPU 子进程；"

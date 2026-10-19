@@ -34,6 +34,16 @@ have() { command -v "$1" >/dev/null 2>&1; }
   echo "----- 空间 -----"
   df -k "$HOME" 2>/dev/null
   echo
+  echo "----- 运行环境 -----"
+  echo "page_size : $(getconf PAGE_SIZE 2>/dev/null || echo '?')"
+  echo "ulimit -u : $(ulimit -u 2>/dev/null)"
+  echo "ulimit -s : $(ulimit -s 2>/dev/null)"
+  echo "ulimit -v : $(ulimit -v 2>/dev/null)"
+  echo "nproc     : $(nproc 2>/dev/null || echo '?')"
+  echo "max_map   : $(cat /proc/sys/vm/max_map_count 2>/dev/null || echo '?')"
+  echo "inotify   : $(cat /proc/sys/fs/inotify/max_user_watches 2>/dev/null || echo 'unreadable')"
+  echo "/dev/shm  : $(ls -ld /dev/shm 2>/dev/null || echo '(不存在)')"
+  echo
   echo "----- 部署步骤标记 -----"
   ls -1 "$QQBOT_STEPS" 2>/dev/null
   echo "deploy.done: $([ -f "$QQBOT_HOME/deploy.done" ] && echo yes || echo no)"
@@ -75,6 +85,28 @@ have() { command -v "$1" >/dev/null 2>&1; }
     sed -n '1,60p' "$f" 2>/dev/null
     echo
   done
+  echo "----- 崩溃现场（crashwatch 抓的）-----"
+  _found_crash=0
+  for f in "$QQBOT_CACHE"/crashes/crash-*.log; do
+    [ -f "$f" ] || continue
+    _found_crash=1
+    _csz=$(wc -c < "$f" 2>/dev/null || echo 0)
+    echo "### $f（${_csz} 字节，修改于 $(date -r "$f" "+%F %T" 2>/dev/null)）"
+    # maps 很长但正是定位的关键：崩溃地址落在哪个段、那段是哪个 .so，全靠它。
+    if [ "${_csz:-0}" -eq 0 ]; then
+      echo "(空文件)"
+    elif [ "${_csz:-0}" -gt 204800 ]; then
+      sed -n '1,160p' "$f" 2>/dev/null
+      echo "……（余下省略，全文共 $(wc -l < "$f" 2>/dev/null) 行 / ${_csz} 字节）"
+    else
+      cat "$f" 2>/dev/null
+    fi
+    echo
+  done
+  [ "$_found_crash" = 1 ] || echo "(没有崩溃记录：可能是正常退出，或这版还没带 crashwatch)"
+  echo "----- 崩溃记录器编译日志 (cw-build.log) -----"
+  tail -n 20 "$QQBOT_CACHE/crashes/cw-build.log" 2>/dev/null || echo "(无)"
+  echo
   echo "----- 沙盒自检结果 (doctor.txt) -----"
   cat "$QQBOT_HOME/doctor.txt" 2>/dev/null || echo "(还没跑过「检查运行环境」)"
 } > "$TMP" 2>&1

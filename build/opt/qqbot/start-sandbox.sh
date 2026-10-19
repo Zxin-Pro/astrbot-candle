@@ -85,18 +85,31 @@ export PROOT_TMP_DIR="$QQBOT_PTMP"
 _l2s=""
 if [ -f "$QQBOT_HOME/link2symlink" ]; then
   _l2s="--link2symlink"
-elif : > "$QQBOT_HOME/.l2s-probe" 2>/dev/null; then
+elif : > "$QQBOT_HOME/.l2s-probe-$$" 2>/dev/null; then
   # 标记丢了也自愈：在宿主侧直接试一次 link(2)。写都写不了就当「支持」，
   # 交给后面 qq_fsprobe 去报真正的写入错误，不在这里抢戏。
-  if ln "$QQBOT_HOME/.l2s-probe" "$QQBOT_HOME/.l2s-probe2" 2>/dev/null; then
+  #
+  # 探测文件名必须带 $$（v1.1.22 修）：以前固定叫 .l2s-probe / .l2s-probe2，
+  # 两个进程同时启动时后到的那个 ln 会报 EEXIST，被误判成「建不了硬链接」，
+  # 于是明明能建链接的机器被永久打上 --link2symlink，之后 /tmp 里一堆
+  # .l2s. 残骸还删不掉。另外先 rm -f 一次，防上次被强杀留下的同名文件。
+  rm -f "$QQBOT_HOME/.l2s-probe-$$" "$QQBOT_HOME/.l2s-probe2-$$" 2>/dev/null
+  if ln "$QQBOT_HOME/.l2s-probe-$$" "$QQBOT_HOME/.l2s-probe2-$$" 2>/dev/null; then
     :
   else
     _l2s="--link2symlink"
     : > "$QQBOT_HOME/link2symlink" 2>/dev/null || true
     echo "[start] 这台手机的存储建不了硬链接，改用 --link2symlink（否则 Xvfb 起不来）"
   fi
-  rm -f "$QQBOT_HOME/.l2s-probe" "$QQBOT_HOME/.l2s-probe2" 2>/dev/null
+  rm -f "$QQBOT_HOME/.l2s-probe-$$" "$QQBOT_HOME/.l2s-probe2-$$" 2>/dev/null
 fi
+# proot 的 --link2symlink 会把沙盒内的 link() 换成「符号链接 + .0001 实体」这一对
+# 文件。Xvfb 建 /tmp/.X<n>-lock 走的正是 link()，于是沙盒里留下的是
+# <rootfs>/tmp/.l2s..l2s..tX<n>-lock0001 这种名字 —— 沙盒内 `rm -f /tmp/.X<n>-lock`
+# 根本删不到它们。攒多了以后 Xvfb 一读这些十年前的「悬空锁」就
+# `Can't read lock file /tmp/.X<n>-lock` 然后 Fatal，白烧一整档参数。
+# 这里在宿主侧（路径是普通的）把它们清掉，成本几乎为零。
+rm -f "$QQBOT_ROOTFS"/tmp/.l2s.*-lock* "$QQBOT_ROOTFS"/tmp/.tX*-lock* 2>/dev/null
 # /usr/bin/env -i 会清空全部环境变量，代理必须在这里显式补上：
 # 沙盒内常驻运行的 NapCat / AstrBot 都要用（apt / pip 已经装完了，但运行期
 # 若有任何组件要联网，走这里）。no_proxy 固定带上本机地址：NapCat 与 AstrBot
