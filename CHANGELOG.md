@@ -11,6 +11,38 @@
 
 ---
 
+## [1.1.25] - 2026-10-19
+
+真机上 NapCat 的 Worker 子进程「退出码 11」这一版**修掉了**。根因不是我们打包的问题，
+是 NapCat 让 Worker 走 Electron 的 `UtilityProcess`（Chromium 进程模型），在 arm64 + proot 下
+注入的 native 补丁会踩到坏指针。上游对此有官方开关，我们把它默认打开。
+
+### 修复
+
+- **Worker SIGSEGV（退出码 11）**：真机崩溃现场是
+  `signal = 11 (SIGSEGV)`、`si_code = 1 (SEGV_MAPERR)`、`si_addr = 0x550bd1f3f8`，
+  崩在 `.../app_launcher/napcat/native/napi2native/napi2native.linux.arm64.node(gum_elf_module_load+0x880)`，
+  5 份崩溃记录完全一致 —— 即 NapCat 注入的 frida-gum 在解析符号表时踩了空指针。
+  现在默认设 `NAPCAT_FORCE_NODE_PROCESS=1`，NapCat 改用 `child_process.fork` 起纯 Node 子进程，
+  不再走 Chromium 那套进程模型，崩溃消失。这正是上游 PR #1984 的修复路径。
+- **默认值由脚本注入，用户不用操作**：`sandbox/run-napcat.sh` 启动 QQ 时先扫 `qq-env.txt` 里有没有
+  同名键，没有就补上 `NAPCAT_FORCE_NODE_PROCESS=1`，并在 `supervisor.log` 里写明当前模式
+  （`走 fork 模式` / `由 qq-env.txt 指定：…`）。想把行为改回去，写
+  `~/.qqbot/cache/qq-env.txt` 一行 `NAPCAT_FORCE_NODE_PROCESS=0` 即可，不用重装。
+- **老设备不用重装沙盒**：脚本随 APK 的 `assets/qqbot-scripts.zip` 下发，装上新 APK 时
+  `syncScripts()` 会自动覆盖到 `$PREFIX/opt/qqbot` 并重启容器，实例重启后即生效。
+- **WebUI 白屏一并消除**：这条上游修复的另一半就是白屏 —— Worker 崩掉之后 6099 只剩空页面。
+
+### 说明
+
+- 模拟器实测（x64 版 QQ + amd64 rootfs）：`supervisor.log` 打出「NapCat worker 走 fork 模式」，
+  Worker 的 `cmdline` 是 `/opt/QQ/qq --no-sandbox .../napcat.mjs`（不再有 `--type=utility`），
+  `[Napi2NativeLoader] 加载成功`、`NapCat.Core Version: 4.18.38`、二维码正常生成，
+  6099 的 WebUI 返回 200，AstrBot 侧 aiocqhttp 平台在线、OneBot 通道已连接。
+- 已经排除的两个方向，写在这里省得再试：`NAPCAT_DISABLE_BYPASS=1` 无效（真机日志里 bypass
+  六键早在崩溃前就跑完了，`[PacketHandler] 初始化成功` 在崩之前）；`NAPCAT_DISABLE_MULTI_PROCESS=1`
+  更糟（单进程下跑到 `prepare write and writev hooks` 就崩）。
+
 ## [1.1.24] - 2026-10-19
 
 真机上 NapCat 的 Worker 子进程还是以「退出码 11」反复退出。这一版不带修复，

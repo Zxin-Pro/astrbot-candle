@@ -641,14 +641,19 @@ PY
     log "实例 $id 使用 qq-args.txt 里指定的参数: ${_ov:-无}"
   fi
 
-  # ---- 传给 QQ 的环境变量（v1.1.24）----
-  # 默认不设任何东西。这里之所以留一个覆写文件，是因为 1.1.24 排查 worker SIGSEGV 时
-  # 试过 NapCat 自带的单进程开关 NAPCAT_DISABLE_MULTI_PROCESS=1（napcat.mjs 里
-  # `if (Ed.isMultiProcessDisabled) { await N() ; return }`，根本不 fork worker）。
-  # 实测结论：这条路走不通 —— 单进程下 NapCat 的 N() 在 QQ 主进程里跑到
-  # "prepare write and writev hooks" 就 SIGSEGV（模拟器上必崩），也就是说
-  # worker 子进程正是 NapCat 为了规避「在 QQ 主进程里 hook 会崩」才拆出去的，
-  # 关掉多进程等于把崩溃搬进主进程，只会更糟。所以这里保持空。
+  # ---- 传给 QQ 的环境变量（v1.1.25）----
+  # 默认值只有一个：NAPCAT_FORCE_NODE_PROCESS=1，这是 worker SIGSEGV（退出码 11）的
+  # 根治开关。真机崩溃现场：worker 里崩在
+  #   napi2native.linux.arm64.node(gum_elf_module_load+0x880)
+  #   signal=11 SIGSEGV si_code=1(SEGV_MAPERR) si_addr=0x550bd1f3f8（5 份崩溃记录一模一样）
+  # 也就是 NapCat 注入的 frida-gum 在 Electron 的 worker 进程里拿到了一个坏指针。
+  # 上游 NapCat 的 PR #1984 正是为这个加的开关：「fix: 修复 WebUI 白屏与 arm64/proot 下
+  # Worker SIGSEGV」，napcat.mjs 里 NAPCAT_FORCE_NODE_PROCESS !== "1" 时才会走
+  # e.utilityProcess.fork（Chromium 进程模型），设成 1 就走 child_process.fork 的纯 Node
+  # 子进程，绕开 Chromium 那套进程模型，崩溃随之消失。
+  # 想回到老行为：把 NAPCAT_FORCE_NODE_PROCESS=0 写进 qq-env.txt（覆写文件优先）。
+  #
+  # 也留了 qq-env.txt 覆写入口（一行一个 KEY=VALUE），方便现场换参数。
   QE=()
   # 覆写文件：一行一个 KEY=VALUE，追加进 QQ 的启动环境。
   #   echo 'NAPCAT_DISABLE_MULTI_PROCESS=1' > /data/data/com.termux/files/home/.qqbot/cache/qq-env.txt
@@ -664,6 +669,19 @@ PY
       case "$_ln" in *=*) QE=( "${QE[@]}" "$_ln" ); _envn=$((_envn + 1)) ;; esac
     done < "$_envf"
     [ "$_envn" -gt 0 ] && log "实例 $id 追加 qq-env.txt 里的 $_envn 个环境变量"
+  fi
+
+  # 覆写文件里没写 NAPCAT_FORCE_NODE_PROCESS 时，补上默认值 1（理由见上面那段注释）。
+  # 用环境变量而不是改 napcat.mjs：升级 / 重装 NapCat 时不会被覆盖，出问题也好回退。
+  _qe_mode=""
+  for _e in "${QE[@]}"; do
+    case "$_e" in NAPCAT_FORCE_NODE_PROCESS=*) _qe_mode="$_e" ;; esac
+  done
+  if [ -z "$_qe_mode" ]; then
+    QE=( "${QE[@]}" "NAPCAT_FORCE_NODE_PROCESS=1" )
+    log "实例 $id 的 NapCat worker 走 fork 模式（NAPCAT_FORCE_NODE_PROCESS=1，绕开 Electron UtilityProcess）"
+  else
+    log "实例 $id 的 NapCat worker 模式由 qq-env.txt 指定：$_qe_mode"
   fi
 
   write_onebot "$CONF" "$op"
