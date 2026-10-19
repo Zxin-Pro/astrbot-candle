@@ -61,6 +61,18 @@ $yml = $yml -replace 'versionCode: \d+', "versionCode: $VC"
 $yml = $yml -replace 'versionName: .*', "versionName: $VER"
 [System.IO.File]::WriteAllText("$ROOT\_apkwork\apktool.yml", $yml, (New-Object System.Text.UTF8Encoding($false)))
 Write-Host "version $VER ($VC)"
+# 3c) 小米对「debug 包 / 被重打包」的应用会做安装拦截（v1.1.28 起去掉这个信号）：
+#     从 manifest 里删掉 android:debuggable="true"，重复执行安全（幂等）。
+#     注意：不要加 android:privacyPolicy —— 该属性在 Android 里不存在，aapt2 会直接报错。
+$mf = "$ROOT\_apkwork\AndroidManifest.xml"
+$xml = Get-Content $mf -Raw
+$xml2 = $xml -replace '\s+android:debuggable="true"', ''
+if ($xml2 -ne $xml) {
+  [System.IO.File]::WriteAllText($mf, $xml2, (New-Object System.Text.UTF8Encoding($false)))
+  Write-Host 'manifest: removed android:debuggable'
+} else {
+  Write-Host 'manifest: debuggable already absent'
+}
 Remove-Item "$ROOT\_apkwork\smali_classes30" -Recurse -Force -ErrorAction SilentlyContinue
 Copy-Item "$ROOT\ui\smali" "$ROOT\_apkwork\smali_classes30" -Recurse -Force
 New-Item -ItemType Directory -Force -Path "$ROOT\_apkwork\assets\qqbot" | Out-Null

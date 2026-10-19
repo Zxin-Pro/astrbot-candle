@@ -1086,9 +1086,9 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
       "cards": [
         {
           "icon": "📦",
-          "title": "AstrBot烛版 1.1.27（最新版）",
-          "desc": "文件名 AstrBot-1.1.27.apk（下载下来就是这个名字）\n安卓安装包 · 24.1 MB · 2026-10-19\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
-          "link": "/downloads/AstrBot-1.1.27.apk",
+          "title": "AstrBot烛版 1.1.29（最新版）",
+          "desc": "文件名 AstrBot-1.1.29.apk（下载下来就是这个名字）\n安卓安装包 · 24.1 MB · 2026-10-19\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
+          "link": "/downloads/AstrBot-1.1.29.apk",
           "text": ""
         },
         {
@@ -1096,7 +1096,7 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
           "title": "复制下载直链",
           "desc": "点这张卡就把地址复制下来，可以直接发给别人或贴进浏览器。",
           "link": "",
-          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.1.27.apk"
+          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.1.29.apk"
         },
         {
           "icon": "🕘",
@@ -1107,10 +1107,10 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
         },
         {
           "icon": "🔐",
-          "title": "SHA-256 校验值（v1.1.27）",
+          "title": "SHA-256 校验值（v1.1.29）",
           "desc": "点这张卡复制，然后和下载到的文件比对，一样就说明没被改过。",
           "link": "",
-          "text": "f904d222326ba1957964e0738b3e5cfcb147dc8c2a662472d86e0ca6073beeb2"
+          "text": "e0da800f670719605ff979c429aa7e076293c4610f8465a1d32c516706b81f50"
         }
       ]
     },
@@ -1187,6 +1187,20 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
       "cards": [
         {
           "icon": "📝",
+          "title": "v1.1.29  ·  2026-10-19",
+          "desc": "## AstrBot 烛版 1.1.29\n\n## [1.1.29] - 2026-10-19\n\n1.1.28 是同一批改动的第一个包，发出去之后发现自动更新弹窗里的更新说明带了两行废字\n（「AstrBot 烛版 1.1.28」和「[1.1.28] - 2026-10-19」，弹窗标题里本来就写着版本号）。\n这一版只做这一处收尾，功能与 1.1.28 完全一致。\n\n### 修复\n\n- **更新弹窗里的说明更干净**：自动跳过发布页正文开头的版本标题行与日期行，\n  正文里的 Markdown 记号（`#`、`**`、`-`、链接）也先剥掉再展示，最多六行、220 字。\n\n### 说明\n\n- 1.1.28 / 1.1.29 的四项改动（打开即检查更新并弹窗、AstrBot 启动提示、\n  WebUI 走系统浏览器、隐私政策 + 去掉 debuggable）相同；直接用 1.1.29 即可。\n- 不用重装沙盒：装完新 APK、重启服务即生效。",
+          "link": "/downloads/AstrBot-1.1.29.apk",
+          "text": ""
+        },
+        {
+          "icon": "📝",
+          "title": "v1.1.28  ·  2026-10-19",
+          "desc": "## AstrBot 烛版 1.1.28\n\n## [1.1.28] - 2026-10-19\n\nNapCat 已经能在真机上跑起来了，这一版处理的是「用起来」和「装得上」的问题：\n启动要等多久、面板在哪儿打开、每次打开要不要提醒更新、以及小米手机装包时那句「缺少隐私政策」。\n\n### 新增\n\n- **每次打开自动检查更新**：控制台一加载就查一次（不再受 12 小时节流），查到新版本自动弹窗，\n  「去下载」走系统浏览器，「以后再说」记住这个版本、下次不再打扰。查不到或超时都静默，\n  不打扰正常使用；被免责声明挡在后面时，点完「同意」会补弹。\n- **AstrBot 冷启动提示**：运行状态卡片里出现一行琥珀色小字\n  「AstrBot 正在启动，通常需要 40–60 秒，请稍候」。以前这段时间磁贴只写「离线」，\n  容易被当成装坏了；AstrBot 起来后这行自己消失，守护进程没跑的时候也不显示。\n\n### 修改\n\n- **WebUI 一律用系统浏览器打开**：NapCat 面板与 AstrBot 控制台的按钮改成\n  「在浏览器打开 …」，点击后不再跳应用内的 WebView，而是交给系统默认浏览器打开\n  `http://127.0.0.1:6099` / `http://127.0.0.1:6185`（仍然只放行本机地址）。\n  好处是能正常走浏览器的密码管理、扫码页和 AstrBot 管理后台。\n\n### 修复\n\n- **小米手机安装时提示「缺少隐私政策」不给装**：排查结论是小米 HyperOS 的\n  「应用包管理组件」+ 安全中心做的风险判定，命中的是《风险应用审查标准》里\n  「应用隐私政策未向用户明示」这一条，跟 Android 平台的 manifest 属性无关\n  （`android:privacyPolicy` 这个属性根本不存在）。这一版能做的我们都做了：\n  1. 控制台新增**《隐私政策》**页：`更多 → 关于与支持 → 隐私政策`，\n     首次启动的免责声明弹窗里也有入口。写清「不收集个人信息」「唯一会上传的是\n     你主动提交的错误日志」「七类权限各自干什么用」「数据存在哪、怎么删」「联系方式」。\n  2. 从 manifest 去掉 `android:debuggable=\"true\"` —— debug 包是被判定「被重新打包」的\n     显式标记。\n  3. 把这条剥离固化成构建步骤（`build-ui.ps1`，幂等），以后每次构建都不会再带 debug 标记。\n- **说明**：小米的拦截发生在安装器里、由云端与本地缓存共同判定，APK 里补隐私政策\n  **不保证**能解除拦截。真机上仍然有效的手段都在安装器侧：\n  关掉手机管家的「安装监控 / 安全守护 / 应用防护」，或对「应用包管理组件」卸…",
+          "link": "/downloads/AstrBot-1.1.28.apk",
+          "text": ""
+        },
+        {
+          "icon": "📝",
           "title": "v1.1.27  ·  2026-10-19",
           "desc": "## AstrBot 烛版 1.1.27\n\n## [1.1.27] - 2026-10-19\n\n和 1.1.26 是同一个修复（proot loader 节头清零），只多了一层保险 —— 真机没到手上，\n补丁万一跟某台设备的 proot 不兼容，不能把「NapCat 崩」换成「沙盒起不来」。\n\n### 加固\n\n- **起沙盒前先探一次**：`start-sandbox.sh` 在用打补丁的 loader 之前先跑一句最短自检\n  （`proot -0 /system/bin/echo`），跑不通就立刻退回系统 loader、把现场存到\n  `~/.qqbot/logs/loader-probe.log`，并写 `~/.qqbot/proot-loader.off` 标记 —— 之后不再尝试。\n  删掉那个标记就会重新试一次。\n- **部署自检失败也留标记**：`qq_proot_selftest()` 的自动回退同样会写这个标记，\n  避免「回退一次、下个脚本又重建补丁、再挂一次」的循环。\n- **「检查运行环境」多一个状态**：`loader补丁:` 现在有「已停用（proot-loader.off 存在）」这一档。\n\n### 说明\n\n- 修复内容与 1.1.26 完全一致，装在真机上行为相同；只是多了一道「不兼容就自动退回」的保险。\n- 依旧不用重装沙盒：脚本随 APK 下发，装完重启服务即生效。",
           "link": "/downloads/AstrBot-1.1.27.apk",
@@ -1203,27 +1217,13 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
           "icon": "📝",
           "title": "v1.1.25  ·  2026-10-19",
           "desc": "## AstrBot 烛版 1.1.25\n\n## [1.1.25] - 2026-10-19\n\n真机上 NapCat 的 Worker 子进程「退出码 11」这一版**修掉了**。根因不是我们打包的问题，\n是 NapCat 让 Worker 走 Electron 的 `UtilityProcess`（Chromium 进程模型），在 arm64 + proot 下\n注入的 native 补丁会踩到坏指针。上游对此有官方开关，我们把它默认打开。\n\n### 修复\n\n- **Worker SIGSEGV（退出码 11）**：真机崩溃现场是\n  `signal = 11 (SIGSEGV)`、`si_code = 1 (SEGV_MAPERR)`、`si_addr = 0x550bd1f3f8`，\n  崩在 `.../app_launcher/napcat/native/napi2native/napi2native.linux.arm64.node(gum_elf_module_load+0x880)`，\n  5 份崩溃记录完全一致 —— 即 NapCat 注入的 frida-gum 在解析符号表时踩了空指针。\n  现在默认设 `NAPCAT_FORCE_NODE_PROCESS=1`，NapCat 改用 `child_process.fork` 起纯 Node 子进程，\n  不再走 Chromium 那套进程模型，崩溃消失。这正是上游 PR #1984 的修复路径。\n- **默认值由脚本注入，用户不用操作**：`sandbox/run-napcat.sh` 启动 QQ 时先扫 `qq-env.txt` 里有没有\n  同名键，没有就补上 `NAPCAT_FORCE_NODE_PROCESS=1`，并在 `supervisor.log` 里写明当前模式\n  （`走 fork 模式` / `由 qq-env.txt 指定：…`）。想把行为改回去，写\n  `~/.qqbot/cache/qq-env.txt` 一行 `NAPCAT_FORCE_NODE_PROCESS=0` 即可，不用重装。\n- **老设备不用重装沙盒**：脚本随 APK 的 `assets/qqbot-scripts.zip` 下发，装上新 APK 时\n  `syncScripts()` 会自动覆盖到 `$PREFIX/opt/qqbot` 并重启容器，实例重启后即生效。\n- **WebUI 白屏一并消除**：这条上游修复的另一半就是白屏 —— Worker 崩掉之后 6099 只剩空页面。\n\n### 说明\n\n- 模拟器实测（x64 版 QQ + amd64 rootfs）：`supervisor.log` 打出「NapCat worker 走 fork 模式」，\n  Worker 的 `cmdlin…",
-          "link": "/downloads/AstrBot-1.1.25.apk",
+          "link": "",
           "text": ""
         },
         {
           "icon": "📝",
           "title": "v1.1.24  ·  2026-10-19",
           "desc": "## AstrBot 烛版 1.1.24\n\n## [1.1.24] - 2026-10-19\n\n真机上 NapCat 的 Worker 子进程还是以「退出码 11」反复退出。这一版不带修复，\n带的是**能看见崩在哪**的工具——上一次的崩溃记录器在真机上一份文件都没写出来。\n\n### 修复\n\n- **崩溃记录器终于能抓到 Chromium 的崩溃**：上一版是在加载时用自己的信号处理器\n  覆盖一次，但 Chromium 启动时会调用 `sigaction()` 把自己的处理器装上去，直接把我们\n  顶掉——所以真机上 `crashes/` 一直是空的。这一版自己导出一个 `sigaction()`：\n  应用来装处理器时我们先记下来，实际装的是我们的；崩溃时先写现场，再把控制权\n  交还给应用原本那个处理器，行为不变。**已在模拟器上用 `kill -SEGV` 验证抓取成功。**\n- **崩溃现场多了「pc 所在段」**：直接把 `pc` 落在哪一段映射、是哪个 `.so`、\n  段内偏移多少算出来写进文件，不用再拿 maps 手工对。\n- **崩溃文件只留最近 4 份**：真机上每 15 秒崩一轮，不清理会攒出几百个一百多 KB\n  的文件，把错误报告撑爆。\n- **新增 `qq-env.txt`**：想给 QQ 传环境变量时，写\n  `~/.qqbot/cache/qq-env.txt`（一行一个 `KEY=VALUE`）后重启服务即可，不用重装。\n\n### 说明\n\n- 用 `kill -SEGV` 在模拟器上对照确认：日志里的**「Worker进程退出，退出码: 11」\n  就是 SIGSEGV**（不是普通退出码）。\n- 试过 NapCat 自带的单进程开关 `NAPCAT_DISABLE_MULTI_PROCESS=1`（`napcat.mjs` 里\n  直接 `await N()`，根本不 fork worker），**这条路不通**：单进程下 NapCat 在 QQ\n  主进程里跑到 `prepare write and writev hooks` 就 SIGSEGV，模拟器上必崩。\n  worker 子进程正是 NapCat 用来规避「在主进程里 hook 会崩」的，关掉只会更糟。\n\n---",
-          "link": "/downloads/AstrBot-1.1.24.apk",
-          "text": ""
-        },
-        {
-          "icon": "📝",
-          "title": "v1.1.23  ·  2026-10-19",
-          "desc": "## AstrBot 烛版 1.1.23\n\n## [1.1.23] - 2026-10-19\n\n真机上的 NapCat 现在停在「`/opt/QQ/.../app_launcher/napcat/napcat.mjs` 找不到」——\n重装那一步把旧 NapCat 删掉了、新的没装进来，而界面还显示「100% + 四个绿勾」，\n看着像装好了，其实是失败（退出码 1）。\n\n### 修复\n\n- **重装失败不再伪装成成功**：以前不管成功失败，进度条一律打满、四个阶段全打绿勾。\n  现在失败时进度条变成红色、失败的那一步打红叉、百分比只算它前面已经完成的步骤，\n  标题下面直接写「卡在「安装 NapCat 与 QQ」」。\n- **重装中途失败不再把 NapCat 弄没**：`reinstall.sh` 原来直接 `rm -rf` 掉整个 napcat\n  目录再装，`50-napcat.sh` 又是 `set -e`，中途任何一步失败就留下「目录空了、新的没来」\n  的死状态。改成先把旧目录改名成 `/root/napcat.bak`，装完**实际校验**\n  `napcat.mjs` 与 `package.json` 是否在位；校验不过自动把备份挪回去 ——\n  最坏情况是「装的还是旧的」，而不是「彻底没有」。\n- **错误报告带上重装日志**：`upload-log.sh` 新增「重装日志尾部 150 行」、\n  「组件关键文件是否在位」（napcat.mjs / package.json / loadNapCat.js / app/package.json\n  的 `main` 字段）、`app_launcher/napcat` 目录内容、`NapCat.Shell.zip` 是否还在、\n  `qq-args.txt` 有没有覆写、崩溃记录目录清单。以前 `reinstall.log` 根本没进报告，\n  只有一个退出码 1，完全看不出死在哪一行。\n\n### 说明\n\n- 上一版（1.1.22）卸掉了 Worker SIGSEGV 那一层：崩溃记录器已经在真机上跑起来了\n  （报告里的「崩溃现场」段现在是空的，说明 QQ 根本没崩过，是模块压根没加载）。\n  这一版修的是它后面那一层。\n\n---",
-          "link": "",
-          "text": ""
-        },
-        {
-          "icon": "📝",
-          "title": "v1.1.22  ·  2026-10-18",
-          "desc": "## AstrBot 烛版 1.1.22\n\n## [1.1.22] - 2026-10-19\n\n真机上 NapCat 的 Worker 子进程一启动就 SIGSEGV（退出码 11），但日志只告诉我们「它崩了」，\n不告诉我们在哪崩的。这一版加了崩溃现场记录器，把调用栈弄回来；同时把「改对接要不要重启\nAstrBot」这件事分清楚了。\n\n### 新增\n\n- **崩溃现场记录器（`sandbox/crashwatch.c`）**：一个用 `LD_PRELOAD` 注入 QQ 的小型动态库，\n  首次编译在手机上用 `g++` 现场完成（不额外打包二进制）。捕获 SIGSEGV/SIGABRT/SIGBUS/\n  SIGILL/SIGFPE/SIGTRAP 时，把信号、`si_code`、出错地址、RIP/RSP/RBP、栈内容、\n  `/proc/self/maps` 里的模块基址、以及**用 `dladdr` + `backtrace` 解出来的可读调用栈**\n  写进 `cache/crashes/crash-<pid>-sigN.log`。信号处理函数里只做异步信号安全的事\n  （预开 fd、静态缓冲、`write`），不会因为崩溃处理器自己再崩一次而丢掉现场。\n  每个实例按 tag 分开落盘，单文件上限 256 KB。\n- **错误报告带上崩溃现场**：上传日志现在会附上最新的崩溃文件，并额外采集运行期信息\n  （磁盘/内存、proot 命令行、会不会是 link(2) 问题、沙箱各目录大小、端口监听情况、\n  最近改动过的文件、dmesg 里的被杀记录）。以后再排查不用再猜。\n\n### 修复\n\n- **改对接不再重启 AstrBot**（`sandbox/link.sh`）：以前只要平台端口清单和现有配置不一致\n  就 `kill -TERM` 掉 AstrBot 重启一次，约 30 秒，其它号的连接一起断。现在只有\n  「**新增实例**，需要 AstrBot 多监听一个端口」才重启一次；**删除实例**只在 AstrBot 里留下\n  一个没人连的监听口，不影响任何功能，等下次因为别的原因重启时顺手清掉；停用实例、\n  改 token 之类端口清单根本没变，AstrBot 一个信号都不收。\n  （查过 AstrBot 的代码：`astrbot/dashboard/api/platform.py` 与\n  `services/platform_service.py` 只有 webhook 注册，运行期没有任何「新增 aiocqhttp 监听口」\n  的热加载入口，所以这一处重启没法省。）\n- **另外两个路径 bug**：`qq-args.txt` 覆写开关和崩溃目录都写在沙盒里，而沙盒内\n  `$QQBOT_HOME` 是空的（它是 Termux…",
           "link": "",
           "text": ""
         }
@@ -1259,7 +1259,7 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
       ]
     }
   ],
-  "updated": "2026-10-19 14:15:48"
+  "updated": "2026-10-19 15:23:54"
 }
 __ASTRBOT_DL_STATIC__
 log "离线兜底内容已装到 $SCRIPTS/astrbot_download_sync.fallback.json"

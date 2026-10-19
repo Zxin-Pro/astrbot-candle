@@ -218,15 +218,30 @@ public class QqbotActivity extends Activity {
         }
     }
 
-    /** 应用内打开网页面板（NapCat WebUI / AstrBot 控制台）。 */
+    /**
+     * 打开网页面板（NapCat WebUI / AstrBot 控制台）。
+     *
+     * v1.1.28 起改用**系统默认浏览器**打开，不再塞进应用内的 QqbotPanelActivity：
+     * 内置 WebView 里登 AstrBot 控制台经常卡在登录页、也不方便另开窗口对照，
+     * 用系统浏览器还能正常保存密码、换标签页、投屏到别的设备。
+     * 只放行本机地址（127.0.0.1 / localhost），避免页面内容把用户导向外部站点。
+     */
     public void doOpenPanel(String url) {
+        String u = url == null ? "" : url.trim();
+        String low = u.toLowerCase(java.util.Locale.ROOT);
+        if (!(low.startsWith("http://127.0.0.1:") || low.startsWith("http://localhost:"))) {
+            Toast.makeText(this, "只支持本机地址", Toast.LENGTH_SHORT).show();
+            return;
+        }
         try {
-            Intent i = new Intent();
-            i.setClassName(getPackageName(), "com.termux.app.QqbotPanelActivity");
-            i.putExtra("url", url == null ? "" : url);
+            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(u));
+            // 可能是从非 Activity 上下文调进来的，带 NEW_TASK 才不会抛
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(i);
+        } catch (ActivityNotFoundException e) {
+            Toast.makeText(this, "没有找到可用的浏览器", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
-            Toast.makeText(this, "无法打开面板", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "无法打开浏览器", Toast.LENGTH_SHORT).show();
         }
     }
 

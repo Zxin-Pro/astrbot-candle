@@ -316,6 +316,9 @@ input::placeholder{color:#5f6879}
 .field label{display:block;font-size:12px;color:var(--txt-2);margin-bottom:6px}
 .hint{font-size:11.5px;color:var(--txt-3);line-height:1.6;margin-top:7px}
 .hint b{color:#9fb0d8;font-weight:600}
+/* AstrBot 冷启动要 40~60 秒，这段时间磁贴上只有「离线」，用户容易以为装坏了。
+   这句用跟「启动中」徽标同一支暖色（--warn），就绪后由 JS 收起。 */
+#astrBoot{color:var(--warn)}
 
 /* ===== 实例卡 ===== */
 .bot{
@@ -623,6 +626,7 @@ button.locked{box-shadow:none;transform:none}
         <div class="tile" id="t-astrbot"><div class="tt">AstrBot</div><div class="tv" id="v-astrbot">-</div><div class="tp" id="p-astrbot"></div></div>
         <div class="tile" id="t-onebot" style="grid-column:1 / -1"><div class="tt">OneBot 通道</div><div class="tv" id="v-onebot">-</div><div class="tp" id="p-onebot"></div></div>
       </div>
+      <div class="hint" id="astrBoot" style="display:none">AstrBot 正在启动，通常需要 40–60 秒，请稍候</div>
       <div class="btns" style="margin-top:12px">
         <button class="primary" style="flex:1" data-act="showlogs">查看日志</button>
       </div>
@@ -659,14 +663,14 @@ button.locked{box-shadow:none;transform:none}
       <div class="row"><span class="k">账号</span><span class="v mono">astrbot</span></div>
       <div class="row"><span class="k">密码</span><span class="v mono">Astrbot123</span></div>
       <div class="btns" style="margin-top:10px">
-        <button class="small primary" style="flex:1" data-act="openpanel" id="btnNapPanel" data-arg="">应用内打开 NapCat 面板</button>
+        <button class="small primary" style="flex:1" data-act="openpanel" id="btnNapPanel" data-arg="">在浏览器打开 NapCat 面板</button>
       </div>
       <div class="btns" style="margin-top:8px">
         <button class="small" data-act="copyuser">复制账号</button>
         <button class="small" data-act="copypass">复制密码</button>
-        <button class="small primary" style="flex:1" data-act="openpanel" id="btnAstrPanel" data-arg="http://127.0.0.1:6185">应用内打开 AstrBot 控制台</button>
+        <button class="small primary" style="flex:1" data-act="openpanel" id="btnAstrPanel" data-arg="http://127.0.0.1:6185">在浏览器打开 AstrBot 控制台</button>
       </div>
-      <div class="hint">二维码需要另一台设备扫：手机与电脑连同一个 Wi-Fi，用电脑浏览器打开 <b id="v-napurl2">http://手机IP:6099</b>，再用手机 QQ 扫码。也可以直接点上面的按钮，在应用内打开 NapCat 面板扫码。首次登录 AstrBot 后请立即修改密码。</div>
+      <div class="hint">二维码需要另一台设备扫：手机与电脑连同一个 Wi-Fi，用电脑浏览器打开 <b id="v-napurl2">http://手机IP:6099</b>，再用手机 QQ 扫码。也可以点上面的按钮，用系统浏览器打开 NapCat 面板扫码。首次登录 AstrBot 后请立即修改密码。</div>
     </div>
 
   </section>
@@ -784,6 +788,13 @@ button.locked{box-shadow:none;transform:none}
         <div class="lkbd"><div class="lkt">检查更新</div><div class="lkv" id="updText">点右边按钮看看有没有新版本</div></div>
         <div class="lkbtns">
           <button class="small primary" data-act="checkupdate" id="updBtn">检查更新</button>
+        </div>
+      </div>
+      <div class="lkrow">
+        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 5 6v5.4c0 4.2 2.9 7.6 7 8.8 4.1-1.2 7-4.6 7-8.8V6z"/><path d="M9.4 12.1l1.9 1.9 3.4-3.6"/></svg></span>
+        <div class="lkbd"><div class="lkt">隐私政策</div><div class="lkv">数据收集范围与权限用途</div></div>
+        <div class="lkbtns">
+          <button class="small primary" data-act="privacy">查看</button>
         </div>
       </div>
       <div class="hint" id="updNote" style="display:none"></div>
@@ -924,7 +935,75 @@ button.locked{box-shadow:none;transform:none}
     </div>
     <div class="dfoot">
       <button class="small" data-act="copydisc">复制全文</button>
+      <button class="small" data-act="privacy">隐私政策</button>
       <button class="primary" style="flex:1" data-act="dlgagree">我已阅读并同意</button>
+    </div>
+  </div>
+</div>
+
+<div class="dlgmask" id="dlgPrivacy">
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="privTitle">
+    <h3 id="privTitle">隐私政策</h3>
+    <div class="dbody">
+      <p><b>AstrBot烛版</b>（包名 com.termux）是一个本地运行环境管理器。我们把"收集什么、为什么收集、存在哪里、怎么删除"逐条写清楚，请在使用前完整阅读。</p>
+      <p><b>一、我们不收集个人信息</b></p>
+      <ul>
+        <li>本软件没有账号体系，不要求手机号、邮箱、实名信息，也不需要你注册登录。</li>
+        <li>不做用户画像、行为统计、广告投放，不集成任何第三方统计或广告 SDK。</li>
+        <li>QQ 登录凭据（含扫码登录产生的票据）、聊天记录、机器人配置全部只保存在本机应用私有目录，我们无法访问。</li>
+      </ul>
+      <p><b>二、唯一会上传的数据：你主动提交的错误日志</b></p>
+      <ul>
+        <li>只有你本人点击「上传错误日志」时，软件才会把本机的诊断日志（启动脚本输出、进程状态、系统与设备型号、崩溃堆栈）打包上传到我们的日志服务器。</li>
+        <li>目的只有一个：定位你反馈的故障。上传内容不包含聊天记录、好友列表、账号密码、二维码图片。</li>
+        <li>你可以拒绝上传，软件的全部功能不受影响；也可以在设置里随时停止使用该功能。</li>
+      </ul>
+      <p><b>三、申请的系统权限及用途</b></p>
+      <ul>
+        <li><b>存储</b>：解压 Linux 沙盒镜像、读写安装包与本机日志文件。</li>
+        <li><b>网络</b>：下载 NapCat / AstrBot / QQ 安装包，连接本机 6099、6185 端口，以及在你主动上传时提交日志。</li>
+        <li><b>通知与前台服务</b>：保持沙盒常驻，避免系统在后台冻结进程。</li>
+        <li><b>悬浮窗</b>：仅用于在沙盒运行期间显示状态提示，可随时在系统设置里关闭。</li>
+        <li><b>忽略电池优化</b>：防止息屏后机器人掉线。</li>
+        <li><b>安装应用</b>：仅用于安装本软件自身的新版本（自动更新）。</li>
+        <li><b>读取日志 / 诊断类权限</b>：仅用于生成本机排障日志，不上传、不外发，除非你主动提交。</li>
+      </ul>
+      <p><b>四、第三方组件</b></p>
+      <ul>
+        <li>沙盒内的 <b>NapCat</b>、<b>AstrBot</b>、<b>Linux QQ</b> 均为第三方开源或官方软件，由你在本机安装并运行，其数据处理行为遵循各自项目的隐私说明与腾讯的服务条款，本软件不参与其数据处理。</li>
+        <li>使用第三方客户端登录可能违反平台服务条款，相关风险由你自行评估。</li>
+      </ul>
+      <p><b>五、数据存储位置与删除方式</b></p>
+      <ul>
+        <li>所有运行数据都在本机 <b>/data/data/com.termux</b> 私有目录内，不写入公共存储。</li>
+        <li>删除方式：在系统设置里「清除数据」或卸载本软件，即可一次性删除全部本地数据；已上传的日志可联系我们删除。</li>
+      </ul>
+      <p><b>六、未成年人</b></p>
+      <ul><li>本软件不面向 14 周岁以下儿童，若你未满 14 周岁请在监护人陪同下使用。</li></ul>
+      <p><b>七、联系我们</b></p>
+      <ul>
+        <li>官方网站：https://xn--15t839a.xyz</li>
+        <li>官方交流群：1127997343（问题反馈与数据删除申请）</li>
+      </ul>
+      <p>本政策自 2026-10-19 起生效。若内容有变更，我们会在软件内更新本页面并注明日期。</p>
+    </div>
+    <div class="dfoot">
+      <button class="small" data-act="copydiscp">复制全文</button>
+      <button class="primary" style="flex:1" data-act="privacyclose">返回</button>
+    </div>
+  </div>
+</div>
+
+<div class="dlgmask" id="dlgUpdate">
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="updDlgTitle">
+    <h3 id="updDlgTitle">发现新版本</h3>
+    <div class="dbody">
+      <p id="updDlgCur">当前版本 -</p>
+      <div class="updnotes" id="updDlgNotes" style="display:none"></div>
+    </div>
+    <div class="dfoot">
+      <button class="small" data-act="updlater">以后再说</button>
+      <button class="primary" style="flex:1" data-act="updgo">去下载</button>
     </div>
   </div>
 </div>
@@ -1241,7 +1320,8 @@ function pill(txt, cls){ return '<span class="pill ' + (cls || "") + '">' + esc(
    纯只读：reload（立即刷新日志）/ slim（精简模式）/ rmcard（收起日志框）——
      文件读不到就显示空，不会破坏任何东西。
    与沙盒无关的信息类：checkupdate / dlupdate / updnotes（检查更新）、
-     copyurl / openurl（官网）、openqq（加群）、copydisc（免责声明）、dlgagree。
+     copyurl / openurl（官网）、openqq（加群）、copydisc / dlgagree（免责声明）、
+     privacy / privacyclose / copydiscp（隐私政策）。
    系统级开关：guardset（常驻守护 / 息屏保持，部署期间正需要）、battery（电池白名单）、
      terminal（打开终端，排障要用）。 */
 var NO_LOCK_ACTS = [
@@ -1257,8 +1337,8 @@ var NO_LOCK_ACTS = [
   "settings", "backhome", "showlogs",
   "pickbg", "clearbg", "bgpreset", "glass",
   "reload", "slim", "rmcard",
-  "checkupdate", "dlupdate", "updnotes",
-  "copyurl", "openurl", "openqq", "copydisc", "dlgagree",
+  "checkupdate", "dlupdate", "updnotes", "updgo", "updlater",
+  "copyurl", "openurl", "openqq", "copydisc", "dlgagree", "privacy", "privacyclose", "copydiscp",
   "guardset", "battery", "terminal"
 ];
 
@@ -1391,6 +1471,13 @@ function refreshAll(){
     el("v-onebot").textContent = obTxt;
     setTile("t-onebot", obCls, "端口 " + st.onebotPort);
   }
+  /* AstrBot 冷启动要 40~60 秒，端口没起来这段时间磁贴只能写「离线」，
+     用户容易以为装坏了：这里补一句「正在启动」。三种情况不提示——
+     还没部署（没有这回事）、用户自己关掉了（说了「已关闭」就别再喊启动）、已经在线。
+     每轮 refresh 重算，就绪后 4 秒内自己消失。 */
+  var abt = el("astrBoot");
+  /* 守进程要是都没起来，说什么「正在启动」都是误导 —— 只有守护活着才可能是正在起。 */
+  if (abt) abt.style.display = (installed && st.supervisorAlive !== false && !st.astrbotOff && !st.astrbotUp) ? "block" : "none";
   var tok = "zhuxin";
   var napPort = st.napcatPort || 6099;
   var bs = validBots(S.bots.bots);
@@ -2543,6 +2630,8 @@ document.addEventListener("click", function(ev){
   else if (act === "checkupdate") doCheckUpdate(false);
   else if (act === "dlupdate") updDownload();
   else if (act === "updnotes") updDetail();
+  else if (act === "updgo") updDialogGo();
+  else if (act === "updlater") updDialogLater();
   else if (act === "copytext") Android.copy(arg || "");
   else if (act === "copylog") doCopyDeployLog();
   else if (act === "doctor") doDoctor();
@@ -2553,6 +2642,9 @@ else if (act === "uploadlogs") doUploadLogs();
   else if (act === "clearproxy") { if (el("inProxy")) el("inProxy").value = ""; saveProxy(); }
   else if (act === "testproxy") testProxy();
   else if (act === "copydisc") Android.copy(discText());
+  else if (act === "privacy") showPrivacy();
+  else if (act === "privacyclose") hidePrivacy();
+  else if (act === "copydiscp") Android.copy(privText());
   else if (act === "dlgagree") { try { Android.disclaimerAck(); } catch (e) {} hideDisclaimer(); }
   else if (act === "addbot") addBot();
   else if (act === "editbot") editBot(arg);
@@ -2853,14 +2945,26 @@ function autoPorts(){
   setTimeout(refresh, 600);
 }
 
-/* ---------- 免责声明 / 官网 / 交流群 / 下载代理 ---------- */
+/* ---------- 免责声明 / 隐私政策 / 官网 / 交流群 / 下载代理 ---------- */
 function discText(){
   var b = document.querySelector("#dlgDisclaimer .dbody");
   if (!b) return "";
   return String(b.textContent).replace(/[ \t]+/g, " ").replace(/\n\s*\n\s*\n+/g, "\n\n").trim();
 }
+function privText(){
+  var b = document.querySelector("#dlgPrivacy .dbody");
+  if (!b) return "";
+  return String(b.textContent).replace(/[ \t]+/g, " ").replace(/\n\s*\n\s*\n+/g, "\n\n").trim();
+}
 function showDisclaimer(){ var d = el("dlgDisclaimer"); if (d) d.classList.add("on"); }
-function hideDisclaimer(){ var d = el("dlgDisclaimer"); if (d) d.classList.remove("on"); }
+function hideDisclaimer(){
+  var d = el("dlgDisclaimer"); if (d) d.classList.remove("on");
+  /* 自动更新弹窗要是被免责声明挡着，用户点完「同意」这里补上 */
+  if (updDlgWait) { var j = updDlgWait; updDlgWait = null; updShowDialog(j); }
+}
+/* 隐私政策叠在免责声明上面：关掉后回到免责声明，不丢「同意」按钮 */
+function showPrivacy(){ var d = el("dlgPrivacy"); if (d) d.classList.add("on"); }
+function hidePrivacy(){ var d = el("dlgPrivacy"); if (d) d.classList.remove("on"); }
 
 function openExternal(u){
   if (!u) return;
@@ -2888,11 +2992,16 @@ function openQqGroup(g){
 // 线程去拉，这里每 500ms 问一次结果，界面全程不卡。
 var UPD_LAST_KEY = "qqbot.updcheck";
 var UPD_TICKS    = 90;   // 90 * 500ms = 45 秒还没结果就当超时
+var UPD_SKIP_KEY = "qqbot_update_skip";  // 「以后再说」记下的版本号
+var UPD_AUTO_TICKS = 40; // 自动检查只等 20 秒：超时就悄悄收工
 var updTimer = null;
 var updPolls = 0;
 var updSilent = false;
+var updAuto = false;     // 这一轮是不是「打开页面自动查」的那次
 var updLast = null;
 var updNotesOpen = false;  // 「查看更新内容」是否已展开
+var updDlgData = null;   // 自动检查命中的那版 release，弹窗按钮要用
+var updDlgWait = null;   // 被免责声明挡住的更新弹窗，等用户点同意后再弹
 
 function updEsc(s){
   return String(s == null ? "" : s)
@@ -2928,14 +3037,20 @@ function updReset(){
 function updStop(){
   if (updTimer) { clearInterval(updTimer); updTimer = null; }
 }
-function doCheckUpdate(silent){
-  if (updTimer) return;
+function doCheckUpdate(silent, auto){
+  /* 自动检查还在轮询时用户点了「检查更新」：先停掉自动那一轮，按手动流程重来。
+     不这么做的话下面那句 return 会让按钮看起来毫无反应（手动之间的连点行为不变）。 */
+  if (updTimer) { if (!updAuto) return; updStop(); }
   updSilent = !!silent;
+  updAuto = !!auto;
   updPolls = 0;
-  updPaint("正在向 GitHub 查询最新版本…", "", "检查中…", true, "");
+  /* 自动检查完全不碰「更多」里那块 UI：不显示「检查中…」、不锁按钮、失败也不改文案。
+     用户手动点出来的那次照旧先画「正在向 GitHub 查询最新版本…」。 */
+  if (!updAuto) updPaint("正在向 GitHub 查询最新版本…", "", "检查中…", true, "");
   try {
     Android.checkUpdateStart();
   } catch (e) {
+    if (updAuto) { updAuto = false; updSilent = false; return; }
     updPaint("检查更新不可用", "调用失败：" + updEsc(e), "重试", false, "bad");
     return;
   }
@@ -2950,24 +3065,37 @@ function updTick(){
     var j = null;
     try { j = JSON.parse(raw); } catch (e) { j = null; }
     if (!j) {
+      if (updAuto) { updAuto = false; return; }
       if (updSilent) { updReset(); return; }
       updPaint("检查更新返回异常", updEsc(raw.substring(0, 300)), "重试", false, "bad");
       return;
     }
     try { localStorage.setItem(UPD_LAST_KEY, String(new Date().getTime())); } catch (e) {}
-    renderUpdate(j);
+    renderUpdate(j, true);
     return;
   }
-  if (updPolls >= UPD_TICKS) {
+  /* 自动检查最多等 20 秒（四个候选地址串起来能拖到 30 秒以上）：超时就悄悄收工，
+     不 toast、不改文案、更不影响之后手动点的「检查更新」。 */
+  if (updPolls >= (updAuto ? UPD_AUTO_TICKS : UPD_TICKS)) {
     updStop();
+    if (updAuto) { updAuto = false; return; }
     if (updSilent) { updReset(); return; }
     updPaint("检查超时", "45 秒还没连上 GitHub，可能是网络不通。稍后再试，或到 GitHub 页面手动看。", "重试", false, "bad");
   }
 }
-function renderUpdate(j){
+function renderUpdate(j, fromPoll){
   var silent = updSilent;
-  updLast = j;
+  /* 自动检查只负责弹窗，绝不涂改「更多」里那块现有的检查更新 UI：
+     用户可能正看着上次手动查出来的结果，不能被后台这一轮覆盖掉。
+     只有真正来自轮询的结果（fromPoll）才算自动那次；「查看更新内容」这类
+     重绘不算，否则会把还在路上的自动结果误当成手动结果去涂面板。 */
+  var auto = fromPoll ? updAuto : false;
+  if (fromPoll) updAuto = false;
+  /* 自动结果不写 updLast：面板上「下载新版本／查看更新内容」必须继续对应
+     它当前显示的那一版，不能被后台查到的另一版换掉。 */
+  if (!auto) updLast = j;
   if (!j.ok) {
+    if (auto) return;
     if (silent) { updReset(); return; }
     updPaint("检查失败", updEsc(j.error || "未知原因"), "重试", false, "bad");
     return;
@@ -2975,6 +3103,9 @@ function renderUpdate(j){
   var cur = updEsc(j.current || "");
   var lat = updEsc(j.latest || "");
   if (j.hasUpdate) {
+    /* 自动检查发现有新版：直接弹应用内弹窗（同版本点过「以后再说」就不会再弹）。
+       已是最新、本地比线上新、检查失败这三种情况一律静默，一句提示都不给。 */
+    if (auto) { updShowDialog(j); return; }
     var meta = [];
     if (j.apkName) meta.push(updEsc(j.apkName));
     if (j.size) meta.push(updSize(j.size));
@@ -2990,10 +3121,11 @@ function renderUpdate(j){
     // 没必要把用户甩到系统浏览器（那边还得自己登 GitHub，国内多半打不开）。
     if (updNotesOpen && j.notes) html += "<div class=\"updnotes\">" + updEsc(j.notes) + "</div>";
     updPaint("有新版本 " + lat + " 可以装", html, "再查一次", false, "ok");
-    if (silent) Android.toast("发现新版本 " + j.latest + "，到「更多 → 检查更新」可以下载");
   } else if (j.newer) {
+    if (auto) return;
     updPaint("当前 " + cur + " 比线上最新 " + lat + " 还新", "装的可能是还没发布的开发版，不用更新。", "再查一次", false, "");
   } else {
+    if (auto) return;
     updPaint("已经是最新版本 " + cur, "", "再查一次", false, "ok");
     if (!silent) Android.toast("已经是最新版本 " + j.current);
   }
@@ -3023,15 +3155,96 @@ function updDetail(){
   Android.toast("这个版本没写更新内容，打开 GitHub 页面看");
   openExternal(u);
 }
-// 应用启动后静默查一次：12 小时内查过就不查了，避免每次开应用都发请求。
+// 应用启动后静默查一次：延迟 1.5 秒，等首屏先画出来再发请求。
+// 原来是「12 小时内查过就跳过」的节流，现在需求是每次打开页面都看一眼；
+// 同一版本不重复打扰交给 qqbot_update_skip（点过「以后再说」的版本号）管。
 function maybeAutoCheck(){
-  var last = 0;
-  try { last = parseInt(localStorage.getItem(UPD_LAST_KEY) || "0", 10) || 0; } catch (e) { last = 0; }
-  var now = new Date().getTime();
-  if (last && (now - last) < 12 * 3600 * 1000) return;
-  setTimeout(updAutoFire, 9000);
+  setTimeout(updAutoFire, 1500);
 }
-function updAutoFire(){ if (!updTimer) doCheckUpdate(true); }
+function updAutoFire(){
+  if (updTimer) return;   /* 手动检查正在进行，别抢它 */
+  doCheckUpdate(true, true);
+}
+
+/* ---------- 自动检查命中的「应用内弹窗」 ----------
+   1) 同一版本只自动提示一次：点过「以后再说」就把版本号写进 qqbot_update_skip，
+      下次遇到同版本静默；换了新版本号照常弹。「去下载」不写这条记录。
+   2) 检查失败 / 超时 / 已是最新：全程静默，不 toast、不动界面。
+   3) 手动「检查更新」仍走 updPaint 那套，loading 与错误提示一点没变。 */
+function updVerText(v){
+  v = String(v == null ? "" : v).trim();
+  if (!v) return "-";
+  return /^v/i.test(v) ? v : ("v" + v);
+}
+function updSkipGet(){
+  try { return String(localStorage.getItem(UPD_SKIP_KEY) || ""); } catch (e) { return ""; }
+}
+function updSkipSet(v){
+  try { localStorage.setItem(UPD_SKIP_KEY, String(v || "")); } catch (e) {}
+}
+/* release notes 是 Markdown 纯文本，动辄几十行。弹窗里只留开头几行，
+   够判断这版值不值得装；要细看就点「去下载」打开发布页。 */
+function updNotesBrief(s){
+  var lines = String(s == null ? "" : s).replace(/\r/g, "").split("\n");
+  var out = [], n = 0;
+  for (var i = 0; i < lines.length && out.length < 6; i++){
+    var ln = lines[i]
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")   /* [文字](链接) → 文字 */
+      .replace(/[*`#>]+/g, "")                    /* Markdown 记号 */
+      .replace(/^\s*[-+]\s+/, "")                 /* 列表项前缀 */
+      .trim();
+    if (!ln) continue;
+    /* 发布页正文的头两行是「## AstrBot 烛版 1.1.28」和「[1.1.28] - 2026-10-19」，
+       弹窗里已经写着版本号，这两行纯属重复，跳过。 */
+    if (/^AstrBot\s*烛版\s*v?\d+\.\d+\.\d+/.test(ln)) continue;
+    if (/^\d+\.\d+\.\d+\s*[-–]\s*\d{4}-\d{2}-\d{2}$/.test(ln)) continue;
+    if (n + ln.length > 220) {
+      if (!out.length) out.push(ln.substring(0, 220) + "…");
+      break;
+    }
+    out.push(ln); n += ln.length;
+  }
+  return out.join("\n");
+}
+function updCloseDialog(){
+  var d = el("dlgUpdate");
+  if (d) d.classList.remove("on");
+}
+function updShowDialog(j){
+  var mask = el("dlgUpdate");
+  if (!mask || !j) return;
+  updDlgData = j;
+  /* 点过「以后再说」的版本不再自动弹；换了版本号会照弹。 */
+  if (updSkipGet() === String(j.latest || "")) return;
+  /* 免责声明还开着就先记下：两个遮罩叠一起，用户连「同意」都点不踏实。 */
+  var disc = el("dlgDisclaimer");
+  if (disc && disc.classList.contains("on")) { updDlgWait = j; return; }
+  var t = el("updDlgTitle");
+  if (t) t.textContent = "发现新版本 " + updVerText(j.latest);
+  var c = el("updDlgCur");
+  if (c) c.textContent = "当前版本 " + updVerText(j.current);
+  var n = el("updDlgNotes");
+  if (n) {
+    var brief = updNotesBrief(j.notes);
+    n.textContent = brief;
+    n.style.display = brief ? "block" : "none";
+  }
+  mask.classList.add("on");
+}
+/* 「去下载」：一定要交给系统浏览器（Android.openUrl），别在 WebView 里开。
+   优先 APK 直链，没有就退到 release 页面。 */
+function updDialogGo(){
+  var j = updDlgData || {};
+  var u = j.url || j.htmlUrl || "https://github.com/Zxin-Pro/astrbot-candle/releases";
+  updCloseDialog();
+  Android.toast(j.url ? "已交给浏览器下载，下完点开安装即可" : "已用浏览器打开发布页");
+  openExternal(u);
+}
+function updDialogLater(){
+  var j = updDlgData || {};
+  updSkipSet(j.latest);   /* 只记版本号，不动别的任何状态 */
+  updCloseDialog();
+}
 
 function loadProxy(){
   var v = "";
@@ -3138,7 +3351,7 @@ clearFixedCardHidden();
 applyCards();
 loadProxy();
 refresh();
-/* 启动 9 秒后静默查一次更新（12 小时内查过就跳过），有新版本会 toast 提示 */
+/* 启动 1.5 秒后静默查一次更新，发现新版本会弹应用内弹窗（同版本点过「以后再说」就不再弹） */
 maybeAutoCheck();
 /* 首次启动弹免责声明；同意后写入标记，以后不再弹 */
 try { if (String(Android.disclaimerSeen()) !== "1") showDisclaimer(); } catch (e) {}
