@@ -1086,9 +1086,9 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
       "cards": [
         {
           "icon": "📦",
-          "title": "AstrBot烛版 1.1.23（最新版）",
-          "desc": "文件名 AstrBot-1.1.23.apk（下载下来就是这个名字）\n安卓安装包 · 24.1 MB · 2026-10-19\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
-          "link": "/downloads/AstrBot-1.1.23.apk",
+          "title": "AstrBot烛版 1.1.24（最新版）",
+          "desc": "文件名 AstrBot-1.1.24.apk（下载下来就是这个名字）\n安卓安装包 · 24.1 MB · 2026-10-19\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
+          "link": "/downloads/AstrBot-1.1.24.apk",
           "text": ""
         },
         {
@@ -1096,7 +1096,7 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
           "title": "复制下载直链",
           "desc": "点这张卡就把地址复制下来，可以直接发给别人或贴进浏览器。",
           "link": "",
-          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.1.23.apk"
+          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.1.24.apk"
         },
         {
           "icon": "🕘",
@@ -1107,10 +1107,10 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
         },
         {
           "icon": "🔐",
-          "title": "SHA-256 校验值（v1.1.23）",
+          "title": "SHA-256 校验值（v1.1.24）",
           "desc": "点这张卡复制，然后和下载到的文件比对，一样就说明没被改过。",
           "link": "",
-          "text": "8cac082b1635ea3bb06d18473da1ae1d2d05c1acd86d754f002673730f69e119"
+          "text": "d6d924936b6d4910c672f690cf0a2a062430174f70841d79ab07bdd7b5541164"
         }
       ]
     },
@@ -1187,6 +1187,13 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
       "cards": [
         {
           "icon": "📝",
+          "title": "v1.1.24  ·  2026-10-19",
+          "desc": "## AstrBot 烛版 1.1.24\n\n## [1.1.24] - 2026-10-19\n\n真机上 NapCat 的 Worker 子进程还是以「退出码 11」反复退出。这一版不带修复，\n带的是**能看见崩在哪**的工具——上一次的崩溃记录器在真机上一份文件都没写出来。\n\n### 修复\n\n- **崩溃记录器终于能抓到 Chromium 的崩溃**：上一版是在加载时用自己的信号处理器\n  覆盖一次，但 Chromium 启动时会调用 `sigaction()` 把自己的处理器装上去，直接把我们\n  顶掉——所以真机上 `crashes/` 一直是空的。这一版自己导出一个 `sigaction()`：\n  应用来装处理器时我们先记下来，实际装的是我们的；崩溃时先写现场，再把控制权\n  交还给应用原本那个处理器，行为不变。**已在模拟器上用 `kill -SEGV` 验证抓取成功。**\n- **崩溃现场多了「pc 所在段」**：直接把 `pc` 落在哪一段映射、是哪个 `.so`、\n  段内偏移多少算出来写进文件，不用再拿 maps 手工对。\n- **崩溃文件只留最近 4 份**：真机上每 15 秒崩一轮，不清理会攒出几百个一百多 KB\n  的文件，把错误报告撑爆。\n- **新增 `qq-env.txt`**：想给 QQ 传环境变量时，写\n  `~/.qqbot/cache/qq-env.txt`（一行一个 `KEY=VALUE`）后重启服务即可，不用重装。\n\n### 说明\n\n- 用 `kill -SEGV` 在模拟器上对照确认：日志里的**「Worker进程退出，退出码: 11」\n  就是 SIGSEGV**（不是普通退出码）。\n- 试过 NapCat 自带的单进程开关 `NAPCAT_DISABLE_MULTI_PROCESS=1`（`napcat.mjs` 里\n  直接 `await N()`，根本不 fork worker），**这条路不通**：单进程下 NapCat 在 QQ\n  主进程里跑到 `prepare write and writev hooks` 就 SIGSEGV，模拟器上必崩。\n  worker 子进程正是 NapCat 用来规避「在主进程里 hook 会崩」的，关掉只会更糟。\n\n---",
+          "link": "/downloads/AstrBot-1.1.24.apk",
+          "text": ""
+        },
+        {
+          "icon": "📝",
           "title": "v1.1.23  ·  2026-10-19",
           "desc": "## AstrBot 烛版 1.1.23\n\n## [1.1.23] - 2026-10-19\n\n真机上的 NapCat 现在停在「`/opt/QQ/.../app_launcher/napcat/napcat.mjs` 找不到」——\n重装那一步把旧 NapCat 删掉了、新的没装进来，而界面还显示「100% + 四个绿勾」，\n看着像装好了，其实是失败（退出码 1）。\n\n### 修复\n\n- **重装失败不再伪装成成功**：以前不管成功失败，进度条一律打满、四个阶段全打绿勾。\n  现在失败时进度条变成红色、失败的那一步打红叉、百分比只算它前面已经完成的步骤，\n  标题下面直接写「卡在「安装 NapCat 与 QQ」」。\n- **重装中途失败不再把 NapCat 弄没**：`reinstall.sh` 原来直接 `rm -rf` 掉整个 napcat\n  目录再装，`50-napcat.sh` 又是 `set -e`，中途任何一步失败就留下「目录空了、新的没来」\n  的死状态。改成先把旧目录改名成 `/root/napcat.bak`，装完**实际校验**\n  `napcat.mjs` 与 `package.json` 是否在位；校验不过自动把备份挪回去 ——\n  最坏情况是「装的还是旧的」，而不是「彻底没有」。\n- **错误报告带上重装日志**：`upload-log.sh` 新增「重装日志尾部 150 行」、\n  「组件关键文件是否在位」（napcat.mjs / package.json / loadNapCat.js / app/package.json\n  的 `main` 字段）、`app_launcher/napcat` 目录内容、`NapCat.Shell.zip` 是否还在、\n  `qq-args.txt` 有没有覆写、崩溃记录目录清单。以前 `reinstall.log` 根本没进报告，\n  只有一个退出码 1，完全看不出死在哪一行。\n\n### 说明\n\n- 上一版（1.1.22）卸掉了 Worker SIGSEGV 那一层：崩溃记录器已经在真机上跑起来了\n  （报告里的「崩溃现场」段现在是空的，说明 QQ 根本没崩过，是模块压根没加载）。\n  这一版修的是它后面那一层。\n\n---",
           "link": "/downloads/AstrBot-1.1.23.apk",
@@ -1210,20 +1217,13 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
           "icon": "📝",
           "title": "v1.1.20  ·  2026-10-18",
           "desc": "## AstrBot 烛版 1.1.20\n\n## [1.1.20] - 2026-10-18\n\n1.1.19 把 QQ 的启动参数做成阶梯（`--disable-gpu` 之类）去绕 GPU 崩溃，真机上照样崩。\n这一版找到了真病因：**Xvfb 的色深**。\n\n### 修复\n\n- **Xvfb 一律用 24 位色深**（`sandbox/run-napcat.sh` 的 `XVFB_VARIANTS`）：8 位屏没有可用的\n  GL 配置，16 位配不出 EGL config，只有 24 位能让 QQ 里 Chromium 的 GPU 子进程初始化成功。\n  原来那档 `1x1x8 +extension GLX +render` 是照抄参考项目 AstrBot-Bubble-Android-App 的，\n  我们跟着抄错了一整版。同一台模拟器、同一份 rootfs 只换色深实测：8 位打出 20 条\n  ANGLE/EGL 报错，16 位报 `No suitable EGL configs found`，24 位一条 GL 报错都没有、\n  二维码正常输出。\n- **`--disable-gpu` 从参数阶梯里删掉**：它只是不让 Chromium *用* 硬件加速，GPU 进程照样起、\n  EGL 照样初始化；而一旦带了它，GPU 进程崩掉时判定「没有软件合成可退」，直接\n  `GPU process isn't usable. Goodbye.` 把主进程带走 —— 1.1.19 就是栽在这上面。现在第一档\n  是「什么额外参数都不加」，后面几档（`--disable-gpu-sandbox`、swiftshader、`--in-process-gpu`）\n  只作别的机型兜底。\n- **自检脚本同步**（`doctor.sh`）：逐档试起 Xvfb 的参数也从 8 位改成 24 位，否则用户在\n  「检查运行环境」里看到的仍是必然失败的组合，还会误以为是环境坏了。\n\n### 说明\n\n- GPU 进程退出时常伴随 `sandbox/linux/services/proc_util.cc:114 Check failed: . :\n  Operation not permitted`，那是它退出时的清理动作（枚举 `/proc/self/fd` 做沙箱自检），\n  是症状不是病因，别再被它带偏。\n\n---",
-          "link": "/downloads/AstrBot-1.1.20.apk",
+          "link": "",
           "text": ""
         },
         {
           "icon": "📝",
           "title": "v1.1.19  ·  2026-10-18",
           "desc": "## AstrBot 烛版 1.1.19\n\n## [1.1.19] - 2026-10-18\n\n接 1.1.18 往下修：Xvfb 在真机上总算起来了，但 QQ 自己秒退，表现成\n`Trace/breakpoint trap`，NapCat 照样起不来。\n\n### 修复\n\n- **QQ 启动改成参数阶梯**（`sandbox/run-napcat.sh`）：真机（Redmi 24069RA21C / Android 16）\n  上 QQ 的 Chromium 会先起一个 GPU 子进程去初始化 EGL —— Xvfb 里没有 GLX，这一步必然打出\n  `GLX is not present` / `Initialization of all EGL display types failed`；紧接着它还要枚举\n  那个子进程的 `/proc/<pid>/fd` 来校验沙箱，而 Android 10 起 `/proc` 对非本进程大幅收紧，\n  `fstatat()` 直接 EPERM：`FATAL:sandbox/linux/services/proc_util.cc:114\n  Check failed: . : Operation not permitted (1)`。连撞三次后\n  `GPU process isn't usable. Goodbye.` 把主进程一起带走。现在按\n  `--disable-gpu` → `--disable-gpu --in-process-gpu` →\n  再加 `--disable-dev-shm-usage --no-zygote` → 原样（1.1.18 的行为）四档依次试，留下第一档\n  能活过观察期的，并把最终采用的参数写进服务日志，下次排障一眼就能看到走的哪一档。\n- **「设置 → 维护」增加常驻的「上传错误日志」**：这个入口原来只挂在「部署失败 / 卡住」的\n  弹窗上，可真实场景恰恰是「部署成功、服务起不来」，于是最需要它的时候偏偏找不到。\n\n### 说明\n\n- x86_64 模拟器的 `/proc` 规则和真机不同，同样的参数在模拟器上能跑起来，所以这个问题\n  在模拟器上复现不了，只能在真机上验。",
-          "link": "",
-          "text": ""
-        },
-        {
-          "icon": "📝",
-          "title": "v1.1.18  ·  2026-10-18",
-          "desc": "## AstrBot 烛版 1.1.18\n\n## [1.1.18] - 2026-10-18\n\n修掉「真机上 NapCat 怎么都起不来、AstrBot 却一切正常」的根因。一句话：**部署期和运行期用的\nproot 参数不一致**，运行期把 `--link2symlink` 丢了。\n\n### 修复\n\n- **运行期沙盒启动补回 `--link2symlink`**（`opt/qqbot/start-sandbox.sh`）：真机上 `link(2)` 直接\n  返回 EPERM，而 Xvfb 起显示号的第一步就是给 `/tmp/.X<n>-lock` 建硬链接，建不了就\n  `Lock file ... failed: Permission denied` + `【Fatal】 server error: Failed to establish socket`\n  秒退，于是 NapCat 永远拉不起来。部署期（`qq_proot`）本来就按 `$QQBOT_HOME/link2symlink`\n  标记加了这个参数，运行期却硬编码不加 —— 同一个手机，apt 装得上、QQ 起不来。AstrBot 是纯\n  Python 用不到 `link(2)`，所以看起来「只有 NapCat 坏了」。\n- **标记丢了会自愈**：运行期不再只信标记文件，标记不在时会在宿主侧实测一次 `link(2)`，\n  判不出来就写回标记，避免「清过数据 / 换过安装路径」之后再踩一次。\n- **Xvfb 多两档 `-nolock` 兜底**（`sandbox/run-napcat.sh`）：`XVFB_VARIANTS` 从 3 档扩到 5 档，\n  后两档带 Xvfb 自己的 `-nolock`（`-help` 原文 \"disable the locking mechanism\"），完全不碰\n  锁文件，从 X 服务器这层绕过去，与 proot 参数无关。正常设备行为不变（前 3 档仍然是原来的\n  参数和顺序）。\n\n### 说明\n\n- **覆盖安装即可，不用重装、不丢数据**：`syncScripts()` 会按 APK 的 `lastUpdateTime` 覆盖\n  `$PREFIX` 下的脚本，并自动重启容器让新参数生效。装完后 `logs/scripts.log` 里的\n  `synced=N failed=0` 就是脚本已下发的证据。\n- 早期那条「绝不能加 `--link2symlink`」的警告已删除：它只适用于「rootfs 在 proot **内部**\n  用 tar 解压」的旧流程（tar 会为压缩包里的硬链接调 `link()`，被换成指向宿主绝对路径的\n  `.l2s.*` 符号链接，导致 `libc.so.6` 悬空）。现在解压全部在宿主侧完成，运…",
           "link": "",
           "text": ""
         }
@@ -1259,7 +1259,7 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
       ]
     }
   ],
-  "updated": "2026-10-19 08:43:39"
+  "updated": "2026-10-19 10:55:38"
 }
 __ASTRBOT_DL_STATIC__
 log "离线兜底内容已装到 $SCRIPTS/astrbot_download_sync.fallback.json"

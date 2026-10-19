@@ -641,6 +641,31 @@ PY
     log "实例 $id 使用 qq-args.txt 里指定的参数: ${_ov:-无}"
   fi
 
+  # ---- 传给 QQ 的环境变量（v1.1.24）----
+  # 默认不设任何东西。这里之所以留一个覆写文件，是因为 1.1.24 排查 worker SIGSEGV 时
+  # 试过 NapCat 自带的单进程开关 NAPCAT_DISABLE_MULTI_PROCESS=1（napcat.mjs 里
+  # `if (Ed.isMultiProcessDisabled) { await N() ; return }`，根本不 fork worker）。
+  # 实测结论：这条路走不通 —— 单进程下 NapCat 的 N() 在 QQ 主进程里跑到
+  # "prepare write and writev hooks" 就 SIGSEGV（模拟器上必崩），也就是说
+  # worker 子进程正是 NapCat 为了规避「在 QQ 主进程里 hook 会崩」才拆出去的，
+  # 关掉多进程等于把崩溃搬进主进程，只会更糟。所以这里保持空。
+  QE=()
+  # 覆写文件：一行一个 KEY=VALUE，追加进 QQ 的启动环境。
+  #   echo 'NAPCAT_DISABLE_MULTI_PROCESS=1' > /data/data/com.termux/files/home/.qqbot/cache/qq-env.txt
+  #   bash /data/data/com.termux/files/usr/opt/qqbot/stop-sandbox.sh
+  #   nohup setsid bash /data/data/com.termux/files/usr/opt/qqbot/start-sandbox.sh >/dev/null 2>&1 &
+  # 删掉文件即恢复默认。
+  _envf="/qqbot-cache/qq-env.txt"
+  if [ -s "$_envf" ]; then
+    _envn=0
+    while IFS= read -r _ln || [ -n "$_ln" ]; do
+      _ln="$(printf '%s' "$_ln" | tr -d '\r')"
+      case "$_ln" in ''|'#'*) continue ;; esac
+      case "$_ln" in *=*) QE=( "${QE[@]}" "$_ln" ); _envn=$((_envn + 1)) ;; esac
+    done < "$_envf"
+    [ "$_envn" -gt 0 ] && log "实例 $id 追加 qq-env.txt 里的 $_envn 个环境变量"
+  fi
+
   write_onebot "$CONF" "$op"
 
   # token 与 WebUI 端口都以 bots.json 里「本实例」的字段为准（多实例各用各的 token，
@@ -708,12 +733,17 @@ PY
   # 编译失败、源码缺失、没有 g++ 一律静默跳过 —— 它只影响诊断，绝不影响启动。
   CRASH_DIR="/qqbot-cache/crashes"
   mkdir -p "$CRASH_DIR" 2>/dev/null
+  # 真机上 worker 每 15 秒崩一轮，不清理会攒出几百个一百多 KB 的文件，
+  # 错误报告也会被撑爆。只留最近 4 份（够看出是不是同一个崩点）。
+  ls -1t "$CRASH_DIR"/crash-*.log 2>/dev/null | tail -n +5 | while IFS= read -r _old; do
+    rm -f "$_old" 2>/dev/null
+  done
   _cw_src="/qqbot-opt/sandbox/crashwatch.c"
   _cw_so="/qqbot-cache/crashwatch.so"
   if [ -f "$_cw_src" ]; then
     if [ ! -f "$_cw_so" ] || [ "$_cw_src" -nt "$_cw_so" ]; then
       if command -v g++ >/dev/null 2>&1; then
-        if g++ -shared -fPIC -O2 -o "$_cw_so.tmp" "$_cw_src" 2>"$CRASH_DIR/cw-build.log"; then
+        if g++ -shared -fPIC -O2 -o "$_cw_so.tmp" "$_cw_src" -ldl 2>"$CRASH_DIR/cw-build.log"; then
           mv -f "$_cw_so.tmp" "$_cw_so" 2>/dev/null
           log "崩溃现场记录器就绪（$_cw_so）"
         else
@@ -733,7 +763,7 @@ PY
     qq_off=$(wc -c < "$LOGF" 2>/dev/null | tr -d ' \n')
     [ -n "$qq_off" ] || qq_off=0
     # shellcheck disable=SC2086
-    env LD_PRELOAD="$_cw_so" \
+    env "${QE[@]}" LD_PRELOAD="$_cw_so" \
     QQBOT_CRASH_DIR="$CRASH_DIR" QQBOT_CRASH_TAG="$id" \
     HOME="$INSTHOME" DISPLAY=":$DISP" \
     NAPCAT_WEBUI_SECRET_KEY="$tok" \
