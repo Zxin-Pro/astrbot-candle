@@ -1041,6 +1041,351 @@ button.locked{box-shadow:none;transform:none}
   font-size:11px;color:var(--txt-3);font-variant-numeric:tabular-nums;
 }
 .cmeta b{color:var(--crash);font-weight:600;font-family:var(--mono)}
+/* ==========================================================================
+   v2 视觉层 · Liquid Glass
+   目标：把 v1 的「深色毛玻璃控制台」升级成有明确光学层级的玻璃材质。
+   做法：只覆盖令牌与组件表现，不改类名 —— 5 千行 JS 全部按 id/class 绑定，
+   重写选择器体系等于把交互一起推倒，风险远大于收益。
+
+   三条硬规则（写在这里，改样式前先读一遍）：
+   1) 一个光源。高光只在顶上 1px，阴影只在下方，不做四向发光。
+   2) 两级玻璃。卡片是最内层（最不透明），胶囊/按钮是次级（透一点），
+      底栏/顶栏是环境层（最透，靠 blur 兜住可读性）。
+   3) 颜色只表达状态。蓝＝可点，橙＝要注意，红＝出事了，其余一律中性。
+   ========================================================================== */
+
+/* ---------- 令牌覆盖：暗色（主用形态） ---------- */
+:root[data-theme="dark"]{
+  /* 画布：中性近黑。v1 偏蓝紫，整屏像游戏 UI；高级感来自「背景几乎无彩」，
+     颜色只留给状态与操作，背景负责退后。 */
+  --bg:#08090d;
+  --bg-glow-1:radial-gradient(120% 72% at 50% -18%, rgba(122,140,190,.09), rgba(0,0,0,0) 62%);
+  --bg-glow-2:radial-gradient(110% 66% at 50% 116%, rgba(122,122,170,.055), rgba(0,0,0,0) 68%);
+  --bg-veil:linear-gradient(180deg, rgba(8,9,13,.42), rgba(5,6,9,.58));
+
+  /* 文字：主 15.5:1 / 次 ≈7:1 / 三 ≈4.8:1，都过 4.5 */
+  --txt:#eef2f9; --txt-2:#aab4c8; --txt-3:#828c9f;
+  --h1:#f6f8fd; --h2:#e2e8f4; --v:#eef2fa; --tv:#d3dae8;
+  --prn:#e6ecf7; --dsum:#a3b5da; --hint-b:#a8bce4; --slow:#95a4bd;
+
+  /* 描边：三级，全部低透明度白 —— 玻璃的「界」靠它而不是靠阴影 */
+  --line:rgba(255,255,255,.082);
+  --line-2:rgba(255,255,255,.13);
+  --line-3:rgba(255,255,255,.20);
+  --surface:rgba(255,255,255,.045);
+  --surface-2:rgba(255,255,255,.075);
+  --press:rgba(255,255,255,.065);
+
+  /* 主色：暗底上 #2563EB 会发灰，提到 #5485FF 保住品牌又够亮；
+     但只用在小面积（按钮、选中态、强调数字），不做大面积铺色。 */
+  --accent:#5485ff; --accent-2:#8b7cff;
+  --acc-txt:#cfe0ff; --acc-line:rgba(84,133,255,.46);
+  --acc-bg:linear-gradient(180deg, rgba(91,140,255,.26), rgba(60,95,220,.13));
+  --acc-line-2:rgba(91,140,255,.36);
+  --acc-bg-2:linear-gradient(180deg, rgba(91,140,255,.18), rgba(91,140,255,.06));
+  --tag-on-txt:#a8c6ff;
+
+  /* 状态色：降饱和一档，避免「红配黑」的廉价感 */
+  --ok:#3ddc97; --warn:#ffc24b; --bad:#ff7a8a;
+  --ok-line:rgba(61,220,151,.32); --ok-bg:linear-gradient(180deg, rgba(61,220,151,.13), rgba(61,220,151,.04));
+  --bad-line:rgba(255,122,138,.32); --bad-bg:linear-gradient(180deg, rgba(255,122,138,.13), rgba(255,122,138,.04));
+  --warn-line:rgba(255,194,75,.30); --warn-bg:linear-gradient(180deg, rgba(255,194,75,.12), rgba(255,194,75,.04));
+
+  /* 阴影：一圈环境影 + 一圈极淡的内发光，替代原来的硬投影 */
+  --sh-1:0 1px 2px rgba(0,0,0,.30), 0 10px 26px -8px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.055);
+  --sh-2:0 2px 10px rgba(0,0,0,.34), 0 28px 60px -14px rgba(0,0,0,.58);
+
+  /* 顶栏 / 底栏：环境层，比卡片更透 */
+  --hdr-bg:linear-gradient(180deg, rgba(13,17,26,.72), rgba(9,12,19,.62));
+  --hdr-sh:inset 0 1px 0 rgba(255,255,255,.06), 0 8px 28px -10px rgba(0,0,0,.5);
+  --nav-bg:linear-gradient(180deg, rgba(12,15,23,.72), rgba(7,9,15,.86));
+  --nav-sh:inset 0 1px 0 rgba(255,255,255,.055), 0 -8px 26px -12px rgba(0,0,0,.55);
+
+  /* 卡片：最内层玻璃，透明度最高、边界最清楚。
+     数值是拿「卡片 vs 画布」的实际亮度差调出来的：低于 .07 在深色预设上
+     几乎看不出边界（v1 就是这个问题），高于 .12 又会让整屏发灰。 */
+  --card-bg:linear-gradient(180deg, rgba(255,255,255,.092), rgba(255,255,255,.042));
+  --card-gloss:linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.26), rgba(255,255,255,0));
+  --card-solid:linear-gradient(180deg, rgba(20,24,34,.96), rgba(13,16,24,.94));
+  --tile-bg:linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.018));
+
+  /* 胶囊 / 按钮 */
+  --pill-bg:linear-gradient(180deg, rgba(255,255,255,.085), rgba(255,255,255,.030));
+  --pill-txt:#c6cee0; --pill-gloss:inset 0 1px 0 rgba(255,255,255,.09);
+  --btn-bg:linear-gradient(180deg, rgba(255,255,255,.085), rgba(255,255,255,.032));
+  --btn-sh:inset 0 1px 0 rgba(255,255,255,.10), 0 2px 8px rgba(0,0,0,.24);
+  --pri-bg:linear-gradient(180deg,#4d7bf0,#3559c9); --pri-line:rgba(255,255,255,.18);
+  --pri-sh:0 6px 18px -6px rgba(53,89,201,.50), inset 0 1px 0 rgba(255,255,255,.22);
+
+  /* 底栏选中态 */
+  --nav-on-txt:#fff; --nav-on-line:rgba(255,255,255,.12);
+  --nav-on-bg:linear-gradient(180deg, rgba(91,140,255,.26), rgba(60,95,220,.12));
+  --nav-on-sh:0 0 18px -2px rgba(91,140,255,.30), inset 0 1px 0 rgba(255,255,255,.18);
+
+  /* 品牌标记 */
+  --mark-bg:linear-gradient(150deg,#7ba7ff,#4a63e8 82%);
+  --mark-sh:0 4px 14px -2px rgba(74,99,232,.50), inset 0 1px 0 rgba(255,255,255,.42);
+
+  /* 表单 */
+  --input-bg:rgba(255,255,255,.042); --input-line:rgba(255,255,255,.12);
+  --input-sh:inset 0 2px 6px rgba(0,0,0,.34);
+  --focus-line:rgba(91,140,255,.66); --focus-ring:rgba(91,140,255,.14);
+  --ph:#5d6678;
+
+  /* 终端 / 代码 */
+  --term-bg:linear-gradient(180deg, rgba(4,6,11,.80), rgba(4,6,11,.62));
+  --term-txt:#c5cfe0; --pre-solid:rgba(5,7,12,.96); --code:#ffce7a;
+  --tok-bg:rgba(255,255,255,.04); --tok-sh:inset 0 2px 8px rgba(0,0,0,.30);
+
+  /* 进度条 */
+  --bar-bg:rgba(0,0,0,.34); --bar-sh:inset 0 1px 3px rgba(0,0,0,.45);
+  --bar-fill:linear-gradient(90deg,#5b8cff,#3ddc97);
+
+  /* 开关 */
+  --tgl-bg:linear-gradient(180deg,rgba(16,20,29,.72),rgba(9,12,18,.84));
+  --tgl-line:rgba(255,255,255,.12);
+  --tgl-on-bg:linear-gradient(180deg,rgba(61,220,151,.90),rgba(16,130,92,.90));
+  --tgl-on-line:rgba(61,220,151,.42);
+  --tgl-on-sh:0 0 18px -2px rgba(61,220,151,.32), inset 0 1px 0 rgba(255,255,255,.32);
+
+  /* 分段选择 */
+  --seg-bg:rgba(255,255,255,.04); --seg-line:rgba(255,255,255,.12);
+  --seg-txt:#98a2b6; --seg-on-txt:#fff;
+  --seg-on-bg:linear-gradient(180deg, rgba(91,140,255,.34), rgba(60,95,220,.18));
+  --seg-on-sh:inset 0 1px 0 rgba(255,255,255,.20);
+
+  /* 弹窗 */
+  --mask-bg:rgba(3,5,9,.66);
+  --dlg-bg:linear-gradient(180deg, rgba(22,27,38,.96), rgba(13,16,24,.96));
+  --dlg-solid:linear-gradient(180deg,#171c27,#10141d);
+  --dlg-sh:0 2px 10px rgba(0,0,0,.36), 0 30px 64px -16px rgba(0,0,0,.60), inset 0 1px 0 rgba(255,255,255,.09);
+  --dlg-body:#c6cfe0; --dlg-strong:#eaf0fa;
+
+  /* 实例卡 / 提示块 */
+  --bot-bg:linear-gradient(180deg, rgba(255,255,255,.048), rgba(255,255,255,.016));
+  --bot-sh:inset 0 1px 0 rgba(255,255,255,.07), 0 6px 18px -6px rgba(0,0,0,.28);
+  --bot-active-line:rgba(91,140,255,.46);
+  --bot-active-sh:inset 0 1px 0 rgba(255,255,255,.11), 0 10px 24px -8px rgba(60,100,220,.30);
+
+  /* 圆角：整体放大一档，玻璃材质靠大圆角才显得「软」 */
+  --r-xs:10px; --r-sm:13px; --r-md:17px; --r-lg:22px; --r-xl:30px;
+  /* 动效：比 v1 稍慢一点，高级感来自「不急」 */
+  --dur:.20s; --dur-2:.30s;
+}
+
+/* ---------- 令牌覆盖：亮色 ---------- */
+:root{
+  /* 画布：冷白偏蓝，比纯白有空气感 */
+  --bg:#f2f5fa;
+  --bg-glow-1:radial-gradient(130% 80% at 50% -16%, rgba(37,99,235,.11), rgba(255,255,255,0) 62%);
+  --bg-glow-2:radial-gradient(120% 74% at 50% 112%, rgba(124,58,237,.07), rgba(255,255,255,0) 66%);
+  --bg-veil:linear-gradient(180deg, rgba(255,255,255,.55), rgba(244,247,252,.62));
+
+  --txt:#0f172a; --txt-2:#475569; --txt-3:#5b6577;
+  --line:rgba(15,23,42,.10);
+  --line-2:rgba(15,23,42,.16);
+  --line-3:rgba(15,23,42,.26);
+
+  /* 亮色卡片接近纯白，靠 1px 发丝线分层，不靠投影 */
+  --card-bg:linear-gradient(180deg, rgba(255,255,255,.94), rgba(255,255,255,.82));
+  --card-gloss:linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.98), rgba(255,255,255,0));
+  --sh-1:0 1px 2px rgba(15,23,42,.05), 0 10px 26px -12px rgba(15,23,42,.16), inset 0 1px 0 rgba(255,255,255,.95);
+  --sh-2:0 2px 8px rgba(15,23,42,.08), 0 26px 56px -16px rgba(15,23,42,.28);
+  --hdr-bg:linear-gradient(180deg, rgba(255,255,255,.92), rgba(248,250,255,.84));
+  --nav-bg:linear-gradient(180deg, rgba(255,255,255,.90), rgba(246,249,255,.95));
+  --r-xs:10px; --r-sm:13px; --r-md:17px; --r-lg:22px; --r-xl:30px;
+  --dur:.20s; --dur-2:.30s;
+}
+
+/* ---------- 背景：极光层 + 噪点，让玻璃有东西可折射 ---------- */
+#bgMask::after{
+  content:"";position:absolute;inset:0;pointer-events:none;opacity:.34;
+  background:radial-gradient(52% 28% at 84% 4%, rgba(91,140,255,.09), rgba(0,0,0,0) 72%),
+             radial-gradient(46% 26% at 10% 94%, rgba(139,124,255,.075), rgba(0,0,0,0) 74%);
+  animation:auroraDrift 26s ease-in-out infinite alternate;
+}
+@keyframes auroraDrift{
+  from{transform:translate3d(0,0,0) scale(1)}
+  to{transform:translate3d(-2.5%, 1.5%, 0) scale(1.06)}
+}
+
+/* ---------- 顶栏 ---------- */
+header{padding:14px 16px 12px}
+.mark{width:32px;height:32px;border-radius:11px}
+h1{font-size:18.5px;font-weight:640;letter-spacing:-.025em}
+.sub{font-size:12px;letter-spacing:.004em}
+.pills{margin-top:11px;gap:6px}
+.pill{
+  padding:4px 11px 4px 9px;font-size:11.5px;font-weight:520;letter-spacing:.006em;
+  border-radius:var(--r-full);
+  backdrop-filter:blur(12px) saturate(150%);-webkit-backdrop-filter:blur(12px) saturate(150%);
+  transition:background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+/* ---------- 卡片：两级玻璃的内层 ---------- */
+main{padding:14px 13px 8px}
+.card{
+  margin-bottom:11px;padding:17px 17px 18px;
+  border-radius:var(--r-lg);
+  /* 内层玻璃比背景亮一档，再压一条 1px 发丝线 —— 层级靠这两个，不靠重阴影 */
+  background:var(--card-bg);
+  border:1px solid var(--line-2);
+  transition:border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.card h2{
+  margin:0 0 12px;font-size:12.5px;font-weight:620;
+  letter-spacing:.04em;text-transform:none;
+  color:var(--h2);
+}
+.card h2 .dot{margin-right:1px}
+
+/* ---------- 键值行 ---------- */
+.row{padding:10px 0;border-bottom:1px solid var(--line)}
+.k{font-size:12.5px;letter-spacing:.004em}
+.v{font-size:13px;font-weight:520}
+
+/* ---------- 状态格：不再用亮底，改成「描边 + 极淡内凹」 ---------- */
+.tiles{gap:8px;margin-top:2px}
+.tile{
+  padding:12px 13px;
+  border-radius:var(--r-md);
+  /* 内层小卡要比外层卡「退后」一档，否则整张卡看起来是两张卡叠着 */
+  background:linear-gradient(180deg, rgba(255,255,255,.018), rgba(255,255,255,.006));
+  border:1px solid var(--line);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
+  display:flex;flex-direction:column;justify-content:flex-start;
+  min-height:76px;
+  transition:background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+:root:not([data-theme="dark"]) .tile{
+  background:linear-gradient(180deg, rgba(15,23,42,.022), rgba(15,23,42,.008));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.7);
+}
+.tile .tt{
+  font-size:10.5px;font-weight:560;color:var(--txt-3);
+  letter-spacing:.07em;text-transform:uppercase;
+  display:flex;align-items:center;gap:6px;
+}
+.tile .tv{
+  /* 值贴到底部：标签在上、数字在下，两行之间的空白由 margin-top:auto 吃掉，
+     这样 2×2 网格里每张卡的数字都在同一条基线上 */
+  margin-top:auto;padding-top:8px;
+  font-size:16px;font-weight:640;letter-spacing:-.022em;
+  font-variant-numeric:tabular-nums;color:var(--tv);
+  line-height:1.2;
+}
+.tile .tp{font-size:10.5px;color:var(--txt-3);margin-top:3px;font-family:var(--mono);letter-spacing:-.01em;opacity:.85}
+.tile .tp:empty{margin-top:0;padding:0;height:0}
+
+/* ---------- 新手引导：去掉虚线碎片，改成安静的分隔 ---------- */
+.obstep{padding:9px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+.obstep:last-child{border-bottom:none}
+.obmk{width:18px;height:18px;border-width:1.5px}
+.obstep.done .obtx{text-decoration:none;color:var(--txt-3)}
+
+/* ---------- 按钮 ---------- */
+button{font-weight:560;letter-spacing:.006em;border-radius:var(--r-sm)}
+button.primary{
+  background:var(--pri-bg);color:#fff;border-color:var(--pri-line);
+  box-shadow:var(--pri-sh);
+}
+button.small{font-size:12.5px;padding:9px 13px}
+button:active{transform:scale(.985)}
+.btns{gap:8px}
+
+/* 整宽主按钮（查看日志 / 开始部署 / 确认重启）：压低高度与饱和度，
+   它们是「顺手能点」，不该是整屏最亮的块。 */
+.btns > button.primary[style*="flex:1"]{
+  background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.045));
+  color:var(--acc-txt);
+  border-color:var(--acc-line-2);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
+  font-weight:560;
+}
+:root:not([data-theme="dark"]) .btns > button.primary[style*="flex:1"]{
+  background:linear-gradient(180deg, rgba(37,99,235,.10), rgba(37,99,235,.055));
+  color:var(--acc-txt);
+  border-color:var(--acc-line-2);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9);
+}
+.btns > button.primary[style*="flex:1"]:active{background:var(--acc-bg-2)}
+
+/* 进度条：细一点，轨道内凹，填充带光晕但不过曝 */
+.bar{height:6px;overflow:hidden}
+.bar i{border-radius:var(--r-full)}
+
+/* 分段控件：更像 iOS 的 segmented control，滑块有内高光 */
+.seg{padding:3px;border-radius:var(--r-sm);gap:2px}
+.seg button{padding:8px 10px;border-radius:calc(var(--r-sm) - 3px);font-size:12.5px}
+
+/* ---------- 底栏：悬浮胶囊化 ---------- */
+nav{
+  left:10px;right:10px;bottom:calc(8px + env(safe-area-inset-bottom));
+  padding:6px;border-radius:var(--r-xl);
+  border:1px solid var(--line-2);
+  box-shadow:var(--nav-sh), 0 0 0 .5px var(--line);
+}
+body{padding-bottom:118px}
+nav button{padding:9px 0 8px;border-radius:calc(var(--r-xl) - 8px);font-size:10.5px;letter-spacing:.02em}
+nav button.on{font-weight:600}
+
+/* ---------- 状态总览（hero）：整页的信息锚点 ---------- */
+/* 顶部一层极淡的蓝，把「最重要的一张卡」和下面的普通卡分开，靠光不靠边框 */
+.card.hero{
+  background:
+    linear-gradient(180deg, rgba(91,140,255,.085), rgba(91,140,255,0) 46%),
+    var(--card-bg);
+  border-color:var(--line-2);
+  padding-bottom:16px;
+}
+:root:not([data-theme="dark"]) .card.hero{
+  background:
+    linear-gradient(180deg, rgba(37,99,235,.055), rgba(37,99,235,0) 46%),
+    var(--card-bg);
+}
+.card.hero h2{margin-bottom:13px;font-size:13.5px}
+
+/* 内嵌的今日概览（原来是一张独立卡）：用一条分隔线接在上面的状态格后面 */
+.today{
+  margin-top:14px;padding:13px 0 0;
+  border-top:1px solid var(--line);
+}
+.today-grid{display:grid;grid-template-columns:1.25fr 1fr 1fr 1.15fr;gap:10px}
+.tcell{min-width:0}
+.tlabel{
+  display:block;font-size:10.5px;line-height:1.35;color:var(--txt-3);
+  letter-spacing:.05em;text-transform:uppercase;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.tval{
+  display:block;margin-top:4px;font-size:15px;font-weight:640;letter-spacing:-.02em;
+  color:var(--tv);font-variant-numeric:tabular-nums;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+@media (max-width:379px){
+  .today-grid{grid-template-columns:1fr 1fr;gap:10px 12px}
+}
+
+/* ---------- 终端 / 日志 ---------- */
+pre{border-radius:var(--r-md);font-size:11.5px;line-height:1.65;padding:12px}
+
+/* ---------- 提示文本 ---------- */
+.hint{font-size:12px;line-height:1.60;letter-spacing:.002em}
+
+/* ---------- 焦点可见（键盘可达是硬要求） ---------- */
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
+  outline:2px solid var(--focus-outline);
+  outline-offset:2px;
+}
+
+/* ---------- 尊重减弱动效 ---------- */
+@media (prefers-reduced-motion: reduce){
+  #bgMask::after{animation:none}
+  .tab.on{animation:none}
+  *{transition-duration:.01ms !important;animation-duration:.01ms !important}
+}
+
+
 </style>
 </head>
 <body>
@@ -1120,14 +1465,34 @@ button.locked{box-shadow:none;transform:none}
       </div>
     </div>
 
-    <!-- 今日概览：数字来自 Android.todayStats()，60 秒一轮；拿不到就整块隐藏，不显示半截。
-         首屏不等这条桥，渲染完再异步补（见 todayStart 的 300ms 延迟）。 -->
-    <div class="card today" id="todayCard" style="display:none" aria-label="今日概览">
-      <div class="today-grid">
-        <div class="tcell"><span class="tlabel">今日在线</span><b class="tval" id="tdOnline">—</b></div>
-        <div class="tcell"><span class="tlabel">消息</span><b class="tval" id="tdMsgs">—</b></div>
-        <div class="tcell"><span class="tlabel">异常</span><b class="tval" id="tdErrs">—</b></div>
-        <div class="tcell"><span class="tlabel">流量</span><b class="tval" id="tdTraffic">—</b></div>
+    <!-- 状态总览（v2 重排）：把原来的「今日概览」和「运行状态」两张卡合成一张。
+         打开应用第一眼要回答的只有一个问题——「现在到底跑没跑起来」，
+         所以五个组件状态放在最上面，今日数据作为第二层补充。
+         todayCard 仍是独立节点（JS 按 id 隐藏它），只是从 card 降级成内嵌块。 -->
+    <div class="card hero" id="statusCard">
+      <h2><span class="dot" id="d-deploy"></span>状态总览</h2>
+      <div class="tiles">
+        <div class="tile" id="t-deploy"><div class="tt">部署</div><div class="tv" id="v-deploy">-</div><div class="tp" id="p-deploy"></div></div>
+        <div class="tile" id="t-sup"><div class="tt">后台服务</div><div class="tv" id="v-sup">-</div><div class="tp" id="p-sup"></div></div>
+        <div class="tile" id="t-napcat"><div class="tt">NapCat</div><div class="tv" id="v-napcat">-</div><div class="tp" id="p-napcat"></div></div>
+        <div class="tile" id="t-astrbot"><div class="tt">AstrBot</div><div class="tv" id="v-astrbot">-</div><div class="tp" id="p-astrbot"></div></div>
+        <div class="tile" id="t-onebot" style="grid-column:1 / -1"><div class="tt">OneBot 通道</div><div class="tv" id="v-onebot">-</div><div class="tp" id="p-onebot"></div></div>
+      </div>
+      <div class="hint" id="astrBoot" style="display:none">AstrBot 正在启动，通常需要 40–60 秒，请稍候</div>
+
+      <!-- 今日概览：数字来自 Android.todayStats()，60 秒一轮；拿不到就整块隐藏，不显示半截。
+           首屏不等这条桥，渲染完再异步补（见 todayStart 的 300ms 延迟）。 -->
+      <div class="today" id="todayCard" style="display:none" aria-label="今日概览">
+        <div class="today-grid">
+          <div class="tcell"><span class="tlabel">今日在线</span><b class="tval" id="tdOnline">—</b></div>
+          <div class="tcell"><span class="tlabel">消息</span><b class="tval" id="tdMsgs">—</b></div>
+          <div class="tcell"><span class="tlabel">异常</span><b class="tval" id="tdErrs">—</b></div>
+          <div class="tcell"><span class="tlabel">流量</span><b class="tval" id="tdTraffic">—</b></div>
+        </div>
+      </div>
+
+      <div class="btns" style="margin-top:13px">
+        <button class="primary" style="flex:1" data-act="showlogs">查看日志</button>
       </div>
     </div>
 
@@ -1151,21 +1516,6 @@ button.locked{box-shadow:none;transform:none}
         <button class="small" data-act="fixdpkg" id="btnFixDpkg" style="display:none">修复沙盒依赖</button>
       </div>
       <pre id="deployLog" style="max-height:26vh">（暂无部署日志）</pre>
-    </div>
-
-    <div class="card">
-      <h2><span class="dot" id="d-deploy"></span>运行状态</h2>
-      <div class="tiles">
-        <div class="tile" id="t-deploy"><div class="tt">部署</div><div class="tv" id="v-deploy">-</div><div class="tp" id="p-deploy"></div></div>
-        <div class="tile" id="t-sup"><div class="tt">后台服务</div><div class="tv" id="v-sup">-</div><div class="tp" id="p-sup"></div></div>
-        <div class="tile" id="t-napcat"><div class="tt">NapCat</div><div class="tv" id="v-napcat">-</div><div class="tp" id="p-napcat"></div></div>
-        <div class="tile" id="t-astrbot"><div class="tt">AstrBot</div><div class="tv" id="v-astrbot">-</div><div class="tp" id="p-astrbot"></div></div>
-        <div class="tile" id="t-onebot" style="grid-column:1 / -1"><div class="tt">OneBot 通道</div><div class="tv" id="v-onebot">-</div><div class="tp" id="p-onebot"></div></div>
-      </div>
-      <div class="hint" id="astrBoot" style="display:none">AstrBot 正在启动，通常需要 40–60 秒，请稍候</div>
-      <div class="btns" style="margin-top:12px">
-        <button class="primary" style="flex:1" data-act="showlogs">查看日志</button>
-      </div>
     </div>
 
     <!-- 实例卡片（功能 17）：头像走 Android.avatarPath(uin) 的本地缓存（file://，断网也能看），
@@ -1346,6 +1696,26 @@ button.locked{box-shadow:none;transform:none}
       <div class="hint" id="updNote" style="display:none"></div>
       <div class="hint">当前版本 <b id="v-appver">-</b></div>
       <div class="hint">本软件官方群 <b>1127997343</b>，发现 bug 及时反馈。</div>
+    </div>
+
+    <!-- 重启服务（用户明确要求：以前「更多」里只有下线没有重启，改完端口/配置想让它
+         立刻生效，只能跑去主页找按钮）。两步确认 + 45 秒等待提示：重启会把两个容器
+         一起换掉，正在收发的消息会断，直接一键触发容易误触。 -->
+    <div class="card" id="restartCard">
+      <h2><span class="dot" id="d-restart"></span>重启服务</h2>
+      <div class="hint" style="margin-top:0">把 NapCat 与 AstrBot 一起停掉再拉起来，约 40–60 秒。改过端口、对接配置、局域网开关之后，点这里让设置真正生效。登录状态与配置都会保留，不用重新扫码。</div>
+      <div class="hint" id="restartState" style="margin-top:8px">当前：—</div>
+      <div class="btns" style="margin-top:10px">
+        <button class="primary" data-act="askrestart" id="btnAskRestart" style="flex:1">重启服务</button>
+      </div>
+      <div class="confirm" id="restartConfirm" style="display:none">
+        <div class="ct">重启会中断正在收发的消息，期间 NapCat 与 AstrBot 都不可用（约 1 分钟）。确定现在重启吗？</div>
+        <div class="btns" style="margin-top:8px">
+          <button class="small primary" data-act="restartnow" id="btnRestartNow" style="flex:1">确认重启</button>
+          <button class="small" data-act="restartcancel" style="flex:1">取消</button>
+        </div>
+      </div>
+      <div class="hint" id="restartHint" style="display:none"></div>
     </div>
 
     <!-- 功能 9：紧急下线。App / 通知栏 / 小组件 / 磁贴四处最终都落到这一张确认卡上：
@@ -1716,13 +2086,16 @@ button.locked{box-shadow:none;transform:none}
 var S = { bots: { active: "", bots: [] }, editing: null, auto: true, prefix: "", lanIp: "", logFiles: [], linked: false, deployDone: false, supAlive: false, slim: true, delAsk: null, glass: "mid", bgImg: "" , bgPreset: "space", hiddenCards: {}, logAsk: null, reAsk: null };
 
 /* ---------- 外观：背景预设、毛玻璃强度、自定义图片 ---------- */
+/* 背景预设（v2 调色）：v1 那批饱和度太高，铺满整屏时像壁纸而不是「背景」。
+   v2 统一压到 .10–.18 的强度，色调偏中性，让上面的玻璃卡片成为焦点。
+   六套仍保持可区分的冷暖关系，只是把「艳」换成「沉」。 */
 var BG_PRESETS = [
-  { id: "space",  name: "深空",   css: "radial-gradient(120% 100% at 18% 0%, rgba(96,140,255,.30), rgba(0,0,0,0) 58%),radial-gradient(110% 90% at 85% 100%, rgba(160,110,255,.22), rgba(0,0,0,0) 60%),linear-gradient(160deg,#070a13,#0d1424 45%,#05070d)" },
-  { id: "aurora", name: "极光",   css: "radial-gradient(110% 80% at 20% 8%, rgba(46,230,200,.34), rgba(0,0,0,0) 58%),radial-gradient(120% 90% at 90% 92%, rgba(96,120,255,.30), rgba(0,0,0,0) 62%),linear-gradient(165deg,#03101a,#06262c 46%,#0a1730)" },
-  { id: "silver", name: "液态银", css: "radial-gradient(120% 90% at 25% 5%, rgba(255,255,255,.30), rgba(0,0,0,0) 55%),radial-gradient(110% 90% at 85% 95%, rgba(150,170,200,.28), rgba(0,0,0,0) 58%),linear-gradient(160deg,#232833,#5b6475 48%,#1b1f28)" },
-  { id: "gold",   name: "熔金",   css: "radial-gradient(115% 85% at 22% 6%, rgba(255,196,92,.34), rgba(0,0,0,0) 55%),radial-gradient(110% 90% at 88% 96%, rgba(190,110,40,.26), rgba(0,0,0,0) 60%),linear-gradient(160deg,#150f06,#4a3412 48%,#20160a)" },
-  { id: "tundra", name: "苔原",   css: "radial-gradient(110% 85% at 18% 5%, rgba(126,214,180,.24), rgba(0,0,0,0) 58%),radial-gradient(115% 90% at 88% 96%, rgba(70,140,160,.26), rgba(0,0,0,0) 60%),linear-gradient(160deg,#08130f,#17332b 48%,#0a1a20)" },
-  { id: "sunset", name: "霞光",   css: "radial-gradient(120% 90% at 15% 8%, rgba(255,140,110,.34), rgba(0,0,0,0) 58%),radial-gradient(115% 90% at 90% 92%, rgba(160,80,200,.28), rgba(0,0,0,0) 62%),linear-gradient(160deg,#190b18,#4c1c33 46%,#24102e)" }
+  { id: "space",  name: "深空",   css: "radial-gradient(115% 88% at 20% 0%, rgba(92,124,190,.16), rgba(0,0,0,0) 60%),radial-gradient(105% 82% at 84% 100%, rgba(120,104,180,.13), rgba(0,0,0,0) 62%),linear-gradient(165deg,#0a0c12,#111722 48%,#070810)" },
+  { id: "aurora", name: "极光",   css: "radial-gradient(110% 82% at 18% 6%, rgba(58,190,178,.15), rgba(0,0,0,0) 60%),radial-gradient(112% 86% at 88% 94%, rgba(74,116,200,.14), rgba(0,0,0,0) 62%),linear-gradient(165deg,#07100f,#0b1d24 48%,#06101a)" },
+  { id: "silver", name: "石墨",   css: "radial-gradient(118% 86% at 24% 4%, rgba(228,234,244,.13), rgba(0,0,0,0) 56%),radial-gradient(108% 84% at 84% 96%, rgba(140,152,170,.12), rgba(0,0,0,0) 60%),linear-gradient(162deg,#1b1e24,#3a4048 52%,#14171d)" },
+  { id: "gold",   name: "熔金",   css: "radial-gradient(112% 82% at 22% 5%, rgba(206,158,74,.15), rgba(0,0,0,0) 56%),radial-gradient(106% 84% at 86% 96%, rgba(150,96,44,.12), rgba(0,0,0,0) 60%),linear-gradient(162deg,#120e08,#33270f 50%,#170f07)" },
+  { id: "tundra", name: "苔原",   css: "radial-gradient(110% 82% at 18% 4%, rgba(110,186,158,.13), rgba(0,0,0,0) 58%),radial-gradient(112% 86% at 88% 96%, rgba(64,124,146,.12), rgba(0,0,0,0) 60%),linear-gradient(162deg,#07120f,#132a25 48%,#0a1720)" },
+  { id: "sunset", name: "暮色",   css: "radial-gradient(114% 84% at 16% 6%, rgba(198,116,96,.15), rgba(0,0,0,0) 58%),radial-gradient(110% 86% at 88% 94%, rgba(126,84,160,.13), rgba(0,0,0,0) 62%),linear-gradient(162deg,#150d14,#331a2b 50%,#1b0e22)" }
 ];
 
 function lsGet(k, dflt){
@@ -3569,6 +3942,9 @@ document.addEventListener("click", function(ev){
   else if (act === "askstop") stopAsk(true);
   else if (act === "stopnow") stopDo();
   else if (act === "stopcancel") stopAsk(false);
+  else if (act === "askrestart") restartAsk(true);
+  else if (act === "restartnow") restartDo();
+  else if (act === "restartcancel") restartAsk(false);
   else if (act === "stgrefresh") { ext().stg.at = 0; refreshStorage(true); extToast("正在重新统计…"); }
   else if (act === "crashclear") crashClear();
   else if (act === "statstoggle") statsToggle();
@@ -5206,6 +5582,76 @@ function lanToggle(){
   extToast(nowOn ? "已开启局域网访问，重启服务后生效" : "已关闭局域网访问，重启服务后生效");
 }
 
+/* ===================== 重启服务（「更多」页） =====================
+   用户点名要的功能：以前「更多」里只有「紧急下线」，改完端口 / 局域网开关想生效，
+   得退回主页去找按钮。这里补一张卡，走两步确认 + 45 秒等待 + 结果回显。
+   复用已有的 Android.action("restart")：原生侧本来就是「停掉再拉起」，
+   不新增桥方法（改 Java 要重编 APK，能省就省）。
+   注意：确认框的显示状态存在 ext().restartAsk 里，因为 refreshAll 每 4 秒重绘一次
+   这块区域，光改 DOM 会被下一轮刷回去。 */
+function restartAsk(on){
+  try { ext().restartAsk = !!on; } catch (e0) {}
+  var box = el("restartConfirm");
+  if (box) box.style.display = on ? "block" : "none";
+  if (on){
+    try { var c = el("restartCard"); if (c && c.scrollIntoView) c.scrollIntoView({block:"center"}); } catch (e) {}
+  }
+}
+
+/* 等待提示：桥调用是同步阻塞的（最长 20 秒），返回后沙盒其实还在起，
+   所以按钮之后要有一段「重启中…还剩 N 秒」的倒计时，否则界面看起来像没反应。 */
+function restartTick(){
+  var E = ext();
+  if (!E.restartUntil) return;
+  var left = Math.round((E.restartUntil - Date.now()) / 1000);
+  var btn = el("btnAskRestart"), hint = el("restartHint");
+  if (left > 0){
+    if (btn){ btn.textContent = "重启中…（约 " + left + " 秒）"; btn.disabled = true; }
+    if (hint){ hint.style.display = "block"; hint.textContent = "两个容器正在重启，页面会自动刷新；期间 NapCat 与 AstrBot 都连不上是正常的。"; }
+  } else {
+    E.restartUntil = 0;
+    if (btn){ btn.textContent = "重启服务"; btn.disabled = false; }
+    if (hint){ hint.style.display = "block"; hint.textContent = "重启完成，状态行应该在几秒内变绿。"; }
+    try { refreshAll(); } catch (e) {}
+  }
+}
+
+function restartDo(){
+  restartAsk(false);
+  var E = ext();
+  var r = "";
+  try { r = String(Android.action("restart")); } catch (e) { r = "失败：" + e; }
+  if (r.indexOf("失败") >= 0 || r === ""){
+    extToast(r || "重启失败：原生没有响应，请稍后重试");
+    return;
+  }
+  E.restartUntil = Date.now() + 45000;
+  extToast("正在重启服务，约 45 秒后恢复");
+  /* 立刻把状态行改成「重启中」，别等下一轮 refresh 才变 —— 用户点了就得有反馈 */
+  var st = el("restartState");
+  if (st) st.textContent = "当前：重启中…";
+  restartTick();
+  if (E.restartTimer) { try { clearInterval(E.restartTimer); } catch (e2) {} }
+  E.restartTimer = setInterval(function(){
+    try { restartTick(); } catch (e3) {}
+    if (!ext().restartUntil){ try { clearInterval(ext().restartTimer); } catch (e4) {} ext().restartTimer = 0; }
+  }, 1000);
+}
+
+/* 状态行：跟着沙盒状态走，重启倒计时期间让 restartTick 接管 */
+function refreshRestartCard(st){
+  var E = ext(), d = el("d-restart"), line = el("restartState");
+  if (!line) return;
+  if (E.restartUntil){ restartTick(); return; }
+  var alive = !!(st && st.supervisorAlive);
+  if (d){ d.className = "dot " + (alive ? "ok" : "bad"); }
+  if (alive){
+    line.textContent = "当前：沙盒运行中，可以重启";
+  } else {
+    line.textContent = "当前：沙盒没在跑，先启动再重启";
+  }
+}
+
 /* ===================== 紧急下线（功能 9） =====================
    三处入口（App 按钮 / 通知栏「下线」/ 小组件「停止」/ 磁贴）都先走 stopAsk()，
    只有点「确认下线」才调 Android.emergencyStop()。原生侧确认后会写 state/offline，
@@ -5273,6 +5719,7 @@ function refreshExtras(st){
   if (tabOn("more")){
     try { refreshStorage(false); } catch (e6) {}
     try { refreshCrash(false); } catch (e7) {}
+    try { refreshRestartCard(st); } catch (e8) {}
   }
   /* 省电提醒条 + 省电卡状态：60 秒问一次就够（只读一个小文件）。横幅挂在所有页，
      因为「收不到消息」正是用户随手打开应用时最该看到的一句话。 */
@@ -5302,13 +5749,21 @@ function refreshExtras(st){
   if (tabOn("settings")){ try { refreshStats(false); } catch (e8) {} }
   /* 崩溃提示条要挂在主页，所以崩溃数据哪怕不在「更多」页也刷（读本地文件，很便宜） */
   try { refreshCrash(false); } catch (e9) {}
-  /* 紧急下线卡片的状态行：有进程活着 / 端口通 = 运行中；offline 标记在 = 已下线 */
+  /* 紧急下线卡片的状态行：有进程活着 / 端口通 = 运行中；offline 标记在 = 已下线。
+     v1.1.32 修：重启是「先停再起」，原生在 stop 阶段会写 state/offline，
+     如果这一轮 refresh 正好落在那个窗口里，下线卡就会闪一句「已下线」——
+     用户点的是重启，看到「已下线」只会以为点错了（真机验收时确实复现）。
+     倒计时期间一律不认 offline 标记。 */
   try {
     var sst = el("stopState");
     if (sst){
-      var alive = !!(st && (st.supervisorAlive || st.napcatUp || st.astrbotUp));
-      if (st && st.offline) sst.textContent = "当前：已下线（看门狗已暂停自动拉起）";
-      else sst.textContent = alive ? "当前：沙盒运行中" : "当前：未运行";
+      if (E.restartUntil){
+        sst.textContent = "当前：重启中，稍后自动恢复";
+      } else {
+        var alive = !!(st && (st.supervisorAlive || st.napcatUp || st.astrbotUp));
+        if (st && st.offline) sst.textContent = "当前：已下线（看门狗已暂停自动拉起）";
+        else sst.textContent = alive ? "当前：沙盒运行中" : "当前：未运行";
+      }
     }
     /* 确认框开着的时候，界面重画不能把它弄丢 */
     if (E.stopAsk){ var sb = el("stopConfirm"); if (sb && sb.style.display !== "block") sb.style.display = "block"; }

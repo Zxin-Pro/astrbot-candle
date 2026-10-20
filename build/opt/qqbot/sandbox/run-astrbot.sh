@@ -39,6 +39,11 @@ else
 fi
 mkdir -p /qqbot-cache/logs
 export HOME=/root
+# v1.1.32：把 /qqbot-opt/sandbox 挂到 PYTHONPATH 上，让 Python 启动时自动
+# import 同目录的 sitecustomize.py —— 它只做一件事：把 proot 下 accept() 的
+# ENOSYS 噪声折叠成一行汇总（实测一次运行能刷 12965 条，把日志撑到 8.5 MB）。
+# 这里只加一个目录，不动 AstrBot 源码，也不改 venv：升级 / 重装都不会丢。
+export PYTHONPATH="/qqbot-opt/sandbox${PYTHONPATH:+:$PYTHONPATH}"
 # 固定控制台初始密码（须满足 >=8 位且含大写/小写/数字，见 astrbot/core/utils/auth_password.py）
 export ASTRBOT_DASHBOARD_INITIAL_PASSWORD=Astrbot123
 cd /opt/AstrBot || exit 1

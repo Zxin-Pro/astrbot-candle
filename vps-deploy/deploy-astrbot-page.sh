@@ -1086,9 +1086,9 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
       "cards": [
         {
           "icon": "📦",
-          "title": "AstrBot烛版 1.1.31（最新版）",
-          "desc": "文件名 AstrBot-1.1.31.apk（下载下来就是这个名字）\n安卓安装包 · 24.6 MB · 2026-10-20\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
-          "link": "/downloads/AstrBot-1.1.31.apk",
+          "title": "AstrBot烛版 1.1.32（最新版）",
+          "desc": "文件名 AstrBot-1.1.32.apk（下载下来就是这个名字）\n安卓安装包 · 24.6 MB · 2026-10-20\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
+          "link": "/downloads/AstrBot-1.1.32.apk",
           "text": ""
         },
         {
@@ -1096,7 +1096,7 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
           "title": "复制下载直链",
           "desc": "点这张卡就把地址复制下来，可以直接发给别人或贴进浏览器。",
           "link": "",
-          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.1.31.apk"
+          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.1.32.apk"
         },
         {
           "icon": "🕘",
@@ -1107,10 +1107,10 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
         },
         {
           "icon": "🔐",
-          "title": "SHA-256 校验值（v1.1.31）",
+          "title": "SHA-256 校验值（v1.1.32）",
           "desc": "点这张卡复制，然后和下载到的文件比对，一样就说明没被改过。",
           "link": "",
-          "text": "253d23d1d758d15eec420992545dcd0439581ba52bfd5d71e0da594eb58a237d"
+          "text": "eebf427ae2b6c20ed68e35f0df5f3748cf0769bde6d8e374060a9b93c9533305"
         }
       ]
     },
@@ -1187,6 +1187,13 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
       "cards": [
         {
           "icon": "📝",
+          "title": "v1.1.32  ·  2026-10-20",
+          "desc": "## AstrBot 烛版 1.1.32\n\n## [1.1.32] - 2026-10-20\n\n这一版只有两件事：**把界面重做一遍**，以及**把那条刷屏的 AstrBot 报错按死**。\n\n### 新增\n\n- **「更多」页新增「重启服务」**：以前改完端口 / 局域网开关想让它生效，得退回主页\n  去找按钮，「更多」里只有「紧急下线」。现在这里有一张正经的重启卡：两步确认\n  （重启会中断正在收发的消息）、点击后 45 秒倒计时、结束后自动回显结果。\n  用的是已有的 `Android.action(\"restart\")`，没有新增桥方法，也不改 Java。\n\n### 变更\n\n- **界面整体重做（v2 视觉层）**：令牌、材质、排版全部换过一轮，但**没有动类名**——\n  五千行 JS 全部按 id/class 绑定，重写选择器体系等于把交互一起推倒。\n  - 层级改成「两级玻璃 + 一个光源」：卡片是内层（最实）、按钮胶囊是次级（半透）、\n    顶栏底栏是环境层（最透，靠 blur 兜住可读性）。阴影只在下方，不做四向发光。\n  - 暗色画布从偏蓝紫的近黑换成中性近黑（`#08090d`）。原来的蓝紫底会让整屏\n    看起来像游戏 UI，颜色应该只留给状态与操作。\n  - 底栏改成悬浮胶囊，`body` 下边距跟着加到 118px，内容不会被压在栏下面。\n  - 六套背景预设统一降饱和（.30 → .10–.16），壁纸感收掉，玻璃卡片才是主角。\n  - 圆角整体放大一档（卡片 22px），动效放慢到 200/300ms —— 高级感来自「不急」。\n  - 跑通 `prefers-reduced-motion` 分支：极光漂移动画、页签入场、全部过渡都会关掉。\n\n- **主页重新排版**：原来的「今日概览」和「运行状态」是两张卡，打开应用第一眼要看的\n  信息被拆成两块。现在合成一张**状态总览**：五个组件状态在上（值贴底对齐，2×2\n  网格里的数字在同一条基线上），今日数据作为第二层补充，中间用一条分隔线接。\n\n### 修复\n\n- **AstrBot 日志被 `Errno 38` 刷屏**：proot 沙盒里 asyncio 的 accept 循环偶尔会拿到\n  `OSError: [Errno 38] Function not implemented`（ENOSYS）。现场实测一次 6 分钟的\n  运行刷了 **12965 条**，`astrbot.log` 被撑到 8.5 MB，「上传错误日志」跟着把报告顶到\n  534 KB 的截断线附近；控制台日志页全是红字，用户只会以为 AstrBot 坏了 —— 而实际\n  上控制台、OneBot 通道、插件全部正常（同时刻 6185 登录接口返回 200）。\n\n  这个问题**不是必现**…",
+          "link": "/downloads/AstrBot-1.1.32.apk",
+          "text": ""
+        },
+        {
+          "icon": "📝",
           "title": "v1.1.31  ·  2026-10-20",
           "desc": "## AstrBot 烛版 1.1.31\n\n## [1.1.31] - 2026-10-20\n\n这一版四个改动，都是「出事时少踩坑」和「装好之后不用管」这两类：\n\n### 修复\n\n- **上报日志整份脱敏**：以前只把 `bots.json` 里的 token 抹掉，其余账号、群号、\n  令牌、二维码链接原样上传。现在 `common.sh` 新增 `qq_redact_file`，在\n  **1.5 MB 截断之后**统一过一遍规则表：JSON 里的 `token / secret / password /\n  api_key`、`Authorization: Bearer`、`sk-` 开头的 key、`AIza` 开头的 Google key、\n  `https://txz.qq.com/p?k=`、URL 里的 `?token=&access_token=&key=`、`uin / qq /\n  user_id / group_id / 账号 / 群号` 后面的 5–12 位数字、大陆手机号、邮箱，\n  以及 NapCat 自己打的两处散文形态 `WebUI token xxx` / `[WebUi] WebUi Token: xxx`\n  和 `NAPCAT_WEBUI_SECRET_KEY=xxx` 这类环境变量。\n  **端口、文件大小、时间戳、sha256 一律保留**（排障要用的东西不能抹），上传成功后\n  回显「报告已脱敏 N 处」。实测一份 534 KB 的报告命中 6 处，人工核对无泄露。\n\n### 变更\n\n- **风控从「命中即停」改成滑动窗口**：以前日志里出现一个风控词就立刻暂停自动重启，\n  网络抖一下、NapCat 打一行无害提示都会误伤。现在按\n  `QQBOT_RISK_WINDOW`（默认 600 秒）窗口内累计 `QQBOT_RISK_HITS`（默认 2 次）\n  才真正暂停：第一次只写日志 + 通知，不改状态；`risk-<id>.hits` 存最近 20 笔时间戳。\n  窗口计数**按不同秒去重**——宿主看门狗和沙盒守护会同时扫同一份日志，同一次命中\n  可能各记一笔，按行数算等于把阈值砍半（这个 bug 是实测抓到的：注入 2 行日志\n  计出 4 次）。\n- **风控暂停会自己过期**：`risk-<id>.flag` 的 mtime 超过 `QQBOT_RISK_TTL`\n  （默认 21600 秒 = 6 小时）就自动删 flag 与 `risk.json`，恢复自动重启，\n  不用手动去「我知道了」。读不到 mtime 时绝不误删（fail-closed）。\n  `qq_risk_clear()` 一并清 `risk-<id>.hits`。\n- **局域网访问开关**：默认仍然只监听 `127.0.…",
           "link": "/downloads/AstrBot-1.1.31.apk",
@@ -1210,20 +1217,13 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
           "icon": "📝",
           "title": "v1.1.28  ·  2026-10-19",
           "desc": "## AstrBot 烛版 1.1.28\n\n## [1.1.28] - 2026-10-19\n\nNapCat 已经能在真机上跑起来了，这一版处理的是「用起来」和「装得上」的问题：\n启动要等多久、面板在哪儿打开、每次打开要不要提醒更新、以及小米手机装包时那句「缺少隐私政策」。\n\n### 新增\n\n- **每次打开自动检查更新**：控制台一加载就查一次（不再受 12 小时节流），查到新版本自动弹窗，\n  「去下载」走系统浏览器，「以后再说」记住这个版本、下次不再打扰。查不到或超时都静默，\n  不打扰正常使用；被免责声明挡在后面时，点完「同意」会补弹。\n- **AstrBot 冷启动提示**：运行状态卡片里出现一行琥珀色小字\n  「AstrBot 正在启动，通常需要 40–60 秒，请稍候」。以前这段时间磁贴只写「离线」，\n  容易被当成装坏了；AstrBot 起来后这行自己消失，守护进程没跑的时候也不显示。\n\n### 修改\n\n- **WebUI 一律用系统浏览器打开**：NapCat 面板与 AstrBot 控制台的按钮改成\n  「在浏览器打开 …」，点击后不再跳应用内的 WebView，而是交给系统默认浏览器打开\n  `http://127.0.0.1:6099` / `http://127.0.0.1:6185`（仍然只放行本机地址）。\n  好处是能正常走浏览器的密码管理、扫码页和 AstrBot 管理后台。\n\n### 修复\n\n- **小米手机安装时提示「缺少隐私政策」不给装**：排查结论是小米 HyperOS 的\n  「应用包管理组件」+ 安全中心做的风险判定，命中的是《风险应用审查标准》里\n  「应用隐私政策未向用户明示」这一条，跟 Android 平台的 manifest 属性无关\n  （`android:privacyPolicy` 这个属性根本不存在）。这一版能做的我们都做了：\n  1. 控制台新增**《隐私政策》**页：`更多 → 关于与支持 → 隐私政策`，\n     首次启动的免责声明弹窗里也有入口。写清「不收集个人信息」「唯一会上传的是\n     你主动提交的错误日志」「七类权限各自干什么用」「数据存在哪、怎么删」「联系方式」。\n  2. 从 manifest 去掉 `android:debuggable=\"true\"` —— debug 包是被判定「被重新打包」的\n     显式标记。\n  3. 把这条剥离固化成构建步骤（`build-ui.ps1`，幂等），以后每次构建都不会再带 debug 标记。\n- **说明**：小米的拦截发生在安装器里、由云端与本地缓存共同判定，APK 里补隐私政策\n  **不保证**能解除拦截。真机上仍然有效的手段都在安装器侧：\n  关掉手机管家的「安装监控 / 安全守护 / 应用防护」，或对「应用包管理组件」卸…",
-          "link": "/downloads/AstrBot-1.1.28.apk",
+          "link": "",
           "text": ""
         },
         {
           "icon": "📝",
           "title": "v1.1.27  ·  2026-10-19",
           "desc": "## AstrBot 烛版 1.1.27\n\n## [1.1.27] - 2026-10-19\n\n和 1.1.26 是同一个修复（proot loader 节头清零），只多了一层保险 —— 真机没到手上，\n补丁万一跟某台设备的 proot 不兼容，不能把「NapCat 崩」换成「沙盒起不来」。\n\n### 加固\n\n- **起沙盒前先探一次**：`start-sandbox.sh` 在用打补丁的 loader 之前先跑一句最短自检\n  （`proot -0 /system/bin/echo`），跑不通就立刻退回系统 loader、把现场存到\n  `~/.qqbot/logs/loader-probe.log`，并写 `~/.qqbot/proot-loader.off` 标记 —— 之后不再尝试。\n  删掉那个标记就会重新试一次。\n- **部署自检失败也留标记**：`qq_proot_selftest()` 的自动回退同样会写这个标记，\n  避免「回退一次、下个脚本又重建补丁、再挂一次」的循环。\n- **「检查运行环境」多一个状态**：`loader补丁:` 现在有「已停用（proot-loader.off 存在）」这一档。\n\n### 说明\n\n- 修复内容与 1.1.26 完全一致，装在真机上行为相同；只是多了一道「不兼容就自动退回」的保险。\n- 依旧不用重装沙盒：脚本随 APK 下发，装完重启服务即生效。",
-          "link": "",
-          "text": ""
-        },
-        {
-          "icon": "📝",
-          "title": "v1.1.26  ·  2026-10-19",
-          "desc": "## AstrBot 烛版 1.1.26\n\n## [1.1.26] - 2026-10-19\n\n1.1.25 的判断被真机报告推翻了：`NAPCAT_FORCE_NODE_PROCESS=1`（走 fork）**没有**绕开崩溃，\n真机装上 1.1.25 后日志变成了 `[NapCat] [Fork] Worker进程意外退出`，退出码依旧是 11。\n这一版找到了真正的根因，并且不用改 NapCat、不用换 QQ、不用重装沙盒。\n\n### 修复\n\n- **真根因：proot 的 loader 节头表在映射之外**。Termux 那份 proot 会把\n  `$PREFIX/libexec/proot/loader`（18136 字节，`e_shoff=0x45d8`）映进每个被追踪的进程，\n  但只映射该文件的两段 PT_LOAD：\n  `00200000-00201000 r--p off 0`（这一段 filesz 只有 0x120）和\n  `5400000000-5400001000 r-xp off 0x4000`。而这个 loader 的节头表在文件偏移 0x45d8，\n  落在两段映射之外。NapCat 注入的 frida-gum 在枚举模块时把 0x200000 当模块基址、\n  按 `e_shoff` 去读节头，算出来的 `0x200000 + 0x45d8 = 0x2045d8` 没有任何映射，\n  于是 `SIGSEGV / SEGV_MAPERR`，`si_addr` 正是 `0x2045d8` —— 与真机崩溃记录逐字节吻合。\n  崩溃指令随后的拷贝步长正好是 64 字节（`Elf64_Shdr` 的大小），进一步印证。\n- **修法：给 loader 打一份「节头清零」的副本**。把 loader 复制到 `~/.qqbot/proot-loader`，\n  把 `e_shoff`(偏移 0x28) 与 `e_shnum`/`e_shstrndx`(偏移 0x3C) 清零，再用 `PROOT_LOADER`\n  指向这份副本。内核执行时只看 program header，节头表只是给工具看的，清零不影响 proot；\n  gum 拿不到节头（`e_shnum=0` 时它直接跳过整段拷贝循环），也就不会再越界读。\n  **不改 Termux 的安装文件**，删掉这个环境变量即可完全回退。\n- **自检带自动回退**：如果某台设备的 proot 不认这份替代 loader，`qq_proot_selftest()`\n  会发现自检失败，自动退回系统 loader 再试一次（并把原报错存到 `proot-selftest.log.patched`），\n  宁可少一层保护，也不让沙盒起不来。\n- **诊断补全**：「检查运行环境」新增一行 …",
           "link": "",
           "text": ""
         }
@@ -1259,7 +1259,7 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
       ]
     }
   ],
-  "updated": "2026-10-20 08:17:15"
+  "updated": "2026-10-20 14:27:13"
 }
 __ASTRBOT_DL_STATIC__
 log "离线兜底内容已装到 $SCRIPTS/astrbot_download_sync.fallback.json"
