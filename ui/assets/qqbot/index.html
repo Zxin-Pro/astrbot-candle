@@ -1494,6 +1494,22 @@ button.locked{box-shadow:none;transform:none}
       <div class="hint">「跟随系统」会跟着手机的深色模式实时切换；选择只保存在本机，不影响容器。</div>
     </div>
 
+    <!-- 局域网访问（v1.1.31）：默认只监听 127.0.0.1。开关就是一个标记文件
+         ~/.qqbot/state/lan.on —— 用已有的 Android.exec() 建/删，不新增桥方法。
+         容器下次启动生效（run-astrbot.sh 读它决定 DASHBOARD_HOST，
+         run-napcat.sh 读它决定 webui.json 的 host）。 -->
+    <div class="card" id="lanCard">
+      <h2><span class="dot" id="d-lan"></span>局域网访问</h2>
+      <div class="swrow">
+        <div class="swinfo">
+          <div class="swname">允许同一 Wi-Fi 下的设备访问<span class="swtag off" id="lanTag">已关闭</span></div>
+          <div class="swdesc" id="lanDesc">关闭时控制台与 NapCat WebUI 只监听 127.0.0.1，只有本机能打开。开启后同一局域网里的电脑可以用手机 IP 访问，方便在电脑上管机器人。</div>
+        </div>
+        <button class="tgl" id="lanTgl" data-act="lantoggle" title="点击切换局域网访问"></button>
+      </div>
+      <div class="hint" id="lanHint" style="margin-top:8px">改完需要重启服务生效（更多 → 重启）。</div>
+    </div>
+
     <!-- 匿名统计（功能 59）：默认关闭。第一次打开必须先看说明并点「了解并开启」
          （说明弹窗 #dlgStats），之后开关直接生效并写原生侧 statsSet(true)。
          「重置标识」会换一个新的 installId，历史数据从此对不上这台设备。 -->
@@ -2069,6 +2085,9 @@ var NO_LOCK_ACTS = [
   "bkstart", "bkexport", "bkrestoreask", "bkcancel", "bkrestore",
   "stgclean", "stgrefresh", "crashclear",
   "statstoggle", "statsok", "statscancel", "statsreset",
+  /* v1.1.31 局域网开关：它只是一个标记文件，跟容器装没装好完全无关，
+     部署没完成时也该能设 —— 用户可能正是想先在电脑上看着装。 */
+  "lantoggle",
   /* 功能 9：紧急下线是「出事时」用的入口，部署没完成也得能点（沙盒可能正是起不来才要停） */
   "askstop", "stopnow", "stopcancel"
 ];
@@ -3556,6 +3575,7 @@ document.addEventListener("click", function(ev){
   else if (act === "statsok") statsDialogOk();
   else if (act === "statscancel") statsDialogCancel();
   else if (act === "statsreset") statsReset();
+  else if (act === "lantoggle") lanToggle();
   else if (act === "theme") themeSet(arg || "auto");
   else if (act === "checkupdate") doCheckUpdate(false);
   else if (act === "dlupdate") updDownload();
@@ -5126,6 +5146,66 @@ function statsReset(){
   extToast("已换用新的匿名标识");
 }
 
+/* ===================== 局域网访问开关（v1.1.31） =====================
+   开关就是一个标记文件：$HOME/.qqbot/state/lan.on。用已有的 Android.exec() 建/删，
+   不新增桥方法 —— 这件事只有一个「文件在不在」的语义，不值得为它加一个接口，
+   而且加了就得同步改契约文档与原生三处（bridge / 状态 / 上传日志）。
+   读状态要起一个 bash，所以只在切到「设置」页时查一次，绝不放进 4 秒轮询。 */
+function lanParse(out){
+  var s = String(out || "");
+  return /(^|\n)\s*1\s*(\n|$)/.test(s);
+}
+
+function lanRender(on){
+  var tgl = el("lanTgl"), tag = el("lanTag"), desc = el("lanDesc"), d = el("d-lan");
+  if (tgl) tgl.className = "tgl" + (on ? " on" : "");
+  if (tag){
+    var tc = "swtag " + (on ? "on" : "off");
+    if (tag.className !== tc) tag.className = tc;
+    tag.textContent = on ? "已开启" : "已关闭";
+  }
+  if (desc){
+    desc.textContent = on
+      ? "已开启：控制台与 NapCat WebUI 监听 0.0.0.0，同一 Wi-Fi 下的设备可用手机 IP 访问。别在公共网络上开。"
+      : "关闭时控制台与 NapCat WebUI 只监听 127.0.0.1，只有本机能打开。开启后同一局域网里的电脑可以用手机 IP 访问，方便在电脑上管机器人。";
+  }
+  if (d) d.className = "dot " + (on ? "ok" : "mute");
+  try { ext().lanOn = !!on; } catch (e) {}
+}
+
+function refreshLan(force){
+  var E = ext(), now = Date.now();
+  if (!force && E.lanAt && now - E.lanAt < 30000) return;
+  E.lanAt = now;
+  if (!brHas("exec")){ return; }
+  var out = "";
+  try {
+    out = Android.exec("if [ -f \"$HOME/.qqbot/state/lan.on\" ]; then echo 1; else echo 0; fi");
+  } catch (e) { return; }
+  lanRender(lanParse(out));
+}
+
+function lanToggle(){
+  var E = ext();
+  var on = !!E.lanOn;
+  var cmd = on
+    ? "rm -f \"$HOME/.qqbot/state/lan.on\""
+    : "mkdir -p \"$HOME/.qqbot/state\" && : > \"$HOME/.qqbot/state/lan.on\"";
+  var out = "";
+  try { out = Android.exec(cmd); } catch (e) { out = "ERR"; }
+  /* exec 失败时不能先把开关画过去 —— 画了就等于骗用户「已经开了」，
+     而他去电脑上连会发现连不上，反而更难查。 */
+  var chk = "";
+  try {
+    chk = Android.exec("if [ -f \"$HOME/.qqbot/state/lan.on\" ]; then echo 1; else echo 0; fi");
+  } catch (e2) { chk = ""; }
+  var nowOn = chk === "" ? !on : lanParse(chk);
+  lanRender(nowOn);
+  E.lanAt = Date.now();
+  if (nowOn === on && chk !== ""){ extToast("没改成功，请稍后再试"); return; }
+  extToast(nowOn ? "已开启局域网访问，重启服务后生效" : "已关闭局域网访问，重启服务后生效");
+}
+
 /* ===================== 紧急下线（功能 9） =====================
    三处入口（App 按钮 / 通知栏「下线」/ 小组件「停止」/ 磁贴）都先走 stopAsk()，
    只有点「确认下线」才调 Android.emergencyStop()。原生侧确认后会写 state/offline，
@@ -5240,7 +5320,7 @@ function extOnTab(t){
   try {
     if (t === "home") refreshInst(true);
     else if (t === "more"){ refreshBk(true); refreshStorage(true); refreshCrash(true); }
-    else if (t === "settings") refreshStats(true);
+    else if (t === "settings"){ refreshStats(true); refreshLan(true); }
   } catch (e) {}
 }
 

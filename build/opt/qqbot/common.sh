@@ -30,6 +30,22 @@ QQBOT_QQ_VER="3.2.34-53644"
 QQBOT_NAPCAT_VER="v4.18.38"
 QQBOT_ASTRBOT_VER="v4.28.2"
 
+# ---- v1.1.31：风控改「滑动窗口」+ 自动过期 ----
+# 单次命中只告警，窗口内累计达到阈值才暂停自动重启：很多命中是某条消息触发的
+# 误报，第一次就停下会让用户以为软件坏了；但真被风控时反复重启又会让风控更狠，
+# 所以用窗口 + 阈值折中。三个值都可以在 qq-env.txt 里覆写，方便按机型调。
+QQBOT_RISK_WINDOW="${QQBOT_RISK_WINDOW:-600}"     # 窗口长度（秒）
+QQBOT_RISK_HITS="${QQBOT_RISK_HITS:-2}"           # 窗口内累计几次才暂停
+QQBOT_RISK_TTL="${QQBOT_RISK_TTL:-21600}"         # 暂停标记多久自动过期（秒）
+
+# ---- v1.1.31：组件版本自动获取 ----
+# 缓存 24 小时；查不到就用上面那三个内置常量（部署绝不能因为查版本而失败）。
+QQBOT_VER_CACHE="$QQBOT_STATE/versions.json"
+QQBOT_VER_TTL="${QQBOT_VER_TTL:-86400}"
+# 手动覆盖：写在 qq-env.txt 或 ~/.qqbot/env.sh 里都生效，优先级高于查询结果。
+QQBOT_NAPCAT_VER_OVERRIDE="${QQBOT_NAPCAT_VER_OVERRIDE:-}"
+QQBOT_ASTRBOT_VER_OVERRIDE="${QQBOT_ASTRBOT_VER_OVERRIDE:-}"
+
 QQBOT_TUNA="https://mirrors.tuna.tsinghua.edu.cn"
 QQBOT_PYPI="$QQBOT_TUNA/pypi/simple"
 QQBOT_GH_MIRRORS="https://ghfast.top/ https://gh-proxy.com/ https://ghproxy.net/ https://github.moeyy.xyz/ https://gh.llkk.cc/ https://ghproxy.cc/ https://gh.xxooo.cf/ https://gh-proxy.net/ https://hub.gitmirror.com/"
@@ -808,10 +824,19 @@ qq_risk_id() { printf '%s' "${1:-}" | tr -c 'A-Za-z0-9._-' '_'; }
 # 返回 0 = 词表可用。
 qq_risk_init() {
   local src="$QQBOT_OPT/sandbox/risk-words.txt" dst="$QQBOT_STATE/risk-words.txt"
+  local cfg="$QQBOT_STATE/risk-cfg" tmp
   mkdir -p "$QQBOT_STATE" 2>/dev/null
   if [ ! -s "$dst" ] && [ -s "$src" ]; then
     cp -f "$src" "$dst" 2>/dev/null
   fi
+  # 三个阈值同步给沙盒侧：沙盒里 source 不到这份 common.sh（那是 Termux 路径，
+  # proot 里看不见），它只能读状态目录里的文件。两份实现的规则必须一致，
+  # 否则宿主判「暂停」、沙盒判「继续重启」，风控根本没被拦住。
+  tmp="$cfg.$$"
+  printf 'WINDOW=%s\nHITS=%s\nTTL=%s\n' \
+    "$QQBOT_RISK_WINDOW" "$QQBOT_RISK_HITS" "$QQBOT_RISK_TTL" > "$tmp" 2>/dev/null \
+    && mv -f "$tmp" "$cfg" 2>/dev/null
+  rm -f "$tmp" 2>/dev/null
   [ -s "$dst" ]
 }
 
@@ -861,8 +886,8 @@ qq_risk_write() {
 # 只扫新增字节（偏移记在 risk-<id>.off），所以每 15 秒调一次也不费电；
 # 同一实例 60 秒内只写一次 risk.json（debounce 记在 risk-<id>.last）。
 qq_risk_scan() {
-  local logf="${1:-}" raw="${2:-}" id words flag off_f last_f word_f
-  local sz off cur word line2 _l2
+  local logf="${1:-}" raw="${2:-}" id words flag off_f last_f word_f hits_f
+  local sz off cur word line2 _l2 now n
   [ -n "$logf" ] && [ -n "$raw" ] && [ -f "$logf" ] || return 1
   id="$(qq_risk_id "$raw")"
   qq_risk_init || return 1
@@ -871,6 +896,7 @@ qq_risk_scan() {
   off_f="$QQBOT_STATE/risk-$id.off"
   last_f="$QQBOT_STATE/risk-$id.last"
   word_f="$QQBOT_STATE/risk-$id.word"
+  hits_f="$QQBOT_STATE/risk-$id.hits"
 
   sz=$(wc -c < "$logf" 2>/dev/null)
   case "$sz" in ''|*[!0-9]*) return 1 ;; esac
@@ -904,9 +930,34 @@ qq_risk_scan() {
     return 1
   fi
 
-  # 命中了：标记一定补上（幂等），risk.json 按 debounce 写。
-  : > "$flag" 2>/dev/null
+  # 命中了：先往 .hits 里记一笔时间戳（保留最近 20 条），再按「窗口内累计次数」
+  # 决定要不要暂停。窗口内的计数就是「最近 N 秒里记了几笔」——不用额外清理旧记录。
+  now=$(date +%s 2>/dev/null || echo 0)
+  printf '%s\n' "$now" >> "$hits_f" 2>/dev/null
+  if [ -s "$hits_f" ]; then
+    tail -n 20 "$hits_f" > "$hits_f.tmp" 2>/dev/null && mv -f "$hits_f.tmp" "$hits_f" 2>/dev/null
+  fi
+  rm -f "$hits_f.tmp" 2>/dev/null
+  # 计数按「不同秒」去重：宿主 watchdog 与沙盒 run-napcat 会同时扫同一份日志，
+  # 同一次命中可能被两边各记一笔（同一秒两行）。按行数算会把一次命中当两次，
+  # 于是「首次只告警」的阈值形同虚设 —— 实测 2 行日志就能触发暂停。
+  n=$(awk -v now="$now" -v w="$QQBOT_RISK_WINDOW" \
+        'NF && $1 ~ /^[0-9]+$/ && (now - $1) <= w { if ($1 != prev) { c++; prev = $1 } } END { print c + 0 }' \
+        "$hits_f" 2>/dev/null)
+  case "$n" in ''|*[!0-9]*) n=1 ;; esac
   printf '%s\n' "$word" > "$word_f" 2>/dev/null
+
+  if [ "$n" -lt "$QQBOT_RISK_HITS" ]; then
+    # 还没到阈值：只告警、不暂停，也不写 risk.json —— 红横幅上写着「已暂停自动重启」，
+    # 状态与实际不符比不提示更糟。继续重启比停下来安全：多数首命中是误报。
+    qq_risk_notify "实例 $raw 命中风控词「$word」（$QQBOT_RISK_WINDOW 秒内第 $n 次，累计 $QQBOT_RISK_HITS 次才暂停）"
+    qqlog "[risk] 实例 $raw 命中风控词「$word」，窗口内第 $n/$QQBOT_RISK_HITS 次，暂不暂停"
+    [ -f "$flag" ] && return 0
+    return 1
+  fi
+
+  # 到阈值了：标记一定补上（幂等），risk.json 按 debounce 写。
+  : > "$flag" 2>/dev/null
   cur=$(cat "$last_f" 2>/dev/null)
   case "$cur" in ''|*[!0-9]*) cur=0 ;; esac
   if [ "$cur" -gt 0 ] && [ $(( $(date +%s) - cur )) -lt 60 ]; then
@@ -949,11 +1000,42 @@ qq_risk_scan_all() {
   [ "$n" -gt 0 ]
 }
 
+# 把 TTL 秒数说成人话（600 → 「10 分钟」，21600 → 「6 小时」）。
+# 日志里出现「已超过 0 小时」会被当成 bug 报上来，宁可多这几行。
+qq_risk_ttl_text() {
+  local s="${1:-0}"
+  case "$s" in ''|*[!0-9]*) s=0 ;; esac
+  if [ "$s" -ge 3600 ] && [ $((s % 3600)) -eq 0 ]; then
+    printf '%s 小时' "$((s / 3600))"
+  elif [ "$s" -ge 60 ]; then
+    printf '%s 分钟' "$((s / 60))"
+  else
+    printf '%s 秒' "$s"
+  fi
+}
+
 # 该实例是否被风控暂停（原生层 riskClear() 删掉 flag 就恢复）。
+# v1.1.31 起带自动过期：flag 的 mtime 超过 QQBOT_RISK_TTL（默认 6 小时）就删掉
+# flag 与 risk.json，让看门狗重新开始尝试拉起 —— 否则一次误报会让实例永久停摆，
+# 用户只能自己点「我知道了」。用 mtime 而不是文件里的时间戳，是为了让老版本
+# 留下的空 flag（没有时间戳字段）也能自然过期。
 qq_risk_blocked() {
-  local id
-  id="$(qq_risk_id "${1:-}")"
-  [ -n "${1:-}" ] && [ -f "$QQBOT_STATE/risk-$id.flag" ]
+  local id f mt now ttl
+  [ -n "${1:-}" ] || return 1
+  id="$(qq_risk_id "$1")"
+  f="$QQBOT_STATE/risk-$id.flag"
+  [ -f "$f" ] || return 1
+  now=$(date +%s 2>/dev/null || echo 0)
+  mt=$(date -r "$f" +%s 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)
+  case "$mt" in ''|*[!0-9]*) mt=0 ;; esac
+  ttl="${QQBOT_RISK_TTL:-21600}"
+  case "$ttl" in ''|*[!0-9]*) ttl=21600 ;; esac
+  if [ "$mt" -gt 0 ] && [ "$now" -gt 0 ] && [ $((now - mt)) -ge "$ttl" ]; then
+    rm -f "$f" "$QQBOT_STATE/risk.json" 2>/dev/null
+    qqlog "[risk] 实例 $id 的风控暂停已超过 $(qq_risk_ttl_text "$ttl")，自动解除并恢复自动重启"
+    return 1
+  fi
+  return 0
 }
 
 # 当前所有被风控暂停的实例 id（一行一个），给 watchdog.sh 打日志用。
@@ -982,7 +1064,7 @@ qq_risk_clear() {
       rm -f "$f" 2>/dev/null
     fi
   done
-  rm -f "$QQBOT_STATE"/risk-*.flag "$QQBOT_STATE"/risk-*.last "$QQBOT_STATE"/risk-*.word 2>/dev/null
+  rm -f "$QQBOT_STATE"/risk-*.flag "$QQBOT_STATE"/risk-*.last "$QQBOT_STATE"/risk-*.word "$QQBOT_STATE"/risk-*.hits 2>/dev/null
   return 0
 }
 
@@ -992,6 +1074,191 @@ qq_risk_clear() {
 
 # JSON 字符串转义（和 qq_risk_esc 同一套规则，只是名字更通用，给新脚本复用）
 qq_json_esc() { qq_risk_esc "${1:-}"; }
+
+# ---------------------------------------------------------------------------
+# 上传日志脱敏（v1.1.31）
+#
+# 背景：错误报告是用户主动提交的，但报告里难免夹着真实账号。以前只把 bots.json
+# 的 token 打码，QQ 号、群号、手机号、二维码登录链接、本地 API Key 都会原样上传。
+#
+# 设计要点：
+#   * 只打「像凭据 / 账号」的片段。端口（6099/6185/6199）、文件大小、时间戳、
+#     行号、版本号必须原样保留 —— 它们是排查问题的关键，抹掉报告就白传了。
+#   * 一条规则一遍 sed，命中数单独统计：一次性大 sed 说不清改了几处，而用户需要
+#     那句「已脱敏 N 处」来判断这份报告还能不能帮我们定位问题。
+#   * 调用顺序有讲究：必须在 1.5 MB 截断**之后**再脱敏（截断会把最后一段切在半路，
+#     先脱敏再截断等于漏掉被切掉那部分里的命中数）。
+# ---------------------------------------------------------------------------
+qq_redact_file() {
+  local f="${1:-}" total=0 n pat rep rule
+  [ -n "$f" ] && [ -f "$f" ] || { printf '0'; return 1; }
+  while IFS= read -r rule; do
+    case "$rule" in ''|'#'*) continue ;; esac
+    pat=${rule%%@@*}
+    rep=${rule#*@@}
+    n=$(grep -a -o -E -e "$pat" "$f" 2>/dev/null | wc -l 2>/dev/null | tr -d ' \n')
+    case "$n" in ''|*[!0-9]*) n=0 ;; esac
+    if [ "$n" -gt 0 ]; then
+      # 不用 sed -i：个别机型上 sed -i 会重写 inode 与权限位，报告文件随后可能被
+      # 其它进程读不到。写临时文件再 mv，权限沿用原文件的。
+      if sed -E "s#$pat#$rep#g" "$f" > "$f.redact" 2>/dev/null; then
+        cat "$f.redact" > "$f" 2>/dev/null
+      fi
+      total=$((total + n))
+    fi
+  done <<'QQBOT_REDACT_RULES'
+"([A-Za-z_]*(token|secret|passw[a-z]*|api[_-]?key|apikey)[A-Za-z_]*)"[[:space:]]*:[[:space:]]*"[^"]*"@@"\1": "***"
+# WebUI token 还会以「散文」形式出现，JSON 规则抓不到：
+#   [napcat] 启动实例 bot1（WebUI 端口 6099，WebUI token zhuxin，日志 …）
+#   10-20 07:33:19 [info] [NapCat] [WebUi] WebUi Token: zhuxin
+# 这两行都是我们自己/上游打出来的，实测会整段进报告 —— token 是控制台密码，
+# 属于必须抹掉的一类。值里排除 * 是为了幂等：已经抹成 *** 的不会再被数一遍。
+([Ww]eb[Uu][Ii][[:space:]]*[Tt]oken[:：]?[[:space:]]*)[A-Za-z0-9._~+/=-]+@@\1***
+([Tt]oken[:：][[:space:]]*)[A-Za-z0-9._~+/=-]{6,}@@\1***
+(NAPCAT_WEBUI_SECRET_KEY|NAPCAT_WEBUI_JWT_SECRET_KEY|WEBUI_TOKEN|QQBOT_TOKEN)=[^[:space:]]+@@\1=***
+[Bb]earer[[:space:]]+[A-Za-z0-9._~+/=-]{8,}@@Bearer ***
+sk-[A-Za-z0-9_-]{8,}@@sk-***
+AIza[0-9A-Za-z_-]{10,}@@AIza***
+https?://txz\.qq\.com/p\?[^[:space:]"]+@@https://txz.qq.com/p?k=***
+([?&](token|access_token|key|secret|password)=)[^&[:space:]"]+@@\1***
+("(uin|qq|user_id|group_id|account|uin_list)"[[:space:]]*:[[:space:]]*"?)[0-9]{5,12}@@\1***
+(账号|群号|QQ号|用户号|uin|user_id|group_id)([[:space:]]*(:|：|=)[[:space:]]*)[0-9]{5,12}@@\1\2***
+(^|[^0-9])1[3-9][0-9]{9}([^0-9]|$)@@\1***\2
+[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}@@***@***
+QQBOT_REDACT_RULES
+  rm -f "$f.redact" 2>/dev/null
+  printf '%s' "$total"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# 组件版本自动获取（v1.1.31）
+#
+# 目的：内置常量（QQBOT_NAPCAT_VER / QQBOT_ASTRBOT_VER）只在发版时更新，用户装完
+# 就再也拿不到上游的新版本。这里问一次 GitHub releases/latest，缓存 24 小时。
+#
+# 三条硬规则：
+#   1. 任何一步失败都退回内置常量 —— 查版本是锦上添花，绝不能让它把部署搞挂。
+#   2. 只采信与内置常量**同大版本**的 tag。AstrBot 4.x 与 5.x 的资源布局、配置项都
+#      变过，自动跨大版本升级会把部署搞坏；要跨大版本就改内置常量再发版。
+#   3. 手动覆盖（QQBOT_NAPCAT_VER_OVERRIDE / QQBOT_ASTRBOT_VER_OVERRIDE）优先，
+#      灰度或回滚时不用等我们发新版。
+# ---------------------------------------------------------------------------
+
+# 读缓存字段：_qq_ver_cache_field <kind> <tag|ts>
+_qq_ver_cache_field() {
+  local k="${1:-}" fld="${2:-}"
+  [ -s "$QQBOT_VER_CACHE" ] || return 0
+  sed -n 's/.*"'"$k"'_'"$fld"'"[[:space:]]*:[[:space:]]*\("\([^"]*\)"\|\([0-9][0-9]*\)\).*/\2\3/p' \
+    "$QQBOT_VER_CACHE" 2>/dev/null | head -n 1
+}
+
+# 写缓存：保留另一类组件已有的值，只更新自己这一项。
+_qq_ver_cache_put() {
+  local k="${1:-}" t="${2:-}" s="${3:-0}" nt at nts ats tmp
+  nt=$(_qq_ver_cache_field napcat tag); [ -n "$nt" ] || nt="$QQBOT_NAPCAT_VER"
+  nts=$(_qq_ver_cache_field napcat ts); case "$nts" in ''|*[!0-9]*) nts=0 ;; esac
+  at=$(_qq_ver_cache_field astrbot tag); [ -n "$at" ] || at="$QQBOT_ASTRBOT_VER"
+  ats=$(_qq_ver_cache_field astrbot ts); case "$ats" in ''|*[!0-9]*) ats=0 ;; esac
+  case "$k" in
+    napcat)  nt="$t"; nts="$s" ;;
+    astrbot) at="$t"; ats="$s" ;;
+  esac
+  mkdir -p "$QQBOT_STATE" 2>/dev/null
+  tmp="$QQBOT_VER_CACHE.$$"
+  printf '{"napcat_tag":"%s","napcat_ts":%s,"astrbot_tag":"%s","astrbot_ts":%s}\n' \
+    "$(qq_json_esc "$nt")" "$nts" "$(qq_json_esc "$at")" "$ats" > "$tmp" 2>/dev/null \
+    && mv -f "$tmp" "$QQBOT_VER_CACHE" 2>/dev/null
+  rm -f "$tmp" 2>/dev/null
+  return 0
+}
+
+# 问一次 GitHub：_qq_ver_fetch <owner/repo>，输出 releases/latest 的原始 JSON（可能为空）。
+# 单独返回整段 JSON 而不是只取 tag：调用方还要用同一份响应核对「这个版本有没有我们要的
+# 资源文件」——AstrBot 的 tag 与 dashboard 资源必须成对存在，只信 tag_name 可能拼出一个
+# 404 的下载地址，用户会在部署到一半时莫名其妙失败。
+_qq_ver_fetch() {
+  local repo="${1:-}" api body
+  api="https://api.github.com/repos/$repo/releases/latest"
+  if command -v curl >/dev/null 2>&1; then
+    body=$(curl -fsSL --max-time 12 \
+      -H 'Accept: application/vnd.github+json' \
+      -H 'User-Agent: qqbot-sandbox' "$api" 2>/dev/null)
+  elif command -v wget >/dev/null 2>&1; then
+    body=$(wget -q -O - --timeout=12 \
+      --header='Accept: application/vnd.github+json' \
+      --header='User-Agent: qqbot-sandbox' "$api" 2>/dev/null)
+  fi
+  [ -n "$body" ] || return 0
+  printf '%s' "$body"
+}
+
+# 从 releases JSON 里取 tag_name（JSON 里的键顺序稳定，直接用 sed 抓第一个）
+_qq_ver_pick_tag() {
+  printf '%s' "${1:-}" \
+    | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1
+}
+
+# 该 JSON 的资源列表里是否有某个文件名（用 "name": "<file>" 精确匹配）
+_qq_ver_has_asset() {
+  local body="${1:-}" name="${2:-}"
+  [ -n "$body" ] && [ -n "$name" ] || return 1
+  printf '%s' "$body" | grep -F -q "\"$name\"" 2>/dev/null
+}
+
+# 组件最新版本：qq_latest_ver <napcat|astrbot>
+# 输出（stdout）：可直接拼进下载 URL 的 tag，例如 v4.18.38 / v4.29.1
+qq_latest_ver() {
+  local kind="${1:-}" builtin="" repo="" override="" cand="" ts=0 now bmaj cmaj body need
+  now=$(date +%s 2>/dev/null || echo 0)
+  case "$kind" in
+    napcat)
+      builtin="$QQBOT_NAPCAT_VER"; repo="NapNeko/NapCatQQ"; need="NapCat.Shell.zip"
+      override="${QQBOT_NAPCAT_VER_OVERRIDE:-}" ;;
+    astrbot)
+      builtin="$QQBOT_ASTRBOT_VER"; repo="AstrBotDevs/AstrBot"; need="__DASH__"
+      override="${QQBOT_ASTRBOT_VER_OVERRIDE:-}" ;;
+    *)
+      printf '%s' "$QQBOT_NAPCAT_VER"; return 1 ;;
+  esac
+  if [ -n "$override" ]; then
+    printf '%s' "$override"; return 0
+  fi
+  # 缓存命中（24 小时内）直接用，避免每次部署都打一次 GitHub（未登录 API 限流 60 次/小时）
+  ts=$(_qq_ver_cache_field "$kind" ts)
+  case "$ts" in ''|*[!0-9]*) ts=0 ;; esac
+  cand=$(_qq_ver_cache_field "$kind" tag)
+  if [ -n "$cand" ] && [ "$ts" -gt 0 ] && [ $((now - ts)) -lt "$QQBOT_VER_TTL" ]; then
+    printf '%s' "$cand"; return 0
+  fi
+  body=$(_qq_ver_fetch "$repo")
+  cand=$(_qq_ver_pick_tag "$body")
+  # 只接受 vX.Y.Z 且与内置常量同大版本（跨大版本升级会改动配置项与资源布局，必须发版）
+  case "$cand" in v[0-9]*) ;; *) cand="" ;; esac
+  if [ -n "$cand" ]; then
+    bmaj=$(printf '%s' "$builtin" | sed -n 's/^v\([0-9][0-9]*\).*/\1/p')
+    cmaj=$(printf '%s' "$cand" | sed -n 's/^v\([0-9][0-9]*\).*/\1/p')
+    [ -n "$bmaj" ] && [ "$bmaj" = "$cmaj" ] || cand=""
+  fi
+  # 资源核对：没有对应的安装包就宁可用内置版本，也不要拼一个 404 的地址
+  if [ -n "$cand" ]; then
+    case "$need" in
+      __DASH__) need="AstrBot-$cand-dashboard.zip" ;;
+    esac
+    _qq_ver_has_asset "$body" "$need" || {
+      [ -n "$cand" ] && qqlog "[ver] $kind $cand 没有 $need，继续用内置 $builtin"
+      cand=""
+    }
+  fi
+  if [ -n "$cand" ]; then
+    _qq_ver_cache_put "$kind" "$cand" "$now"
+    printf '%s' "$cand"; return 0
+  fi
+  # 查询失败：不清缓存里已有的值（可能是上一次成功的结果），但要按内置常量返回，
+  # 免得把一个来路不明的空值写进 URL。
+  printf '%s' "$builtin"
+  return 0
+}
 
 # AstrBot 的数据目录（宿主侧路径）。真机上 AstrBot 装在 rootfs 的 /opt/AstrBot，
 # 数据就在 /opt/AstrBot/data（run-astrbot.sh:32 cd /opt/AstrBot，60-astrbot.sh:211

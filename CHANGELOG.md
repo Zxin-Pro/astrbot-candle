@@ -11,6 +11,57 @@
 
 ---
 
+## [1.1.31] - 2026-10-20
+
+这一版四个改动，都是「出事时少踩坑」和「装好之后不用管」这两类：
+
+### 修复
+
+- **上报日志整份脱敏**：以前只把 `bots.json` 里的 token 抹掉，其余账号、群号、
+  令牌、二维码链接原样上传。现在 `common.sh` 新增 `qq_redact_file`，在
+  **1.5 MB 截断之后**统一过一遍规则表：JSON 里的 `token / secret / password /
+  api_key`、`Authorization: Bearer`、`sk-` 开头的 key、`AIza` 开头的 Google key、
+  `https://txz.qq.com/p?k=`、URL 里的 `?token=&access_token=&key=`、`uin / qq /
+  user_id / group_id / 账号 / 群号` 后面的 5–12 位数字、大陆手机号、邮箱，
+  以及 NapCat 自己打的两处散文形态 `WebUI token xxx` / `[WebUi] WebUi Token: xxx`
+  和 `NAPCAT_WEBUI_SECRET_KEY=xxx` 这类环境变量。
+  **端口、文件大小、时间戳、sha256 一律保留**（排障要用的东西不能抹），上传成功后
+  回显「报告已脱敏 N 处」。实测一份 534 KB 的报告命中 6 处，人工核对无泄露。
+
+### 变更
+
+- **风控从「命中即停」改成滑动窗口**：以前日志里出现一个风控词就立刻暂停自动重启，
+  网络抖一下、NapCat 打一行无害提示都会误伤。现在按
+  `QQBOT_RISK_WINDOW`（默认 600 秒）窗口内累计 `QQBOT_RISK_HITS`（默认 2 次）
+  才真正暂停：第一次只写日志 + 通知，不改状态；`risk-<id>.hits` 存最近 20 笔时间戳。
+  窗口计数**按不同秒去重**——宿主看门狗和沙盒守护会同时扫同一份日志，同一次命中
+  可能各记一笔，按行数算等于把阈值砍半（这个 bug 是实测抓到的：注入 2 行日志
+  计出 4 次）。
+- **风控暂停会自己过期**：`risk-<id>.flag` 的 mtime 超过 `QQBOT_RISK_TTL`
+  （默认 21600 秒 = 6 小时）就自动删 flag 与 `risk.json`，恢复自动重启，
+  不用手动去「我知道了」。读不到 mtime 时绝不误删（fail-closed）。
+  `qq_risk_clear()` 一并清 `risk-<id>.hits`。
+- **局域网访问开关**：默认仍然只监听 `127.0.0.1`。设置页新增一张卡，打开后写
+  `$HOME/.qqbot/state/lan.on`，重启服务后 AstrBot 控制台监听 `0.0.0.0:6185`、
+  NapCat WebUI 监听 `[::]:6099`（`webui.json` 的 `host` 自己写，不再删文件重建）；
+  关掉即回到本机。OneBot 的 6199 不受影响（那是 NapCat 自己 bind 的）。
+- **组件版本自动获取**：`common.sh` 新增 `qq_latest_ver napcat|astrbot`，查
+  GitHub Releases 的 `tag_name`，缓存 24 小时到 `state/versions.json`；
+  采纳前先核对资源名（NapCat 要有 `NapCat.Shell.zip`，AstrBot 要有
+  `AstrBot-<tag>-dashboard.zip`），缺了就退回内置版本并记一行日志——
+  **查不到绝不让部署失败**。只接受与内置版本同大版本的 tag；
+  `QQBOT_NAPCAT_VER_OVERRIDE` / `QQBOT_ASTRBOT_VER_OVERRIDE` 仍可强制指定。
+  `steps/50-napcat.sh` 与 `steps/60-astrbot.sh` 改用查到的版本拼下载地址，
+  AstrBot 的源码包与控制台前端保证同一个 tag。
+
+### 说明
+
+- 设置页的局域网开关旁写明「改完需要重启服务生效（更多 → 重启）」；开关状态
+  不进 `bots.json`（那份文件按白名单重建，会被丢掉）。
+- 脱敏规则表在 `build/opt/qqbot/common.sh` 的 `QQBOT_REDACT_RULES`，要加词直接
+  在表里追加一行 `模式@@替换`，格式是 POSIX ERE。
+- 本版 `bash -n` 全过（36 个脚本），`index.html` 两段内联脚本 `node --check` 过。
+
 ## [1.1.30] - 2026-10-19
 
 NapCat 在真机上跑稳之后，这一版补齐「装得上、看得懂、断了自己能爬回来」的一整套：

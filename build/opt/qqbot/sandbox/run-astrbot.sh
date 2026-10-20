@@ -25,6 +25,18 @@ if [ "$ASTRBOT_PORT" -lt 1 ] || [ "$ASTRBOT_PORT" -gt 65535 ]; then
   ASTRBOT_PORT=6185
 fi
 export DASHBOARD_PORT="$ASTRBOT_PORT"
+# 局域网访问开关（v1.1.31）：宿主设置页写/删 /qqbot-state/lan.on，这里转成
+# DASHBOARD_HOST 传给 AstrBot。AstrBot 的解析顺序是
+#   DASHBOARD_HOST > ASTRBOT_DASHBOARD_HOST > cmd_config.json 的 dashboard.host
+# 所以只要这里 export 了就以它为准，不用去改 AstrBot 自己的配置文件
+# （那是运行时会回写的文件，从外面改要跟它抢锁）。
+# 默认 127.0.0.1：控制台有登录密码，但没必要时不该出现在局域网里。
+if [ -f /qqbot-state/lan.on ]; then
+  export DASHBOARD_HOST="0.0.0.0"
+  echo "[astrbot] 局域网访问已开启（监听 0.0.0.0）"
+else
+  export DASHBOARD_HOST="127.0.0.1"
+fi
 mkdir -p /qqbot-cache/logs
 export HOME=/root
 # 固定控制台初始密码（须满足 >=8 位且含大写/小写/数字，见 astrbot/core/utils/auth_password.py）

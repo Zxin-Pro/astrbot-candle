@@ -159,6 +159,17 @@ if [ "${SZ:-0}" -gt 1572864 ]; then
   SZ=$(wc -c < "$TMP" 2>/dev/null || echo 0)
 fi
 
+# ---- 1.5) 整份脱敏（v1.1.31）----
+# 必须放在截断之后：先脱敏再截断的话，被切掉那一段里的命中数统计不到，
+# 而且截断点可能正好落在一串被打码的字符中间。
+# 端口、文件大小、时间戳、版本号都不在规则里，原样保留 —— 排查全靠它们。
+N_RED=0
+if type qq_redact_file >/dev/null 2>&1; then
+  N_RED=$(qq_redact_file "$TMP" 2>/dev/null)
+fi
+case "${N_RED:-0}" in ''|*[!0-9]*) N_RED=0 ;; esac
+SZ=$(wc -c < "$TMP" 2>/dev/null || echo 0)
+
 if ! have curl; then
   echo "上传失败：这台手机的 Termux 里没有 curl（第 1 步没装完？）"
   exit 2
@@ -174,6 +185,11 @@ CURLRC=$?
 
 if [ "$CODE" = "200" ] || [ "$CODE" = "201" ]; then
   echo "已上传，编号 $RID（$(grep -o "\"id\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" "$OUT" 2>/dev/null | head -n 1)）"
+  if [ "$N_RED" -gt 0 ]; then
+    echo "报告已脱敏 $N_RED 处（账号 / 群号 / 手机号 / 邮箱 / 令牌 / 二维码链接）。"
+  else
+    echo "报告里没有发现需要脱敏的内容。"
+  fi
   echo "作者会很感谢你 —— 报告里带了机型、系统版本和部署日志尾部。"
   exit 0
 fi

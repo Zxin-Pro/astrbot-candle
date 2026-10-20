@@ -53,11 +53,37 @@ log() { echo "[napcat] $*"; }
 # 前进不后退（取大），所以双写既不会漏报，也不会把旧事件重报一遍。
 risk_id() { printf '%s' "${1:-}" | tr -c 'A-Za-z0-9._-' '_'; }
 
-# 该实例是否处于风控暂停态（原生 riskClear() 删掉 flag 就恢复）
+# 三个阈值：宿主 qq_risk_init() 每次启动会写 /qqbot-state/risk-cfg（KEY=VALUE），
+# 沙盒 source 不到宿主 common.sh，只能从这里读。读不到就用和宿主一样的默认值。
+risk_cfg() {
+  local k="${1:-}" v=""
+  [ -s /qqbot-state/risk-cfg ] || return 0
+  v=$(sed -n "s/^$k=//p" /qqbot-state/risk-cfg 2>/dev/null | head -n 1 | tr -d ' \r')
+  case "$v" in ''|*[!0-9]*) return 0 ;; esac
+  printf '%s' "$v"
+}
+risk_window() { local v; v=$(risk_cfg WINDOW); printf '%s' "${v:-600}"; }
+risk_hits()   { local v; v=$(risk_cfg HITS);   printf '%s' "${v:-2}"; }
+risk_ttl()    { local v; v=$(risk_cfg TTL);    printf '%s' "${v:-21600}"; }
+
+# 该实例是否处于风控暂停态。带自动过期：flag 的 mtime 超过 TTL 就删掉 flag 与
+# risk.json，让看门狗重新尝试拉起 —— 否则一次误报会让实例永久停摆。
 risk_blocked() {
-  local i
+  local i f mt now ttl
   i=$(risk_id "${1:-}")
-  [ -n "${1:-}" ] && [ -f "$STATE_DIR/risk-$i.flag" ]
+  [ -n "${1:-}" ] || return 1
+  f="$STATE_DIR/risk-$i.flag"
+  [ -f "$f" ] || return 1
+  now=$(date +%s 2>/dev/null || echo 0)
+  mt=$(date -r "$f" +%s 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)
+  case "$mt" in ''|*[!0-9]*) mt=0 ;; esac
+  ttl=$(risk_ttl)
+  if [ "$mt" -gt 0 ] && [ "$now" -gt 0 ] && [ $((now - mt)) -ge "$ttl" ]; then
+    rm -f "$f" "$STATE_DIR/risk.json" 2>/dev/null
+    log "[risk] 实例 $i 的风控暂停已过期（>${ttl}s），自动解除"
+    return 1
+  fi
+  return 0
 }
 
 # 命中的词（给日志文案用；可能为空）
@@ -100,8 +126,31 @@ risk_scan() {
   [ "$sz" -gt "$cur" ] && echo "$sz" > "$STATE_DIR/risk-$id.off" 2>/dev/null
   [ -n "$w" ] || { risk_blocked "$raw" && return 0; return 1; }
 
-  : > "$STATE_DIR/risk-$id.flag" 2>/dev/null
+  # 命中一次先记账：/qqbot-state/risk-<id>.hits 里每行一个时间戳，只留最近 20 行。
+  # 窗口内的次数就是「最近 N 秒记了几笔」。规则必须和宿主 qq_risk_scan() 一致 ——
+  # 两边同时扫同一份日志，判据不同就会出现宿主说「已暂停」、沙盒继续重启的情况。
+  local hits_f now n
+  hits_f="$STATE_DIR/risk-$id.hits"
+  now=$(date +%s 2>/dev/null || echo 0)
+  printf '%s\n' "$now" >> "$hits_f" 2>/dev/null
+  if [ -s "$hits_f" ]; then
+    tail -n 20 "$hits_f" > "$hits_f.tmp" 2>/dev/null && mv -f "$hits_f.tmp" "$hits_f" 2>/dev/null
+  fi
+  rm -f "$hits_f.tmp" 2>/dev/null
+  # 窗口计数按「不同秒」去重 —— 宿主 watchdog 与我们这份实现会同时扫同一份日志，
+  # 同一次命中可能各记一笔（同一秒两行），按行数算等于把阈值砍半。
+  n=$(awk -v now="$now" -v w="$(risk_window)" \
+        'NF && $1 ~ /^[0-9]+$/ && (now - $1) <= w { if ($1 != prev) { c++; prev = $1 } } END { print c + 0 }' \
+        "$hits_f" 2>/dev/null)
+  case "$n" in ''|*[!0-9]*) n=1 ;; esac
   printf '%s\n' "$w" > "$STATE_DIR/risk-$id.word" 2>/dev/null
+  if [ "$n" -lt "$(risk_hits)" ]; then
+    log "[risk] 实例 $raw 命中风控词「$w」，窗口内第 $n/$(risk_hits) 次，暂不暂停"
+    risk_blocked "$raw" && return 0
+    return 1
+  fi
+
+  : > "$STATE_DIR/risk-$id.flag" 2>/dev/null
   # 60 秒内只写一次 risk.json（原生层靠它弹通知）；标记本身每轮都补，幂等。
   cur=$(cat "$STATE_DIR/risk-$id.last" 2>/dev/null)
   case "$cur" in ''|*[!0-9]*) cur=0 ;; esac
@@ -182,6 +231,42 @@ if os.path.exists(cfg):
     os.remove(cfg)
 json.dump(d, open(cfg, 'w', encoding='utf-8'), indent=2, ensure_ascii=False)
 print('[napcat] OneBot 配置 %s -> ws://127.0.0.1:%d/ws' % (cfg, oport))
+PY
+}
+
+# ---------- 写 WebUI 配置（局域网开关，v1.1.31） ----------
+# 以前是每次启动删掉 webui.json 让 NapCat 自己按环境变量重建。但「只监听 127.0.0.1」
+# 这件事没法用环境变量表达 —— NapCat 的 host 只认配置文件。所以改成自己写：
+#   * state/lan.on 存在（宿主 /qqbot-state/lan.on）→ host "::"（IPv6 通配，同时吃 IPv4，
+#     手机与电脑在同一局域网时可以直接用手机 IP 访问控制台 / WebUI）；
+#   * 不存在 → "127.0.0.1"，只有本机能连，这是默认值。
+# token / 端口仍以 bots.json 为准（由调用方传进来），token 为空时写空串（NapCat 会用
+# 环境变量里的 NAPCAT_WEBUI_SECRET_KEY 覆盖，两者保持一致就行）。
+write_webui() {
+  local cdir="$1" port="$2" token="$3" lan="$4"
+  python3 - "$cdir" "$port" "$token" "$lan" <<'PY'
+import json, os, sys
+cdir, port, token, lan = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
+host = '::' if lan == '1' else '127.0.0.1'
+os.makedirs(cdir, exist_ok=True)
+cfg = os.path.join(cdir, 'webui.json')
+d = {}
+# 保留用户可能在 WebUI 里改过的其它键（loginRate、autoLoginAccount 等）
+if os.path.exists(cfg):
+    try:
+        d = json.load(open(cfg, encoding='utf-8-sig'))
+    except Exception:
+        d = {}
+d['host'] = host
+d['port'] = port
+d['token'] = token
+if not isinstance(d.get('loginRate'), int) or d.get('loginRate') <= 0:
+    d['loginRate'] = 3
+# 先删再写：QQ 目录是硬链接复制的，直接覆盖会串到别的实例
+if os.path.exists(cfg):
+    os.remove(cfg)
+json.dump(d, open(cfg, 'w', encoding='utf-8'), indent=2, ensure_ascii=False)
+print('[napcat] WebUI 监听 %s:%d（局域网%s）' % (host, port, '已开启' if lan == '1' else '关闭'))
 PY
 }
 
@@ -694,8 +779,9 @@ PY
     fi
   fi
 
-  # 每次启动都删掉这两个文件，让 NapCat 按本实例的 token 与端口重新生成
-  rm -f "$CONF/webui.json" "$CONF/onebot11.json"
+  # onebot11.json 每次启动都删掉重建（内容完全由本实例的端口决定）；
+  # webui.json 不再删 —— v1.1.31 起由下面的 write_webui 自己写，好带上局域网开关。
+  rm -f "$CONF/onebot11.json"
   mkdir -p "$INSTHOME"
   EXTRA="--user-data-dir=$INSTHOME/.config/QQ"
   # QQ 的「能活下来」的参数阶梯，见下面启动段的长注释。
@@ -775,11 +861,19 @@ PY
 
   write_onebot "$CONF" "$op"
 
+  # 局域网访问开关：宿主设置页会建/删 /qqbot-state/lan.on（沙盒里就是 state 目录）。
+  _lan=0
+  [ -f /qqbot-state/lan.on ] && _lan=1
+
   # token 与 WebUI 端口都以 bots.json 里「本实例」的字段为准（多实例各用各的 token，
   # 不是写死的常量）。解析失败 / 字段缺失时退回上面 read_bots 解析好的值，
   # 那个兜底值本身就是 zhuxin / 6099（或 bots.json 里的真实值），所以不会退化。
   tok=$(napcat_inst_value "$id" token "$tok")
   np=$(napcat_inst_value "$id" napcatPort "$np")
+
+  # 容器起来时 NapCat 的 host 还没定，这里按开关写死，避免它默认只监听 127.0.0.1
+  # 而用户以为「开了开关就能连」。
+  write_webui "$CONF" "$np" "$tok" "$_lan"
 
   # 本实例的 QQ 号（uin）：config/napcat_<uin>.json 存在时 NapCat 会优先用它，
   # 所以 write_napcat 需要它来一并合并。拿不到就传空，那边会跳过这一步并打一行日志。
