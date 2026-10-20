@@ -1386,6 +1386,1031 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 }
 
 
+/* ==========================================================================
+   v3 视觉层 · 克制的精确（Quiet Precision）
+   ---------------------------------------------------------------------------
+   为什么再改一次：v2 那套「玻璃 + 状态色铺满」在真机上是错的。截图里能数出四条：
+     1) 绿色到处都是 —— 顶栏 4 个绿胶囊、引导 4 个绿勾、状态栏 4 个绿数字，
+        颜色不再表示任何东西，只剩噪声；
+     2) 公告（蓝紫）/ 崩溃（棕）/ 省电（橙黄）三张不同底色的卡摞在一起，
+        像十年前的通知栏；
+     3) 一行五个按钮三种处理（绿实心 + 三个描边 + 红实心），没有主次；
+     4) 卡片和画布亮度差太小，一堆卡片浮在雾里，看不出「面」。
+
+   这一层只做四件事：**把颜色收回来、把层级拉开、把字号分清、把留白给足。**
+
+   四条硬规则（改样式前先读）：
+     1) 状态色只许出现在 ≤8px 的点、或真正的异常文字上。不铺底、不描边、不发光。
+     2) 一屏最多一个实心强调按钮，其余一律幽灵。危险操作用红描边，不用红实心。
+     3) 面的层级靠「亮度差 + 1px 描边」，不靠阴影和光晕。没有背景图时几乎不用 blur。
+     4) 圆角收成三档：卡 16 / 控件 10 / 小件 8。软边不等于高级，节制才是。
+   ========================================================================== */
+
+
+/* ---------- 一、令牌（浅色）：同一套骨架，只是把「面」反过来 ----------
+   浅色下「实心面」是白色，「画布」要压到比卡片暗一档，卡片才会浮起来。
+   这条和暗色正好相反 —— 暗色靠提亮卡片，浅色靠压暗画布。 */
+:root{
+  --bg:#f3f4f6;
+  --bg-glow-1:radial-gradient(120% 70% at 50% -20%, rgba(255,255,255,.9), rgba(255,255,255,0) 60%);
+  --bg-glow-2:none;
+  --bg-veil:linear-gradient(180deg, rgba(243,244,246,.94), rgba(240,242,245,.965));
+
+  --txt:#0f172a; --txt-2:#5a6474; --txt-3:#8a94a4;
+  --h1:#0b1220; --h2:#111827; --v:#0f172a; --tv:#0f172a;
+  --prn:#111827; --dsum:#3c4a63; --hint-b:#46536b; --slow:#7b8798;
+  --pill-txt:#5a6474;
+
+  --line:rgba(15,23,42,.085);
+  --line-2:rgba(15,23,42,.135);
+  --line-3:rgba(15,23,42,.20);
+  --surface:rgba(15,23,42,.035);
+  --surface-2:rgba(15,23,42,.055);
+  --press:rgba(15,23,42,.05);
+
+  --ok:#1f9d63; --warn:#a5701a; --bad:#c44a5c;
+  --ok-line:rgba(31,157,99,.30);   --ok-bg:transparent;
+  --warn-line:rgba(165,112,26,.30); --warn-bg:transparent;
+  --bad-line:rgba(196,74,92,.30);  --bad-bg:transparent;
+
+  --accent:#2563eb;
+  --acc-txt:#1d4ed8; --acc-line:rgba(37,99,235,.28);
+  --acc-bg:rgba(37,99,235,.08); --acc-line-2:rgba(37,99,235,.20); --acc-bg-2:rgba(37,99,235,.05);
+  --tag-on-txt:#1d4ed8;
+
+  /* 强调文字（按钮里的字）：浅色下必须用深蓝，浅蓝在白底上读不清 */
+  --acc-ink:#1d4ed8;
+  --acc-ink-2:#2563eb;
+
+  --card-bg:#ffffff;
+  --card-gloss:none;
+  --card-solid:#ffffff;
+  --tile-bg:rgba(15,23,42,.022);
+
+  --sh-1:0 1px 2px rgba(15,23,42,.06);
+  --sh-2:0 10px 30px -12px rgba(15,23,42,.18);
+
+  --hdr-bg:rgba(255,255,255,.93);
+  --hdr-sh:none;
+  --nav-bg:rgba(255,255,255,.96);
+  --nav-sh:0 1px 0 rgba(15,23,42,.05) inset;
+
+  --btn-bg:rgba(15,23,42,.045);
+  --btn-sh:none;
+  --pri-bg:#2563eb; --pri-line:rgba(37,99,235,.30);
+  --pri-sh:none;
+
+  --pill-bg:transparent;
+  --pill-gloss:none;
+
+  --bar-bg:rgba(15,23,42,.08);
+  --bar-sh:none;
+  --bar-fill:#2563eb;
+
+  --tgl-bg:rgba(15,23,42,.10);
+  --tgl-line:rgba(15,23,42,.10);
+  --tgl-sh:none;
+  --tgl-knob:#ffffff;
+  --tgl-knob-sh:0 1px 2px rgba(15,23,42,.28);
+  --tgl-off-knob:#ffffff;
+  --tgl-on-bg:#2563eb;
+  --tgl-on-line:rgba(37,99,235,.35);
+  --tgl-on-sh:none;
+  --tgl-on-knob:#ffffff;
+
+  --r-xs:8px; --r-sm:10px; --r-md:12px; --r-lg:16px; --r-xl:20px;
+  --dur:.14s; --dur-2:.22s;
+}
+
+:root[data-theme="dark"]{
+  --acc-ink:#b9cdff;
+  --acc-ink-2:#9dbcff;
+}
+
+/* ---------- 一、令牌：近单色，颜色让位 ---------- */
+:root[data-theme="dark"]{
+  /* 画布：中性墨黑。背景的职责是退后，一点蓝紫都不留。 */
+  --bg:#0a0b0e;
+  --bg-glow-1:radial-gradient(120% 70% at 50% -20%, rgba(255,255,255,.045), rgba(255,255,255,0) 60%);
+  --bg-glow-2:none;
+  --bg-veil:linear-gradient(180deg, rgba(10,11,14,.66), rgba(6,7,9,.78));
+
+  /* 文字：主 16:1 / 次 8:1 / 三 5:1 */
+  --txt:#f2f4f8; --txt-2:#9aa3b2; --txt-3:#6d7686;
+  --h1:#f7f9fd; --h2:#e8ecf3; --v:#eef1f7; --tv:#f2f4f8;
+  --prn:#e8ecf3; --dsum:#9fb0cf; --hint-b:#aab9d6; --slow:#8d97a8;
+  --pill-txt:#a8b1c0;
+
+  /* 描边：只留两级，够用就行 */
+  --line:rgba(255,255,255,.075);
+  --line-2:rgba(255,255,255,.115);
+  --line-3:rgba(255,255,255,.18);
+  --surface:rgba(255,255,255,.035);
+  --surface-2:rgba(255,255,255,.06);
+  --press:rgba(255,255,255,.05);
+
+  /* 状态色：降饱和，且只当「点」用。---- 它们不再出现在大字里 ---- */
+  --ok:#4fbf8f; --warn:#d9a24a; --bad:#e0707f;
+  --ok-line:rgba(79,191,143,.28);   --ok-bg:transparent;
+  --warn-line:rgba(217,162,74,.28); --warn-bg:transparent;
+  --bad-line:rgba(224,112,127,.28); --bad-bg:transparent;
+
+  /* 主色：只有一个。大面积铺色是廉价的根源，只给按钮和选中态。 */
+  --accent:#5b8cff;
+  --acc-txt:#9dbcff; --acc-line:rgba(91,140,255,.34);
+  --acc-bg:rgba(91,140,255,.12); --acc-line-2:rgba(91,140,255,.26); --acc-bg-2:rgba(91,140,255,.07);
+  --tag-on-txt:#a9c4ff;
+
+  /* 面：卡片是一块实心的面，不是一层雾 */
+  --card-bg:rgba(20,22,27,.92);
+  --card-gloss:none;
+  --card-solid:linear-gradient(180deg, rgba(22,24,30,.97), rgba(16,18,23,.97));
+  --tile-bg:rgba(255,255,255,.022);
+
+  /* 阴影：只留一圈很浅的接触影，不要四向发光 */
+  --sh-1:0 1px 2px rgba(0,0,0,.34);
+  --sh-2:0 8px 28px -10px rgba(0,0,0,.62);
+
+  /* 顶栏 / 底栏：压成实心，不做渐变玻璃 */
+  --hdr-bg:rgba(10,11,14,.88);
+  --hdr-sh:none;
+  --nav-bg:rgba(13,14,18,.94);
+  --nav-sh:0 1px 0 rgba(255,255,255,.055) inset;
+
+  /* 按钮：默认幽灵。只有 .primary 是实心。 */
+  --btn-bg:rgba(255,255,255,.055);
+  --btn-sh:none;
+  --pri-bg:#3f6ee0; --pri-line:rgba(255,255,255,.14);
+  --pri-sh:0 1px 2px rgba(0,0,0,.34);
+
+  /* 胶囊：透明底 + 细描边，颜色只给点 */
+  --pill-bg:transparent;
+  --pill-gloss:none;
+
+  /* 进度条：纯色，不要蓝绿渐变 */
+  --bar-bg:rgba(255,255,255,.07);
+  --bar-sh:none;
+  --bar-fill:#5b8cff;
+
+  /* 开关 / 分段 / 弹窗 / 实例卡 */
+  --tgl-on-bg:#3f9c74; --tgl-on-line:rgba(79,191,143,.34);
+  --tgl-on-sh:none;
+  --seg-bg:rgba(255,255,255,.045); --seg-line:var(--line);
+  --seg-on-bg:rgba(255,255,255,.10); --seg-on-sh:none;
+  --dlg-bg:linear-gradient(180deg, rgba(24,26,32,.98), rgba(17,19,24,.98));
+  --dlg-solid:linear-gradient(180deg,#191b21,#131519);
+  --dlg-sh:0 24px 60px -16px rgba(0,0,0,.72);
+  --bot-bg:rgba(255,255,255,.03);
+  --bot-sh:none;
+  --bot-active-line:rgba(91,140,255,.40);
+  --bot-active-sh:none;
+
+  /* 圆角：收成三档 */
+  --r-xs:8px; --r-sm:10px; --r-md:12px; --r-lg:16px; --r-xl:20px;
+
+  /* 动效：更快、更短，克制 */
+  --dur:.14s; --dur-2:.22s;
+}
+
+/* 浅色下的 hero 卡：v2 那条蓝色渐变铺到卡片 46% 高度，
+   卡片又是半透明白，结果整张卡连同里面的格都泛淡紫。
+   收成顶部 30% 而且更淡，只当一层「这里有品牌色」的提示。 */
+:root:not([data-theme="dark"]) .card.hero{
+  background:linear-gradient(180deg, rgba(37,99,235,.032), rgba(37,99,235,0) 30%), var(--card-bg);
+}
+
+/* 设置页分段控件：未选中的两档是「可选项」不是注释，
+   用次级色，别用 --txt-3 */
+.seg button{color:var(--txt-2)}
+.seg button.on{color:var(--txt)}
+
+/* ---------- 二、顶栏：标题立起来，状态压下去 ---------- */
+header{
+  padding:16px 18px 12px;
+  background:var(--hdr-bg);
+  border-bottom:1px solid var(--line);
+  box-shadow:none;
+  -webkit-backdrop-filter:blur(14px) saturate(115%);backdrop-filter:blur(14px) saturate(115%);
+}
+header h1{
+  font-size:19px;font-weight:600;letter-spacing:-.012em;line-height:1.25;
+}
+header .sub{
+  margin-top:3px;font-size:11.5px;font-weight:400;color:var(--txt-3);
+  letter-spacing:.005em;
+}
+header .mark{
+  width:34px;height:34px;border-radius:10px;
+  background:var(--pri-bg);box-shadow:none;
+}
+
+/* 状态胶囊：透明底、细描边、灰字，颜色只留在那个 6px 的点上 */
+.pills{margin-top:12px;gap:7px}
+.pill{
+  gap:6px;padding:4px 9px 4px 8px;
+  font-size:11px;font-weight:500;letter-spacing:.01em;
+  color:var(--pill-txt);
+  background:transparent;
+  border:1px solid var(--line);
+  border-radius:var(--r-xs);
+  box-shadow:none;
+  -webkit-backdrop-filter:none;backdrop-filter:none;
+}
+.pill::before{
+  width:5px;height:5px;border-radius:50%;
+  background:var(--txt-3);box-shadow:none;opacity:.75;
+}
+.pill.ok,.pill.bad,.pill.warn,.pill.mute{
+  color:var(--pill-txt);background:transparent;border-color:var(--line);
+}
+.pill.ok::before{background:var(--ok);opacity:1;animation:none}
+.pill.bad::before{background:var(--bad);opacity:1}
+.pill.warn::before{background:var(--warn);opacity:1}
+.pill.mute::before{background:var(--txt-3);opacity:.5}
+
+/* ---------- 三、卡片：一块实心的面 ---------- */
+main{padding:14px 16px 16px}
+.card{
+  margin-bottom:10px;padding:16px;
+  border-radius:var(--r-lg);
+  background:var(--card-bg);
+  border:1px solid var(--line);
+  box-shadow:var(--sh-1);
+  -webkit-backdrop-filter:none;backdrop-filter:none;
+}
+.card::before{content:none}
+/* 卡片标题故意「退后」：小一号、加字距、用次级灰。
+   内容才是主角，标题只是分区标签 —— 层级反过来，界面立刻不像后台模板。 */
+.card h2{
+  margin:0 0 12px;font-size:11.5px;font-weight:600;color:var(--txt-3);
+  letter-spacing:.07em;line-height:1.4;
+}
+.card h2 .dot{display:none}
+.card.hero{
+  background:var(--card-bg);
+  border-color:var(--line-2);
+  box-shadow:var(--sh-1);
+}
+.card.hero h2{font-size:13px}
+
+/* 有背景图时退回半透明，但保持可读性 */
+body.hasimg .card{background:rgba(14,16,20,.72)}
+body.hasimg .card.hero{background:rgba(14,16,20,.76)}
+
+/* ---------- 四、状态格：字更大、点更小 ---------- */
+.tiles{gap:10px;margin-top:0}
+.tile{
+  min-height:0;padding:13px 14px;
+  border-radius:var(--r-md);
+  background:var(--tile-bg);
+  border:1px solid var(--line);
+  box-shadow:none;
+  transition:border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.tile .tt{
+  font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--txt-3);
+}
+.tile .tt::before{
+  content:"";width:5px;height:5px;border-radius:50%;
+  background:var(--txt-3);opacity:.45;flex:0 0 auto;
+}
+.tile.ok .tt::before{background:var(--ok);opacity:1}
+.tile.warn .tt::before{background:var(--warn);opacity:1}
+.tile.bad .tt::before{background:var(--bad);opacity:1}
+.tile.mute .tt::before{background:var(--txt-3);opacity:.4}
+
+.tile .tv,.tile.ok .tv{
+  margin-top:auto;padding-top:10px;
+  font-size:17px;font-weight:600;letter-spacing:-.022em;
+  color:var(--txt);line-height:1.2;
+}
+.tile.warn .tv{color:var(--warn)}
+.tile.bad .tv{color:var(--bad)}
+.tile.mute .tv{color:var(--txt-3)}
+.tile .tp{font-size:10.5px;color:var(--txt-3);margin-top:4px;opacity:.8}
+
+/* 今日概览：数字大、标签小，靠对比分层 */
+.today{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+.today-grid{gap:14px 12px}
+.tlabel{font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--txt-3)}
+.tval{font-size:17px;font-weight:600;letter-spacing:-.024em;color:var(--txt)}
+
+/* ---------- 五、键值行 ---------- */
+.row{padding:9px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:none}
+.k{font-size:12.5px;color:var(--txt-3);font-weight:400}
+.v{font-size:13px;color:var(--txt);font-weight:500}
+
+/* ---------- 六、按钮：一个实的，其余都是幽灵 ---------- */
+button{
+  min-height:38px;padding:9px 15px;
+  font-size:13px;font-weight:500;letter-spacing:-.004em;
+  border-radius:var(--r-sm);
+  background:var(--btn-bg);
+  border:1px solid var(--line-2);
+  color:var(--txt);
+  box-shadow:none;
+  transition:background var(--dur) var(--ease), border-color var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+button:active{background:var(--press);transform:none;opacity:1}
+button:disabled{opacity:.36}
+button.small{min-height:34px;padding:7px 12px;font-size:12px;border-radius:var(--r-xs)}
+
+button.primary{
+  color:#fff;border-color:transparent;
+  background:var(--pri-bg);
+  font-weight:600;
+  box-shadow:none;
+}
+button.primary:active{background:#3a63cc}
+
+/* 「复制 Token」这类以前是绿色实心 —— 一个复制动作不该是最重的按钮 */
+button.ok{
+  color:var(--txt);border-color:var(--line-2);
+  background:var(--btn-bg);box-shadow:none;
+}
+
+/* 危险操作：红字描边，不铺红底 */
+.btns button.danger,button.danger,button.small.danger{
+  background:transparent;
+  border-color:var(--bad-line);
+  color:var(--bad);
+}
+button.danger:active{background:rgba(224,112,127,.10)}
+
+/* 整宽主按钮（旧版页脚那种）降级成幽灵，避免一屏两个实心 */
+.btns > button.primary[style*="flex:1"]{
+  color:var(--txt);border-color:var(--line-2);background:var(--btn-bg);font-weight:500;
+}
+.btns > button.primary[style*="flex:1"]:active{background:var(--press)}
+
+.btns{gap:8px}
+
+/* ---------- 七、进度条 / 分段 / 开关 ---------- */
+.bar{height:4px;border-radius:2px;background:var(--bar-bg);box-shadow:none;overflow:hidden}
+.bar i{border-radius:2px;background:var(--bar-fill);box-shadow:none}
+
+.seg{border-radius:var(--r-xs);padding:2px;background:var(--seg-bg);border:1px solid var(--line);gap:2px}
+.seg button{
+  min-height:30px;padding:5px 12px;font-size:12px;border-radius:6px;
+  background:transparent;border:1px solid transparent;color:var(--txt-3);box-shadow:none;
+}
+.seg button.on{
+  background:var(--seg-on-bg);color:var(--txt);border-color:var(--line-2);font-weight:600;
+}
+
+/* ---------- 八、底栏：安静的胶囊，选中态只靠一点 ---------- */
+nav{
+  left:12px;right:12px;
+  bottom:calc(10px + env(safe-area-inset-bottom));
+  padding:5px;
+  border-radius:18px;
+  background:var(--nav-bg);
+  border:1px solid var(--line);
+  box-shadow:0 6px 24px -12px rgba(0,0,0,.7);
+  -webkit-backdrop-filter:blur(18px) saturate(115%);backdrop-filter:blur(18px) saturate(115%);
+}
+body{padding-bottom:104px}
+nav button{
+  min-height:0;padding:8px 4px 7px;
+  border-radius:13px;border:none;
+  background:transparent;box-shadow:none;
+  color:var(--txt-3);font-size:10.5px;font-weight:500;letter-spacing:.01em;
+  gap:3px;
+}
+nav button.on{
+  color:var(--txt);
+  background:rgba(255,255,255,.07);
+  box-shadow:none;
+  font-weight:600;
+}
+nav button.on svg{color:var(--accent)}
+nav button svg{width:20px;height:20px;opacity:.9}
+
+/* ---------- 九、公告 / 崩溃 / 风控 / 省电条：统一成「面 + 左侧色条」 ---------- */
+.annbar,.bootbar{
+  margin:0 0 12px;padding:12px 14px;
+  border-radius:var(--r-md);
+  border:1px solid var(--line);
+  border-left:2px solid var(--txt-3);
+  background:var(--card-bg);
+  color:var(--txt-2);
+  box-shadow:none;
+  font-size:12px;line-height:1.6;
+}
+.annbar.warn{border-left-color:var(--warn);background:var(--card-bg);color:var(--txt-2)}
+.bootbar.crash{border-left-color:var(--warn);background:var(--card-bg);box-shadow:none}
+.bootbar .bi{color:var(--txt-3)}
+.bootbar.crash .bi{color:var(--warn)}
+.annbar .ai{color:var(--txt-3)}
+.annbar.warn .ai{color:var(--warn)}
+#riskBar{
+  margin:0 0 12px;padding:12px 14px;
+  border:1px solid var(--line);
+  border-left:2px solid var(--bad);
+  border-radius:var(--r-md);
+  background:var(--card-bg);
+}
+
+/* ---------- 十、实例卡 / 提示 / 终端 ---------- */
+.botcard{
+  border-radius:var(--r-md);
+  background:var(--bot-bg);
+  border:1px solid var(--line);
+  box-shadow:none;
+}
+.botcard.active{border-color:var(--bot-active-line);box-shadow:none}
+
+.hint{font-size:11.5px;line-height:1.65;color:var(--txt-3)}
+
+pre{
+  border-radius:var(--r-sm);
+  border:1px solid var(--line);
+  background:var(--term-bg);
+  font-size:11.5px;line-height:1.6;
+}
+
+/* 新手引导：对勾降成中性 */
+/* 完成的步骤应当「安静」而不是被高亮 —— 已经做完的事不需要注意力 */
+.obmk{border-color:var(--line);background:transparent;color:var(--txt-3)}
+.obstep.done .obmk{border-color:var(--line-2);background:transparent;color:var(--txt-3);opacity:.8}
+.obstep.done .obtx{color:var(--txt-2)}
+.obstep{border-bottom:1px solid var(--line)}
+
+/* 分段 / 页签 */
+.tab.on{color:var(--txt);background:rgba(255,255,255,.07);border-color:var(--line-2)}
+
+/* ---------- 十一、可访问性：键盘焦点要看得见 ---------- */
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
+  outline:2px solid var(--accent);outline-offset:2px;
+}
+
+/* ---------- 十二、尊重减少动效 ---------- */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation:none !important;transition:none !important}
+}
+
+/* ==========================================================================
+   v3.1 收敛：按钮层级 / 表单控件 / 代码块
+   --------------------------------------------------------------------------
+   规则：一张卡片里最多一个「实心强调按钮」。
+   实现：只有 .btns 里恰好只有一个 primary 时才给实心（:only-child），
+   并列一排的主次按钮一律降级成「淡底 + 描边 + 亮字」，不再抢镜。
+   ========================================================================== */
+
+button.primary{
+  background:rgba(91,140,255,.13);
+  border:1px solid rgba(91,140,255,.30);
+  color:var(--acc-ink);box-shadow:none;
+  text-shadow:none;font-weight:600;
+}
+button.primary:active{background:rgba(91,140,255,.20)}
+/* 整屏不出现任何「荧光蓝实心块」。
+   原本这里给唯一主按钮留了实心，可真机上它成了整页最亮的东西 —— 一个「查看日志」
+   比状态数字还抢眼，层级就反了。改成：面稍亮一点 + 一道 1px 内高光表示「这是按钮」，
+   颜色留给文字。真要强调靠位置，不靠饱和度。 */
+.btns > button.primary:only-child{
+  background:rgba(91,140,255,.16);
+  border:1px solid rgba(91,140,255,.34);
+  color:var(--acc-ink);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.10);
+}
+.btns > button.primary:only-child:active{
+  background:rgba(91,140,255,.24);
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.20);
+}
+
+/* 小按钮：从「灰块」改成安静描边，文字用二级灰 */
+button.small{
+  background:transparent;border:1px solid var(--line);color:var(--txt-2);
+  box-shadow:none;font-weight:500;
+}
+button.small:active{background:rgba(255,255,255,.05)}
+button.small.primary{
+  background:rgba(91,140,255,.13);
+  border-color:rgba(91,140,255,.30);color:var(--acc-ink);
+}
+
+/* 设置行里的小按钮：纯文字链接式。
+   次级动作是灰字，行内主操作只用强调色写字 —— 不铺底色，
+   这一屏就不会出现四个蓝色方块。 */
+.lkbtns button.small{
+  background:transparent;border-color:transparent;color:var(--txt-3);
+  padding:8px 10px;
+}
+.lkbtns button.small.primary{
+  background:transparent;border-color:transparent;color:var(--acc-ink-2);
+}
+.lkbtns button.small:active{background:rgba(255,255,255,.06);color:var(--txt)}
+.lkbtns button.small.primary:active{background:rgba(91,140,255,.12);color:var(--acc-ink)}
+
+/* 表单控件：原来的高度像 Android 4 的输入框，收到 38px 并去饱和 */
+select,input[type="text"],input[type="number"],input[type="password"]{
+  height:38px;min-height:38px;padding:0 12px;
+  font-size:14px;font-family:inherit;color:var(--txt);
+  background:rgba(255,255,255,.045);
+  border:1px solid var(--line);border-radius:var(--r-sm);
+  box-shadow:none;appearance:none;-webkit-appearance:none;
+}
+select{
+  background-image:linear-gradient(45deg,transparent 50%,var(--txt-3) 50%),
+                   linear-gradient(135deg,var(--txt-3) 50%,transparent 50%);
+  background-position:calc(100% - 17px) 16px,calc(100% - 12px) 16px;
+  background-size:5px 5px,5px 5px;background-repeat:no-repeat;
+  padding-right:34px;
+}
+select:focus,input:focus{
+  outline:none;border-color:rgba(91,140,255,.45);
+  box-shadow:0 0 0 3px rgba(91,140,255,.12);
+}
+
+/* 日志块：更细的字、更深的底，读起来像终端而不像「黑盒子」 */
+pre,.logbox{font-size:11.5px !important;line-height:1.62 !important}
+pre#logBox,.logbox{
+  background:#0b0c10 !important;border:1px solid var(--line) !important;
+  border-radius:var(--r-sm) !important;
+}
+
+/* 按钮行更紧，避免一行四个按钮横向撑爆 */
+.btns{gap:8px}
+.btns > button{min-height:38px;padding:0 12px;font-size:13.5px;border-radius:var(--r-sm)}
+.btns > button[style*="flex:1"]{min-height:40px}
+
+/* 下拉行（label + select）压紧 */
+.hint + select{margin-top:6px}
+/* ==========================================================================
+   v3.2 收尾：微型按钮 / 数字对齐
+   ========================================================================== */
+
+/* 卡片标题右侧的「清空 / 删除」这种微型按钮：纯文字，不加底色 */
+button.tiny{
+  background:transparent;border:1px solid transparent;color:var(--txt-3);
+  box-shadow:none;font-weight:500;padding:4px 8px;border-radius:var(--r-xs);
+}
+button.tiny:active{background:rgba(255,255,255,.06);color:var(--txt)}
+button.tiny.danger,button.tiny[data-act="rmlog"],button.tiny[data-act="rmall"]{color:#c9808c}
+button.tiny[data-act="rmlog"]:active,button.tiny[data-act="rmall"]:active{background:rgba(224,112,127,.12)}
+
+.xdel{
+  background:transparent;border:1px solid var(--line);color:var(--txt-3);
+  box-shadow:none;font-weight:400;
+}
+.xdel:active{background:rgba(255,255,255,.06);color:var(--txt)}
+
+/* 所有数值统一等宽数字，刷新时不跳动 */
+.tile .tv,.today .tx b,.stat b,#todayGrid b{
+  font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;
+}
+
+/* 卡片内的第一行内容不要顶着标题再多留白 */
+.card > .hint:first-of-type{margin-top:2px}
+/* ==========================================================================
+   v3.3 收尾二：开关去糖 / 代码块去虚线
+   --------------------------------------------------------------------------
+   亮绿开关是整个界面最后一处「Android 4 感」的来源（#22c55e 那种荧光绿）。
+   开关是控件不是状态灯：用中性轨道 + 强调色，状态颜色只在左边那个 5px 点里。
+   ========================================================================== */
+:root[data-theme="dark"]{
+  --tgl-bg:rgba(255,255,255,.07);
+  --tgl-line:rgba(255,255,255,.10);
+  --tgl-sh:none;
+  --tgl-knob:#e8ecf3;
+  --tgl-knob-sh:0 1px 2px rgba(0,0,0,.45);
+  --tgl-off-knob:#8b93a1;
+  --tgl-on-bg:#3d63d6;
+  --tgl-on-line:rgba(255,255,255,.12);
+  --tgl-on-sh:none;
+  --tgl-on-knob:#fff;
+}
+.tgl{width:48px;height:28px}
+.tgl::after{width:20px;height:20px;top:3px;left:3px;box-shadow:var(--tgl-knob-sh)}
+.tgl.on::after{left:23px}
+.tgl.on{background:var(--tgl-on-bg);border-color:var(--tgl-on-line)}
+
+/* 复制出来的 Token / 路径这类只读块：虚线太像草稿，改成实线浅底 */
+pre[style*="dashed"],.tokbox,.copybox{
+  border-style:solid !important;border-color:var(--line) !important;
+  background:rgba(255,255,255,.035) !important;border-radius:var(--r-sm) !important;
+}
+
+/* ==========================================================================
+   v4 视觉层 · 首屏收敛（更少，但更有分量）
+   规则一：首屏只回答一个问题——「现在正常吗」，五个组件状态收进「状态详情」。
+   规则二：一屏最多三处可点；其余全部折进「更多工具」「⋯」。
+   规则三：状态色只出现在 verdict 那颗 9px 圆点上，不铺底、不描边。
+   ========================================================================== */
+
+/* ---------- 状态光晕令牌：亮底要淡，暗底才有本钱亮一点 ---------- */
+:root{
+  --hero-ok:rgba(31,157,99,.10);
+  --hero-warn:rgba(165,112,26,.10);
+  --hero-bad:rgba(196,74,92,.10);
+  --hero-idle:rgba(120,130,150,.08);
+}
+:root[data-theme="dark"]{
+  --hero-ok:rgba(79,191,143,.20);
+  --hero-warn:rgba(217,162,74,.18);
+  --hero-bad:rgba(224,112,127,.18);
+  --hero-idle:rgba(140,150,170,.12);
+}
+
+/* ---------- 顶栏收薄：状态已经搬进 hero，标题不该再抢一屏 ---------- */
+header{padding:11px 16px 9px}
+header h1{font-size:15px;font-weight:600;letter-spacing:-.01em}
+header .sub{font-size:11.5px;margin-top:2px}
+
+/* ---------- hero：一句话 + 今日数字 ---------- */
+/* hero 在亮色主题里也是一块深色面板：整页只有它「沉」下去，其余全部退到背景，
+   所以第一眼只会落在这一句话上。深色主题里它比画布亮一档，靠 1px 高光分界。 */
+#statusCard{
+  position:relative;
+  overflow:hidden;
+  padding:22px 18px 15px;
+  margin-top:10px;
+  color:#fff;
+  border:1px solid rgba(255,255,255,.075);
+  border-radius:var(--r-lg);
+  background:
+    radial-gradient(120% 92% at 10% -10%, var(--hero-glow, transparent), transparent 58%),
+    linear-gradient(180deg, #1d2027, #131519);
+  box-shadow:0 14px 34px -24px rgba(15,20,30,.7);
+}
+:root:not([data-theme="dark"]) #statusCard{
+  background:
+    radial-gradient(120% 92% at 10% -10%, var(--hero-glow, transparent), transparent 58%),
+    linear-gradient(180deg, #1b1e25, #101216);
+  box-shadow:0 16px 38px -26px rgba(15,20,30,.55);
+}
+/* 顶部 1px 高光：让面板有厚度，而不是一块纯色 */
+#statusCard::after{
+  content:"";
+  position:absolute;
+  left:14%; right:14%; top:0;
+  height:1px;
+  background:linear-gradient(90deg, transparent, rgba(255,255,255,.22), transparent);
+  pointer-events:none;
+}
+/* 状态光晕：极慢地漂，别让人注意到它在动 */
+#statusCard::before{
+  content:"";
+  position:absolute;
+  left:-90px; top:-150px;
+  width:320px; height:320px;
+  border-radius:50%;
+  background:radial-gradient(circle at center, var(--hero-glow, transparent), transparent 68%);
+  pointer-events:none;
+  animation:heroDrift 16s ease-in-out infinite alternate;
+}
+@keyframes heroDrift{
+  from{transform:translate3d(0,0,0) scale(1)}
+  to{transform:translate3d(46px,30px,0) scale(1.16)}
+}
+.h3{display:flex;align-items:flex-start;gap:13px;position:relative;z-index:1}
+.h3dot{
+  flex:none;
+  width:9px; height:9px;
+  margin-top:10px;
+  border-radius:50%;
+  background:var(--txt-3);
+  color:var(--txt-3);
+  position:relative;
+}
+.h3dot::after{
+  content:"";
+  position:absolute;
+  inset:-5px;
+  border-radius:50%;
+  background:currentColor;
+  opacity:.35;
+}
+.h3dot.ok{background:#4fbf8f;color:#4fbf8f}
+.h3dot.warn{background:#e0b055;color:#e0b055}
+.h3dot.bad{background:#ef7c8c;color:#ef7c8c}
+.h3dot.idle{background:rgba(255,255,255,.45);color:rgba(255,255,255,.45)}
+.h3dot.ok::after{animation:h3pulse 2.8s ease-in-out infinite}
+@keyframes h3pulse{
+  0%,100%{transform:scale(1);opacity:.30}
+  50%{transform:scale(1.7);opacity:.06}
+}
+.h3t{min-width:0}
+.h3v{
+  font-size:26px;
+  line-height:1.18;
+  font-weight:600;
+  letter-spacing:-.024em;
+  color:#fff;
+}
+.h3s{
+  margin-top:6px;
+  font-size:12.5px;
+  line-height:1.55;
+  color:rgba(255,255,255,.62);
+}
+#statusCard #astrBoot{
+  margin-top:12px;
+  padding:8px 10px;
+  background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:var(--r-sm);
+  color:rgba(255,255,255,.66);
+  font-size:11.5px;
+  position:relative;
+  z-index:1;
+}
+
+/* 今日数字：不另起一张卡，直接躺在 verdict 下面 */
+#statusCard .today{
+  margin-top:17px;
+  padding:14px 0 0;
+  border-top:1px solid rgba(255,255,255,.10);
+  position:relative;
+  z-index:1;
+}
+#statusCard .today-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:4px;
+}
+#statusCard .tcell{display:flex;flex-direction:column;gap:5px;min-width:0}
+#statusCard .tlabel{
+  font-size:10.5px;
+  letter-spacing:.05em;
+  color:rgba(255,255,255,.42);
+  white-space:nowrap;
+}
+#statusCard .tval{
+  font-size:17px;
+  line-height:1.2;
+  font-weight:600;
+  letter-spacing:-.02em;
+  color:#fff;
+  font-variant-numeric:tabular-nums;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+/* 「状态详情」：纯文字，不加框 */
+.linkbtn{
+  position:relative;
+  z-index:1;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  margin-top:13px;
+  padding:5px 0;
+  background:none;
+  border:0;
+  font-family:inherit;
+  font-size:12px;
+  color:rgba(255,255,255,.46);
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+.linkbtn::after{
+  content:"";
+  width:5px; height:5px;
+  border-right:1.5px solid currentColor;
+  border-bottom:1.5px solid currentColor;
+  transform:rotate(45deg) translateY(-1px);
+  opacity:.75;
+  transition:transform .18s ease;
+}
+.linkbtn[aria-expanded="true"]::after{transform:rotate(-135deg) translateY(-1px)}
+.linkbtn:active{color:var(--txt-2)}
+
+#tilesWrap{margin-top:0}
+#tilesCard{padding:16px}
+#tilesCard .tiles{margin-top:0}
+
+/* 实例卡的说明文字在首屏是噪音：卡片自己会说话 */
+#instCard > .hint{display:none}
+#instCard{margin-top:10px}
+
+/* 底部一行：左边「状态详情」，右边一个会走的运行时长。
+   时长每秒重写一次，用等宽数字，跳动时不会推挤左边的字。 */
+.h3foot{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-top:14px;
+}
+.h3up{
+  font-size:11.5px;
+  letter-spacing:.01em;
+  color:rgba(255,255,255,.40);
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+.h3up:empty{display:none}
+.h3up b{font-weight:500;color:rgba(255,255,255,.62)}
+
+/* 打开时每块内容轻微上浮：0.42s，9px 之内，不抢首屏的注意力。
+   只做 opacity+transform，不动布局。 */
+@keyframes v4rise{
+  from{opacity:0;transform:translate3d(0,9px,0)}
+  to{opacity:1;transform:none}
+}
+#tab-home > *{animation:v4rise .42s cubic-bezier(.22,.61,.36,1) both}
+#tab-home > *:nth-child(2){animation-delay:.03s}
+#tab-home > *:nth-child(3){animation-delay:.06s}
+#tab-home > *:nth-child(4){animation-delay:.09s}
+#tab-home > *:nth-child(5){animation-delay:.12s}
+#tab-home > *:nth-child(6){animation-delay:.15s}
+#tab-home > *:nth-child(n+7){animation-delay:.18s}
+@media (prefers-reduced-motion:reduce){
+  #tab-home > *{animation:none}
+}
+
+/* ---------- 三条提示并成一张卡 ---------- */
+#noticeWrap{
+  display:flex;
+  flex-direction:column;
+  margin:0 0 10px;
+  background:var(--card-bg);
+  border:1px solid var(--line);
+  border-radius:var(--r-md);
+  overflow:hidden;
+}
+#noticeWrap.nb-empty{display:none}
+#noticeWrap > .bootbar,
+#noticeWrap > #riskBar,
+#noticeWrap > #powBar{
+  margin:0 !important;
+  padding:12px 14px !important;
+  background:none !important;
+  border:0 !important;
+  border-radius:0 !important;
+  box-shadow:none !important;
+}
+#noticeWrap > .nb-top{border-top:1px solid var(--line) !important}
+#noticeWrap .small{padding:6px 11px}
+
+/* ---------- 更多页：折叠行 ---------- */
+.rowmore{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  width:100%;
+  margin:4px 0 0;
+  padding:14px 2px;
+  background:none;
+  border:0;
+  border-top:1px solid var(--line);
+  font-family:inherit;
+  font-size:12.5px;
+  color:var(--txt-3);
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+.rowmore .arw{color:var(--txt-3);opacity:.75}
+.rowmore:active{color:var(--txt-2)}
+#diagFold[hidden]{display:none}
+#diagFold > .card:first-child{margin-top:8px}
+
+/* ---------- 四个常用动作 ---------- */
+.quick{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+  margin:14px 0 12px;
+}
+.qk{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:7px;
+  padding:13px 4px 11px;
+  background:var(--card-bg);
+  border:1px solid var(--line);
+  border-radius:var(--r-md);
+  font-family:inherit;
+  font-size:11px;
+  line-height:1;
+  color:var(--txt-2);
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  transition:background .14s ease,border-color .14s ease;
+}
+.qk:active{background:rgba(128,140,160,.12);border-color:var(--line-2)}
+.qk .qi{display:flex;align-items:center;justify-content:center;width:20px;height:20px;color:var(--txt)}
+.qk .qi svg{width:19px;height:19px;display:block}
+.qk.lock{opacity:.42}
+
+/* ---------- 更多工具：一条安静的分隔线 + 一行字 ---------- */
+.moretoggle{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  width:100%;
+  margin:2px 0 12px;
+  padding:12px 8px;
+  background:transparent;
+  border:0;
+  font-family:inherit;
+  font-size:12.5px;
+  color:var(--txt-3);
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+.moretoggle svg{width:14px;height:14px;transition:transform .2s ease}
+.moretoggle[aria-expanded="true"] svg{transform:rotate(180deg)}
+.moretoggle:active{color:var(--txt-2)}
+
+/* 折叠态：默认只留 hero / 实例 / 一行入口 */
+#tab-home.tools-off > .card.sec{display:none}
+/* 但没装好或正在部署时，部署台必须自己冒出来——那是用户下一步唯一要做的事 */
+#tab-home.tools-off.need-deploy > #deployCard{display:block}
+
+/* ---------- 实例卡里的操作：一个按钮 + 一个 ⋯ ---------- */
+.ba{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-top:10px;
+}
+.ba .dots{margin-left:auto}
+.dots{
+  flex:none;
+  width:38px;
+  height:32px;
+  padding:0 0 6px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  background:transparent;
+  border:1px solid var(--line-2);
+  border-radius:var(--r-sm);
+  font-family:inherit;
+  font-size:16px;
+  line-height:1;
+  letter-spacing:1px;
+  color:var(--txt-2);
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  transition:background .15s ease,border-color .15s ease;
+}
+.dots[aria-expanded="true"]{
+  background:rgba(128,140,160,.14);
+  border-color:var(--line-2);
+  color:var(--txt);
+}
+.bmore{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:8px;
+}
+.bmore > button{flex:1 1 calc(50% - 4px);min-width:0}
+
+/* ---------- 顶部提示条统一降噪：成功态不该比 hero 还显眼 ---------- */
+#bootBar{
+  margin:9px 0 0;
+  padding:10px 12px;
+  background:var(--card-bg);
+  background-image:none;
+  border:1px solid var(--line);
+  border-left:2px solid var(--line-2);
+  border-radius:var(--r-md);
+  box-shadow:none;
+}
+#bootBar .bi{color:var(--txt-3)}
+#bootBar .bt b{font-size:12.5px;font-weight:600;color:var(--txt-2)}
+#bootBar .bt span{font-size:11.5px;color:var(--txt-3);margin-top:2px}
+
+@media (prefers-reduced-motion:reduce){
+  .h3dot::after{animation:none}
+  #statusCard::before{transition:none}
+  .linkbtn::after,.moretoggle svg{transition:none}
+}
+
+/* ---------- 页签落款 ----------
+   内容短的时候页面下半截是空的，补一行安静的落款收住它。
+   放在 section 末尾、margin-top:auto 顶到底，所以内容长的时候也不会浮在中间。 */
+section.tab.on{display:flex;flex-direction:column}
+.pagefoot{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:6px;
+  margin:auto 0 0;
+  padding:36px 0 10px;
+  text-align:center;
+  color:var(--txt-3);
+  font-size:10.5px;
+  letter-spacing:.03em;
+  line-height:1.5;
+  opacity:.85;
+}
+.pagefoot .pf1{color:var(--txt-3)}
+.pagefoot .pf2{opacity:.72}
+
+
+/* hero 已经把"正在启动 / 40-60 秒"说清楚了，旧的启动提示条不再重复一遍 */
+#astrBoot{display:none !important}
 </style>
 </head>
 <body>
@@ -1402,8 +2427,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
     </div>
     <button class="iconbtn" id="btnSettings" data-act="settings" title="设置" aria-label="设置"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.1"/><path d="M19.5 14.6a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-2.8-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H3a2 2 0 1 1 0-4h.2a1.6 1.6 0 0 0 1.1-2.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 2.7-1.1V3a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.3 1.1z"/></svg></button>
   </div>
-  <div class="pills" id="pills"></div>
-</header>
+  </header>
 <main>
 
   <!-- 公告条（功能 56）：Android.ann() / announcement() 取最新一条，level=warn 走琥珀，
@@ -1465,19 +2489,19 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
       </div>
     </div>
 
-    <!-- 状态总览（v2 重排）：把原来的「今日概览」和「运行状态」两张卡合成一张。
-         打开应用第一眼要回答的只有一个问题——「现在到底跑没跑起来」，
-         所以五个组件状态放在最上面，今日数据作为第二层补充。
-         todayCard 仍是独立节点（JS 按 id 隐藏它），只是从 card 降级成内嵌块。 -->
+<!-- 首屏 hero（v4）：一屏只回答「现在正常吗」。
+         五个组件状态收进下面的「状态详情」，今日数字直接躺在 verdict 下面，
+         不再单起一张卡，也不再有整宽的「查看日志」按钮——底栏就有日志页。 -->
     <div class="card hero" id="statusCard">
-      <h2><span class="dot" id="d-deploy"></span>状态总览</h2>
-      <div class="tiles">
-        <div class="tile" id="t-deploy"><div class="tt">部署</div><div class="tv" id="v-deploy">-</div><div class="tp" id="p-deploy"></div></div>
-        <div class="tile" id="t-sup"><div class="tt">后台服务</div><div class="tv" id="v-sup">-</div><div class="tp" id="p-sup"></div></div>
-        <div class="tile" id="t-napcat"><div class="tt">NapCat</div><div class="tv" id="v-napcat">-</div><div class="tp" id="p-napcat"></div></div>
-        <div class="tile" id="t-astrbot"><div class="tt">AstrBot</div><div class="tv" id="v-astrbot">-</div><div class="tp" id="p-astrbot"></div></div>
-        <div class="tile" id="t-onebot" style="grid-column:1 / -1"><div class="tt">OneBot 通道</div><div class="tv" id="v-onebot">-</div><div class="tp" id="p-onebot"></div></div>
+      <div class="h3">
+        <span class="h3dot idle" id="h3dot" aria-hidden="true"></span>
+        <div class="h3t">
+          <div class="h3v" id="h3v">正在读取…</div>
+          <div class="h3s" id="h3s">—</div>
+        </div>
       </div>
+      <!-- 这两处仍被 refresh 写入，保留节点但不上屏 -->
+      <span class="dot" id="d-deploy" style="display:none"></span>
       <div class="hint" id="astrBoot" style="display:none">AstrBot 正在启动，通常需要 40–60 秒，请稍候</div>
 
       <!-- 今日概览：数字来自 Android.todayStats()，60 秒一轮；拿不到就整块隐藏，不显示半截。
@@ -1491,12 +2515,45 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
         </div>
       </div>
 
-      <div class="btns" style="margin-top:13px">
-        <button class="primary" style="flex:1" data-act="showlogs">查看日志</button>
+      <div class="h3foot">
+        <button class="linkbtn" data-act="statdetail" id="btnStatDetail" aria-expanded="false">状态详情</button>
+        <span class="h3up" id="h3up" aria-label="本次运行时长"></span>
       </div>
     </div>
 
-    <div class="card" id="deployCard">
+    <!-- 四个真正常用的动作：留在首屏。其余（部署、组件开关、连接、访问地址）
+         全部折进下面的「更多工具」。 -->
+    <div class="quick" id="quickRow">
+      <button class="qk" data-act="openpanel" id="qkNap" data-arg="http://127.0.0.1:6099/webui"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18"/><circle cx="6.4" cy="6.6" r=".8"/><circle cx="9" cy="6.6" r=".8"/></svg></span><span>NapCat</span></button>
+      <button class="qk" data-act="openpanel" id="qkAstr" data-arg="http://127.0.0.1:6185"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.6 14.8h4"/></svg></span><span>控制台</span></button>
+      <button class="qk" data-act="showlogs" id="qkLog"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6.5h14"/><path d="M5 12h14"/><path d="M5 17.5h9"/></svg></span><span>日志</span></button>
+      <button class="qk" data-act="gorestart" id="qkRestart"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4.5V9h-4.5"/></svg></span><span>重启</span></button>
+    </div>
+
+    <!-- 五个磁贴展开后是另一张卡：hero 是深色的，磁贴留在这里会被迫跟着换一套配色 -->
+    <div class="card" id="tilesCard" style="display:none">
+      <div class="tiles" id="tilesWrap">
+        <div class="tile" id="t-deploy"><div class="tt">部署</div><div class="tv" id="v-deploy">-</div><div class="tp" id="p-deploy"></div></div>
+        <div class="tile" id="t-sup"><div class="tt">后台服务</div><div class="tv" id="v-sup">-</div><div class="tp" id="p-sup"></div></div>
+        <div class="tile" id="t-napcat"><div class="tt">NapCat</div><div class="tv" id="v-napcat">-</div><div class="tp" id="p-napcat"></div></div>
+        <div class="tile" id="t-astrbot"><div class="tt">AstrBot</div><div class="tv" id="v-astrbot">-</div><div class="tp" id="p-astrbot"></div></div>
+        <div class="tile" id="t-onebot" style="grid-column:1 / -1"><div class="tt">OneBot 通道</div><div class="tv" id="v-onebot">-</div><div class="tp" id="p-onebot"></div></div>
+      </div>
+    </div>
+
+    <!-- 实例卡片（功能 17）：头像走 Android.avatarPath(uin) 的本地缓存（file://，断网也能看），
+         没缓存先显示首字母圆形占位，后台下载命中后下一轮自动换成真头像。
+         在线时长 = now - started（原生每 60 秒写一次 instances.json），最近掉线走 lastOffline。
+         整张卡点进「机器人」页并展开该实例的编辑区。 -->
+    <div class="card" id="instCard" style="display:none">
+      <h2><span class="dot" id="d-inst"></span>实例</h2>
+      <div class="hint" style="margin-top:0">每个 QQ 号一张卡：在线时长从进程启动时刻算起，掉线按「刚刚 / N 分钟前」显示。点一张进它的设置。</div>
+      <div id="instList" style="margin-top:6px"></div>
+    </div>
+
+    <button class="moretoggle" data-act="hometools" id="btnHomeTools" aria-expanded="false"><span>更多工具</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+
+    <div class="card sec" id="deployCard">
       <h2><span class="dot" id="d-deploying"></span>自动部署<button class="dtgl" id="btnCopyLog" data-act="copylog" title="把部署日志复制出来">复制日志</button><button class="dtgl" id="btnDeployToggle" data-act="deploytoggle" style="display:none">展开</button></h2>
       <div class="dsum" id="deploySum" style="display:none"></div>
       <div class="hint" style="margin-top:0" id="deployHint">正在读取部署状态…</div>
@@ -1518,17 +2575,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
       <pre id="deployLog" style="max-height:26vh">（暂无部署日志）</pre>
     </div>
 
-    <!-- 实例卡片（功能 17）：头像走 Android.avatarPath(uin) 的本地缓存（file://，断网也能看），
-         没缓存先显示首字母圆形占位，后台下载命中后下一轮自动换成真头像。
-         在线时长 = now - started（原生每 60 秒写一次 instances.json），最近掉线走 lastOffline。
-         整张卡点进「机器人」页并展开该实例的编辑区。 -->
-    <div class="card" id="instCard" style="display:none">
-      <h2><span class="dot" id="d-inst"></span>实例</h2>
-      <div class="hint" style="margin-top:0">每个 QQ 号一张卡：在线时长从进程启动时刻算起，掉线按「刚刚 / N 分钟前」显示。点一张进它的设置。</div>
-      <div id="instList" style="margin-top:6px"></div>
-    </div>
 
-    <div class="card">
+    <div class="card sec">
       <h2><span class="dot" id="d-svc"></span>组件开关</h2>
       <div class="hint" style="margin-top:0">两个容器可以单独开关：关掉 NapCat 只停 QQ 协议端，关掉 AstrBot 只停机器人框架，另一个不受影响。开关存在手机里，重启应用、重启容器都保留。</div>
       <div id="swList" style="margin-top:10px"></div>
@@ -1537,7 +2585,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
       </div>
     </div>
 
-    <div class="card">
+    <div class="card sec">
       <h2>机器人连接</h2>
       <div class="hint" style="margin-top:0">每个 NapCat 实例各自独立登录、各自独立端口。扫码要在另一台设备上打开对应的「登录地址」。</div>
       <div id="homeBots" style="margin-top:10px"></div>
@@ -1547,7 +2595,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
       </div>
     </div>
 
-    <div class="card">
+    <div class="card sec">
       <h2>访问地址</h2>
       <div class="row"><span class="k">WebUI 地址</span><span class="v mono" id="v-napurl">http://127.0.0.1:6099</span></div>
       <div class="row"><span class="k">登录 Token</span><span class="v mono" id="v-token">-</span></div>
@@ -1569,7 +2617,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
       <div class="hint">二维码需要另一台设备扫：手机与电脑连同一个 Wi-Fi，用电脑浏览器打开 <b id="v-napurl2">http://手机IP:6099</b>，再用手机 QQ 扫码。也可以点上面的按钮，用系统浏览器打开 NapCat 面板扫码。首次登录 AstrBot 后请立即修改密码。</div>
     </div>
 
-  </section>
+    <div class="pagefoot">
+    <span class="pf1">烛之控制台 · <span class="pfv" id="pfv-home">—</span></span>
+    <span class="pf2">本地运行，数据不出设备</span>
+  </div>
+</section>
 
   <section class="tab" id="tab-bots">
     <div class="card">
@@ -1592,7 +2644,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
         <button data-act="cancelbot">取消</button>
       </div>
     </div>
-  </section>
+    <div class="pagefoot">
+    <span class="pf1">烛之控制台 · <span class="pfv" id="pfv-bots">—</span></span>
+    <span class="pf2">本地运行，数据不出设备</span>
+  </div>
+</section>
 
   <section class="tab" id="tab-logs">
     <div class="card" id="logCardQr">
@@ -1658,7 +2714,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
     </div>
 
     <div class="hint" id="logCardsTip" style="display:none">「其它日志文件」这一张已经收起来了。二维码和实时日志始终显示；想恢复请回「主页 → 运行状态 → 查看日志」点一下。</div>
-  </section>
+    <div class="pagefoot">
+    <span class="pf1">烛之控制台 · <span class="pfv" id="pfv-logs">—</span></span>
+    <span class="pf2">本地运行，数据不出设备</span>
+  </div>
+</section>
 
   <section class="tab" id="tab-more">
     <div class="card">
@@ -1787,7 +2847,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 
     <!-- 存储占用（功能 54）：五目录条形按总量归一，下面 top10 大文件方便直接看出胖在哪。
          「清理缓存」只删可再生成的临时文件（原生侧有白名单），不动登录数据。 -->
-    <div class="card" id="storageCard">
+    <button class="rowmore" id="btnDiag" data-act="diagfold"><span>诊断信息</span><span class="arw" id="diagArw">展开</span></button>
+    <div id="diagFold" hidden>
+<div class="card" id="storageCard">
       <h2><span class="dot" id="d-storage"></span>存储占用</h2>
       <div class="hint" style="margin-top:0">沙盒里最占地方的五个目录。缓存可以直接清，只删可再生成的临时文件，不动登录数据与配置。</div>
       <div id="stgDirs" style="margin-top:6px"></div>
@@ -1812,6 +2874,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
       <div class="btns" style="margin-top:10px">
         <button class="small" data-act="crashclear" id="crashBtnClear">清空</button>
       </div>
+    
     </div>
 
     <div class="card" id="appearanceCard">
@@ -1845,7 +2908,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
         <button class="primary" style="flex:1" data-act="terminal">打开终端</button>
       </div>
     </div>
-  </section>
+    <div class="pagefoot">
+    <span class="pf1">烛之控制台 · <span class="pfv" id="pfv-more">—</span></span>
+    <span class="pf2">本地运行，数据不出设备</span>
+  </div>
+</section>
 
   <section class="tab" id="tab-settings">
     <div class="btns" style="margin-bottom:12px">
@@ -1963,7 +3030,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
       <div class="row"><span class="k">AstrBot</span><span class="v mono">v4.28.2</span></div>
       <div class="row"><span class="k">PREFIX</span><span class="v mono" id="v-prefix">-</span></div>
     </div>
-  </section>
+    <div class="pagefoot">
+    <span class="pf1">烛之控制台 · <span class="pfv" id="pfv-settings">—</span></span>
+    <span class="pf2">本地运行，数据不出设备</span>
+  </div>
+</section>
 
 </main>
 
@@ -2404,6 +3475,7 @@ function showTab(t){
   /* v1.1.30：切到哪页就立刻补一次那页的数据，不用干等下一个 4 秒轮询。
      extOnTab 内部自己 try/catch，桥缺了也只是空态。 */
   extOnTab(t);
+  try { fitFoot(); } catch (e) {}  /* v4：切页后立刻重算落款位置 */
 }
 
 function pill(txt, cls){ return '<span class="pill ' + (cls || "") + '">' + esc(txt) + '</span>'; }
@@ -2680,6 +3752,7 @@ function refreshAll(){
   el("v-astrurl").textContent = "http://127.0.0.1:" + (st.astrbotPort || 6185);
   var ab = el("btnAstrPanel");
   if (ab) ab.setAttribute("data-arg", "http://127.0.0.1:" + (st.astrbotPort || 6185));
+  var _qa = el("qkAstr"); if (_qa) _qa.setAttribute("data-arg", "http://127.0.0.1:" + (st.astrbotPort || 6185));
   el("v-prefix").textContent = st.prefix || "-";
   var av = el("v-appver");
   if (av) av.textContent = st.appVersion || "-";
@@ -2716,6 +3789,11 @@ function refreshAll(){
     el("v-onebot").textContent = obTxt;
     setTile("t-onebot", obCls, "端口 " + st.onebotPort);
   }
+  /* v4：首屏那句话跟着这套判定走，不再各自算一遍 */
+  try { paintHero(st, installed); } catch (e) {}
+  /* 没装好或正在部署时，部署台必须露出来，不能被「更多工具」藏掉 */
+  var _ht = el("tab-home");
+  if (_ht) _ht.classList.toggle("need-deploy", !installed);
   /* AstrBot 冷启动要 40~60 秒，端口没起来这段时间磁贴只能写「离线」，
      用户容易以为装坏了：这里补一句「正在启动」。三种情况不提示——
      还没部署（没有这回事）、用户自己关掉了（说了「已关闭」就别再喊启动）、已经在线。
@@ -2730,6 +3808,7 @@ function refreshAll(){
   el("v-token").textContent = tok;
   el("tokText").textContent = tok;
   el("btnNapPanel").setAttribute("data-arg", "http://127.0.0.1:" + napPort + "/webui?token=" + encodeURIComponent(tok));
+  var _qn = el("qkNap"); if (_qn) _qn.setAttribute("data-arg", "http://127.0.0.1:" + napPort + "/webui?token=" + encodeURIComponent(tok));
   var p = [];
   /* 「待部署 / 已部署」这颗永远按真实部署状态走，其余三颗在没装好时说「未安装」 */
   p.push(pill(st.deployDone ? "已部署" : "待部署", st.deployDone ? "ok" : "warn"));
@@ -3112,6 +4191,97 @@ function botPill(b){
   return pill(txt, running ? "ok" : "bad");
 }
 
+/* ===================== v4：首屏收敛 ===================== */
+/* 「更多工具」和「状态详情」都是展开态，存在 ext() 里跟着 localStorage 走：
+   自动部署 / 组件开关 / 机器人连接 / 访问地址 四张卡默认收起。 */
+function homeMore(){
+  var E = ext();
+  E.homeTools = !E.homeTools;
+  applyHomeFold();
+}
+
+function statDetail(){
+  var E = ext();
+  E.statDetail = !E.statDetail;
+  applyHomeFold();
+}
+
+function applyHomeFold(){
+  var E = ext();
+  var tab = el("tab-home");
+  if (tab) tab.classList.toggle("tools-off", !E.homeTools);
+  var tw = el("tilesWrap");
+  if (tw) tw.style.display = "";
+  var tc = el("tilesCard");
+  if (tc) tc.style.display = E.statDetail ? "" : "none";
+  var bt = el("btnHomeTools");
+  if (bt) bt.setAttribute("aria-expanded", E.homeTools ? "true" : "false");
+  var sd = el("btnStatDetail");
+  if (sd){
+    sd.setAttribute("aria-expanded", E.statDetail ? "true" : "false");
+    sd.textContent = E.statDetail ? "收起详情" : "状态详情";
+  }
+}
+
+/* 实例卡的 ⋯：同一个 id 再点一次收起，换一个实例就切换过去 */
+function botMore(id){
+  var E = ext();
+  E.botMore = (String(E.botMore || "") === String(id)) ? "" : String(id);
+  renderBots();
+}
+
+/* 首屏那句话。判定顺序＝用户心里的顺序：
+   没装 → 装了但守护死了 → 自己关掉了 → 两端都在线（最好）→ 通道还在建 → 正在启动。
+   状态色只落在那颗 9px 圆点上，另外给整张卡一个很淡的同色光晕。 */
+/* 复用启动横幅自己的状态：横幅还在转圈，就说明这一次打开还没就绪。
+   超过 BOOT_TIMEOUT 秒就不再当「正在启动」，让位给真正的故障判定。 */
+function bootPending(){
+  if (BOOT.closed || BOOT.readyAt) return false;
+  /* 首次 refresh 可能先跑 paintHero，这里自己把起点补上，与 paintBoot 同一套语义 */
+  if (!BOOT.at) BOOT.at = Date.now();
+  return (Date.now() - BOOT.at) < BOOT_TIMEOUT * 1000;
+}
+
+function paintHero(st, installed){
+  var v = el("h3v");
+  if (!v) return;
+  var dot = el("h3dot"), s = el("h3s"), card = el("statusCard");
+  var napOff = !!st.napcatOff, astrOff = !!st.astrbotOff;
+  var napUp = !!st.napcatUp, astrUp = !!st.astrbotUp, obUp = !!st.onebotUp;
+  var k, t, sub;
+  if (!installed){
+    k = "idle"; t = "还没部署";
+    sub = "第一次使用，先点「开始部署」，装好大约 8 分钟";
+  } else if (bootPending()){
+    /* 应用刚打开、容器还在起：这一刻 supervisorAlive 还是 false，
+       按字面会报「服务已停止」，但用户其实只是在等冷启动。 */
+    k = "warn"; t = "正在启动";
+    sub = "冷启动通常 40–60 秒，就绪后会自动变过来";
+  } else if (st.supervisorAlive === false){
+    k = "bad"; t = "服务已停止";
+    sub = "守护进程没在跑，沙盒里的容器不会被自动拉起";
+  } else if (napOff && astrOff){
+    k = "warn"; t = "组件都已关闭";
+    sub = "在「更多工具」的组件开关里重新打开";
+  } else if (napUp && astrUp && obUp){
+    k = "ok"; t = "一切正常";
+    sub = "NapCat 与 AstrBot 都在线，消息通道已接通";
+  } else if (napUp && astrUp){
+    k = "warn"; t = "通道连接中";
+    sub = "两端都起来了，QQ 消息通道还在建立";
+  } else if ((!napOff && !napUp) || (!astrOff && !astrUp)){
+    k = "warn"; t = "正在启动";
+    sub = "冷启动通常 40–60 秒，就绪后会自动变过来";
+  } else {
+    k = "warn"; t = "部分服务已关闭";
+    sub = "NapCat 或 AstrBot 被关掉了一个，另一个仍在运行";
+  }
+  v.textContent = t;
+  if (s) s.textContent = sub;
+  if (dot) dot.className = "h3dot " + k;
+  if (card) card.style.setProperty("--hero-glow", "var(--hero-" + k + ")");
+}
+
 function renderBots(){
   var list = el("botList");
   var bs = validBots(S.bots.bots);
@@ -3125,13 +4295,22 @@ function renderBots(){
     h.push('<div class="row"><span class="k">QQ</span><span class="v mono">' + esc(b.qq || "未填写") + '</span></div>');
     h.push('<div class="row"><span class="k">Token</span><span class="v mono">' + esc(b.token || "zhuxin") + '</span></div>');
     h.push('<div class="row"><span class="k">端口</span><span class="v mono">WebUI ' + esc(b.napcatPort) + ' / OneBot ' + esc(b.onebotPort) + '</span></div>');
-    h.push('<div class="btns" style="margin-top:10px">');
-    h.push('<button class="small ok" data-act="copytok" data-arg="' + esc(b.token || "zhuxin") + '">复制 Token</button>');
-    h.push(toggleBtnHtml(b));
-    h.push('<button class="small" data-act="usebot" data-arg="' + esc(b.id) + '">设为当前</button>');
-    h.push('<button class="small" data-act="editbot" data-arg="' + esc(b.id) + '">编辑</button>');
-    h.push('<button class="small danger" data-act="delbot" data-arg="' + esc(b.id) + '">删除</button>');
+    /* v4：一屏只留一个「设为当前」和一个 ⋯，其余四项收进展开区。
+       展开态存 ext().botMore —— renderBots 每 4 秒重写 innerHTML，存 DOM 会被刷掉。 */
+    var bopen = (String(ext().botMore || "") === String(b.id));
+    h.push('<div class="ba">');
+    if (!act) h.push('<button class="small primary" data-act="usebot" data-arg="' + esc(b.id) + '">设为当前</button>');
+    h.push('<button class="dots" data-act="botmore" data-arg="' + esc(b.id) + '" aria-expanded="' + (bopen ? "true" : "false") + '" aria-label="更多操作">&middot;&middot;&middot;</button>');
     h.push('</div>');
+    if (bopen) {
+      h.push('<div class="bmore">');
+      h.push('<button class="small" data-act="copytok" data-arg="' + esc(b.token || "zhuxin") + '">复制 Token</button>');
+      h.push(toggleBtnHtml(b));
+      h.push('<button class="small" data-act="usebot" data-arg="' + esc(b.id) + '">设为当前</button>');
+      h.push('<button class="small" data-act="editbot" data-arg="' + esc(b.id) + '">编辑</button>');
+      h.push('<button class="small danger" data-act="delbot" data-arg="' + esc(b.id) + '">删除</button>');
+      h.push('</div>');
+    }
     h.push(delConfirmHtml(b.id));
     h.push('</div>');
   }
@@ -3979,6 +5158,12 @@ else if (act === "uploadlogs") doUploadLogs();
   else if (act === "delok") doDelBot(arg);
   else if (act === "togglebot") toggleBot(arg);
   else if (act === "usebot") useBot(arg);
+  else if (act === "hometools") homeMore();
+  else if (act === "statdetail") statDetail();
+  else if (act === "botmore") botMore(arg);
+  else if (act === "diagfold") diagFold();
+  /* 首屏的「重启」先跳到更多页并展开二次确认，确认流程只有一份 */
+  else if (act === "gorestart") { showTab("more"); restartAsk(true); }
   else if (act === "savebot") saveBot();
   else if (act === "cancelbot") cancelBot();
   else if (act === "pickbg") { Android.toast("请在系统图库里选择图片…"); Android.pickBg(); }
@@ -4670,8 +5855,9 @@ function todayBridgeOk(){
 function todayFmtDur(sec){
   sec = Math.max(0, Math.floor(Number(sec) || 0));
   var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
-  /* 0 也要显示成「0 分」：新装当天本来就是 0，留空反而像坏了 */
-  return h > 0 ? (h + " 小时 " + m + " 分") : (m + " 分");
+  /* v4：首屏四格是并排的，360dp 下「3 小时 12 分」会被截断，压成 3h12m。
+     0 也要显示成「0m」：新装当天本来就是 0，留空反而像坏了。 */
+  return h > 0 ? (h + "h" + m + "m") : (m + "m");
 }
 function todayFmtBytes(n){
   n = Math.max(0, Number(n) || 0);
@@ -5022,6 +6208,7 @@ function renderInst(){
 
   var now = Math.floor(Date.now() / 1000);
   var anyAlive = false, h = [];
+  E.upStart = 0;
   for (i = 0; i < ids.length; i++){
     var id = ids[i], inst = map[id] || {}, bot = null;
     for (var j = 0; j < list.length; j++) if (String(list[j].id) === id){ bot = list[j]; break; }
@@ -5030,6 +6217,7 @@ function renderInst(){
     var alive = !!inst.alive;
     if (alive) anyAlive = true;
     var started = Number(inst.started || 0);
+    if (alive && started > 0 && !(E.upStart > 0)) E.upStart = started;
     var upTxt = alive ? (started > 0 ? ("已运行 " + extDur(now - started)) : "在线") : "未运行";
     var lastOff = Number(inst.lastOffline || 0);
     var offTxt = lastOff > 0 ? extRel(lastOff) : "—";
@@ -5701,6 +6889,91 @@ window.askToggle = function(){
 };
 
 /* ===================== 汇总：每轮 refreshAll 调一次 ===================== */
+function diagFold(){
+  var E = ext();
+  E.diag = !E.diag;
+  var box = el("diagFold"); if (box) box.hidden = !E.diag;
+  var a = el("diagArw"); if (a) a.textContent = E.diag ? "收起" : "展开";
+}
+
+/* v4：崩溃 / 省电 / 启动中 原来各是一条彩色条，同时出现时像通知栏堆叠。
+   这里把三条搬进同一张卡，只留细分隔线，颜色退到图标上。 */
+var NOTICE_IDS = ["crashBar", "riskBar", "powBar", "bootBar"];
+/* 落款里的版本号：从桥上取，取不到就留着「—」 */
+function paintFoot(){
+  var v = "";
+  try { if (S.st && S.st.appVersion) v = String(S.st.appVersion); } catch (e) {}
+  if (v){
+    var ids = ["pfv-home", "pfv-bots", "pfv-logs", "pfv-more", "pfv-settings"];
+    for (var i = 0; i < ids.length; i++){
+      var n = el(ids[i]); if (n) n.textContent = "v" + v;
+    }
+  }
+  fitFoot();
+}
+
+/* 内容没占满一屏时，把当前页撑到「一屏减去底栏」，落款才顶在底栏上方而不是浮在半空。
+   按真实测量算，不靠 CSS 里猜数值。 */
+function fitFoot(){
+  var ids = ["tab-home", "tab-bots", "tab-logs", "tab-more", "tab-settings"];
+  var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+  if (!vh) return;
+  var nav = document.querySelector("nav");
+  var navH = nav ? (vh - nav.getBoundingClientRect().top) + 10 : 110;
+  for (var i = 0; i < ids.length; i++){
+    var s = el(ids[i]); if (!s) continue;
+    s.style.minHeight = "";
+    if (s.className.indexOf("on") < 0) continue;
+    var top = s.getBoundingClientRect().top;
+    var h = vh - top - navH;
+    if (h > 0) s.style.minHeight = Math.round(h) + "px";
+  }
+}
+
+function noticeInit(){
+  if (el("noticeWrap")) return;
+  var bars = [], i;
+  for (i = 0; i < NOTICE_IDS.length; i++) { var b = el(NOTICE_IDS[i]); if (b) bars.push(b); }
+  if (!bars.length) return;
+  var w = document.createElement("div");
+  w.id = "noticeWrap";
+  bars[0].parentNode.insertBefore(w, bars[0]);
+  for (i = 0; i < bars.length; i++) w.appendChild(bars[i]);
+  for (i = 0; i < bars.length; i++){
+    (function(b){ new MutationObserver(syncNotice).observe(b, { attributes: true, attributeFilter: ["style"] }); })(bars[i]);
+  }
+  syncNotice();
+}
+/* hero 右下角的运行时长。数据来自 instancesInfo 的 started，按秒重算；
+   没有实例在跑就整段留空，不写 0:00。 */
+function upFmt(s){
+  s = Math.max(0, Math.floor(s));
+  var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
+  function p(n){ return (n < 10 ? "0" : "") + n; }
+  return h > 0 ? (h + ":" + p(m) + ":" + p(x)) : (p(m) + ":" + p(x));
+}
+function upTick(){
+  var e2 = el("h3up"); if (!e2) return;
+  var st0 = Number(ext().upStart || 0);
+  if (!(st0 > 0)){ if (e2.textContent) e2.textContent = ""; return; }
+  var now = Math.floor(Date.now() / 1000);
+  e2.innerHTML = "已运行 <b>" + upFmt(now - st0) + "</b>";
+}
+
+function syncNotice(){
+  var w = el("noticeWrap"); if (!w) return;
+  var vis = [], i, b;
+  for (i = 0; i < NOTICE_IDS.length; i++){
+    b = el(NOTICE_IDS[i]); if (!b) continue;
+    var on = b.style.display !== "none" && !b.hidden;
+    b.classList.toggle("nb-on", on);
+    b.classList.remove("nb-top");
+    if (on) vis.push(b);
+  }
+  w.classList.toggle("nb-empty", !vis.length);
+  for (i = 1; i < vis.length; i++) vis[i].classList.add("nb-top");
+}
+
 function refreshExtras(st){
   var E = ext(), now = Date.now();
   /* 发测试消息这一步：60 秒问一次 todayStats 就够，不必每 4 秒过桥 */
@@ -5832,6 +7105,12 @@ setTimeout(function(){ refreshToday(); todayStart(); }, 300);
 maybeAutoCheck();
 /* 首次启动弹免责声明；同意后写入标记，以后不再弹 */
 try { if (String(Android.disclaimerSeen()) !== "1") showDisclaimer(); } catch (e) {}
+/* v4 首屏折叠初始态 */
+try { applyHomeFold(); } catch (e) {}
+try { noticeInit(); } catch (e) {}
+setInterval(function(){ try { upTick(); } catch (e) {} }, 1000);
+try { upTick(); } catch (e) {}
+try { paintFoot(); } catch (e) {}
 </script>
 </body>
 </html>
