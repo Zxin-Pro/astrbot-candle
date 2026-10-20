@@ -14,7 +14,7 @@
 | 安装包 | `AstrBot-1.1.34.apk`（文件名末尾就是版本号，大小 **25800375** 字节） |
 | 包名 | `com.termux` |
 | 当前版本 | **v1.1.34**（versionCode `10134`） |
-| 安装包 SHA-256 | `253d23d1d758d15eec420992545dcd0439581ba52bfd5d71e0da594eb58a237d` |
+| 安装包 SHA-256 | `7a9d409aae4a409b5657c595ac3410fb310a2f269ab86ffa9b2f1fc4002a6e15` |
 | 项目地址 | [github.com/Zxin-Pro/astrbot-candle](https://github.com/Zxin-Pro/astrbot-candle) |
 | 下载安装包 | 官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的 AstrBot 下载页里的 `AstrBot-1.1.34.apk`（**站内直接下载，不用跳 GitHub**），或 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 里的同名文件 |
 | 官方网站 | [烛心.xyz](https://烛心.xyz) |
