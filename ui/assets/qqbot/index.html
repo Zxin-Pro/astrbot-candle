@@ -3104,6 +3104,119 @@ section.tab.on{display:flex;flex-direction:column}
   --bg-veil: linear-gradient(180deg, rgba(10, 11, 14, .80), rgba(8, 9, 12, .88));
 }
 
+
+/* ---------- AstrBot 模型与人格（v1.2.0 追加） ---------- */
+#dlgAstr .dbody{max-height:66vh;overflow:auto;-webkit-overflow-scrolling:touch}
+#dlgAstr .field{margin-bottom:10px}
+#dlgAstr .field label{display:block;font-size:12px;color:var(--txt-3);margin-bottom:6px}
+#dlgAstr input{width:100%}
+#dlgAstr textarea{width:100%;min-height:136px;resize:vertical;font-family:inherit;font-size:13px;line-height:1.65;
+  padding:10px 12px;border-radius:var(--r-sm);border:1px solid var(--line-2);background:var(--tile-bg);color:var(--txt)}
+#dlgAstr .row2{display:flex;gap:8px;align-items:center}
+#dlgAstr .row2 input{flex:1;min-width:0}
+#dlgAstr .row2 button{flex:0 0 auto;white-space:nowrap}
+#astrModelSel{width:100%;margin-top:8px}
+#siteVer{margin-top:3px;font-size:11.5px}
+
+/* ==========================================================================
+   v1.2.0 · 部署大标志（#depov）
+   目的：部署是十来分钟的一次性流程，必须一眼看出「在装、装到哪、没卡住」。
+   规则：全屏深色、只有一个数字主角、进度条只表达位置，不做花哨装饰。
+   ========================================================================== */
+#depov {
+  position: fixed;
+  inset: 0;
+  z-index: 88;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: radial-gradient(120% 80% at 50% 0%, rgba(37, 99, 235, .28), transparent 62%), rgba(6, 9, 16, .93);
+  -webkit-backdrop-filter: blur(14px) saturate(130%);
+  backdrop-filter: blur(14px) saturate(130%);
+  animation: depovIn .28s cubic-bezier(.22, .61, .36, 1) both;
+}
+#depov.on { display: flex; }
+@keyframes depovIn { from { opacity: 0 } to { opacity: 1 } }
+.depov-in {
+  width: 100%;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  color: #eef2f9;
+}
+.depov-ring { position: relative; width: 132px; height: 132px; margin-bottom: 18px; }
+.depov-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.depov-ring circle { fill: none; stroke-width: 7; stroke-linecap: round; }
+.depov-ring .trk { stroke: rgba(255, 255, 255, .10); }
+.depov-ring .arc {
+  stroke: #6b95ff;
+  stroke-dasharray: 326.7;
+  stroke-dashoffset: 326.7;
+  transition: stroke-dashoffset .55s cubic-bezier(.22, .61, .36, 1);
+  filter: drop-shadow(0 0 7px rgba(107, 149, 255, .55));
+}
+.depov-ring b {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 34px;
+  font-weight: 650;
+  letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+}
+.depov-ring b i { font-style: normal; font-size: 15px; font-weight: 500; opacity: .55; margin-left: 1px; }
+.depov-t { font-size: 17px; font-weight: 600; letter-spacing: .01em; }
+.depov-s { margin-top: 7px; font-size: 12.5px; line-height: 1.6; color: rgba(238, 242, 249, .62); }
+.depov-bar {
+  width: 100%;
+  height: 4px;
+  margin: 18px 0 14px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, .10);
+  overflow: hidden;
+}
+.depov-bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #4f7df3, #7fd4ff);
+  transition: width .55s cubic-bezier(.22, .61, .36, 1);
+}
+.depov-log {
+  width: 100%;
+  min-height: 34px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid rgba(255, 255, 255, .07);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: rgba(238, 242, 249, .55);
+  text-align: left;
+  word-break: break-all;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.depov-off {
+  margin-top: 18px;
+  padding: 9px 18px;
+  border-radius: 99px;
+  border: 1px solid rgba(255, 255, 255, .18);
+  background: transparent;
+  color: rgba(238, 242, 249, .82);
+  font-size: 13px;
+}
+.depov-off:active { background: rgba(255, 255, 255, .10); }
+.depov-hint { margin-top: 12px; font-size: 11px; color: rgba(238, 242, 249, .38); }
 </style>
 </head>
 <body>
@@ -3434,7 +3547,7 @@ section.tab.on{display:flex;flex-direction:column}
       </div>
       <div class="lkrow">
         <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 12a8.4 8.4 0 1 1-2.6-6"/><path d="M20.4 3.6V9.3h-5.7"/></svg></span>
-        <div class="lkbd"><div class="lkt">检查更新</div><div class="lkv" id="updText">点右边按钮看看有没有新版本</div></div>
+        <div class="lkbd"><div class="lkt">检查更新</div><div class="lkv" id="updText">点右边按钮看看有没有新版本</div><div class="lkv" id="siteVer">官网版本：读取中…</div></div>
         <div class="lkbtns">
           <button class="small primary" data-act="checkupdate" id="updBtn">检查更新</button>
         </div>
@@ -3449,6 +3562,25 @@ section.tab.on{display:flex;flex-direction:column}
       <div class="hint" id="updNote" style="display:none"></div>
       <div class="hint">当前版本 <b id="v-appver">-</b></div>
       <div class="hint">本软件官方群 <b>1127997343</b>，发现 bug 及时反馈。</div>
+    </div>
+
+    <!-- AstrBot 模型与人格（v1.2.0）：把模型和人格直接预置到沙盒里，
+         用户只需要贴一把中转站密钥。写的是 cmd_config.json / data_v4.db，
+         保存时先停沙盒再落盘，所以不会被运行时覆盖。 -->
+    <div class="card" id="astrCard">
+      <h2>模型与人格</h2>
+      <div class="hint" style="margin-top:0" id="astrState">检测中…</div>
+      <div class="lkrow" style="margin-top:12px">
+        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.6l2.1 4.9 5.3.5-4 3.6 1.2 5.2L12 15l-4.6 2.8 1.2-5.2-4-3.6 5.3-.5z"/></svg></span>
+        <div class="lkbd"><div class="lkt">烛心中转站</div><div class="lkv">烛心推荐用这商 · 注册后复制密钥</div></div>
+        <div class="lkbtns">
+          <button class="small" data-act="copytext" data-arg="https://worldcodes.online/register?invite_code=CZLT">复制</button>
+          <button class="small primary" data-act="openurl" data-arg="https://worldcodes.online/register?invite_code=CZLT">打开</button>
+        </div>
+      </div>
+      <div class="btns" style="margin-top:10px">
+        <button class="primary" data-act="astrconfig" style="flex:1">配置模型与人格</button>
+      </div>
     </div>
 
     <!-- 重启服务（用户明确要求：以前「更多」里只有下线没有重启，改完端口/配置想让它
@@ -3866,6 +3998,50 @@ section.tab.on{display:flex;flex-direction:column}
   </div>
 </div>
 
+<!-- AstrBot 模型与人格弹窗（v1.2.0）：接口地址 / 密钥 / 模型 / 人格。
+     模型可以「获取列表」让中转站自己报，省得用户手打字。 -->
+<div class="dlgmask" id="dlgAstr">
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="astrDlgTitle">
+    <h3 id="astrDlgTitle">模型与人格</h3>
+    <div class="dbody">
+      <div class="field"><label for="astrBase">接口地址</label><input id="astrBase" autocomplete="off" spellcheck="false" placeholder="https://worldcodes.online/v1"></div>
+      <div class="field"><label for="astrKey">密钥</label><input id="astrKey" type="password" autocomplete="off" spellcheck="false" placeholder="粘贴中转站密钥"></div>
+      <div class="field"><label for="astrModel">模型</label>
+        <div class="row2">
+          <input id="astrModel" autocomplete="off" spellcheck="false" placeholder="例如 gpt-4o-mini">
+          <button class="small" data-act="astrfetch">获取列表</button>
+        </div>
+        <select id="astrModelSel" style="display:none"></select>
+        <div class="hint" id="astrModelsHint" style="margin-top:6px"></div>
+      </div>
+      <div class="field"><label for="astrPersona">人格提示词</label><textarea id="astrPersona" spellcheck="false"></textarea></div>
+      <div class="hint" id="astrSaveHint"></div>
+    </div>
+    <div class="dfoot">
+      <button class="small" data-act="astrclose">关闭</button>
+      <button class="primary" style="flex:1" data-act="astrsave">保存并应用</button>
+    </div>
+  </div>
+</div>
+
+
+<div class="depov" id="depov" role="status" aria-live="polite">
+  <div class="depov-in">
+    <div class="depov-ring">
+      <svg viewBox="0 0 120 120" aria-hidden="true">
+        <circle class="trk" cx="60" cy="60" r="52"></circle>
+        <circle class="arc" id="depovArc" cx="60" cy="60" r="52"></circle>
+      </svg>
+      <b id="depovPct">0<i>%</i></b>
+    </div>
+    <div class="depov-t" id="depovT">正在准备部署</div>
+    <div class="depov-s" id="depovS">读一下当前进度…</div>
+    <div class="depov-bar"><i id="depovBar"></i></div>
+    <div class="depov-log" id="depovLog">　</div>
+    <button class="depov-off" data-act="depovoff">放到后台，继续部署</button>
+    <div class="depov-hint">部署期间请保持应用在前台、屏幕常亮</div>
+  </div>
+</div>
 <nav>
   <button class="on" data-tab="home"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.6 12 4l8 6.6V19a1 1 0 0 1-1 1h-4.2v-5.6H9.2V20H5a1 1 0 0 1-1-1z"/></svg>主页</button>
   <button data-tab="bots"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6" width="17" height="12.5" rx="3.4"/><path d="M9.5 6V4.6h5V6"/><circle cx="9.2" cy="11.4" r="1.1" fill="currentColor" stroke="none"/><circle cx="14.8" cy="11.4" r="1.1" fill="currentColor" stroke="none"/><path d="M9.4 15h5.2"/></svg>机器人</button>
@@ -4575,6 +4751,8 @@ function refreshAll(){
      绝不会把上面这些渲染一起带翻 —— 它们在 refresh() 的护栏里，这里再包一层更稳。 */
   try { refreshExtras(st); } catch (e) {}
   try { qrAutoCheck(st); } catch (e) {}
+  try { astrRefresh(); } catch (e) {}
+  try { siteVerTick(); } catch (e) {}
   /* 所有控件的置灰外观放在最后统一刷：上面每个 render 都可能刚重建过 DOM，
      新节点上没有 .locked。这里每轮重算，部署完成那一刻下一轮就自动解锁。 */
   paintLocks();
@@ -4760,6 +4938,7 @@ function refreshDeploy(){
     return;
   }
   S.deployInfo = d;   /* 缓存给主页部署磁贴：步数用实际数据，别再写死 */
+  try { depovPaint(d); } catch (e) {}   /* v1.2.0 部署大标志 */
   var pct = d.total ? Math.round(d.doneCount * 100 / d.total) : 0;
   if (d.done) pct = 100;
   el("deployBar").style.width = pct + "%";
@@ -4843,6 +5022,67 @@ var SLOW_STEP = {
    部署完默认收起，用户手动展开的选择存 localStorage，refresh 不覆盖。 */
 function deployOpenPref(){ return lsGet("qqbot.deployOpen", "0") === "1"; }
 
+
+/* ---------- v1.2.0 · 部署大标志 · JS ---------- */
+function depovData(){ var x = ext(); if (!x.depov) x.depov = { off: 0, wasRun: 0, hideAt: 0 }; return x.depov; }
+function depovShow(on){
+  var o = el("depov"); if (!o) return;
+  if (on) o.classList.add("on"); else o.classList.remove("on");
+}
+function depovPaint(d){
+  var o = el("depov"); if (!o) return;
+  var D = depovData();
+  if (!d) { depovShow(false); return; }
+  var running = !!d.running, done = !!d.done;
+  if (done) {
+    if (D.wasRun) {
+      D.wasRun = 0;
+      el("depovPct").innerHTML = '100<i>%</i>';
+      el("depovArc").style.strokeDashoffset = "0";
+      el("depovBar").style.width = "100%";
+      el("depovT").textContent = "部署完成";
+      el("depovS").textContent = "沙盒已经装好，接下来扫码登录 QQ 就能用了";
+      depovShow(true);
+      if (!D.hideAt) {
+        D.hideAt = Date.now() + 2600;
+        setTimeout(function(){ try { D.hideAt = 0; depovShow(false); } catch (e) {} }, 2600);
+      }
+    } else depovShow(false);
+    return;
+  }
+  if (!running) {
+    /* 中断：不弹大遮罩吓人，明细留给部署台 */
+    D.wasRun = 0;
+    depovShow(false);
+    return;
+  }
+  D.wasRun = 1;
+  if (D.off && Date.now() < D.off) { depovShow(false); return; }
+  D.off = 0;
+  var tot = d.total || 8, dc = d.doneCount || 0;
+  var cur = null, curIdx = 0;
+  for (var i = 0; i < (d.steps || []).length; i++) {
+    if (!d.steps[i].done) { cur = d.steps[i]; curIdx = i; break; }
+  }
+  var pct = tot ? Math.round(dc * 100 / tot) : 0;
+  el("depovPct").innerHTML = pct + '<i>%</i>';
+  el("depovArc").style.strokeDashoffset = String(326.7 * (1 - pct / 100));
+  el("depovBar").style.width = pct + "%";
+  el("depovT").textContent = cur ? ("第 " + (curIdx + 1) + " / " + tot + " 步：" + cur.label) : "正在收尾";
+  var age = d.logAge || 0;
+  var mins = Math.floor(age / 60);
+  el("depovS").textContent = "已完成 " + dc + "/" + tot + " 步"
+    + (mins >= 1 ? " · 这一步已经 " + mins + " 分钟没有新输出，通常是在编译或下载，慢是正常的" : " · 正在安装，稍等一下");
+  var tail = (d.logTail || "").split("\n").filter(function(s){ return s.trim(); });
+  el("depovLog").textContent = tail.length ? tail[tail.length - 1] : "　";
+  depovShow(true);
+}
+function depovHide(){
+  var D = depovData();
+  D.off = Date.now() + 90000;   /* 90 秒内不再自动弹，避免刚关掉又被顶回来 */
+  depovShow(false);
+  Android.toast("部署在后台继续，完成后会提示");
+}
 function paintDeploy(d){
   var done = !!d.done;
   if (done) S.deployDone = true;   /* deployInfo 比 state() 新，先本地纠正，免得刚部署完点不动按钮 */
@@ -5963,6 +6203,11 @@ document.addEventListener("click", function(ev){
   else if (act === "showqr") { qrOpen(arg || "", false); }
   else if (act === "qrreload") { qrReload(); extToast("已刷新二维码"); }
   else if (act === "qrclose") { qrClose(false); }
+    else if (act === "depovoff") { depovHide(); }
+  else if (act === "astrconfig") astrOpen();
+  else if (act === "astrclose") astrClose();
+  else if (act === "astrfetch") astrFetch();
+  else if (act === "astrsave") astrSave();
   else if (act === "showlogs") { showLogCards(); showTab("logs"); Android.toast("日志框已恢复"); }
   else if (act === "rmcard") rmCard(arg);
   else if (act === "clearlog") doClearLog(arg);
@@ -8049,6 +8294,163 @@ try { noticeInit(); } catch (e) {}
 setInterval(function(){ try { upTick(); } catch (e) {} }, 1000);
 try { upTick(); } catch (e) {}
 try { paintFoot(); } catch (e) {}
+
+/* ==========================================================================
+   AstrBot 模型与人格（v1.2.0）
+   —— 读回当前配置、拉模型列表、保存（停沙盒 → 写文件 → 拉起）。
+   ========================================================================== */
+function astrData(){
+  var E = ext();
+  if (!E.astr) E.astr = { info:null, busy:false, site:null, siteBusy:false };
+  return E.astr;
+}
+function astrInfo(force){
+  var d = astrData();
+  if (d.info && !force) return d.info;
+  if (!brHas("astrInfo")) { d.info = null; return null; }
+  try { d.info = JSON.parse(String(Android.astrInfo() || "null")); } catch (e) { d.info = null; }
+  return d.info;
+}
+function astrRefresh(){
+  var s = el("astrState");
+  if (!s) return;
+  if (!brHas("astrInfo")) { s.textContent = "这个安装包还不支持模型配置"; return; }
+  var j = astrInfo();
+  if (!j || j.ok === false) { s.textContent = "还没装好 AstrBot，装完再回来配"; return; }
+  if (!j.hasKey) { s.innerHTML = "还没有配置模型。<b>点下面「配置模型与人格」</b>，贴上中转站密钥就能用。"; return; }
+  var who = (j.personaSel === j.personaId) ? "烛心" : (j.personaSel || "默认");
+  s.innerHTML = "当前模型 <b>" + esc(j.model || "未设置") + "</b> · 密钥尾号 <b>"
+    + esc(j.keyTail || "----") + "</b> · 人格 <b>" + esc(who) + "</b>";
+}
+function astrOpen(){
+  var j = astrInfo(true) || {};
+  var m = el("dlgAstr");
+  if (!m) return;
+  if (el("astrBase")) el("astrBase").value = j.base || j.defaultBase || "https://worldcodes.online/v1";
+  if (el("astrKey")) {
+    el("astrKey").value = "";
+    el("astrKey").placeholder = j.hasKey
+      ? ("已保存，留空表示不修改（尾号 " + (j.keyTail || "----") + "）")
+      : "粘贴中转站密钥";
+  }
+  if (el("astrModel")) el("astrModel").value = j.model || "";
+  if (el("astrPersona")) el("astrPersona").value = j.persona || j.defaultPersona || "";
+  var sel = el("astrModelSel");
+  if (sel) { sel.style.display = "none"; sel.innerHTML = ""; }
+  if (el("astrModelsHint")) el("astrModelsHint").textContent = "";
+  if (el("astrSaveHint")) el("astrSaveHint").textContent = "";
+  m.classList.add("on");
+}
+function astrClose(){ var m = el("dlgAstr"); if (m) m.classList.remove("on"); }
+function astrFetch(){
+  var j = astrInfo() || {};
+  var b = el("astrBase") ? el("astrBase").value.trim() : "";
+  var k = el("astrKey") ? el("astrKey").value.trim() : "";
+  var h = el("astrModelsHint");
+  if (!brHas("astrModelsStart")) { extToast("这个安装包还不支持拉取模型"); return; }
+  if (!k && !j.hasKey) { extToast("先把密钥贴进来"); return; }
+  if (h) h.textContent = "正在拉取模型列表…";
+  try { Android.astrModelsStart(b || j.defaultBase || "", k); } catch (e) { if (h) h.textContent = "拉取失败"; return; }
+  var n = 0;
+  var t = setInterval(function(){
+    var raw = "";
+    try { raw = String(Android.astrModelsPoll() || ""); } catch (e) { raw = ""; }
+    if (!raw) { if (++n > 30) { clearInterval(t); if (h) h.textContent = "拉取超时，可以手填模型名"; } return; }
+    clearInterval(t);
+    var r = null;
+    try { r = JSON.parse(raw); } catch (e) { r = null; }
+    if (!r || !r.ok) { if (h) h.textContent = (r && r.err) ? r.err : "拉取失败，可以手填模型名"; return; }
+    var list = r.models || [];
+    if (!list.length) { if (h) h.textContent = "中转站没返回模型，手动填一个吧"; return; }
+    var sel = el("astrModelSel");
+    if (sel) {
+      var html = "";
+      for (var i = 0; i < list.length; i++) html += '<option value="' + esc(list[i]) + '">' + esc(list[i]) + "</option>";
+      sel.innerHTML = html;
+      sel.style.display = "block";
+      sel.onchange = function(){ if (el("astrModel")) el("astrModel").value = sel.value; };
+    }
+    if (h) h.textContent = "拿到 " + list.length + " 个模型，点选即填入";
+    if (el("astrModel") && !el("astrModel").value && list.length) el("astrModel").value = list[0];
+  }, 800);
+}
+function astrSave(){
+  var b = el("astrBase") ? el("astrBase").value.trim() : "";
+  var k = el("astrKey") ? el("astrKey").value.trim() : "";
+  var mo = el("astrModel") ? el("astrModel").value.trim() : "";
+  var pe = el("astrPersona") ? el("astrPersona").value : "";
+  var h = el("astrSaveHint");
+  var d = astrData();
+  if (!brHas("astrSave")) { extToast("这个安装包还不支持保存配置"); return; }
+  if (!mo) { extToast("模型名不能为空"); return; }
+  if (d.busy) { extToast("上一次还在应用，请稍等"); return; }
+  var r = null;
+  try { r = JSON.parse(String(Android.astrSave(b, mo, k, pe) || "null")); } catch (e) { r = null; }
+  if (!r || !r.ok) { extToast((r && r.err) ? r.err : "保存失败"); return; }
+  d.busy = true;
+  if (h) h.textContent = "正在停止服务…（约 40 秒后自动拉起）";
+  var t = setInterval(function(){
+    var raw = "";
+    try { raw = String(Android.astrSavePoll() || ""); } catch (e) { raw = ""; }
+    var s = null;
+    try { s = JSON.parse(raw || "null"); } catch (e) { s = null; }
+    if (!s) return;
+    if (h && s.msg) h.textContent = s.msg;
+    if (s.state === "done") {
+      clearInterval(t); d.busy = false; d.info = null;
+      if (h) h.textContent = "已保存，服务正在启动，约 30 秒后就能用";
+      extToast("配置已保存，服务正在启动");
+      try { astrRefresh(); } catch (e) {}
+    } else if (s.state === "error") {
+      clearInterval(t); d.busy = false; d.info = null;
+      if (h) h.textContent = "保存失败：" + (s.msg || "");
+      extToast("保存失败：" + (s.msg || ""));
+    }
+  }, 1200);
+}
+/* ---- 官网版本号 ---- */
+function siteVerNum(s){
+  var a = String(s || "").replace(/^v/i, "").split(".");
+  var o = [];
+  for (var i = 0; i < 4; i++) o.push(parseInt(a[i] || "0", 10) || 0);
+  return o;
+}
+function siteVerCmp(a, b){
+  var x = siteVerNum(a), y = siteVerNum(b);
+  for (var i = 0; i < 4; i++) { if (x[i] !== y[i]) return x[i] - y[i]; }
+  return 0;
+}
+function siteVerPaint(r){
+  var e2 = el("siteVer");
+  if (!e2) return;
+  if (!r || !r.ok) { e2.textContent = "官网版本：读取失败"; return; }
+  var cur = "";
+  try { cur = String(Android.appVer() || ""); } catch (e) { cur = ""; }
+  var newer = siteVerCmp(r.site, cur) > 0;
+  e2.innerHTML = "官网最新 <b>" + esc(r.site) + "</b>"
+    + (r.updated ? "（" + esc(r.updated) + "）" : "")
+    + (newer ? " · <b>有新版本</b>" : " · 已是最新");
+}
+function siteVerTick(){
+  var d = astrData();
+  if (d.site) { siteVerPaint(d.site); return; }
+  if (d.siteBusy) return;
+  if (!brHas("siteVerStart")) return;
+  d.siteBusy = true;
+  try { Android.siteVerStart(); } catch (e) { d.siteBusy = false; return; }
+  var n = 0;
+  var t = setInterval(function(){
+    var raw = "";
+    try { raw = String(Android.siteVerPoll() || ""); } catch (e) { raw = ""; }
+    if (!raw) { if (++n > 25) { clearInterval(t); d.siteBusy = false; } return; }
+    clearInterval(t);
+    d.siteBusy = false;
+    var r = null;
+    try { r = JSON.parse(raw); } catch (e) { r = null; }
+    d.site = r;
+    siteVerPaint(r);
+  }, 800);
+}
 </script>
 </body>
 </html>

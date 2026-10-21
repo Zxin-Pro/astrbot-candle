@@ -39,14 +39,14 @@
 
 | 依赖 | 用途 | 本机示例路径 |
 | --- | --- | --- |
-| **JDK 21** | 编译 Java 工具、`javac`、`d8`、签名 | `C:\Users\zjh19\.dsh-jdks\jdk-21.0.12.1+1\bin` |
+| **JDK 17+** | 编译 Java 工具、`javac`、`d8`、签名 | 任意 JDK 17 及以上；脚本自动取 `JAVA_HOME`，没设就取 PATH 上的 `javac.exe` |
 | **PowerShell 5.1** | 跑构建脚本（Windows 自带） | `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` |
 | **apktool.jar** | 解开 / 重新打包 APK | `_sdk\apktool.jar` |
 | **d8** | dex 编译器（把 class 编成 dex） | `_sdk\bt\android-14\lib\d8.jar`（入口类 `com.android.tools.r8.D8`） |
 | **android.jar** | 编译时的 Android API 桩 | `_sdk\platform\android-34\android.jar` |
 | **uber-apk-signer.jar** | 对齐 + 重新签名 | `_research\uber-apk-signer.jar` |
 | **上游 Termux APK** | 作为注入基底与 pristine bootstrap 来源 | `_research\termux-arm64.apk` |
-| **本仓库的 Java 工具** | 注入 / 替换 / dex→smali / 校验 | `tools\*.java`（已编译的 `.class` 直接放在 `tools\` 下当 classpath 用） |
+| **本仓库的 Java 工具** | 注入 / 替换 / dex→smali / 校验 | `tools\*.java`（构建脚本会按需自动编译成 `tools\*.class`，不需要手工编译） |
 
 `_sdk\` 与 `_research\` **不入库**（见 `.gitignore`），需要自己准备：
 
@@ -62,10 +62,12 @@
 
 ### 0. 准备
 
-把所有路径变量改成你自己机器上的实际路径（脚本里是硬编码的）：
+**路径都已自动定位，通常不需要改任何脚本**：
 
-- `build-ui.ps1` 里标注了 `EDIT THIS LINE` 的那一行 `$JDK`（改成你自己的 JDK 21 `bin` 目录）；
-- `build-apk.ps1` 里同样位置的 `$JDK`（`$ROOT` 已由 `$PSScriptRoot` 自动定位，不用改）。
+- `$JDK` / `$JAVA`：先看 `$env:JAVA_HOME`，没设就取 PATH 上的 `javac.exe` 同目录 —— 装一个 JDK 17 及以上并加进 PATH 即可，
+- `$ROOT`：`build-ui.ps1` / `build-apk.ps1` 都取 `$PSScriptRoot`，仓库放哪个盘、从哪个目录调用都不影响；
+- `tools\*.class`：`tools\*.java` 会在构建开始时**按需自动重编译**（缺 class 或源码更新时才编），不需要手动 `javac`；
+- 若某个版本要求指定 JDK，直接 `$env:JAVA_HOME = 'C:\path\to\jdk'` 再跑脚本即可。
 
 ### 1. 先构建界面（build-ui）
 
@@ -176,7 +178,7 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
    `build-apk.ps1` 是递归扫描 `build/` 的，加文件自动带上；但如果新文件需要新的 `--drop` 前缀腾空间，要手动加到 `$dropPrefixes` 里。
 6. **构建脚本都在仓库根目录，`$ROOT` 自动定位。**
    `build-ui.ps1` 与 `build-apk.ps1` 都用 `$PSScriptRoot` 取仓库根目录，所以从任何工作目录调用都不会找错路径；
-   只有 `$JDK` 那一行需要按你自己的机器改。
+   只有 `$JDK` / `$JAVA` 需要能被找到（`JAVA_HOME` 或 PATH 上的 `javac.exe`）。
 7. **不要提交构建产物。**
    `_research/`、`_sdk/`、`out/`、`_apkwork/`、`ui\classes\`、`ui\dex\`、`ui\smali\` 以及 `*.apk` / `*.dex` / `*.jar` / `*.so` 全部已被忽略。
 8. **`_apkwork/` 需要先解包一次。**

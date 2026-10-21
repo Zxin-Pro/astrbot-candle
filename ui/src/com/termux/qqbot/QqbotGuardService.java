@@ -42,6 +42,8 @@ public class QqbotGuardService extends Service {
     public static final String ACTION_WAKE = "com.termux.app.GUARD_WAKE";
     /** 通知栏「下线」（折叠菜单里的第 4 个）：等价于 emergencyStop，但要自己写 offline 标记。 */
     public static final String ACTION_STOP = "com.termux.app.GUARD_STOP";
+    /** 通知栏「关闭进程」：停沙盒 + 收掉守护服务自己，一键把后台关干净。 */
+    public static final String ACTION_KILL = "com.termux.app.GUARD_KILL";
     /** 桌面小组件「启动/停止」：PendingIntent.getService 打回本服务（协议文档里的旧名字也认）。 */
     public static final String ACTION_WIDGET_TOGGLE = "com.termux.app.WIDGET_TOGGLE";
     public static final String ACTION_WIDGET_TOGGLE_LEGACY = "com.termux.qqbot.WIDGET_TOGGLE";
@@ -285,6 +287,17 @@ public class QqbotGuardService extends Service {
                改成把面板拉到前台弹「紧急下线」确认；真正的 stop-sandbox.sh 在用户点确认后
                由页面的 Android.emergencyStop() 执行。 */
             askStopConfirm();
+        } else if (ACTION_KILL.equals(a)) {
+            /* 通知栏「关闭进程」：用户的诉求是「别管我了」，所以不再弹二次确认，
+               直接停沙盒并把本服务收掉。EmergencyStop 会先写 offline 标记，
+               心跳/网络自愈/watchdog 见到它都不会再拉起。 */
+            try {
+                Thread th = new Thread(new GuardKillTask(this), "qqbot-kill");
+                th.setDaemon(true);
+                th.start();
+            } catch (Throwable ignored) {
+            }
+            return START_NOT_STICKY;
         } else if (ACTION_WIDGET_TOGGLE.equals(a) || ACTION_WIDGET_TOGGLE_LEGACY.equals(a)) {
             /* 老版本小组件/磁贴的 PendingIntent 还会打到这里（新版本一律直接拉起面板并带
                toggle=1）。服务这边不判状态、也不自己 startActivity —— 服务在后台起
@@ -340,6 +353,17 @@ public class QqbotGuardService extends Service {
         } catch (Throwable ignored) {
         }
         lock = null;
+    }
+
+    /** 彻底收掉：撤通知 + 停前台 + stopSelf。给 GuardKillTask 用（后台线程调用安全）。 */
+    void stopQuiet() {
+        guardRunning = false;
+        try { stopForeground(true); } catch (Throwable ignored) {}
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) nm.cancel(NOTI_ID);
+        } catch (Throwable ignored) {}
+        try { stopSelf(); } catch (Throwable ignored) {}
     }
 
     /** 界面上切换「常驻唤醒」后立刻生效，不用等服务重启。 */
@@ -454,10 +478,13 @@ public class QqbotGuardService extends Service {
             b.addAction(icon, "扫码", ps);
         } catch (Throwable ignored) {
         }
-        // Action 4「下线」：Android 7+ 会把第 4 个收进折叠区，正好适合低频且危险的操作。
-        // 直接指向「确认下线」的 Activity PendingIntent——不经过服务中转，绕开 BAL 拦截。
+        // Action 4「关闭进程」：Android 7+ 会把第 4 个收进折叠区，正好适合低频且危险的操作。
+        // 打回本服务（服务在跑，getService 一定能送达），由 GuardKillTask 停沙盒后自我收尾。
         try {
-            b.addAction(icon, "下线", stopConfirmPi(this));
+            Intent k = new Intent(this, QqbotGuardService.class);
+            k.setAction(ACTION_KILL);
+            PendingIntent pk = PendingIntent.getService(this, 14, k, PendingIntent.FLAG_IMMUTABLE);
+            b.addAction(icon, "关闭进程", pk);
         } catch (Throwable ignored) {
         }
         return b.build();

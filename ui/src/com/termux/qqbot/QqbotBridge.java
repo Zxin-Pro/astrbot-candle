@@ -760,6 +760,59 @@ public class QqbotBridge {
         return CheckUpdate.poll();
     }
 
+    /* ---------- AstrBot 配置 / 中转站 / 官网版本 ---------- */
+
+    /** 当前 AstrBot 的模型与人格配置（给界面回填）。 */
+    @JavascriptInterface
+    public String astrInfo() {
+        try {
+            return AstrCfg.info(act.filesDirPub());
+        } catch (Throwable t) {
+            return errJson("读取 AstrBot 配置失败", t);
+        }
+    }
+
+    /** 保存配置：停沙盒 → 写文件 → 重新拉起，进度用 astrSavePoll() 轮。 */
+    @JavascriptInterface
+    public String astrSave(String base, String model, String key, String persona) {
+        try {
+            if (AstrSaveTask.busy()) return "{\"ok\":false,\"err\":\"正在应用上一次改动，请稍等\"}";
+            Thread th = new Thread(new AstrSaveTask(act, base, model, key, persona), "qqbot-astrsave");
+            th.setDaemon(true);
+            th.start();
+            return "{\"ok\":true}";
+        } catch (Throwable t) {
+            return errJson("保存失败", t);
+        }
+    }
+
+    @JavascriptInterface
+    public String astrSavePoll() {
+        return AstrSaveTask.poll();
+    }
+
+    /** 用密钥拉中转站的模型列表。 */
+    @JavascriptInterface
+    public void astrModelsStart(String base, String key) {
+        AstrModels.start(base, key);
+    }
+
+    @JavascriptInterface
+    public String astrModelsPoll() {
+        return AstrModels.poll();
+    }
+
+    /** 官网版本号（GitHub 连不上时的备选来源）。 */
+    @JavascriptInterface
+    public void siteVerStart() {
+        SiteVer.start();
+    }
+
+    @JavascriptInterface
+    public String siteVerPoll() {
+        return SiteVer.poll();
+    }
+
     @JavascriptInterface
     public String exec(String cmd) {
         return act.runShell(cmd, 60);

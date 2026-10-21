@@ -12,13 +12,43 @@
 # =====================================================================
 $ErrorActionPreference = 'Continue'
 
-# --- EDIT THIS LINE: your JDK 21 bin directory -----------------------
-$JDK = 'C:\Users\zjh19\.dsh-jdks\jdk-21.0.12.1+1\bin'
-# ---------------------------------------------------------------------
+# --- JDK bin directory ----------------------------------------------
+# Prefer $env:JAVA_HOME, else the first javac.exe on PATH. Any JDK 17+
+# works: javac targets 11 and d8/apktool only need a modern java.exe.
+$JDK = ''
+if ($env:JAVA_HOME -and (Test-Path (Join-Path $env:JAVA_HOME 'bin\javac.exe'))) {
+  $JDK = Join-Path $env:JAVA_HOME 'bin'
+} else {
+  $jc = Get-Command javac.exe -ErrorAction SilentlyContinue
+  if ($jc) { $JDK = Split-Path $jc.Source -Parent }
+}
+if (-not $JDK) { Write-Host 'MISSING javac: set JAVA_HOME or put javac.exe on PATH'; exit 1 }
+
+Write-Host ("JDK: " + $JDK)
 
 $ROOT = $PSScriptRoot
 if (-not $ROOT) { $ROOT = (Get-Location).Path }
 Set-Location $ROOT
+
+# 0) (re)compile the java helper tools (tools\*.java -> tools\*.class).
+#    They are gitignored build artifacts: a fresh clone has none, and classes
+#    built by a newer JDK fail on an older runtime (UnsupportedClassVersionError),
+#    which silently leaves ui\smali from the previous build in place.
+$TOOLSRC = @(Get-ChildItem "$ROOT\tools" -Filter *.java | ForEach-Object { $_.FullName })
+$needTools = $false
+foreach ($f in $TOOLSRC) {
+  $cls = Join-Path "$ROOT\tools" ((Split-Path $f -Leaf) -replace '\.java$', '.class')
+  if (-not (Test-Path $cls)) { $needTools = $true }
+  elseif ((Get-Item $f).LastWriteTime -gt (Get-Item $cls).LastWriteTime) { $needTools = $true }
+}
+if ($needTools -and $TOOLSRC.Count -gt 0) {
+  Write-Host ("tools: compiling " + $TOOLSRC.Count + " sources")
+  & "$JDK\javac.exe" -encoding UTF-8 -nowarn -cp "$ROOT\_sdk\apktool.jar" -d "$ROOT\tools" $TOOLSRC 2>$null
+  Write-Host ("tools javac rc=" + $LASTEXITCODE)
+  if ($LASTEXITCODE -ne 0) { Write-Host 'TOOLS COMPILE FAIL'; exit 1 }
+} else {
+  Write-Host 'tools: up to date'
+}
 
 $JAR = "$ROOT\_sdk\platform\android-34\android.jar"
 if (-not (Test-Path $JAR)) { Write-Host "MISSING android.jar: $JAR"; exit 1 }
@@ -48,6 +78,10 @@ if ($LASTEXITCODE -ne 0) { Write-Host 'D8 FAIL'; exit 1 }
 Remove-Item "$ROOT\ui\smali" -Recurse -Force -ErrorAction SilentlyContinue
 & "$JDK\java.exe" -cp "$ROOT\_sdk\apktool.jar;$ROOT\tools" DexToSmali "$ROOT\ui\dex\classes.dex" "$ROOT\ui\smali" 34 2>$null
 Write-Host "dextosmali rc=$LASTEXITCODE"
+if ($LASTEXITCODE -ne 0) { Write-Host 'DEXTOSMALI FAIL'; exit 1 }
+# A failed disassembly used to be swallowed: the build then repacked the PREVIOUS
+# ui\smali, so the APK shipped dex and smali from different commits with no error.
+if (-not (Test-Path "$ROOT\ui\smali")) { Write-Host 'MISSING ui\smali after DexToSmali'; exit 1 }
 if (-not (Test-Path "$ROOT\_apkwork\apktool.yml")) { Write-Host 'MISSING _apkwork - run apktool d first (see docs/BUILD.md)'; exit 1 }
 
 # 3b) version stamp: the VERSION file at the repo root is the single source of truth
@@ -74,7 +108,7 @@ if ($xml2 -ne $xml) {
   Write-Host 'manifest: debuggable already absent'
 }
 Remove-Item "$ROOT\_apkwork\smali_classes30" -Recurse -Force -ErrorAction SilentlyContinue
-Copy-Item "$ROOT\ui\smali" "$ROOT\_apkwork\smali_classes30" -Recurse -Force
+Copy-Item "$ROOT\ui\smali" "$ROOT\_apkwork\smali_classes30" -Recurse -Force -ErrorAction Stop
 New-Item -ItemType Directory -Force -Path "$ROOT\_apkwork\assets\qqbot" | Out-Null
 Copy-Item "$ROOT\ui\assets\qqbot\index.html" "$ROOT\_apkwork\assets\qqbot\index.html" -Force
 # header logo: the app's own icon, served from assets so the WebView can load it.

@@ -9,8 +9,33 @@
 param([string]$Arch = "")
 $ErrorActionPreference = "Stop"
 
-$ROOT = "C:\Users\zjh19\DSH\qqbot-sandbox"
-$JAVA = "C:\Users\zjh19\.dsh-jdks\jdk-21.0.12.1+1\bin\java.exe"
+$ROOT = $PSScriptRoot
+if (-not $ROOT) { $ROOT = (Get-Location).Path }
+# java.exe: $env:JAVA_HOME first, else the JDK next to javac.exe on PATH (JDK 17+ is fine).
+if ($env:JAVA_HOME -and (Test-Path (Join-Path $env:JAVA_HOME "bin\java.exe"))) {
+  $JAVA = Join-Path $env:JAVA_HOME "bin\java.exe"
+} else {
+  $jc = Get-Command javac.exe -ErrorAction SilentlyContinue
+  if ($jc) { $JAVA = Join-Path (Split-Path $jc.Source -Parent) "java.exe" }
+}
+if (-not $JAVA -or -not (Test-Path $JAVA)) { throw "java.exe not found: set JAVA_HOME or put javac.exe on PATH" }
+$JAVAC = Join-Path (Split-Path $JAVA -Parent) "javac.exe"
+Write-Host ("java: " + $JAVA)
+
+# helper tools (tools\*.java -> tools\*.class) must be compiled for THIS runtime:
+# they are gitignored, and classes built by a newer JDK fail with UnsupportedClassVersionError.
+$TOOLSRC = @(Get-ChildItem "$ROOT\tools" -Filter *.java | ForEach-Object { $_.FullName })
+$needTools = $false
+foreach ($f in $TOOLSRC) {
+  $cls = Join-Path "$ROOT\tools" ((Split-Path $f -Leaf) -replace '\.java$', '.class')
+  if (-not (Test-Path $cls)) { $needTools = $true }
+  elseif ((Get-Item $f).LastWriteTime -gt (Get-Item $cls).LastWriteTime) { $needTools = $true }
+}
+if ($needTools -and $TOOLSRC.Count -gt 0) {
+  Write-Host ("tools: compiling " + $TOOLSRC.Count + " sources")
+  & $JAVAC -encoding UTF-8 -nowarn -cp "$ROOT\_sdk\apktool.jar" -d "$ROOT\tools" $TOOLSRC
+  if ($LASTEXITCODE -ne 0) { throw "tools compile failed" }
+} else { Write-Host "tools: up to date" }
 $PREFIX_OFF = 1328
 $SECTION = 29388903
 $STOCK_APK = Join-Path $ROOT "_research\termux-arm64.apk"
