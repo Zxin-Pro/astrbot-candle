@@ -50,6 +50,20 @@ QQBOT_TUNA="https://mirrors.tuna.tsinghua.edu.cn"
 QQBOT_PYPI="$QQBOT_TUNA/pypi/simple"
 QQBOT_GH_MIRRORS="https://ghfast.top/ https://gh-proxy.com/ https://ghproxy.net/ https://github.moeyy.xyz/ https://gh.llkk.cc/ https://ghproxy.cc/ https://gh.xxooo.cf/ https://gh-proxy.net/ https://hub.gitmirror.com/"
 
+# 1.2.1：沙盒镜像（bundle-<arch>.tar.xz）放在官网 /dl/ 下，部署时直连下载。
+# 换地址只要改这里，或者部署前 export QQBOT_CDN=…（任何支持 Range 的静态目录都行）。
+QQBOT_CDN="${QQBOT_CDN:-https://xn--15t839a.xyz/dl}"
+
+# 1.2.2：包名从 com.termux 改成 zhuxin.astrbot 之后，curl 的编译期 CA 路径还指着
+# /data/data/com.termux/files/usr/etc/tls/cert.pem，所有 https 下载都会报
+#   curl: (77) error setting certificate file: /data/data/com.termux/...
+# 这个路径是 ELF 里的常量，长度不同没法原地改，所以用环境变量把它指回新前缀。
+# curl 认 CURL_CA_BUNDLE，OpenSSL 系工具认 SSL_CERT_FILE，两个都设。
+if [ -f "$PREFIX/etc/tls/cert.pem" ]; then
+  export CURL_CA_BUNDLE="${CURL_CA_BUNDLE:-$PREFIX/etc/tls/cert.pem}"
+  export SSL_CERT_FILE="${SSL_CERT_FILE:-$PREFIX/etc/tls/cert.pem}"
+fi
+
 mkdir -p "$QQBOT_HOME" "$QQBOT_CACHE" "$QQBOT_STATE" "$QQBOT_LOGS" "$QQBOT_STEPS" "$QQBOT_PTMP" "$QQBOT_DEVDIR/shm" 2>/dev/null
 chmod 1777 "$QQBOT_DEVDIR/shm" 2>/dev/null
 
@@ -606,6 +620,93 @@ qq_gh_dl() {
   qq_dl_mirror "$_o" $_list
 }
 
+# ---------------------------------------------------------------------------
+# 1.2.1：从官网拉一份「已经装好」的沙盒镜像
+#
+# 1.2.0 是把 600 MB 镜像塞进 APK（懒人包）。实测两个问题：安装包大到小米安全扫描
+# 直接报「包含病毒」并只给「取消安装」；手机空间紧张时连装都装不上。1.2.1 改成
+# APK 只带程序（约 25 MB），首次部署时从这里把镜像拉下来 —— 内容与懒人包完全一样，
+# 只是不进安装包。下载地址是自家服务器，比在线 apt（清华源 + GitHub 代理）快得多。
+#
+# 下不到不影响部署：调用方回落到在线安装，只是慢一些。
+# ---------------------------------------------------------------------------
+qq_bundle_pull() {
+  _bp_dst="${1:-$QQBOT_HOME/bundle.tar.xz}"
+  if [ -s "$_bp_dst" ] && [ -f "$QQBOT_HOME/.bundle-ok" ]; then
+    return 0
+  fi
+  _bp_url="$QQBOT_CDN/bundle-$QQBOT_ARCH.tar.xz"
+  _bp_part="$_bp_dst.part"
+  mkdir -p "$QQBOT_LOGS" 2>/dev/null
+  # 断点续传：上次下到一半的 .part 留着，接上继续，不从 0 重新下 600 MB。
+  if [ -s "$_bp_dst" ] && [ ! -s "$_bp_part" ]; then
+    mv -f "$_bp_dst" "$_bp_part" 2>/dev/null
+  fi
+  qqlog "下载沙盒镜像（$QQBOT_ARCH，约 600 MB，只需一次）"
+  qqlog "  地址 $QQBOT_CDN"
+  _bp_got=0
+  _bp_try=0
+  while [ "$_bp_try" -lt 3 ]; do
+    _bp_try=$((_bp_try + 1))
+    curl -L --fail --retry 5 --retry-delay 3 --connect-timeout 20 --max-time 7200 \
+      -A "Mozilla/5.0 (Linux; Android 13) qqbot-sandbox/1.0" \
+      -C - $(qq_proxy_args) -o "$_bp_part" "$_bp_url" >> "$QQBOT_LOGS/download-bundle.log" 2>&1 &
+    _bp_pid=$!
+    _bp_last=-5
+    while kill -0 "$_bp_pid" 2>/dev/null; do
+      sleep 5
+      _bp_have=$(stat -c %s "$_bp_part" 2>/dev/null || echo 0)
+      case "$_bp_have" in ''|*[!0-9]*) _bp_have=0 ;; esac
+      _bp_mb=$(( _bp_have / 1048576 ))
+      # 每涨 5 MB 打一行：600 MB 要下几分钟，不报进度会被当成卡死。
+      if [ "$_bp_mb" -ge $(( _bp_last + 5 )) ]; then
+        _bp_last=$_bp_mb
+        qqlog "  已下载 ${_bp_mb} MB"
+      fi
+    done
+    wait "$_bp_pid"
+    _bp_rc=$?
+    _bp_size=$(stat -c %s "$_bp_part" 2>/dev/null || echo 0)
+    case "$_bp_size" in ''|*[!0-9]*) _bp_size=0 ;; esac
+    # 装好的镜像不可能只有几十兆：体积明显不对就当这次没成，别把半个包当好的。
+    if [ "$_bp_rc" -eq 0 ] && [ "$_bp_size" -gt 104857600 ]; then
+      _bp_got=1
+      break
+    fi
+    qqwarn "第 ${_bp_try} 次下载没完成（curl 返回 ${_bp_rc}，已有 ${_bp_size} 字节），5 秒后接着下"
+    sleep 5
+  done
+  if [ "$_bp_got" != "1" ]; then
+    qqwarn "沙盒镜像没下成，详见 $QQBOT_LOGS/download-bundle.log"
+    return 1
+  fi
+  # 校验：官网同目录放了一份 .sha256（「<hex>  bundle-<arch>.tar.xz」）。
+  # 拿不到校验文件不算失败（老目录没有），能拿到就必须对上。
+  _bp_sha=""
+  _bp_shaf="$QQBOT_CACHE/bundle.sha256"
+  if curl -fsSL --connect-timeout 20 --max-time 60 \
+      -A "Mozilla/5.0 (Linux; Android 13) qqbot-sandbox/1.0" \
+      $(qq_proxy_args) -o "$_bp_shaf" "$_bp_url.sha256" 2>/dev/null; then
+    _bp_sha=$(awk 'NR==1{print $1}' "$_bp_shaf" 2>/dev/null)
+  fi
+  rm -f "$_bp_shaf"
+  if [ -n "$_bp_sha" ] && command -v sha256sum >/dev/null 2>&1; then
+    _bp_mine=$(sha256sum "$_bp_part" 2>/dev/null | awk '{print $1}')
+    if [ -n "$_bp_mine" ] && [ "$_bp_mine" != "$_bp_sha" ]; then
+      qqerr "沙盒镜像校验失败（期望 ${_bp_sha}，实际 ${_bp_mine}），已删除，下次重新下载"
+      rm -f "$_bp_part"
+      return 1
+    fi
+    [ -n "$_bp_mine" ] && qqok "镜像 SHA-256 校验通过"
+  fi
+  mv -f "$_bp_part" "$_bp_dst" || return 1
+  : > "$QQBOT_HOME/.bundle-ok"
+  rm -f "$QQBOT_HOME/.bundle-pending"
+  qqok "沙盒镜像已就位（$(du -h "$_bp_dst" 2>/dev/null | cut -f1)）"
+  return 0
+}
+
+
 # proot 自检：能跑通返回 0。带超时保护，避免坏 proot 把进程挂死。
 # ---------------------------------------------------------------------------
 # 时区
@@ -660,6 +761,44 @@ qq_tz_sync() {
   printf '%s' "$_t"
 }
 
+# proot 能不能跑：拿一句 echo 当探针。
+#
+# 探针不能写死 /system/bin/echo —— 1.2.0 就是这么写的，Redmi 24069RA21C / Android 16
+# 实测这台机器上根本没有这个路径，proot 把 -0 后面的第一个参数当可执行文件去 execve，
+# 直接 ENOENT，于是「proot 自检失败」，部署卡在第 10 步（用户日志 20261021-214703）。
+# 改成按顺序试几个「Android 上一定在」的解释器，谁先跑通就算谁：
+#   /system/bin/sh -c echo …（4.x 起一直都在，最稳）
+#   /system/bin/toybox echo …（6.0 起）
+#   /system/bin/echo …（老路径，留给旧机型）
+# 三次都失败才算 proot 真的跑不起来，并且把每次的原始报错都留在日志里。
+qq_proot_probe() {
+  _qp_to="$1"
+  _qp_mark="$2"
+  _qp_log="$3"
+  : > "$_qp_log" 2>/dev/null
+  _qp_try() {
+    _qp_out="$_qp_log.$$.try"
+    if command -v timeout >/dev/null 2>&1; then
+      timeout "$_qp_to" "$@" > "$_qp_out" 2>&1
+    else
+      "$@" > "$_qp_out" 2>&1
+    fi
+    _qp_rc=$?
+    printf '[probe] rc=%s %s\n' "$_qp_rc" "$1" >> "$_qp_log" 2>/dev/null
+    sed 's/^/    /' "$_qp_out" >> "$_qp_log" 2>/dev/null
+    if [ "$_qp_rc" -eq 0 ] && grep -q "$_qp_mark" "$_qp_out" 2>/dev/null; then
+      rm -f "$_qp_out"
+      return 0
+    fi
+    rm -f "$_qp_out"
+    return 1
+  }
+  _qp_try "$QQBOT_PROOT" -0 /system/bin/sh -c "echo $_qp_mark" && return 0
+  _qp_try "$QQBOT_PROOT" -0 /system/bin/toybox echo "$_qp_mark" && return 0
+  _qp_try "$QQBOT_PROOT" -0 /system/bin/echo "$_qp_mark" && return 0
+  return 1
+}
+
 qq_proot_selftest() {
   unset LD_PRELOAD
   export PROOT_TMP_DIR="$QQBOT_PTMP"
@@ -671,11 +810,7 @@ qq_proot_selftest() {
     return 1
   fi
   _qq_proot_selftest_once() {
-    if command -v timeout >/dev/null 2>&1; then
-      timeout 25 "$QQBOT_PROOT" -0 /system/bin/echo qqbot-proot-ok > "$QQBOT_SELFTEST_LOG" 2>&1
-    else
-      "$QQBOT_PROOT" -0 /system/bin/echo qqbot-proot-ok > "$QQBOT_SELFTEST_LOG" 2>&1
-    fi
+    qq_proot_probe 25 qqbot-proot-ok "$QQBOT_SELFTEST_LOG"
   }
   _qq_proot_selftest_once && return 0
   # v1.1.26：打了 loader 补丁却起不来 proot，说明这份 proot 不认我们的替代 loader。

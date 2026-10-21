@@ -129,6 +129,13 @@ Copy-Item "$ROOT\ui\assets\qqbot\index.html" "$ROOT\_apkwork\assets\qqbot\index.
 Copy-Item "$ROOT\ui\assets\qqbot\appicon.png" "$ROOT\_apkwork\assets\qqbot\appicon.png" -Force
 Write-Host 'smali + asset copied'
 
+# 3c-2) rename the Termux package id inside the decoded smali (com.termux -> zhuxin.astrbot).
+#     The dex only carries "com/termux" class descriptors, so the dotted name lives in the
+#     string constants (TermuxConstants etc.) and in /data/data/com.termux paths.
+#     Idempotent: no-op once the strings are already rewritten.
+& python (Join-Path $ROOT "out\patch_smali.py") "$ROOT\_apkwork"
+if ($LASTEXITCODE -ne 0) { Write-Host 'SMALI PATCH FAIL'; exit 1 }
+
 # 3d) app icon: copy ui\assets\icon\res into _apkwork\res before apktool b.
 #     ASCII only (PowerShell 5.1 reads this file as GBK when it has no BOM).
 #     Idempotent: re-running just overwrites the same files again.

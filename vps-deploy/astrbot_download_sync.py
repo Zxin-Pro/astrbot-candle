@@ -668,7 +668,17 @@ def build(latest, all_rels, extra=None, mirror=None):
     if mine.get("size"):
         apk_size = mine["size"]
     pub = (latest.get("published_at") or "")[:10]
+    try:
+        _vnum = tuple(int(x) for x in ver.split(".")[:3])
+    except Exception:
+        _vnum = (0, 0, 0)
     now = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    # 1.2.1 起 APK 只带程序本身，沙盒镜像要等首次启动才下载。站里存没存镜像，
+    # 决定卡片能不能直接告诉用户「镜像也从本站下」。
+    bundle_here = os.path.exists(os.path.join(SITE, "dl", "bundle-arm64.tar.xz"))
+    bundle_line = ("沙盒镜像也放在本站，直接从本站下载，带 SHA-256 校验和断点续传。" + NL
+                   if bundle_here else "")
 
     d_cards = [
         {
@@ -677,8 +687,14 @@ def build(latest, all_rels, extra=None, mirror=None):
             # 文件名放第一行：卡片里的说明会被样式截断，把「下载下来叫什么」摆在最前面才不会看不到。
             "desc": "文件名 AstrBot-%s.apk（下载下来就是这个名字）" % ver + NL +
                     "安卓安装包 · %s%s" % (apk_size, (" · " + pub) if pub else "") + NL +
+                    "安装包约 25 MB，只含程序本身；首次启动自动从本站下载约 600 MB 沙盒镜像，只需一次，"
+                    "之后再打开不会重复下载。" + NL +
+                    bundle_line +
                     "安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）" + NL +
-                    "包名 com.termux，如果装过官方 Termux 要先卸载" + NL +
+                    "包名 zhuxin.astrbot（1.2.2 起改名，和官方 Termux 不再冲突、可以共存）" + NL +
+                    (("从 1.2.1 及更早版本升级：包名变了没法覆盖安装，要先卸载旧版"
+                      "（卸载会清掉旧沙盒，请先在旧版「更多 → 备份与恢复」里导出备份）" + NL)
+                     if _vnum >= (1, 2, 2) else "") +
                     ("点这张卡直接下载 —— 就在本站，不用跳 GitHub。" if local
                      else "点这张卡下载（这一版本站没存住，暂时指向 GitHub）。"),
             "link": dl,
@@ -742,7 +758,7 @@ def build(latest, all_rels, extra=None, mirror=None):
         {
             "icon": "2️⃣",
             "title": "打开应用，等它自动部署",
-            "desc": "第一次打开会自动下载并安装运行环境，一共要下 250 MB 左右，大概 20 到 60 分钟，"
+            "desc": "第一次打开会自动从本站下载约 600 MB 的沙盒镜像（只需一次），大概 5 到 20 分钟（看网速），"
                     "取决于网速。期间请保持应用在前台、别锁屏。" + NL +
                     "中途断了也不要紧，下次打开会接着上次的进度继续。",
         },

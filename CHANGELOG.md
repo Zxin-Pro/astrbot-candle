@@ -11,6 +11,44 @@
 
 ---
 
+## [1.2.2] - 2026-10-21
+
+### 变更
+
+- **包名从 `com.termux` 改成 `zhuxin.astrbot`**：桌面图标、系统设置、通知栏里都显示成自己的包名，不再和官方 Termux 撞名（也不再共用 `sharedUserId`）。改名牵动三处构建步骤：
+  - `build-apk.ps1` 新增 `[3c/5]`：`out/reloc_bootstrap.py` 把 `libtermux-bootstrap.so` 里 767 个文件中的 `/data/data/com.termux` 前缀改成新包名 —— 249 个 ELF 用 lief 改 RUNPATH/RPATH，201 个文本文件直接替换（`bin/bash`、`bin/curl` 这些的默认路径是编译期常量，长度不同改不了，只能靠环境变量覆盖）。
+  - `build-apk.ps1` 新增 `[4b/5]`：`out/patch_manifest.py` 直接重写二进制 `AndroidManifest.xml` 的字符串池（`package`、`com.termux.RUN_COMMAND` 权限、`documents`/`filereceiver`/`files` 三个 authorities），因为 apktool 2.9.3 没有重命名 manifest 包名的选项，改 smali 的包名又会把 `R` 类搞丢。
+  - `out/patch_smali.py` 改成只替换**不是** `com.termux.app.` 的引用：Java 类还在原包（`com.termux.app.TermuxInstaller`），早先一刀切替换后 `Class.forName` 指向 `zhuxin.astrbot.app.TermuxInstaller`，启动直接 `ClassNotFoundException`，bootstrap 永远解不出来。
+
+### 修复
+
+- **`libtermux-bootstrap.so` 尾部被截断，启动报 `dlopen failed ... invalid shdr offset/size`**：这个 .so 是「ELF 头 + ZIP 载荷 + 动态段 + 节头表」的夹心结构，`TermuxInstaller.loadZipBytes()` 先 `System.loadLibrary("termux-bootstrap")` 再读内嵌 ZIP。上一版把 ZIP 之后的 2,761 字节（`.dynsym`/`.dynstr`/`.dynamic` 和节头表）当垃圾丢掉，`e_shoff` 指到文件末尾之外，dlopen 直接拒绝加载。现在按 pristine 的绝对偏移重建：ELF 头原样 + 新 ZIP + 零填充 + pristine 尾部，长度与偏移都跟原包一致。
+- **改包名后 bootstrap 第二阶段必然失败**：nano 的 postinst 会调 `update-alternatives`，而那个 ELF 里编译期写死 `/data/data/com.termux/files/usr/var/lib/dpkg/alternatives`，必然返回非 0，`TermuxInstaller` 见到非 0 就把整个 `usr/` 删掉重来（日志里是 `Bootstrap Error ... Exit Code: 2`）。镜像里的 `termux-bootstrap-second-stage.sh` 现在遇到单个 postinst 失败只记日志、不中止；nano 的 alternatives 链接对沙盒没有影响。
+- **改名后所有 https 下载报 `curl: (77) error setting certificate file`**：curl 的编译期 CA 路径写死 `/data/data/com.termux/files/usr/etc/tls/cert.pem`。现在 `common.sh` 在 `$PREFIX/etc/tls/cert.pem` 存在时导出 `CURL_CA_BUNDLE` 与 `SSL_CERT_FILE`，指向新前缀。
+
+- **精简包每次打开都会把已经下好的 600 MB 镜像删掉**：`kickBundleCopy()` 在「APK 里没有内置包」这条分支里直接调了 `dropBundle()`，那是 1.2.0 全量包时代为了清掉上一份拷贝残留写的。1.2.1 起镜像是部署脚本自己从官网下的，结果用户下到一半退出应用再进来，进度全没了（真机实测：推送好的 `bundle.tar.xz` 一启动就消失，脚本只好从头再下）。现在这条分支只删 Java 自己创建的 `.bundle-pending`，`bundle.tar.xz` / `.part` / `.bundle-ok` 是脚本的产物，一律不动。
+- **部署在解压之后被打断，重进会从头再下 600 MB**：解压成功会立刻删掉 `bundle.tar.xz`，而 `deploy.done` 还没写；重进时 `20-rootfs.sh` 只看「镜像文件不在」就去下载，不看 rootfs 其实已经解压好了。现在多一条前置判断：`$ROOTFS/opt/AstrBot/main.py` 在就不下。
+- **两份部署可能同时跑（同一个 `bundle.tar.xz.part` 被两个 curl 抢着写）**：`deploy.sh` 的锁在「发现陈旧锁」这条修复路径上有竞态 —— 两个进程可以各自 `rm` 完再各自建锁，都认为自己拿到了。真机上实测到两个 `deploy.sh` + 两个 `curl`。现在建完锁要复核内容是不是自己的 PID（最多重试 6 次，每次 0.3 秒），不是就退出。
+### 说明
+
+- 装了 1.2.1 及更早版本的手机**不能直接覆盖升级**：包名变了，Android 视为两个应用，请先卸载旧版再装 1.2.2（沙盒数据在旧包名下，卸载会一起清掉，重要配置请先在旧版「更多 → 备份与恢复」里导出）。
+- 签名证书没有变，仍是 `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`，1.2.2 之后的小版本可以继续覆盖升级。
+
+## [1.2.1] - 2026-10-21
+
+### 新增
+
+- **APK 默认精简包**：安装包只带程序，arm64 / amd64 都约 **25 MB**，不再把 580～604 MB 的沙盒镜像塞进 APK。1.2.0 的全量包在小米安全扫描里被报「包含病毒 a.gray.devicemaster.a」，安装包体积也让存储紧张的手机连装都装不上；瘦身后安装与覆盖升级都恢复正常。
+- **首次部署从官网下载沙盒镜像**：按设备架构从 `https://xn--15t839a.xyz/dl/bundle-<arch>.tar.xz` 取镜像（arm64 583,010,488 B / amd64 604,245,316 B），用 `curl -C -` 断点续传，下载完对照同目录 `.sha256` 校验；最多重试三次，官网不可达或校验失败就自动回落到原来的在线安装，不让部署卡死。地址可用 `QQBOT_CDN` 覆盖，入口是 `common.sh` 的 `qq_bundle_pull()`，由 `steps/20-rootfs.sh` 在内置包等待块之后调用。
+
+### 修复
+
+- **Android 16 上 proot 自检写死 `/system/bin/echo`**：Redmi 24069RA21C（Android 16）上没有这个路径，proot 对首个参数 `execve` 直接 `ENOENT`，自检误判「proot 跑不起来」，部署卡在第 10 步（日志 `20261021-214703`）。现在依次用 `/system/bin/sh -c`、`/system/bin/toybox echo`、`/system/bin/echo` 三个探针，任一成功即通过，三次全失败才判定 proot 损坏；每次的原始报错仍写进自检日志，旧机型也能继续用原路径。
+
+### 移除
+
+- **全量包（懒人包）分发**：Release 与官网只发约 25 MB 的精简包，不再提供 1.2.0 那种自带镜像的 580～604 MB APK。`build-apk.ps1` 默认出瘦包，只有 `-Bundle` 才打全量包供离线测试；`-Update` 标记与 `assets/qqbot-update-pkg` / `-update.apk` 资产一并废弃 —— 默认包本来就是瘦包，已部署设备直接覆盖升级，不必再维护两套资产、下载页也不会再选错包。
+
 ## [1.2.0] - 2026-10-21
 
 ### 新增

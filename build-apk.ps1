@@ -4,10 +4,10 @@
 #
 # Usage:
 #   build-apk.ps1                 -> online-deploy APK (downloads at first run)
-#   build-apk.ps1 -Arch amd64     -> offline APK carrying the amd64 sandbox image
-#   build-apk.ps1 -Arch arm64     -> offline APK carrying the arm64 sandbox image
-#   build-apk.ps1 -Arch arm64 -Update -> slim update APK (no bundled image, ~35 MB; keeps /data)
-param([string]$Arch = "", [switch]$Update)
+#   build-apk.ps1 -Arch amd64     -> slim APK for x86_64 (image pulled from the site on first run)
+#   build-apk.ps1 -Arch arm64     -> slim APK for arm64  (image pulled from the site on first run)
+#   build-apk.ps1 -Arch arm64 -Bundle -> fat APK carrying the 580 MB sandbox image (offline)
+param([string]$Arch = "", [switch]$Bundle, [switch]$Update)
 $ErrorActionPreference = "Stop"
 
 $ROOT = $PSScriptRoot
@@ -159,7 +159,7 @@ Write-Host ("     {0} files -> {1} ({2} bytes)" -f $sfiles.Count, $SCRIPTSZIP, (
 $ARCHF = Join-Path $BUILD "opt\qqbot\BUNDLE_ARCH"
 $BUNDLE_PAYLOAD = ""
 if ($Arch -ne "" -and $Arch -ne "amd64" -and $Arch -ne "arm64") { throw "-Arch must be amd64 or arm64" }
-if ($Arch -ne "" -and -not $Update) {
+if ($Arch -ne "" -and $Bundle) {
   $BUNDLE_PAYLOAD = Join-Path $OUT ("bundle-" + $Arch + ".tar.xz")
   if (-not (Test-Path $BUNDLE_PAYLOAD)) { throw ("bundle payload not found: " + $BUNDLE_PAYLOAD) }
   [System.IO.File]::WriteAllText($ARCHF, $Arch + "`n")
@@ -182,20 +182,29 @@ if ($Arch -ne "" -and -not $Update) {
   Remove-Item -Force $ARCHF -ErrorAction SilentlyContinue
 }
 
+# 3c) relocate the bootstrap prefix. The Termux userland hardcodes /data/data/com.termux
+#     (RUNPATH of ~250 ELF binaries, shebangs, SYMLINKS.txt). Rewrite it for the
+#     zhuxin.astrbot package id before the .so is packed into the APK.
+Write-Host "[3c/5] relocate bootstrap prefix -> /data/data/zhuxin.astrbot"
+$SO_RELOC = Join-Path $OUT "libtermux-bootstrap-reloc.so"
+& python (Join-Path $ROOT "out\reloc_bootstrap.py") $NEW_SO $SO_RELOC "zhuxin.astrbot" $PRISTINE
+if ($LASTEXITCODE -ne 0) { throw "bootstrap relocation failed" }
+Write-Host ("     -> {0} ({1} bytes)" -f $SO_RELOC, (Get-Item $SO_RELOC).Length)
+
 # 4) swap the .so inside the APK and add the scripts asset
 Write-Host "[4/5] replace bootstrap + add scripts asset"
 Remove-Item -Force $UNSIGNED -ErrorAction SilentlyContinue
-$REPL = @("lib/arm64-v8a/libtermux-bootstrap.so=$NEW_SO", "assets/qqbot-scripts.zip=$SCRIPTSZIP")
+$REPL = @("lib/arm64-v8a/libtermux-bootstrap.so=$SO_RELOC", "assets/qqbot-scripts.zip=$SCRIPTSZIP")
 if ($BUNDLE_PAYLOAD -ne "") { $REPL += ("assets/qqbot-bundle.tar.xz=" + $BUNDLE_PAYLOAD) }
-# -Update builds carry an empty marker instead of the 600 MB image so the UI can say
-# "this is an update package" instead of "no offline bundle".
-if ($Update) {
-  $MARKER = Join-Path $OUT "qqbot-update-pkg"
-  [System.IO.File]::WriteAllText($MARKER, "")
-  $REPL += ("assets/qqbot-update-pkg=" + $MARKER)
-}
 & $JAVA -Xmx4g -cp $TOOLS ApkReplace2 $APK_SRC $UNSIGNED @REPL
 if ($LASTEXITCODE -ne 0) { throw "ApkReplace2 failed" }
+
+# 4b) rename the manifest package. apktool keeps the decoded manifest package="com.termux"
+#     so the generated R classes still match the smali; the binary AXML string pool is
+#     rewritten here instead (package / sharedUserId / authorities / permission names).
+Write-Host "[4b/5] patch AndroidManifest package -> zhuxin.astrbot"
+& python (Join-Path $ROOT "out\patch_manifest.py") $UNSIGNED
+if ($LASTEXITCODE -ne 0) { throw "manifest package patch failed" }
 
 # 5) re-sign
 Write-Host "[5/5] sign"
@@ -219,7 +228,6 @@ if (Test-Path $SIGNED) {
   # would silently eat the other architecture's APK.
   $SUF = ""
   if ($Arch -ne "") { $SUF = "-" + $Arch }
-  if ($Update) { $SUF = $SUF + "-update" }
   $REL = Join-Path $ROOT ("AstrBot-{0}{1}.apk" -f $VER, $SUF)
   if (Test-Path $REL) { Remove-Item -Force $REL }
   Copy-Item -Force $SIGNED $REL

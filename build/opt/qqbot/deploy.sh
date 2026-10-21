@@ -29,8 +29,23 @@ qq_deploy_lock() {
   fi
   qqlog "发现陈旧的部署锁（${HOLDER:-空} 已经不是部署进程了），继续本次部署"
   rm -f "$LOCK"
-  ( set -o noclobber; echo $$ > "$LOCK" ) 2>/dev/null || return 1
-  return 0
+  # 抢锁之后必须复核：同一瞬间可能有另一个部署进程也在走这条「修陈旧锁」的路，
+  # 各自 rm 完都能把锁建起来，结果两份部署同时往同一个 bundle.tar.xz.part 里写
+  # （1.2.2 真机实测到过：两个 deploy.sh、两个 curl 抢同一个文件）。
+  _dl_try=0
+  while [ "$_dl_try" -lt 6 ]; do
+    _dl_try=$((_dl_try + 1))
+    ( set -o noclobber; echo $$ > "$LOCK" ) 2>/dev/null || true
+    sleep 0.3
+    [ "$(cat "$LOCK" 2>/dev/null)" = "$$" ] && return 0
+    HOLDER="$(cat "$LOCK" 2>/dev/null)"
+    if [ -n "$HOLDER" ] && [ "$HOLDER" != "$$" ] && kill -0 "$HOLDER" 2>/dev/null \
+       && tr '\0' ' ' < "/proc/$HOLDER/cmdline" 2>/dev/null | grep -q 'deploy\.sh'; then
+      return 1
+    fi
+    rm -f "$LOCK"
+  done
+  return 1
 }
 if ! qq_deploy_lock; then
   qqlog "已有部署在进行中 (pid $(cat "$LOCK" 2>/dev/null))，本次跳过"

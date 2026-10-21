@@ -1,6 +1,6 @@
 # 从源码构建 AstrBot烛版
 
-本文说明如何从本仓库的源码重新构建出可安装的 `AstrBot-<版本号>.apk`（当前版本为 `AstrBot-1.1.31.apk`）。
+本文说明如何从本仓库的源码重新构建出可安装的 `AstrBot-<版本>-<架构>.apk`（当前版本 1.2.2，即 `AstrBot-1.2.2-arm64.apk` / `AstrBot-1.2.2-amd64.apk`）。
 
 > 构建过程**只能在一台配好工具链的 Windows 机器上**完成（脚本是 PowerShell + 本机 JDK）。
 > 构建不联网、不跑 Gradle，也不需要 Android Studio。
@@ -14,7 +14,7 @@
 | 界面中间包 | `out\termux-ui-unsigned.apk` | apktool 重新打包的原生控制台 APK（**未签名**） |
 | 注入后的 bootstrap | `out\libtermux-bootstrap.so` | 塞进了 `build/` 下所有脚本的 `.so` |
 | 最终未签名包 | `out\termux-qqbot-unsigned.apk` | 换好 `.so`、待签名的 APK |
-| **可安装包** | `out\signed\termux-qqbot-aligned-debugSigned.apk` | uber-apk-signer 对齐 + 签名后的成品（发布用副本由 `build-apk.ps1` 自动按版本号复制到仓库根目录的 `AstrBot-<版本号>.apk`） |
+| **可安装包** | `out\signed\termux-qqbot-aligned-debugSigned.apk` | uber-apk-signer 对齐 + 签名后的成品（发布用副本由 `build-apk.ps1` 自动复制到仓库根目录，命名为 `AstrBot-<版本>-<架构>.apk`；`-Bundle` 全量包同名，只是体积不同） |
 
 版本号（`versionCode` / `versionName`）不是写死在 APK 里的，而是由仓库根目录的 **`VERSION`** 文件决定：
 内容形如 `1.0.2`，`build-ui.ps1` 打包时换算成 `versionCode = MAJOR*10000 + MINOR*100 + PATCH` 一并写进 `_apkwork\apktool.yml`。
@@ -22,7 +22,7 @@
 
 > 从 **1.1.29** 起，`build-ui.ps1` 还会顺手把 `_apkwork\AndroidManifest.xml` 里的
 > `android:debuggable="true"` 删掉（幂等，删不到就跳过）。原因：debug 包是被小米安装器判成
-> 「被重新打包 / 非官方」的显式标记，会更容易被拦下。副作用是 `adb shell run-as com.termux`
+> 「被重新打包 / 非官方」的显式标记，会更容易被拦下。副作用是 `adb shell run-as zhuxin.astrbot`
 > 从这一版起不可用，要看应用私有目录请用 `adb root`。
 > 从 **1.1.30** 起，`build-ui.ps1` 还多了两段（都幂等、ps1 本身保持纯 ASCII）：
 > **3d** 把 `ui\assets\icon\res\**` 拷进 `_apkwork\res`（先删掉会压过 PNG 的矢量
@@ -85,26 +85,36 @@ powershell -ExecutionPolicy Bypass -File .\build-ui.ps1
 ### 2. 再注入并签名（build-apk）
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File C:\Users\zjh19\DSH\qqbot-sandbox\build-apk.ps1
+# 默认出精简包；手机选 arm64，模拟器选 amd64，各出一份
+powershell -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch arm64
+powershell -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch amd64
 ```
 
-> 加 `-Update` 可另出**更新包**：`build-apk.ps1 -Arch arm64 -Update` → `AstrBot-<版本>-arm64-update.apk`
-> （约 25 MB，不含 `assets/qqbot-bundle.tar.xz`，其余 UI、dex、脚本、签名与完整包一致）；完整包产物是 `AstrBot-<版本>-<架构>.apk`（约 600 MB）。
+> `-Arch amd64|arm64` 现在默认出**精简包**（约 25 MB）：不含 `assets/qqbot-bundle.tar.xz`，
+> 首次部署时由 `qq_bundle_pull()` 从官网拉沙盒镜像（见第四节），覆盖升级也用它。
+> 需要**全量包**（镜像打进 APK、可离线安装）时加 `-Bundle`：`build-apk.ps1 -Arch arm64 -Bundle`
+> → `AstrBot-<版本>-arm64.apk`（约 600 MB）；`-Arch amd64 -Bundle` → `AstrBot-<版本>-amd64.apk`（约 630 MB）。
+> `-Update` 已废弃：参数只为兼容旧命令行保留，不再产出 `AstrBot-<版本>-<架构>-update.apk`，
+> 也不再写 `assets/qqbot-update-pkg` 标记 —— 更新包概念已取消。
 
-这一步分四小步：
+这一步分五小步（对应脚本日志里的 `[1/5]`～`[5/5]`）：
 
-1. **取 pristine bootstrap**：从 `_research\termux-arm64.apk` 里解出 `lib/arm64-v8a/libtermux-bootstrap.so` 到 `out\_pristine-bootstrap.so`。
-   > 注意：**永远从原始 stock APK 取**，不要从上一步的 UI APK 取 —— 注入的偏移数学必须基于原始字节布局。
-2. **重新打包 bootstrap**：调 `tools` 下的 `RepackBootstrap`，把 `build/` 下的**所有文件**（递归，相对路径按 `/` 分隔）作为新条目加进内嵌 ZIP，同时 `--drop` 掉一批用不到的条目腾空间，输出 `out\libtermux-bootstrap.so`。
-3. **换回 APK**：调 `ApkReplace`，把新 `.so` 换进 `out\termux-ui-unsigned.apk`（存在时）或 stock APK，输出 `out\termux-qqbot-unsigned.apk`。
-4. **签名**：调 uber-apk-signer 输出到 `out\signed\`。
+1. **[1/5] 取 pristine bootstrap**：从 `_research\termux-arm64.apk` 里解出 `lib/arm64-v8a/libtermux-bootstrap.so` 到 `out\_pristine-bootstrap.so`。
+   > 注意：**永远从原始 stock APK 取**，不要从上一步的 UI APK 取 —— 注入的偏移数学、以及后面要用的尾部字节都必须基于原始布局。
+2. **[2/5] 重新打包 bootstrap**：调 `tools` 下的 `RepackBootstrap`，把 `build/` 下的**所有文件**（递归，相对路径按 `/` 分隔）作为新条目加进内嵌 ZIP，同时 `--drop` 掉一批用不到的条目腾空间，输出 `out\libtermux-bootstrap.so`。
+3. **[3/5] + [3c/5] 打包脚本并重定位前缀**：先把 `build\opt\qqbot\**` 和 `build\etc\profile.d\50-qqbot-sandbox.sh` 打成 `assets/qqbot-scripts.zip`；再调 `out\reloc_bootstrap.py`，把 `libtermux-bootstrap.so` 内嵌用户态里写死的 `/data/data/com.termux` 前缀改成 `/data/data/zhuxin.astrbot` —— **249 个 ELF** 的 `RUNPATH`/`RPATH` 改成新前缀，**201 处文本替换**。第 4 个参数必须传 pristine `.so`：脚本要从它那里原样搬 2,761 B 尾部（动态段 + 节头表），只按「ELF 头 + 新 ZIP」写回会把 `.so` 写坏。
+4. **[4/5] + [4b/5] 换回 APK 并重写 manifest**：`ApkReplace2` 把 `.so` 和 `qqbot-scripts.zip` 换进 `out\termux-ui-unsigned.apk`（存在时）或 stock APK，输出 `out\termux-qqbot-unsigned.apk`；随后调 `out\patch_manifest.py` 重写二进制 `AndroidManifest.xml` 的字符串池，把 `package`、`com.termux.RUN_COMMAND` 权限、`com.termux.documents` / `com.termux.filereceiver` / `com.termux.files` authorities 换成 `zhuxin.astrbot` 对应值。`out\patch_smali.py` 只替换**不是** `com.termux.app.` 的引用 —— Java 类仍在 `com.termux.app` 包里，把这些类名一起改掉会让 `Class.forName` / `setClassName` 找不到类。
+5. **[5/5] 签名**：调 uber-apk-signer 输出到 `out\signed\`。
 
 ### 3. 交付
 
 `build-apk.ps1` 最后会自动把 `out\signed\termux-qqbot-aligned-debugSigned.apk` 复制到仓库根目录，
-命名为 `AstrBot-<版本>-<架构>.apk`（`VERSION` 文件的内容就是版本号；加 `-Update` 时为 `AstrBot-<版本>-<架构>-update.apk`），这个文件就是发布用的安装包。
+命名为 `AstrBot-<版本>-<架构>.apk`（`VERSION` 文件的内容就是版本号），这个文件就是发布用的安装包。
+精简包与 `-Bundle` 全量包同名，后构建的会覆盖先构建的；发布前确认根目录里放的是约 25 MB 的精简包。
 
-> **发布时完整包必须排在更新包前面**：站点同步脚本 `pick_apk` 只取 release 里第一个 `.apk` 资产，先传更新包会让官网把瘦包当成主安装包。
+> **发布只发精简包**：每个架构各上传一个 `AstrBot-<版本>-<架构>.apk`（arm64 / amd64）到 GitHub Release。
+> 全量包不再作为 Release 资产，更新包与 `AstrBot-<版本>-<架构>-update.apk` 已取消。
+> 沙盒镜像单独传到 VPS 的 `/dl/` 目录（见第四节），不随版本发布。
 
 > **两个脚本必须串行执行**：`build-ui.ps1` 会**写出** `out\termux-ui-unsigned.apk`，`build-apk.ps1` 会**读取并覆盖**它，
 > 并行跑会互相踩踏，产物不可预测。**永远先 build-ui，再 build-apk。**
@@ -113,24 +123,70 @@ powershell -ExecutionPolicy Bypass -File C:\Users\zjh19\DSH\qqbot-sandbox\build-
 
 ---
 
-## 四、bootstrap 注入原理
+## 四、沙盒镜像托管
 
-Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`，而是一个 **ELF 头 + 内嵌 ZIP 段** 的混合体：
+1.2.0 的「懒人包」把约 580～604 MB 的沙盒镜像打进 APK（`assets/qqbot-bundle.tar.xz`），安装包体积过大，
+小米安全扫描会直接报「包含病毒 a.gray.devicemaster.a」。1.2.1 起 APK 只带程序（约 25 MB），
+镜像改成首次部署时从官网下载：`steps/20-rootfs.sh` 在内置包等待块之后调用 `common.sh` 的
+`qq_bundle_pull()`，按设备架构拉 `bundle-<arch>.tar.xz`；下不到就回落在线安装。
 
-| 常量 | 值 | 含义 |
+### 1. 上传到 VPS
+
+镜像构建产物在仓库的 `out\` 下（`build\` 是随 APK 部署的脚本树，不放镜像），每个架构一份：
+
+| 本地文件 | 大小 | VPS 路径 | 公开地址 |
+| --- | --- | --- | --- |
+| `out\bundle-arm64.tar.xz` | 583,010,488 B（约 556 MiB） | `/data/www/zhuxin-site/dl/bundle-arm64.tar.xz` | `https://xn--15t839a.xyz/dl/bundle-arm64.tar.xz` |
+| `out\bundle-amd64.tar.xz` | 604,245,316 B（约 576 MiB） | `/data/www/zhuxin-site/dl/bundle-amd64.tar.xz` | `https://xn--15t839a.xyz/dl/bundle-amd64.tar.xz` |
+
+上传后在 VPS 的同目录生成同名 `.sha256`（`sha256sum` 标准格式，`qq_bundle_pull()` 只取第一列）：
+
+```bash
+cd /data/www/zhuxin-site/dl
+sha256sum bundle-arm64.tar.xz > bundle-arm64.tar.xz.sha256
+sha256sum bundle-amd64.tar.xz > bundle-amd64.tar.xz.sha256
+```
+
+传完用 `stat -c %s` 和 `sha256sum` 核对一遍，确认与上表、本地文件一致。`dl/` 必须是支持
+HTTP Range 的静态目录（`curl -C -` 断点续传依赖它），nginx 默认就支持。
+
+### 2. 客户端下载行为
+
+- 默认地址是 `https://xn--15t839a.xyz/dl`，定义在 `common.sh`：
+  `QQBOT_CDN="${QQBOT_CDN:-https://xn--15t839a.xyz/dl}"`。换镜像源或临时改地址只要部署前
+  `export QQBOT_CDN=https://…`，也可以直接改这一行。
+- 先下到 `$QQBOT_HOME/bundle.tar.xz.part`，`curl -C -` 断点续传：网络中断后重试会接着
+  `.part` 的已有字节下，不重新下整个镜像。
+- 下完再取同目录的 `.sha256` 校验；校验不通过会删除 `.part` 并按失败处理，下次部署重新下载。
+  站点没有 `.sha256` 时只告警、不阻断（兼容老目录）。
+- 下载失败（断网、站点没有文件、体积明显不对）不会中断部署：`20-rootfs` 打一条警告后
+  **自动回落到在线安装**（Ubuntu base + apt + pip），只是慢一些。
+- 校验通过后把 `.part` 改名为 `bundle.tar.xz` 并写 `.bundle-ok`；两者都在时直接复用，
+  不会重复下载。
+
+> `-Bundle` 全量包读的就是同一份 `out\bundle-<arch>.tar.xz`，因此离线包与官网镜像内容完全一致。
+
+## 五、bootstrap 注入原理
+
+Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`，而是一个 **ELF 头 + 内嵌 ZIP 段 + 动态段/节头表尾部** 的「夹心」结构，三段都不能丢：
+
+| 区段 | 偏移 / 长度 | 含义 |
 | --- | --- | --- |
-| `prefix`（`$PREFIX_OFF`） | **1328** | ELF 头长度；内嵌 ZIP 段从这里开始 |
-| `sectionSize`（`$SECTION`） | **29388903** | 内嵌 ZIP 段的长度（字节） |
-| 文件总长 | **29392992** | 1328 + 29388903 = 29392992 |
+| ELF 头 | `0 .. 1327`（**1328** B） | ELF header + program headers；`$PREFIX_OFF = 1328` |
+| 内嵌 ZIP 段 | `1328 .. 29390230`（**29388903** B） | ZIP local header + 数据 + EOCD；`$SECTION = 29388903` |
+| 尾部 | `29390231 .. 29392991`（**2761** B） | 动态段 + 节头表；节头表 22 × 64 = **1408** B，`e_shoff = 29391584` |
+| 文件总长 | **29392992** B | 1328 + 29388903 + 2761 |
 
-也就是说：文件的前 1328 字节是 ELF 头（给 Android 的 linker 看的），从偏移 1328 开始的 29388903 字节是一整段 ZIP 数据（给 `TermuxInstaller` 解包用的）。`TermuxInstaller` 在装机时按这个偏移切出 ZIP 段并解开，把 `$PREFIX` 目录铺好。
+也就是说：前 1328 字节是 ELF 头（给 Android 的 linker 看的），从偏移 1328 开始的 29388903 字节是一整段 ZIP 数据（给 `TermuxInstaller` 解包用的），最后 2761 字节是动态段与节头表。`TermuxInstaller` 会先 `System.loadLibrary("termux-bootstrap")` 再读 ZIP 字节，所以这个 `.so` 必须能被 `dlopen`：**节头表不能移位、不能丢**。
+
+重打包后的写回顺序必须是：**pristine 的前 1328 字节 + 新 ZIP + 零填充 + pristine 的 2761 B 尾部**，ZIP 结束位置固定为 29390231。`out\reloc_bootstrap.py` 就是按这个绝对偏移重建的；如果只写「ELF 头 + 新 ZIP」，`dlopen` 会报 `has invalid shdr offset/size: 29391584/1408`（1.2.2 修的就是这个截断问题）。
 
 注入流程（`tools\RepackBootstrap.java`，用法：`RepackBootstrap repack <in.so> <prefixOff> <sectionSize> <out.so> [--drop <prefix>]... [--add <rel>=<hostpath>]...`）：
 
 1. 读入 `.so`，在偏移 1328 处切出 29388903 字节的 ZIP 段；
 2. 用 ZIP 读取器打开它，按 `--drop` 删掉指定前缀的条目；
 3. 按 `--add` 把 `build/` 下的文件逐个作为新条目写入（`Sort-Object FullName` 保证顺序稳定）；
-4. 把新的 ZIP 段按同样的偏移与长度写回，输出新的 `.so`。
+4. 把新的 ZIP 段按同样的偏移写回、剩余空间补零，输出新的 `.so`（尾部保持 pristine 的 2,761 B 不变）。
 
 **为什么必须 `--drop`**：原始包的内嵌 ZIP 段是**恰好填满** 29388903 字节的，段长是固定的、不能变，所以想塞进任何新文件，就必须先删掉等量（或更多）的旧条目腾出空间。
 
@@ -148,13 +204,14 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 ---
 
-## 五、版本号
+## 六、版本号
 
-版本号采用语义化版本，**必须同时改两处**：
+版本号采用语义化版本，**只改仓库根目录的 `VERSION` 一处**（`build-ui.ps1` 打包时会换算并写入
+`_apkwork\apktool.yml` 的 `versionName` / `versionCode`）：
 
 | 位置 | 字段 | 当前值 |
 | --- | --- | --- |
-| `_apkwork\apktool.yml` | `versionName` / `versionCode` | `1.1.31` / `10131` |
+| `VERSION` | `versionName` / 派生 `versionCode` | `1.2.2` / `10202` |
 
 规则：`versionCode = MAJOR*10000 + MINOR*100 + PATCH`。
 
@@ -166,7 +223,7 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 ---
 
-## 六、注意事项
+## 七、注意事项
 
 1. **`.ps1` 与 bash 脚本保持纯 ASCII。**
    Windows PowerShell 5.1 读取**没有 BOM** 的 `.ps1` 时会按 ANSI（中文系统上是 GBK）解码，
@@ -176,9 +233,9 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
    `build-ui.ps1` 和 `build-apk.ps1` 都动 `out\termux-ui-unsigned.apk`，并行会互相覆盖。
 3. **注入偏移是硬编码的。**
    `build-apk.ps1` 里的 `$PREFIX_OFF = 1328` 与 `$SECTION = 29388903` 只对**这一版**的上游 Termux bootstrap 成立。
-   换上游 Termux 版本时，必须先重新测量这两个值（以及文件总长 29392992），否则会写出损坏的 `.so`。
-4. **重新签名后不能覆盖安装。**
-   签名与官方 Termux 不同，装过官方 Termux（或旧签名版本）的设备**必须先卸载**再装，否则会报「应用未安装 / 签名冲突」。
+   换上游 Termux 版本时，必须先重新测量这两个值（以及文件总长 29392992 与尾部 2761 B），否则会写出损坏的 `.so`。
+4. **1.2.1 及更早版本不能直接覆盖安装。**
+   1.2.2 的包名从 `com.termux` 改成 `zhuxin.astrbot`，装过 1.2.1 及更早版本的设备**必须先卸载**再装（卸载会清掉旧包名下的沙盒数据，先让用户「更多 → 备份与恢复」导出备份）；官方 Termux 不再冲突。1.2.2 之后同签名可以继续覆盖升级。
 5. **`build/` 下新增或改名文件后不需要改脚本。**
    `build-apk.ps1` 是递归扫描 `build/` 的，加文件自动带上；但如果新文件需要新的 `--drop` 前缀腾空间，要手动加到 `$dropPrefixes` 里。
 6. **构建脚本都在仓库根目录，`$ROOT` 自动定位。**
@@ -195,11 +252,14 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 ---
 
-## 七、发布到站点
+## 八、发布到站点
 
 官网 `https://xn--15t839a.xyz` 的下载卡不是手写的，由 VPS 上的 `astrbot_download_sync.py` 每天从 GitHub Releases 同步生成：
 `zhuxin-astrbot-dl.service`（oneshot）+ `zhuxin-astrbot-dl.timer`（每日）跑 `/data/www/zhuxin-site/scripts/astrbot_download_sync.py`，
 把安装包镜像到 `/data/www/zhuxin-site/downloads/`（最多留 4 个版本），再改写 `data/astrbot.json`。本仓库的 `vps-deploy/astrbot_download_sync.py` 只是源文件。
+
+1.2.1 起 Release 只放精简包（每个架构一个，约 25 MB），全量包与更新包都不再上传；
+沙盒镜像按第四节单独传到 VPS 的 `/dl/`，不随 GitHub Release 走。
 
 注意事项：
 
@@ -207,15 +267,13 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
    `/data/www/zhuxin-site/scripts/astrbot_download_sync.py`，再手动跑一次（先 `--dry-run` 看输出，再去掉 `--dry-run` 正式同步）。
 2. **同版本重打包、大小恰好相同也会自动重下**。脚本判断站内包是否新鲜时，先比字节数，再按 GitHub 资产自带的
    `digest`（`sha256:…`）核对本地文件哈希；大小一样但内容不同（同版本重新构建常见）会判为过期并重下，
-   不会出现「页面写新 SHA-256、下载文件还是旧包」。反过来，大小与哈希都对得上就不会重复下载几百 MB。
-3. `pick_apk()` 现在只认「**`state=uploaded` + `arm64` + 非 `-update`**」的资产：同一个 Release 里有四个包也不会把
-   25 MB 的更新包当成主下载。第三节末尾「完整包必须排在更新包前面」是旧版 `pick_apk` 的经验，现在上传顺序不再是硬约束，
-   但建议仍先传完整包，便于人核对。
+   不会出现「页面写新 SHA-256、下载文件还是旧包」。反过来，大小与哈希都对得上就不会重复下载几十 MB。
+3. `pick_apk()` 只认「**`state=uploaded` + 文件名带 `arm64` + 非 `-update`**」的资产：同一个 Release 里的
+   arm64 / amd64 两个精简包只会选中 arm64，历史遗留的 `-update` 资产也不会被当成主下载。
 4. **上传断掉会在 GitHub 上留下 `state=starter` 的残骸**（`size` 是目标大小、`digest` 为空、下载 404，而且 `/releases/latest`
-   不列它）。这种残骸会骗过「大小相同即新鲜」的判断，也会让旧的 `pick_apk()` 顺位选中 amd64 包把站内 arm64 包覆盖掉。
-   传完大包务必用 `/releases/{id}/assets` 确认 `state=uploaded` 且 `digest` 有值；一版里找不到可用包时脚本会沿用站内旧文件，
+   不列它）。`pick_apk()` 会跳过非 `uploaded` 的资产，但残骸仍会干扰人工核对。传完两个精简包后务必用
+   `/releases/{id}/assets` 确认 `state=uploaded` 且 `digest` 有值；一版里找不到可用包时脚本会沿用站内旧文件，
    不会把它从下载页上抹掉。
 5. 站内文件名固定为 `AstrBot-<版本>.apk`；要强制换包，删掉 `downloads/AstrBot-<版本>.apk` 再跑同步。
-6. **600 MB 的大包别从本机直传 GitHub**：实测只有 190～210 KB/s，还常被掐断（断了就留 starter 残骸）。走两级跳：
-   先 SFTP 到 VPS（`out/_sfput_big.py`，实测 2.0 MB/s），再在 VPS 上跑 `out/vps_up_release.py`（标准库 http.client 流式上传，实测 4.4 MB/s）。
-   两步都用计划任务/`nohup` 跑，避免本机 600 s 执行上限。
+6. **沙盒镜像（约 580～604 MB）不走 GitHub Release**：只传到 VPS 的 `/data/www/zhuxin-site/dl/`（见第四节）；
+   GitHub 上只有约 25 MB 的精简包，本机直接上传即可，不需要再走 SFTP 中转。

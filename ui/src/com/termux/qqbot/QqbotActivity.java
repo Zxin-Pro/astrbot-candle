@@ -226,7 +226,10 @@ public class QqbotActivity extends Activity {
             m.setAccessible(true);
             m.invoke(null, this, new BootDone(this));
         } catch (Throwable t) {
-            // bootstrap 已就绪或不可用时忽略，但仍尝试续跑部署（同样丢后台线程）
+            // bootstrap 已就绪或不可用时忽略，但仍尝试续跑部署（同样丢后台线程）。
+            // 打一条日志：静默吞掉过一次，结果包名改造后 bootstrap 根本没解包，
+            // 界面上只看到「还没部署」，logcat 里一条线索都没有。
+            android.util.Log.e("QqbotBoot", "setupBootstrapIfNeeded failed", t);
             new Thread(new BootSync(this)).start();
         }
     }
@@ -737,6 +740,9 @@ public class QqbotActivity extends Activity {
                 startDeploy();
                 return;
             }
+            // 部署完了：604 MB 的镜像已经解压成 rootfs，留一份在 home 里纯占空间，
+            // 每次启动顺手清掉（没有就什么也不做）。
+            try { dropBundle(); } catch (Throwable ignored) {}
             if (!pidAlive(new File(qqbotDir(), "supervisor.pid"))) {
                 startServices();
             }
@@ -981,10 +987,12 @@ public class QqbotActivity extends Activity {
             dropBundle();
             return;
         }
-        // 更新包里没有内置镜像：顺手清掉上一个完整包留下的标记，
-        // 否则 20-rootfs 会因为 .bundle-pending 在那里白等 600 秒。
+        // 精简包里没有内置镜像：这里只能清「上一份完整包留下的拷贝状态」，
+        // 绝不能像以前那样把 bundle.tar.xz / .bundle-ok 一起删掉 —— 1.2.1 起镜像是
+        // 部署脚本自己从官网下载的，删了就等于让用户每开一次应用丢 600 MB 下载进度。
+        // .bundle-pending 只由 Java 的拷贝线程创建，删掉它是安全的（20-rootfs 会因此不再傻等）。
         if (!hasBundle()) {
-            dropBundle();
+            try { bundlePendingFile().delete(); } catch (Throwable ignored) {}
             return;
         }
         if (bundleReady()) return;

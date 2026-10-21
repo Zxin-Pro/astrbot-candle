@@ -80,11 +80,9 @@ export PROOT_TMP_DIR="$QQBOT_PTMP"
 if [ -n "${PROOT_LOADER:-}" ]; then
   mkdir -p "$QQBOT_LOGS" 2>/dev/null
   _probe_ok=0
-  if command -v timeout >/dev/null 2>&1; then
-    timeout 20 "$QQBOT_PROOT" -0 /system/bin/echo qqbot-loader-probe >"$QQBOT_LOGS/loader-probe.log" 2>&1 && _probe_ok=1
-  else
-    "$QQBOT_PROOT" -0 /system/bin/echo qqbot-loader-probe >"$QQBOT_LOGS/loader-probe.log" 2>&1 && _probe_ok=1
-  fi
+  # 探针同样不能写死 /system/bin/echo（Android 16 上没有这个路径，见 common.sh 的
+  # qq_proot_probe 注释）：交给共用的候选表，跑不通才判定「loader 补丁不兼容」。
+  qq_proot_probe 20 qqbot-loader-probe "$QQBOT_LOGS/loader-probe.log" && _probe_ok=1
   if [ "$_probe_ok" = 1 ]; then
     echo "[start] proot loader 补丁可用（PROOT_LOADER=$PROOT_LOADER）"
   else
