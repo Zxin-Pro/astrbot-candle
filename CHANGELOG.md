@@ -50,6 +50,7 @@
 
 - **更新包在已部署的手机上会白等 600 秒**：`kickBundleCopy()` 发现安装包没带内置镜像时直接 `return`，上一份完整包留下的 `.bundle-pending` 没人清，`steps/20-rootfs.sh` 就会照这个标记干等（最多 10 分钟）。现在没有内置包时顺手 `dropBundle()` 把 `bundle.tar.xz`、`.part`、`.bundle-ok`、`.bundle-pending` 一起清掉。
 - **App 内「检查更新」会去拖 600 MB 全量包**：`UpdateWorker` 原来只认 release 里第一个 `.apk`，现在优先挑与本机架构匹配的 `-update.apk`（约 25 MB），没有才回落到完整包。
+- **官网下载页会镜像到更新包 / 镜像到旧包**：`vps-deploy/astrbot_download_sync.py` 的 `pick_apk()` 原来取 GitHub 资产列表的第一个 `.apk`（列表按 id 降序，最新上传的在前），1.2.0 起同一个 release 有完整包与 25 MB 更新包，于是官网主下载会变成更新包；现在按名字打分，优先非 `-update.apk`、其次优先 arm64。另外「已经下过就不重下」原来只比字节数，同一个版本重新打包后大小恰好相同时永远不刷新，站点会一直发旧包、SHA-256 也是旧的；现在先用 GitHub 给的 `digest`（sha256）核对本地文件，内容不一致就重下。
 - **`build/` 里残留的架构标记会混进脚本资产**：上一轮 `-Arch` 构建写下的 `BUNDLE_ARCH` / `BUNDLE_SIZE` 会被下一次打包原样带进出厂脚本，现在打包脚本资产之前先清掉这两个生成文件。
 - **构建可能带着上一轮的 smali 出厂**：`DexToSmali` 失败时返回码被 `2>$null` 吞掉、脚本照旧往下走，于是把**上一次构建的** `ui/smali` 打进包里 —— dex 与 smali 来自不同提交，编出来的包看不出任何异常。现在 `DexToSmali` 返回码非 0 直接中断，并把「拷 smali 到 `_apkwork`」改成 `-ErrorAction Stop`。
 - **内置包解压成功后又被在线分支删掉重建**：`steps/20-rootfs.sh` 的内置包分支少了 `exit 0`，解压完继续往下走，

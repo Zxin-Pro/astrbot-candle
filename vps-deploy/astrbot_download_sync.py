@@ -112,10 +112,23 @@ def human_size(n):
 
 
 def pick_apk(rel):
+    """挑一个安装包镜像到站内：优先完整包（不是 -update.apk），其次优先 arm64。
+
+    GitHub 的资产列表按 id 降序返回，最新上传的排在最前；1.2.0 起同一个 release
+    里既有完整包也有更新包（"-update.apk"，只有 25 MB），直接取第一个会把更新包
+    当成主下载，所以要按名字打分挑。
+    """
+    best, best_score = None, -1
     for a in (rel.get("assets") or []):
-        if str(a.get("name", "")).lower().endswith(".apk"):
-            return a
-    return None
+        name = str(a.get("name", "")).lower()
+        if not name.endswith(".apk"):
+            continue
+        score = 4 if "-update" not in name else 0
+        if "arm64" in name:
+            score += 2
+        if score > best_score:
+            best, best_score = a, score
+    return best
 
 
 def sha256_file(path):
@@ -208,7 +221,14 @@ def mirror_releases(rels, quiet=False):
         _dg = str(apk.get("digest") or "")
         sha_want = _dg.split(":", 1)[1] if _dg.startswith("sha256:") else ""
         have = os.path.getsize(dest) if os.path.isfile(dest) else -1
-        if want and have == want:
+        fresh = bool(want) and have == want
+        if fresh and sha_want:
+            try:
+                if sha256_file(dest) != sha_want:
+                    fresh = False   # 字节数一样但内容换过（同版本重打包），必须重下
+            except Exception:
+                fresh = False
+        if fresh:
             got = have          # 之前下过、字节数也对，不重复下
         elif have > 0 and not want:
             got = have
