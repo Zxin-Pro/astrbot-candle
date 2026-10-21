@@ -950,7 +950,7 @@ button.locked{box-shadow:none;transform:none}
 .pill.mute::before{animation:none;box-shadow:none;background:var(--mute-dot)}
 .swtag.mute{color:var(--mute-txt);border-color:var(--line-2);background:var(--mute-bg)}
 
-/* ===== v1.1.30 新面板：公告条 / 新手引导 / 实例卡 / 备份 / 存储 / 崩溃 / 匿名统计 =====
+/* ===== v1.1.30 新面板：新手引导 / 实例卡 / 备份 / 存储 / 崩溃 / 匿名统计 =====
    只用现有 token（--line / --surface / --bar-fill …），只补一支 --crash。
    颜色分工是硬约定：风控 = 红 #DC2626 系（--risk-*），进程崩溃 = 琥珀 #EA580C（--crash-*）。
    两者绝不能同色，否则用户分不清「账号要验证」和「进程挂过」。 */
@@ -970,27 +970,6 @@ button.locked{box-shadow:none;transform:none}
   --crash-txt:#ffd6bd; --crash-strong:#fff;
   --av-bg:rgba(111,157,255,.18); --av-txt:#cfe0ff;
 }
-
-/* --- 公告条：顶部细条，info 中性、warn 琥珀 --- */
-.annbar{
-  margin:0 0 var(--sp3);padding:8px 10px;border-radius:var(--r-sm);
-  display:flex;align-items:center;gap:9px;
-  border:1px solid var(--line-2);background:var(--surface);color:var(--txt-2);
-  font-size:12px;line-height:1.5;
-  animation:tabIn .24s var(--ease);
-}
-.annbar.warn{border-color:var(--crash-line);background:var(--crash-bg);color:var(--crash-txt)}
-.annbar .ai{flex:0 0 auto;width:15px;height:15px;color:var(--accent)}
-.annbar.warn .ai{color:var(--crash)}
-.annbar .ai svg{display:block;width:15px;height:15px}
-.annbar .at{flex:1;min-width:0;overflow-wrap:break-word}
-.annbar .at b{color:var(--txt);font-weight:600}
-.annbar.warn .at b{color:var(--crash-strong)}
-.annbar .ax{
-  flex:0 0 auto;min-height:26px;padding:2px 8px;font-size:11.5px;
-  border-radius:var(--r-xs);background:none;border:1px solid transparent;box-shadow:none;color:var(--txt-3);
-}
-.annbar .ax:active{opacity:.62}
 
 /* --- 崩溃提示条：复用 .bootbar 的排版，只换琥珀这一支颜色 --- */
 .bootbar.crash{border-color:var(--crash-line);background:var(--crash-bg);box-shadow:var(--crash-sh)}
@@ -1830,7 +1809,7 @@ nav button.on svg{color:var(--accent)}
 nav button svg{width:20px;height:20px;opacity:.9}
 
 /* ---------- 九、公告 / 崩溃 / 风控 / 省电条：统一成「面 + 左侧色条」 ---------- */
-.annbar,.bootbar{
+.bootbar{
   margin:0 0 12px;padding:12px 14px;
   border-radius:var(--r-md);
   border:1px solid var(--line);
@@ -1840,12 +1819,9 @@ nav button svg{width:20px;height:20px;opacity:.9}
   box-shadow:none;
   font-size:12px;line-height:1.6;
 }
-.annbar.warn{border-left-color:var(--warn);background:var(--card-bg);color:var(--txt-2)}
 .bootbar.crash{border-left-color:var(--warn);background:var(--card-bg);box-shadow:none}
 .bootbar .bi{color:var(--txt-3)}
 .bootbar.crash .bi{color:var(--warn)}
-.annbar .ai{color:var(--txt-3)}
-.annbar.warn .ai{color:var(--warn)}
 #riskBar{
   margin:0 0 12px;padding:12px 14px;
   border:1px solid var(--line);
@@ -3236,15 +3212,6 @@ section.tab.on{display:flex;flex-direction:column}
   </header>
 <main>
 
-  <!-- 公告条（功能 56）：Android.ann() / announcement() 取最新一条，level=warn 走琥珀，
-       普通公告走中性色。关掉的 id 记在 localStorage.qqbot_ann_closed，同一条不再打扰；
-       minVer 高于当前版本时只显示「有新版本」，不展开正文。桥不在 / 超时 / 解析失败 → 整条不显示。 -->
-  <div class="annbar" id="annBar" style="display:none" role="status" aria-live="polite">
-    <span class="ai" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4a1.4 1.4 0 0 0 1.4 1.4h2L12 20V4L7.4 8.6h-2A1.4 1.4 0 0 0 4 10Z"/><path d="M17 9.2a4 4 0 0 1 0 5.6"/></svg></span>
-    <div class="at" id="annText"></div>
-    <button class="ax" data-act="annclose" aria-label="关闭公告">关闭</button>
-  </div>
-
   <!-- 进程崩溃提示（功能 58 的入口）：跟风控红横幅刻意用两种颜色 —— 崩溃是琥珀 #EA580C，
        风控是红 #DC2626。看到红 = 账号要验证（重启没用），看到琥珀 = 进程真的挂过。 -->
   <div class="bootbar crash" id="crashBar" style="display:none" role="status" aria-live="polite">
@@ -3572,7 +3539,7 @@ section.tab.on{display:flex;flex-direction:column}
       <div class="hint" style="margin-top:0" id="astrState">检测中…</div>
       <div class="lkrow" style="margin-top:12px">
         <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.6l2.1 4.9 5.3.5-4 3.6 1.2 5.2L12 15l-4.6 2.8 1.2-5.2-4-3.6 5.3-.5z"/></svg></span>
-        <div class="lkbd"><div class="lkt">烛心中转站</div><div class="lkv">烛心推荐用这商 · 注册后复制密钥</div></div>
+        <div class="lkbd"><div class="lkt">模型中转站</div><div class="lkv">烛心推荐用这家 · 注册后复制密钥</div></div>
         <div class="lkbtns">
           <button class="small" data-act="copytext" data-arg="https://worldcodes.online/register?invite_code=CZLT">复制</button>
           <button class="small primary" data-act="openurl" data-arg="https://worldcodes.online/register?invite_code=CZLT">打开</button>
@@ -4418,11 +4385,11 @@ var NO_LOCK_ACTS = [
   /* 风控横幅说的是账号侧的事（要验证 / 被踢下线），跟「容器装没装好」无关：
      哪怕部署还没完成，也不能把「我知道了」「去处理」置灰 —— 那正是要处理的时刻。 */
   "riskack", "riskgo", "riskpanel",
-  /* v1.1.30 的信息类面板：公告条、新手引导、实例卡、崩溃看板、存储占用、备份、匿名统计。
+  /* v1.1.30 的信息类面板：新手引导、实例卡、崩溃看板、存储占用、备份、匿名统计。
      它们的共同点是「读状态 / 给出解释」，这时候正是最该让用户看见。
      按钮背后的桥没实现时函数自己会兜住并提示，不需要靠置灰来表示「暂时不可用」——
      置灰只会让用户以为是自己点错了。备份 / 清理这类真会动文件的操作，原生侧自己会拒绝。 */
-  "annclose", "oblater", "obtest", "instopen", "crashopen",
+  "oblater", "obtest", "instopen", "crashopen",
   "bkstart", "bkexport", "bkrestoreask", "bkcancel", "bkrestore",
   "stgclean", "stgrefresh", "crashclear",
   "statstoggle", "statsok", "statscancel", "statsreset",
@@ -6221,7 +6188,6 @@ document.addEventListener("click", function(ev){
   else if (act === "riskgo") riskGo();
   else if (act === "riskpanel") riskPanel();
   /* ---------- v1.1.30：公告 / 引导 / 实例卡 / 备份 / 存储 / 崩溃 / 统计 ---------- */
-  else if (act === "annclose") annClose();
   else if (act === "oblater") {
     lsSet(ONB_KEY, "1");
     var obc = el("onboardCard");
@@ -7054,7 +7020,6 @@ function todayStart(){
    每个候选调用都同时认契约名与旧别名，原生按任一名字实现都能立刻用上。
    ================================================================== */
 
-var ANN_KEY = "qqbot_ann_closed";        /* 关掉的公告 id（JSON 对象，id -> 1） */
 var ONB_KEY = "qqbot_onboard_done";      /* 用户点了「稍后再说」/ 五步走完 */
 var ONB_TEST_KEY = "qqbot_onboard_test"; /* 第 4 步手动点过「我已发送」 */
 var STATS_ACK_KEY = "qqbot_stats_ack";   /* 看过匿名统计说明并同意 */
@@ -7063,7 +7028,6 @@ var EXT = null;
 
 function ext(){
   if (!EXT) EXT = {
-    ann:  { at: 0, sig: "", cur: null },
     onb:  { qrSeen: false, bootOk: false, msgs: false, qrTries: 0, qrAt: 0, bootAt: 0, msgAt: 0 },
     inst: { at: 0, map: {}, av: {} },
     bk:   { at: 0, meta: null, running: "", timer: 0, pickAt: 0 },
@@ -7141,89 +7105,6 @@ function extVerNum(v){
 function tabOn(t){
   var s = el("tab-" + t);
   return !!(s && s.classList && s.classList.contains("on"));
-}
-
-/* ===================== 功能 56：公告条 ===================== */
-function annClosedMap(){
-  var raw = lsGet(ANN_KEY, "");
-  if (!raw) return {};
-  try { var o = JSON.parse(raw); return (o && typeof o === "object") ? o : {}; }
-  catch (e) { return {}; }
-}
-function annHide(){ var b = el("annBar"); if (b) b.style.display = "none"; }
-
-function annPaint(it, onlyUpdate){
-  var bar = el("annBar"), tx = el("annText");
-  if (!bar || !tx) return;
-  var cls = "annbar" + (it.level === "warn" ? " warn" : "");
-  if (bar.className !== cls) bar.className = cls;
-  var title = String(it.title || ""), body = String(it.body || "");
-  var h = "";
-  if (title) h += "<b>" + esc(title) + "</b>";
-  if (body && body !== title) h += (h ? " " : "") + esc(body);
-  if (!h) h = esc("有新公告");
-  if (tx.innerHTML !== h) tx.innerHTML = h;
-  /* 用「不等于 flex 就设成 flex」而不是「等于 none 才设」：初始的 display:none 来自
-     行内 style，一旦别处把它清成空串，前者还能把条子拉回来。 */
-  if (bar.style.display !== "flex") bar.style.display = "flex";
-  ext().ann.cur = it;
-}
-
-/* 公告最长 5 分钟问一次：它变得很慢，没必要跟着 4 秒的 refresh 转。
-   原生侧自己带 5 秒超时与缓存；这里再兜一层：拿不到就整条不显示，绝不提示「公告加载失败」。 */
-function refreshAnn(force){
-  var E = ext(), now = Date.now();
-  if (!force && E.ann.at && now - E.ann.at < 300000) return;
-  E.ann.at = now;
-  if (!brHas("ann") && !brHas("announcement")) { annHide(); return; }
-  var r = brCall(["ann", "announcement"]);
-  if (!r || r.ok === false) { annHide(); return; }
-
-  var it = null, i;
-  if (r.ann && typeof r.ann === "object"){
-    var a = r.ann;
-    it = {
-      id: String(a.id || ""),
-      title: String(a.title || ""),
-      body: String(a.body || a.text || ""),
-      level: (a.level === "warn" ? "warn" : "info"),
-      minVer: String(a.minVer || r.minVer || ""),
-      until: Number(a.until || 0)
-    };
-  } else if (r.items && r.items.length){
-    for (i = 0; i < r.items.length; i++){
-      var o = r.items[i];
-      if (!o || typeof o !== "object") continue;
-      var un = Number(o.until || 0);
-      if (un > 0 && un * 1000 < now) continue;   /* 过期的不算 */
-      it = {
-        id: String(o.id || ""),
-        title: String(o.title || ""),
-        body: String(o.body || o.text || ""),
-        level: (o.level === "warn" ? "warn" : "info"),
-        minVer: String(o.minVer || ""),
-        until: un
-      };
-      break;
-    }
-  }
-  if (!it) { annHide(); return; }
-  if (it.until > 0 && it.until * 1000 < now) { annHide(); return; }
-  if (it.id && annClosedMap()[it.id]) { annHide(); return; }
-
-  /* minVer 高于当前版本：正文没有意义，只留一条「有新版本」提示 */
-  var curVer = (S.st && S.st.appVersion) ? String(S.st.appVersion) : "";
-  if (it.minVer && curVer && extVerNum(it.minVer) > extVerNum(curVer)){
-    annPaint({ id: it.id, level: "info", title: "有新版本 v" + it.minVer + " 可用", body: "更新后可以看这条公告。", minVer: it.minVer, until: it.until });
-    return;
-  }
-  annPaint(it);
-}
-function annClose(){
-  var E = ext();
-  var id = (E.ann.cur && E.ann.cur.id) ? String(E.ann.cur.id) : "";
-  if (id){ var m = annClosedMap(); m[id] = 1; lsSet(ANN_KEY, JSON.stringify(m)); }
-  annHide();
 }
 
 /* ===================== 功能 18：五步新手引导 ===================== */
@@ -7647,7 +7528,9 @@ function renderBundle(){
     return;
   }
   if (!r.asset){
-    node.textContent = "内置离线包：没带（首次部署要联网下载约 1 GB 的组件）";
+    node.textContent = r.slim
+      ? "这是更新包（不含内置镜像）：已部署的沙盒原样保留，全新安装才会联网下载约 1 GB"
+      : "内置离线包：没带（首次部署要联网下载约 1 GB 的组件）";
     return;
   }
   var total = Number(r.total || 0), have = Number(r.size || 0);
@@ -8168,7 +8051,6 @@ function refreshExtras(st){
   }
   try { refreshOnboard(st); } catch (e2) {}
   try { refreshInst(false); } catch (e3) {}
-  try { refreshAnn(false); } catch (e4) {}
   try { refreshBk(false); } catch (e5) {}
   /* 存储 / 崩溃 / 统计：不在对应页签时不主动扫盘，省电也省桥调用 */
   if (tabOn("more")){
@@ -8424,12 +8306,15 @@ function siteVerPaint(r){
   var e2 = el("siteVer");
   if (!e2) return;
   if (!r || !r.ok) { e2.textContent = "官网版本：读取失败"; return; }
+  /* 当前版本从 state() 取（appVersion），桥上没有 Android.appVer()。
+     取不到版本号时不下「有新版本 / 已是最新」的结论，免得误报。 */
   var cur = "";
-  try { cur = String(Android.appVer() || ""); } catch (e) { cur = ""; }
-  var newer = siteVerCmp(r.site, cur) > 0;
+  try { if (S.st && S.st.appVersion) cur = String(S.st.appVersion); } catch (e) { cur = ""; }
+  if (!cur) { try { cur = String(Android.appVer() || ""); } catch (e) { cur = ""; } }
+  var cmp = cur ? siteVerCmp(r.site, cur) : 0;
   e2.innerHTML = "官网最新 <b>" + esc(r.site) + "</b>"
     + (r.updated ? "（" + esc(r.updated) + "）" : "")
-    + (newer ? " · <b>有新版本</b>" : " · 已是最新");
+    + (cur ? (cmp > 0 ? " · <b>有新版本</b>" : " · 已是最新") : "");
 }
 function siteVerTick(){
   var d = astrData();

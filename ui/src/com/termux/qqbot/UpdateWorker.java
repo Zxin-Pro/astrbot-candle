@@ -53,17 +53,30 @@ final class UpdateWorker implements Runnable {
             long size = 0;
             JSONArray assets = rel.optJSONArray("assets");
             if (assets != null) {
+                // 优先拿「更新包」（AstrBot-<ver>-<arch>-update.apk，约 25 MB）。
+                // 完整包带 600 MB 离线镜像，只适合第一次安装；老用户升级没必要再下一遍。
+                String abi = android.os.Build.SUPPORTED_ABIS.length > 0 ? android.os.Build.SUPPORTED_ABIS[0] : "";
+                String want = (abi.indexOf("x86") >= 0 || abi.indexOf("amd64") >= 0) ? "amd64" : "arm64";
+                String slim = "", slimAny = "", full = "", fullAny = "", slimN = "", slimAnyN = "", fullN = "", fullAnyN = "";
+                long slimSize = 0, slimAnySize = 0, fullSize = 0, fullAnySize = 0;
                 for (int i = 0; i < assets.length(); i++) {
                     JSONObject a = assets.optJSONObject(i);
                     if (a == null) continue;
                     String an = a.optString("name", "");
-                    if (an.endsWith(".apk")) {
-                        url = a.optString("browser_download_url", "");
-                        size = a.optLong("size", 0);
-                        apkName = an;
-                        break;
-                    }
+                    if (!an.endsWith(".apk")) continue;
+                    String u = a.optString("browser_download_url", "");
+                    long sz = a.optLong("size", 0);
+                    boolean isSlim = an.indexOf("-update.apk") >= 0;
+                    boolean mine = an.indexOf(want) >= 0;
+                    if (isSlim && mine && slim.length() == 0) { slim = u; slimSize = sz; slimN = an; }
+                    else if (isSlim && slimAny.length() == 0) { slimAny = u; slimAnySize = sz; slimAnyN = an; }
+                    else if (!isSlim && mine && full.length() == 0) { full = u; fullSize = sz; fullN = an; }
+                    else if (!isSlim && fullAny.length() == 0) { fullAny = u; fullAnySize = sz; fullAnyN = an; }
                 }
+                if (slim.length() > 0) { url = slim; size = slimSize; apkName = slimN; }
+                else if (slimAny.length() > 0) { url = slimAny; size = slimAnySize; apkName = slimAnyN; }
+                else if (full.length() > 0) { url = full; size = fullSize; apkName = fullN; }
+                else if (fullAny.length() > 0) { url = fullAny; size = fullAnySize; apkName = fullAnyN; }
             }
             JSONObject o = new JSONObject();
             o.put("ok", true);

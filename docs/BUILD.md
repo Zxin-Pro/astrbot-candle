@@ -88,6 +88,9 @@ powershell -ExecutionPolicy Bypass -File .\build-ui.ps1
 powershell -ExecutionPolicy Bypass -File C:\Users\zjh19\DSH\qqbot-sandbox\build-apk.ps1
 ```
 
+> 加 `-Update` 可另出**更新包**：`build-apk.ps1 -Arch arm64 -Update` → `AstrBot-<版本>-arm64-update.apk`
+> （约 25 MB，不含 `assets/qqbot-bundle.tar.xz`，其余 UI、dex、脚本、签名与完整包一致）；完整包产物是 `AstrBot-<版本>-<架构>.apk`（约 600 MB）。
+
 这一步分四小步：
 
 1. **取 pristine bootstrap**：从 `_research\termux-arm64.apk` 里解出 `lib/arm64-v8a/libtermux-bootstrap.so` 到 `out\_pristine-bootstrap.so`。
@@ -99,7 +102,9 @@ powershell -ExecutionPolicy Bypass -File C:\Users\zjh19\DSH\qqbot-sandbox\build-
 ### 3. 交付
 
 `build-apk.ps1` 最后会自动把 `out\signed\termux-qqbot-aligned-debugSigned.apk` 复制到仓库根目录，
-命名为 `AstrBot-<VERSION>.apk`（`VERSION` 文件的内容就是版本号；当前 `VERSION` 是 `1.1.31`，产物即 `AstrBot-1.1.31.apk`，大小 25775799 字节），这个文件就是发布用的安装包。
+命名为 `AstrBot-<版本>-<架构>.apk`（`VERSION` 文件的内容就是版本号；加 `-Update` 时为 `AstrBot-<版本>-<架构>-update.apk`），这个文件就是发布用的安装包。
+
+> **发布时完整包必须排在更新包前面**：站点同步脚本 `pick_apk` 只取 release 里第一个 `.apk` 资产，先传更新包会让官网把瘦包当成主安装包。
 
 > **两个脚本必须串行执行**：`build-ui.ps1` 会**写出** `out\termux-ui-unsigned.apk`，`build-apk.ps1` 会**读取并覆盖**它，
 > 并行跑会互相踩踏，产物不可预测。**永远先 build-ui，再 build-apk。**

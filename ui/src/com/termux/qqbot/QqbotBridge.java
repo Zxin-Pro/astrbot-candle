@@ -1006,7 +1006,10 @@ public class QqbotBridge {
     public String bundleInfo() {
         try {
             if (!act.hasBundle()) {
-                return "{\"ok\":true,\"asset\":false}";
+                // 更新包（瘦包）里没有内置镜像，但不是「没提供」——界面要分开描述。
+                return act.isUpdatePackage()
+                        ? "{\"ok\":true,\"asset\":false,\"slim\":true}"
+                        : "{\"ok\":true,\"asset\":false}";
             }
             java.io.File b = act.bundleFile();
             long have = b.isFile() ? b.length() : 0L;

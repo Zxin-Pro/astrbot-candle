@@ -843,6 +843,24 @@ public class QqbotActivity extends Activity {
         }
     }
 
+    /** 这是不含内置镜像的「更新包」（构建时塞了空标记资产 assets/qqbot-update-pkg）。 */
+    public boolean isUpdatePackage() {
+        InputStream in = null;
+        try {
+            in = getAssets().open("qqbot-update-pkg");
+            return true;
+        } catch (Throwable t) {
+            return false;
+        } finally {
+            if (in != null) {
+                try {
+                    in.close();
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+    }
+
     public File bundleFile() { return new File(qqbotDir(), "bundle.tar.xz"); }
 
     public File bundleOkFile() { return new File(qqbotDir(), ".bundle-ok"); }
@@ -953,7 +971,13 @@ public class QqbotActivity extends Activity {
             dropBundle();
             return;
         }
-        if (!hasBundle() || bundleReady()) return;
+        // 更新包里没有内置镜像：顺手清掉上一个完整包留下的标记，
+        // 否则 20-rootfs 会因为 .bundle-pending 在那里白等 600 秒。
+        if (!hasBundle()) {
+            dropBundle();
+            return;
+        }
+        if (bundleReady()) return;
         final File flag = new File(qqbotDir(), ".bundle-copying");
         if (flag.isFile()) return;
         try {

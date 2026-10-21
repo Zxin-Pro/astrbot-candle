@@ -6,7 +6,8 @@
 #   build-apk.ps1                 -> online-deploy APK (downloads at first run)
 #   build-apk.ps1 -Arch amd64     -> offline APK carrying the amd64 sandbox image
 #   build-apk.ps1 -Arch arm64     -> offline APK carrying the arm64 sandbox image
-param([string]$Arch = "")
+#   build-apk.ps1 -Arch arm64 -Update -> slim update APK (no bundled image, ~35 MB; keeps /data)
+param([string]$Arch = "", [switch]$Update)
 $ErrorActionPreference = "Stop"
 
 $ROOT = $PSScriptRoot
@@ -127,6 +128,9 @@ $rootVer = (Get-Content (Join-Path $ROOT "VERSION") -Raw).Trim()
 Write-Host ("     version file: {0}" -f $rootVer)
 
 Write-Host "[3/5] pack deploy scripts asset"
+# 上一轮 -Arch 构建可能把架构标记留在 build/ 里，先清掉，免得瘦包/普通包带着旧标记出厂。
+Remove-Item -Force (Join-Path $BUILD "opt\qqbot\BUNDLE_ARCH") -ErrorAction SilentlyContinue
+Remove-Item -Force (Join-Path $BUILD "opt\qqbot\BUNDLE_SIZE") -ErrorAction SilentlyContinue
 $SCRIPTSZIP = Join-Path $OUT "qqbot-scripts.zip"
 Remove-Item -Force $SCRIPTSZIP -ErrorAction SilentlyContinue
 $sfiles = @()
@@ -154,8 +158,8 @@ Write-Host ("     {0} files -> {1} ({2} bytes)" -f $sfiles.Count, $SCRIPTSZIP, (
 # rejected instead of unpacked (an amd64 tree on arm64 fails every later step with exec errors).
 $ARCHF = Join-Path $BUILD "opt\qqbot\BUNDLE_ARCH"
 $BUNDLE_PAYLOAD = ""
-if ($Arch -ne "") {
-  if ($Arch -ne "amd64" -and $Arch -ne "arm64") { throw "-Arch must be amd64 or arm64" }
+if ($Arch -ne "" -and $Arch -ne "amd64" -and $Arch -ne "arm64") { throw "-Arch must be amd64 or arm64" }
+if ($Arch -ne "" -and -not $Update) {
   $BUNDLE_PAYLOAD = Join-Path $OUT ("bundle-" + $Arch + ".tar.xz")
   if (-not (Test-Path $BUNDLE_PAYLOAD)) { throw ("bundle payload not found: " + $BUNDLE_PAYLOAD) }
   [System.IO.File]::WriteAllText($ARCHF, $Arch + "`n")
@@ -183,13 +187,22 @@ Write-Host "[4/5] replace bootstrap + add scripts asset"
 Remove-Item -Force $UNSIGNED -ErrorAction SilentlyContinue
 $REPL = @("lib/arm64-v8a/libtermux-bootstrap.so=$NEW_SO", "assets/qqbot-scripts.zip=$SCRIPTSZIP")
 if ($BUNDLE_PAYLOAD -ne "") { $REPL += ("assets/qqbot-bundle.tar.xz=" + $BUNDLE_PAYLOAD) }
+# -Update builds carry an empty marker instead of the 600 MB image so the UI can say
+# "this is an update package" instead of "no offline bundle".
+if ($Update) {
+  $MARKER = Join-Path $OUT "qqbot-update-pkg"
+  [System.IO.File]::WriteAllText($MARKER, "")
+  $REPL += ("assets/qqbot-update-pkg=" + $MARKER)
+}
 & $JAVA -Xmx4g -cp $TOOLS ApkReplace2 $APK_SRC $UNSIGNED @REPL
 if ($LASTEXITCODE -ne 0) { throw "ApkReplace2 failed" }
 
 # 5) re-sign
 Write-Host "[5/5] sign"
 Get-ChildItem -File $SIGNEDDIR | Remove-Item -Force -ErrorAction SilentlyContinue
-& $JAVA -jar $SIGNER -a $UNSIGNED -o $SIGNEDDIR
+$KS = Join-Path $ROOT "_research\debug.keystore"
+if (Test-Path $KS) { & $JAVA -jar $SIGNER -a $UNSIGNED -o $SIGNEDDIR --ksDebug $KS }
+else { Write-Host "WARN: _research\debug.keystore missing - signing with the signer built-in key"; & $JAVA -jar $SIGNER -a $UNSIGNED -o $SIGNEDDIR }
 if ($LASTEXITCODE -ne 0) { throw "signing failed" }
 
 Write-Host ""
@@ -206,6 +219,7 @@ if (Test-Path $SIGNED) {
   # would silently eat the other architecture's APK.
   $SUF = ""
   if ($Arch -ne "") { $SUF = "-" + $Arch }
+  if ($Update) { $SUF = $SUF + "-update" }
   $REL = Join-Path $ROOT ("AstrBot-{0}{1}.apk" -f $VER, $SUF)
   if (Test-Path $REL) { Remove-Item -Force $REL }
   Copy-Item -Force $SIGNED $REL

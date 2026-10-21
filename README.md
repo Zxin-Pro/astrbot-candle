@@ -344,6 +344,7 @@ qqbot-sandbox/
 > 目录 `_research/`（上游 Termux APK、uber-apk-signer）、`_sdk/`（android.jar、apktool.jar、d8）、`_apkwork/`（apktool 工作区）、`out/`（构建产物）都不入库，见 [.gitignore](.gitignore)。
 
 想从源码自己构建一个 APK，请看 [**docs/BUILD.md**](docs/BUILD.md) —— 里面写了需要准备哪些工具、两个脚本的执行顺序，以及 bootstrap 注入的偏移数学。
+构建时加 `-Update` 可另出约 25 MB 的更新包 `AstrBot-<版本>-<架构>-update.apk`（不含内置镜像），给已部署好沙盒的设备覆盖升级；发布时完整包必须排在更新包前面。
 
 ---
 
