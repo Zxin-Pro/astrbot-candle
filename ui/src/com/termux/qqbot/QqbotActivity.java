@@ -1599,6 +1599,49 @@ public class QqbotActivity extends Activity {
         }
     }
 
+    /**
+     * 通知栏权限是否可用。这条权限不是「关掉通知」，而是让那条**常驻通知**能出现：
+     * 通知上有「重启 / 扫码 / 关闭进程」，没有它就只剩进应用里点停止，后台也就关不干净。
+     * 13+ 看 POST_NOTIFICATIONS，13 以下看系统里本应用通知有没有被关。
+     */
+    public boolean notiGranted() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 33
+                    && checkSelfPermission("android.permission.POST_NOTIFICATIONS")
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) return false;
+            android.app.NotificationManager nm = (android.app.NotificationManager)
+                    getSystemService(Context.NOTIFICATION_SERVICE);
+            return nm == null || nm.areNotificationsEnabled();
+        } catch (Throwable t) {
+            // 判断不了就别吓用户：当作有权限，通知真发不出来时守护自己会写 lastNote。
+            return true;
+        }
+    }
+
+    /** 引导开通知权限：13+ 第一次弹系统框（并记住问过），拒过或低版本就跳本应用的通知设置页。 */
+    public void doNotiAsk() {
+        try {
+            if (notiGranted()) {
+                doToast("通知权限已经有了，常驻通知上的「关闭进程」可以用");
+                return;
+            }
+            boolean asked = getSharedPreferences("qqbot", 0).getBoolean("notiAsked", false);
+            if (android.os.Build.VERSION.SDK_INT >= 33 && !asked
+                    && !shouldShowRequestPermissionRationale("android.permission.POST_NOTIFICATIONS")) {
+                getSharedPreferences("qqbot", 0).edit().putBoolean("notiAsked", true).apply();
+                requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 7301);
+                return;
+            }
+            // 系统不会再弹框（用户拒过 / 系统记成「不再询问」），只能把他送到通知设置页
+            Intent i = new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+            i.putExtra("android.provider.extra.APP_PACKAGE", getPackageName());
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(i);
+        } catch (Throwable t) {
+            doToast("打不开通知设置，请到系统设置 → 应用 → 烛之控制台 → 通知里手动允许");
+        }
+    }
+
     /** 打开系统图库选一张背景图（结果在 onActivityResult 里处理）。 */
     public void doPickBg() {
         try {

@@ -13,6 +13,8 @@ public class UiTask implements Runnable {
     // 功能 50：备份另存为 / 恢复选包（都只是拉起系统文件选择器，结果异步回 onActivityResult）
     public static final int BACKUP_SAVE = 9;
     public static final int RESTORE_OPEN = 10;
+    // 通知栏权限引导（Android 13+ POST_NOTIFICATIONS）：只能主线程弹系统框
+    public static final int NOTI = 11;
 
     private final QqbotActivity act;
     private final int kind;
@@ -58,6 +60,8 @@ public class UiTask implements Runnable {
                 // 只拉起「另存为」；空串 = Intent 已发出，真正的拷贝在 onActivityResult 之后
                 String r = act.doBackupSave();
                 result = (r == null) ? "" : r;
+            } else if (kind == NOTI) {
+                act.doNotiAsk();
             } else if (kind == RESTORE_OPEN) {
                 String r = act.doRestoreOpen();
                 result = (r == null) ? "" : r;

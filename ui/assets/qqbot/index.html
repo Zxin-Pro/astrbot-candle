@@ -2337,6 +2337,34 @@ header .sub{font-size:11.5px;margin-top:2px}
 .moretoggle[aria-expanded="true"] svg{transform:rotate(180deg)}
 .moretoggle:active{color:var(--txt-2)}
 
+/* 折叠态下把「更多工具」压到页尾，下面补一行说明里面有什么，免得底下空一大块 */
+.morewrap{margin-top:auto;width:100%}
+/* 通知栏权限没开时的首屏提醒：这条不是「关消息」，是「关闭进程」按钮的唯一入口 */
+.notichip{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:12px 14px;
+  border:1px solid var(--crash-line);
+  background:var(--crash-bg);
+  border-radius:var(--r-md);
+  font-size:12.5px;
+  line-height:1.5;
+  color:var(--txt-2);
+}
+.notichip > span{flex:1;min-width:0}
+.notichip b{color:var(--txt);font-weight:600}
+.notichip .small{flex:none}
+.morehint{
+  margin:-8px 0 14px;
+  text-align:center;
+  font-size:10.5px;
+  letter-spacing:.02em;
+  color:var(--txt-3);
+  opacity:.82;
+}
+.moretoggle[aria-expanded="true"] + .morehint{display:none}
+
 /* 折叠态：默认只留 hero / 实例 / 一行入口 */
 #tab-home.tools-off > .card.sec{display:none}
 /* 但没装好或正在部署时，部署台必须自己冒出来——那是用户下一步唯一要做的事 */
@@ -2706,6 +2734,19 @@ section.tab.on{display:flex;flex-direction:column}
 }
 .qk:active{background:rgba(128,140,160,.14)}
 .qk:not(:last-child){box-shadow:1px 0 0 var(--line)}
+
+/* ---------- 首屏「模型与人格」条 ----------
+   一行说完「现在跑在哪个模型上」，点整条进弹窗改；不做成卡片里再套卡片。 */
+.modelcard{padding:0;overflow:hidden}
+.modelcard .mcbtn{display:flex;align-items:center;gap:12px;width:100%;padding:13px 15px;background:transparent;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.modelcard .mcbtn:active{background:rgba(128,140,160,.12)}
+.modelcard .mci{flex:0 0 38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--acc-bg);color:var(--accent)}
+.modelcard .mci svg{width:20px;height:20px}
+.modelcard .mcb{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.modelcard .mcb b{font-size:15px;font-weight:600;color:var(--v);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.modelcard .mcb span{font-size:12px;color:var(--txt-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.modelcard .mcg{flex:0 0 auto;display:flex;align-items:center;gap:2px;font-size:12.5px;color:var(--hint-b)}
+.modelcard .mcg svg{width:16px;height:16px}
 
 /* ---------- 十七、实例块（机器人页）：换成浅色面，去掉蓝框 ----------
    .bot / .bot.active 原本是白面 + 1px 边 + 蓝描边高亮，在浅色卡片里
@@ -3212,14 +3253,6 @@ section.tab.on{display:flex;flex-direction:column}
   </header>
 <main>
 
-  <!-- 进程崩溃提示（功能 58 的入口）：跟风控红横幅刻意用两种颜色 —— 崩溃是琥珀 #EA580C，
-       风控是红 #DC2626。看到红 = 账号要验证（重启没用），看到琥珀 = 进程真的挂过。 -->
-  <div class="bootbar crash" id="crashBar" style="display:none" role="status" aria-live="polite">
-    <span class="bi" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v6"/><path d="m5.6 8.6 3.2 3.2"/><path d="m18.4 8.6-3.2 3.2"/><path d="M6.5 20h11a2 2 0 0 0 1.9-2.6l-1.6-4.8a6 6 0 0 0-11.6 0l-1.6 4.8A2 2 0 0 0 6.5 20Z"/></svg></span>
-    <div class="bt"><b id="crashBarTitle">最近有进程崩溃</b><span id="crashBarSub"></span></div>
-    <div class="rbx"><button class="small" data-act="crashopen">查看</button></div>
-  </div>
-
   <!-- 风控横幅：默认藏着，refreshRisk() 每轮 refreshAll 问一次 Android.riskInfo()，命中才展开。
        文案必须说「需要验证 / 已暂停自动重启」，不能写「崩溃」——风控不是进程挂了，重启没用。 -->
   <div id="riskBar" role="status" aria-live="polite" style="display:none">
@@ -3282,9 +3315,8 @@ section.tab.on{display:flex;flex-direction:column}
       <div class="today" id="todayCard" style="display:none" aria-label="今日概览">
         <div class="today-grid">
           <div class="tcell"><span class="tlabel">今日在线</span><b class="tval" id="tdOnline">—</b></div>
-          <div class="tcell"><span class="tlabel">消息</span><b class="tval" id="tdMsgs">—</b></div>
-          <div class="tcell"><span class="tlabel">异常</span><b class="tval" id="tdErrs">—</b></div>
-          <div class="tcell"><span class="tlabel">流量</span><b class="tval" id="tdTraffic">—</b></div>
+          <div class="tcell"><span class="tlabel">今日消息</span><b class="tval" id="tdMsgs">—</b></div>
+          <div class="tcell"><span class="tlabel">今日异常</span><b class="tval" id="tdErrs">—</b></div>
         </div>
       </div>
 
@@ -3292,6 +3324,29 @@ section.tab.on{display:flex;flex-direction:column}
         <button class="linkbtn" data-act="statdetail" id="btnStatDetail" aria-expanded="false">状态详情</button>
         <span class="h3up" id="h3up" aria-label="本次运行时长"></span>
       </div>
+    </div>
+
+      <!-- 进程崩溃提示（功能 58 的入口）：跟风控红横幅刻意用两种颜色 —— 崩溃是琥珀 #EA580C，
+           风控是红 #DC2626。看到红 = 账号要验证（重启没用），看到琥珀 = 进程真的挂过。 -->
+      <div class="bootbar crash" id="crashBar" style="display:none" role="status" aria-live="polite">
+        <span class="bi" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v6"/><path d="m5.6 8.6 3.2 3.2"/><path d="m18.4 8.6-3.2 3.2"/><path d="M6.5 20h11a2 2 0 0 0 1.9-2.6l-1.6-4.8a6 6 0 0 0-11.6 0l-1.6 4.8A2 2 0 0 0 6.5 20Z"/></svg></span>
+        <div class="bt"><b id="crashBarTitle">最近有进程崩溃</b><span id="crashBarSub"></span></div>
+        <div class="rbx"><button class="small" data-act="crashopen">查看</button></div>
+      </div>
+
+    <!-- 首屏第二块：现在用的是哪个模型。以前这条藏在「更多 → 模型与人格」里，
+         用户每次想确认「机器人到底跑在什么模型上」都要翻两层。 -->
+    <div class="card modelcard" id="modelCard" style="display:none">
+      <button class="mcbtn" data-act="astrconfig" aria-label="查看或修改模型与人格">
+        <span class="mci" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3"/><path d="M12 18v3"/><path d="M4.2 7.5l2.6 1.5"/><path d="M17.2 15l2.6 1.5"/><path d="M4.2 16.5l2.6-1.5"/><path d="M17.2 9l2.6-1.5"/><circle cx="12" cy="12" r="3.2"/></svg></span>
+        <span class="mcb"><b id="mcModel">正在读取…</b><span id="mcSub">模型与人格</span></span>
+        <span class="mcg">修改<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></span>
+      </button>
+    </div>
+
+    <div class="notichip" id="notiChip" style="display:none">
+      <span><b>通知栏权限没开</b>：常驻通知上的「关闭进程」就用不了，后台只能进应用里停。</span>
+      <button class="small primary" data-act="notiask">开启</button>
     </div>
 
     <!-- 四个真正常用的动作：留在首屏。其余（部署、组件开关、连接、访问地址）
@@ -3320,11 +3375,14 @@ section.tab.on{display:flex;flex-direction:column}
          整张卡点进「机器人」页并展开该实例的编辑区。 -->
     <div class="card" id="instCard" style="display:none">
       <h2><span class="dot" id="d-inst"></span>实例</h2>
-      <div class="hint" style="margin-top:0">每个 QQ 号一张卡：在线时长从进程启动时刻算起，掉线按「刚刚 / N 分钟前」显示。点一张进它的设置。</div>
+      <div class="hint" style="margin-top:0">每个 QQ 号一张卡，点进去看这个号自己的设置。</div>
       <div id="instList" style="margin-top:6px"></div>
     </div>
 
+    <div class="morewrap">
     <button class="moretoggle" data-act="hometools" id="btnHomeTools" aria-expanded="false"><span>更多工具</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+    <div class="morehint" id="moreHint">自动部署进度 · 组件开关 · 机器人连接 · 访问地址</div>
+    </div>
 
     <div class="card sec" id="deployCard">
       <h2><span class="dot" id="d-deploying"></span>自动部署<button class="dtgl" id="btnCopyLog" data-act="copylog" title="把部署日志复制出来">复制日志</button><button class="dtgl" id="btnDeployToggle" data-act="deploytoggle" style="display:none">展开</button></h2>
@@ -3597,6 +3655,12 @@ section.tab.on{display:flex;flex-direction:column}
       <div class="btns" style="margin-top:10px">
         <button class="small" data-act="battery" style="flex:1">申请电池优化白名单</button>
       </div>
+      <!-- 通知权限不是「关掉通知」：常驻通知上有「重启 / 扫码 / 关闭进程」，
+           权限被拒时那条通知根本不出现，后台就只能进应用里手动停。 -->
+      <div class="btns" style="margin-top:8px" id="notiRow">
+        <button class="small primary" data-act="notiask" id="notiBtn" style="flex:1">开启通知栏权限（「关闭进程」要用）</button>
+      </div>
+      <div class="hint" id="notiNote" style="margin-top:6px"></div>
       <div class="hint" id="guardNote">—</div>
     </div>
 
@@ -3982,11 +4046,11 @@ section.tab.on{display:flex;flex-direction:column}
         <div class="hint" id="astrModelsHint" style="margin-top:6px"></div>
       </div>
       <div class="field"><label for="astrPersona">人格提示词</label><textarea id="astrPersona" spellcheck="false"></textarea></div>
-      <div class="hint" id="astrSaveHint"></div>
+      <div class="hint" id="astrSaveHint">保存会直接写进正在运行的 AstrBot，立刻生效，不用重启沙盒。</div>
     </div>
     <div class="dfoot">
       <button class="small" data-act="astrclose">关闭</button>
-      <button class="primary" style="flex:1" data-act="astrsave">保存并应用</button>
+      <button class="primary" style="flex:1" data-act="astrsave">保存并应用（立即生效）</button>
     </div>
   </div>
 </div>
@@ -4381,7 +4445,7 @@ var NO_LOCK_ACTS = [
   "reload", "slim", "rmcard",
   "checkupdate", "dlupdate", "updnotes", "updgo", "updlater",
   "copyurl", "openurl", "openqq", "copydisc", "dlgagree", "privacy", "privacyclose", "copydiscp",
-  "guardset", "battery", "terminal", "powgo", "powack",
+  "guardset", "battery", "terminal", "powgo", "powack", "notiask",
   /* 风控横幅说的是账号侧的事（要验证 / 被踢下线），跟「容器装没装好」无关：
      哪怕部署还没完成，也不能把「我知道了」「去处理」置灰 —— 那正是要处理的时刻。 */
   "riskack", "riskgo", "riskpanel",
@@ -4719,6 +4783,7 @@ function refreshAll(){
   try { refreshExtras(st); } catch (e) {}
   try { qrAutoCheck(st); } catch (e) {}
   try { astrRefresh(); } catch (e) {}
+  try { astrHomePaint(); } catch (e) {}
   try { siteVerTick(); } catch (e) {}
   /* 所有控件的置灰外观放在最后统一刷：上面每个 render 都可能刚重建过 DOM，
      新节点上没有 .locked。这里每轮重算，部署完成那一刻下一轮就自动解锁。 */
@@ -5347,6 +5412,22 @@ function renderGuard(st){
   if (d) d.className = "dot " + ((st.guardOn && gRunning) ? "ok" : "warn");
   var nt = el("guardNote");
   if (nt) nt.textContent = st.guardNote || (st.guardOn ? "守护运行中" : "守护已关闭");
+  /* 通知权限：只说清一件事——它决定通知栏那条常驻通知是否存在，
+     而「关闭进程」就在那条通知上。拿不到状态（老包）时整行不显示。 */
+  var nb = el("notiBtn"), nn = el("notiNote"), nr = el("notiRow");
+  if (typeof st.notiGranted === "undefined") {
+    if (nr) nr.style.display = "none";
+    if (nn) nn.textContent = "";
+  } else if (st.notiGranted === false) {
+    if (nr) nr.style.display = "";
+    if (nn) nn.textContent = "通知栏权限没开：那条常驻通知不会出现，也就没有「关闭进程」，后台只能进应用里手动停。";
+  } else {
+    if (nr) nr.style.display = "none";
+    if (nn) nn.textContent = "通知栏权限已开：常驻通知上的「关闭进程」可以一键停掉后台。";
+  }
+  /* 首屏也提醒一次：没这条权限就没有「关闭进程」，最容易踩。 */
+  var chip = el("notiChip");
+  if (chip) chip.style.display = (st && st.notiGranted === false) ? "flex" : "none";
 }
 
 function doGuard(arg){
@@ -6137,6 +6218,10 @@ document.addEventListener("click", function(ev){
   else if (act === "svc") doSvc(arg);
   else if (act === "svcallon") doSvc("all-on");
       else if (act === "guardset") doGuard(arg);
+      else if (act === "notiask") {
+        try { Android.notiAsk(); } catch (e) { extToast("打不开通知设置，请到系统设置里手动允许"); }
+        setTimeout(function(){ try { refresh(); } catch (e) {} }, 2500);
+      }
       else if (act === "battery") { var r = ""; try { r = String(Android.action("battery")); } catch (e) { r = "失败：" + e; } Android.toast(r); setTimeout(refresh, 1500); }
   else if (act === "powgo") {
     /* 功能 5：按机型跳厂商省电设置；原生失败会返回原因，不要假装成功 */
@@ -7240,9 +7325,15 @@ function renderInst(){
   for (i = 0; i < ids.length; i++){
     var id = ids[i], inst = map[id] || {}, bot = null;
     for (var j = 0; j < list.length; j++) if (String(list[j].id) === id){ bot = list[j]; break; }
-    var nick = String(inst.nick || (bot && bot.name) || id);
     var uin = String(inst.uin || (bot && bot.qq) || "").replace(/\D/g, "");
-    var alive = !!inst.alive;
+    /* 没起昵称时会渲染成「未命名」，用户根本不知道是哪条实例。
+       退回 QQ 号，再没有就退回实例 id（bot1/bot2 至少能对上「机器人」页）。 */
+    var nick = String(inst.nick || (bot && bot.name) || "").trim();
+    if (!nick || nick === "未命名") nick = uin ? ("QQ " + uin) : id;
+    /* 在线状态以这一轮真正探到的端口为准：QqbotBridge 每轮都会给每个 bot 填 up，
+       而 instances.json 由守护循环每 60 秒才写一次 —— 冷启动那几十秒里它还是上一轮的旧值，
+       会出现「hero 写着一切正常、下面实例卡写着未运行」的自相矛盾（v1.2.0 实测）。 */
+    var alive = (bot && typeof bot.up === "boolean") ? !!bot.up : !!inst.alive;
     if (alive) anyAlive = true;
     var started = Number(inst.started || 0);
     if (alive && started > 0 && !(E.upStart > 0)) E.upStart = started;
@@ -7252,7 +7343,10 @@ function renderInst(){
     h.push('<div class="inst" data-act="instopen" data-arg="' + esc(id) + '" role="button" tabindex="0">');
     h.push(instAvatar(uin, nick, id));
     h.push('<div class="inb"><div class="inn"><span class="dot ' + (alive ? "ok" : "mute") + '"></span><span>' + esc(nick) + '</span></div>'
-      + '<div class="inm"><i>' + esc(alive ? ("在线 " + upTxt) : "未运行") + '</i><i>最近掉线 ' + esc(offTxt) + '</i>'
+      + '<div class="inm"><i>' + esc(alive ? upTxt : "未运行") + '</i>'
+      /* 在线的时候再报「最近掉线 N 分钟前」是自相矛盾（那是同一个 N=上线时长），
+         只在真的离线时显示这条。 */
+      + (!alive && lastOff > 0 ? '<i>最近掉线 ' + esc(offTxt) + '</i>' : "")
       + (uin ? '<i>' + esc(uin) + '</i>' : "") + '</div></div>');
     h.push('<span class="ingo" aria-hidden="true">' + INST_CHEV + '</span>');
     h.push('</div>');
@@ -8181,6 +8275,33 @@ try { paintFoot(); } catch (e) {}
    AstrBot 模型与人格（v1.2.0）
    —— 读回当前配置、拉模型列表、保存（停沙盒 → 写文件 → 拉起）。
    ========================================================================== */
+/* 首屏那条「模型与人格」：只回答一件事——现在用的是什么模型。
+   桥不认识（老包）/ 还没部署 / 读不出来时整条不显示，不占首屏也不报错。 */
+function astrHomePaint(){
+  var card = el("modelCard");
+  if (!card) return;
+  if (!S.deployDone) { card.style.display = "none"; return; }
+  var j = null;
+  try { j = astrInfo(); } catch (e) { j = null; }
+  if (!j || j.ok === false) { card.style.display = "none"; return; }
+  card.style.display = "";
+  var m = el("mcModel"), sub = el("mcSub");
+  if (!j.hasKey){
+    if (m) m.textContent = "还没配置模型";
+    if (sub) sub.textContent = "点这里贴上中转站密钥，配好就能开始聊";
+    return;
+  }
+  if (m) m.textContent = j.model ? String(j.model) : "模型名没填";
+  if (sub){
+    var pn = String(j.personaSel || "zhuxin");
+    if (pn === "zhuxin" || pn === "default") pn = "烛心";
+    var bits = ["人格 " + pn];
+    if (j.keyTail) bits.push("密钥尾号 " + j.keyTail);
+    bits.push("改完立刻生效");
+    sub.textContent = bits.join(" · ");
+  }
+}
+
 function astrData(){
   var E = ext();
   if (!E.astr) E.astr = { info:null, busy:false, site:null, siteBusy:false };
@@ -8220,7 +8341,7 @@ function astrOpen(){
   var sel = el("astrModelSel");
   if (sel) { sel.style.display = "none"; sel.innerHTML = ""; }
   if (el("astrModelsHint")) el("astrModelsHint").textContent = "";
-  if (el("astrSaveHint")) el("astrSaveHint").textContent = "";
+  if (el("astrSaveHint")) el("astrSaveHint").textContent = "保存会直接写进正在运行的 AstrBot，立刻生效，不用重启沙盒。";
   m.classList.add("on");
 }
 function astrClose(){ var m = el("dlgAstr"); if (m) m.classList.remove("on"); }
@@ -8270,7 +8391,7 @@ function astrSave(){
   try { r = JSON.parse(String(Android.astrSave(b, mo, k, pe) || "null")); } catch (e) { r = null; }
   if (!r || !r.ok) { extToast((r && r.err) ? r.err : "保存失败"); return; }
   d.busy = true;
-  if (h) h.textContent = "正在停止服务…（约 40 秒后自动拉起）";
+  if (h) h.textContent = "正在写入并热加载…（通常 1～2 秒，不用重启）";
   var t = setInterval(function(){
     var raw = "";
     try { raw = String(Android.astrSavePoll() || ""); } catch (e) { raw = ""; }
@@ -8280,8 +8401,13 @@ function astrSave(){
     if (h && s.msg) h.textContent = s.msg;
     if (s.state === "done") {
       clearInterval(t); d.busy = false; d.info = null;
-      if (h) h.textContent = "已保存，服务正在启动，约 30 秒后就能用";
-      extToast("配置已保存，服务正在启动");
+      if (s.hot) {
+        if (h) h.textContent = "已生效，不用重启";
+        extToast("已生效，正在用新模型");
+      } else {
+        if (h) h.textContent = "已保存，服务正在启动，约 30 秒后就能用";
+        extToast("配置已保存，服务正在启动");
+      }
       try { astrRefresh(); } catch (e) {}
     } else if (s.state === "error") {
       clearInterval(t); d.busy = false; d.info = null;

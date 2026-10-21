@@ -107,6 +107,8 @@ public class QqbotBridge {
             o.put("guardWake", QqbotGuardService.wakeEnabled(act));
             o.put("guardRunning", QqbotGuardService.guardRunning);
             o.put("guardNote", QqbotGuardService.lastNote == null ? "" : QqbotGuardService.lastNote);
+            // 常驻通知能不能出现：false 时「关闭进程」根本没入口，后台只能靠进应用手动停
+            o.put("notiGranted", act.notiGranted());
             // v1.1.30：降载标记（battery / thermal / 空）与紧急下线标记。
             // 都是内存读 + 一次 stat，不改老字段，只增。
             o.put("degrade", BatteryMon.degradeLabel());
@@ -738,6 +740,27 @@ public class QqbotBridge {
         } catch (Throwable t) {
             return "fail";
         }
+    }
+
+    // ---- 通知栏权限 ----
+    /** {"ok":true,"granted":bool,"sdk":33}；granted=false 表示常驻通知发不出来。 */
+    @JavascriptInterface
+    public String notiState() {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("ok", true);
+            o.put("granted", act.notiGranted());
+            o.put("sdk", android.os.Build.VERSION.SDK_INT);
+            return o.toString();
+        } catch (Throwable t) {
+            return errJson("读通知权限", t);
+        }
+    }
+
+    /** 去开通知权限：13+ 先弹系统框，拒过就跳通知设置页。 */
+    @JavascriptInterface
+    public void notiAsk() {
+        act.activity().runOnUiThread(new UiTask(act, UiTask.NOTI, ""));
     }
 
     @JavascriptInterface
