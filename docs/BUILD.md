@@ -216,3 +216,6 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
    传完大包务必用 `/releases/{id}/assets` 确认 `state=uploaded` 且 `digest` 有值；一版里找不到可用包时脚本会沿用站内旧文件，
    不会把它从下载页上抹掉。
 5. 站内文件名固定为 `AstrBot-<版本>.apk`；要强制换包，删掉 `downloads/AstrBot-<版本>.apk` 再跑同步。
+6. **600 MB 的大包别从本机直传 GitHub**：实测只有 190～210 KB/s，还常被掐断（断了就留 starter 残骸）。走两级跳：
+   先 SFTP 到 VPS（`out/_sfput_big.py`，实测 2.0 MB/s），再在 VPS 上跑 `out/vps_up_release.py`（标准库 http.client 流式上传，实测 4.4 MB/s）。
+   两步都用计划任务/`nohup` 跑，避免本机 600 s 执行上限。
