@@ -187,7 +187,7 @@ if ($Arch -ne "" -and $Bundle) {
 #     zhuxin.astrbot package id before the .so is packed into the APK.
 Write-Host "[3c/5] relocate bootstrap prefix -> /data/data/zhuxin.astrbot"
 $SO_RELOC = Join-Path $OUT "libtermux-bootstrap-reloc.so"
-& python (Join-Path $ROOT "out\reloc_bootstrap.py") $NEW_SO $SO_RELOC "zhuxin.astrbot" $PRISTINE
+& python (Join-Path $ROOT "tools\reloc_bootstrap.py") $NEW_SO $SO_RELOC "zhuxin.astrbot" $PRISTINE
 if ($LASTEXITCODE -ne 0) { throw "bootstrap relocation failed" }
 Write-Host ("     -> {0} ({1} bytes)" -f $SO_RELOC, (Get-Item $SO_RELOC).Length)
 
@@ -203,7 +203,7 @@ if ($LASTEXITCODE -ne 0) { throw "ApkReplace2 failed" }
 #     so the generated R classes still match the smali; the binary AXML string pool is
 #     rewritten here instead (package / sharedUserId / authorities / permission names).
 Write-Host "[4b/5] patch AndroidManifest package -> zhuxin.astrbot"
-& python (Join-Path $ROOT "out\patch_manifest.py") $UNSIGNED
+& python (Join-Path $ROOT "tools\patch_manifest.py") $UNSIGNED
 if ($LASTEXITCODE -ne 0) { throw "manifest package patch failed" }
 
 # 5) re-sign

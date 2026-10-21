@@ -133,7 +133,7 @@ Write-Host 'smali + asset copied'
 #     The dex only carries "com/termux" class descriptors, so the dotted name lives in the
 #     string constants (TermuxConstants etc.) and in /data/data/com.termux paths.
 #     Idempotent: no-op once the strings are already rewritten.
-& python (Join-Path $ROOT "out\patch_smali.py") "$ROOT\_apkwork"
+& python (Join-Path $ROOT "tools\patch_smali.py") "$ROOT\_apkwork"
 if ($LASTEXITCODE -ne 0) { Write-Host 'SMALI PATCH FAIL'; exit 1 }
 
 # 3d) app icon: copy ui\assets\icon\res into _apkwork\res before apktool b.
