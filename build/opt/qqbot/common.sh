@@ -200,6 +200,17 @@ qq_fsprobe() {
     return 0
   fi
   rm -f "$QQBOT_CACHE/fs-nowrite" "$QQBOT_CACHE/fs-nolink" 2>/dev/null || true
+  # 这次实测硬链接是通的，就把「用符号链接模拟硬链接」的标记撤掉。
+  # 标记原本是粘性的：一旦某次体检（或早期版本的误判）写下 link2symlink，
+  # 之后每次进沙盒都带着 --link2symlink，proot 便把 link() 改成 rename+symlink。
+  # 模拟出来的链接目标写的是**宿主绝对路径**，只要根文件系统的写法一变
+  # （/data/data 与 /data/user/0 是同一块存储的两个路径），链接就悬空，
+  # dpkg 备份 /var/lib/dpkg/status 时报 EPERM，自愈再判「不支持硬链接」，循环。
+  # 真机上实测过：这条标记是 10-19 排查 ENOSYS 时留下的，而 fs-probe 一直是「通过」。
+  if [ -f "$QQBOT_HOME/link2symlink" ]; then
+    rm -f "$QQBOT_HOME/link2symlink" 2>/dev/null || true
+    qqlog "已撤掉 --link2symlink 标记（本机硬链接可用，不再需要模拟）"
+  fi
   qqlog "沙盒目录体检通过（可写、硬链接可用${_avail:+，剩余 $((_avail / 1024)) MB}）"
   return 0
 }

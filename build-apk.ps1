@@ -1,6 +1,12 @@
 # qqbot-sandbox: rebuild APK (inject scripts into Termux bootstrap -> replace .so -> re-sign)
 # NOTE: keep this file ASCII-only. Windows PowerShell 5.1 reads BOM-less .ps1 as ANSI (GBK),
 # which corrupts non-ASCII literals and causes parse errors.
+#
+# Usage:
+#   build-apk.ps1                 -> online-deploy APK (downloads at first run)
+#   build-apk.ps1 -Arch amd64     -> offline APK carrying the amd64 sandbox image
+#   build-apk.ps1 -Arch arm64     -> offline APK carrying the arm64 sandbox image
+param([string]$Arch = "")
 $ErrorActionPreference = "Stop"
 
 $ROOT = "C:\Users\zjh19\DSH\qqbot-sandbox"
@@ -116,11 +122,44 @@ $zout.Dispose()
 Remove-Item -Force $VERF -ErrorAction SilentlyContinue
 Write-Host ("     {0} files -> {1} ({2} bytes)" -f $sfiles.Count, $SCRIPTSZIP, (Get-Item $SCRIPTSZIP).Length)
 
+# 3b) bundled offline image
+# When -Arch is given, ship the fully installed sandbox as assets/qqbot-bundle.tar.xz so a
+# first run needs no network at all: step 2 extracts it and steps 3-6 are already "done".
+# The size hint goes into the scripts (opt/qqbot/BUNDLE_ARCH) so a wrong-arch package is
+# rejected instead of unpacked (an amd64 tree on arm64 fails every later step with exec errors).
+$ARCHF = Join-Path $BUILD "opt\qqbot\BUNDLE_ARCH"
+$BUNDLE_PAYLOAD = ""
+if ($Arch -ne "") {
+  if ($Arch -ne "amd64" -and $Arch -ne "arm64") { throw "-Arch must be amd64 or arm64" }
+  $BUNDLE_PAYLOAD = Join-Path $OUT ("bundle-" + $Arch + ".tar.xz")
+  if (-not (Test-Path $BUNDLE_PAYLOAD)) { throw ("bundle payload not found: " + $BUNDLE_PAYLOAD) }
+  [System.IO.File]::WriteAllText($ARCHF, $Arch + "`n")
+  # Re-pack the scripts asset so it carries BUNDLE_ARCH (it was built a moment ago).
+  $zout = [System.IO.Compression.ZipFile]::Open($SCRIPTSZIP, [System.IO.Compression.ZipArchiveMode]::Update)
+  $ze = $zout.CreateEntry("opt/qqbot/BUNDLE_ARCH", [System.IO.Compression.CompressionLevel]::Optimal)
+  $zs = $ze.Open()
+  $zb = [System.Text.Encoding]::ASCII.GetBytes($Arch + "`n")
+  $zs.Write($zb, 0, $zb.Length)
+  $zs.Dispose()
+  # BUNDLE_SIZE lets the UI show "x MB / y MB" without opening the 600 MB asset.
+  $ze2 = $zout.CreateEntry("opt/qqbot/BUNDLE_SIZE", [System.IO.Compression.CompressionLevel]::Optimal)
+  $zs2 = $ze2.Open()
+  $zb2 = [System.Text.Encoding]::ASCII.GetBytes([string](Get-Item $BUNDLE_PAYLOAD).Length + "`n")
+  $zs2.Write($zb2, 0, $zb2.Length)
+  $zs2.Dispose()
+  $zout.Dispose()
+  Write-Host ("     bundle: {0} ({1} bytes) arch={2}" -f $BUNDLE_PAYLOAD, (Get-Item $BUNDLE_PAYLOAD).Length, $Arch)
+} else {
+  Remove-Item -Force $ARCHF -ErrorAction SilentlyContinue
+}
+
 # 4) swap the .so inside the APK and add the scripts asset
 Write-Host "[4/5] replace bootstrap + add scripts asset"
 Remove-Item -Force $UNSIGNED -ErrorAction SilentlyContinue
-& $JAVA -cp $TOOLS ApkReplace $APK_SRC $UNSIGNED "lib/arm64-v8a/libtermux-bootstrap.so=$NEW_SO" "assets/qqbot-scripts.zip=$SCRIPTSZIP"
-if ($LASTEXITCODE -ne 0) { throw "ApkReplace failed" }
+$REPL = @("lib/arm64-v8a/libtermux-bootstrap.so=$NEW_SO", "assets/qqbot-scripts.zip=$SCRIPTSZIP")
+if ($BUNDLE_PAYLOAD -ne "") { $REPL += ("assets/qqbot-bundle.tar.xz=" + $BUNDLE_PAYLOAD) }
+& $JAVA -Xmx4g -cp $TOOLS ApkReplace2 $APK_SRC $UNSIGNED @REPL
+if ($LASTEXITCODE -ne 0) { throw "ApkReplace2 failed" }
 
 # 5) re-sign
 Write-Host "[5/5] sign"
@@ -137,8 +176,13 @@ Get-ChildItem -File $SIGNEDDIR | ForEach-Object { Write-Host ("  {0}  {1} bytes"
 $VER = (Get-Content (Join-Path $ROOT "VERSION") -Raw).Trim()
 $SIGNED = Join-Path $SIGNEDDIR "termux-qqbot-aligned-debugSigned.apk"
 if (Test-Path $SIGNED) {
-  $REL = Join-Path $ROOT ("AstrBot-{0}.apk" -f $VER)
-  Get-ChildItem -File (Join-Path $ROOT "AstrBot-*.apk") -ErrorAction SilentlyContinue | Remove-Item -Force
+  # Only the file this run is about to write may be removed: with -Arch there are two
+  # builds of the same version sitting in the repo root and a blanket wildcard delete
+  # would silently eat the other architecture's APK.
+  $SUF = ""
+  if ($Arch -ne "") { $SUF = "-" + $Arch }
+  $REL = Join-Path $ROOT ("AstrBot-{0}{1}.apk" -f $VER, $SUF)
+  if (Test-Path $REL) { Remove-Item -Force $REL }
   Copy-Item -Force $SIGNED $REL
   Write-Host ("  release copy: {0} ({1} bytes)" -f $REL, (Get-Item $REL).Length)
 }

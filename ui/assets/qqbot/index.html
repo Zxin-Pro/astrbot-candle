@@ -853,6 +853,47 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .dlg .dbody b{color:var(--dlg-strong)}
 .dlg .dfoot{display:flex;gap:var(--sp2);margin-top:var(--sp5)}
 
+/* 浅色主题下 .38 的遮罩太亮，底下页面会抢戏；「稍后再说」也不该比二维码显眼。
+   注意：v6 层有 :root:not([data-theme="dark"]) button.small（0,3,1）且排在后面，
+   所以这里必须用 id 选择器（1,2,1）才压得住，否则按钮还是白胶囊。 */
+.dlgmask{background:rgba(12,18,34,.46)}
+:root[data-theme="dark"] .dlgmask{background:rgba(3,5,9,.72)}
+#dlgQr .dfoot button.quiet{
+  background:transparent;border-color:transparent;color:var(--txt-3);box-shadow:none;
+}
+#dlgQr .dfoot button.quiet:active{background:rgba(15,23,42,.06);color:var(--txt-2)}
+:root[data-theme="dark"] #dlgQr .dfoot button.quiet:active{background:rgba(255,255,255,.07)}
+/* 「刷新二维码」给个淡蓝底，跟「稍后再说」区分开：整屏唯一的主动作仍是扫这张码，
+   按钮保持轻，只做到「看得出能点」。 */
+#dlgQr .dfoot button[data-act="qrreload"]{
+  background:rgba(37,99,235,.09);
+  border-color:rgba(37,99,235,.26);
+  color:var(--acc-ink);
+}
+/* 两个按钮等宽：之前只有「稍后再说」带 flex:1，视觉上是一个贴边一个居中 */
+#dlgQr .dfoot button{flex:1;min-width:0}
+:root[data-theme="dark"] #dlgQr .dfoot button[data-act="qrreload"]{
+  background:rgba(91,140,255,.14);
+  border-color:rgba(91,140,255,.30);
+  color:var(--acc-ink);
+}
+
+/* ===== 扫码登录弹窗里的二维码 ===== */
+.qrwrap{display:flex;align-items:center;justify-content:center;padding:4px 0 10px;min-height:120px}
+.qrwrap img{
+  display:block;width:216px;max-width:62vw;height:auto;
+  background:#fff;border-radius:var(--r-md);padding:10px;
+  box-shadow:0 10px 26px rgba(15,23,42,.14);
+}
+.qrnone{
+  padding:26px 10px;font-size:12.5px;color:var(--txt-3);text-align:center;
+  border:1px dashed var(--line-2);border-radius:var(--r-md);width:100%;
+}
+.dlg .qrmeta{margin:0 0 8px;font-size:11.5px;color:var(--txt-3);text-align:center;min-height:15px}
+.dlg .qrhint{margin:0;padding-left:17px;font-size:12px;line-height:1.65;color:var(--dlg-body)}
+.dlg .qrhint li{margin-bottom:4px}
+.dlg .qrhint b{color:var(--dlg-strong)}
+
 /* ===== 今日概览 =====
    4 个指标挤在主页顶部一行：在线时长 / 消息 / 异常 / 流量。数字来自原生层对沙盒的统计，
    这里只负责排版；360px 一行放不下时折成 2×2，别把「15 小时 20 分」截成半个字。 */
@@ -2411,6 +2452,658 @@ section.tab.on{display:flex;flex-direction:column}
 
 /* hero 已经把"正在启动 / 40-60 秒"说清楚了，旧的启动提示条不再重复一遍 */
 #astrBoot{display:none !important}
+/* ==========================================================================
+   v5 视觉层：浅色主题（亮面 · 有层次）
+   --------------------------------------------------------------------------
+   起因：用户说「把浅色模式的 GUI 也修饰一下，太单调了现在」。
+   病根不是颜色不好看，是**一片灰**：
+     · 画布 #f3f4f6、卡片 #fff、次级面 #f7f8fa —— 三者亮度差只有 3~5%，全糊在一起；
+     · hero 是近黑灰块（#1b1e25→#101216），在浅色页面上像一块没做完的占位；
+     · 快捷动作、实例卡、提示条全是同一种白，整页没有第二个色相。
+   v5 的三条规则（和暗色版同一套语言，只是往反方向走）：
+     ① 画布压低、卡片提亮、边框收细 —— 用**亮度差 + 1px 边**造层次，不靠投影光晕；
+     ② 只给 hero 一处深色面板，且它是**品牌蓝**的深版，不是灰；
+     ③ 强调色只出现在「图标 / 当前项 / 主操作」这些点位，不铺面。
+   ========================================================================== */
+
+/* ---------- 一、令牌：浅色专用（覆盖 v3 的浅色块） ---------- */
+:root:not([data-theme="dark"]){
+  /* 画布：冷灰里带一点蓝，纯中性灰会让整页发闷 */
+  --bg:#eef1f7;
+  /* 顶部的两团极淡冷光：整页从「左上偏蓝」过渡到「右下中性」，才不会是一块死灰。
+     veil 必须够实 —— 用户选了背景预设时，预设是画在 #bgLayer 上的，
+     veil 太透会让预设的深色透上来，浅色页面下半截就变成脏灰。
+     但 glows 在 #bgMask 的图层顺序里排在 veil 之上，所以 veil 调实不会吃掉这两团光。 */
+  --bg-glow-1:radial-gradient(130% 86% at 6% -14%, rgba(37,99,235,.17), transparent 64%);
+  --bg-glow-2:radial-gradient(90% 62% at 96% 2%, rgba(14,165,233,.11), transparent 60%);
+  --bg-veil:linear-gradient(180deg, rgba(238,241,247,.90), rgba(234,238,245,.94));
+
+  /* 面：卡片纯白、次级面浅冷灰 —— 差 8% 左右，够分层又不脏 */
+  --card-bg:#ffffff;
+  --tile-bg:#f4f6fa;
+  --line:rgba(15,23,42,.075);
+  --line-2:rgba(15,23,42,.13);
+
+  --txt:#0f172a;
+  --txt-2:#54607a;
+  --txt-3:#8a94a8;
+
+  --accent:#2563eb;
+  --acc-ink:#1d4ed8;
+  --acc-ink-2:#2563eb;
+
+  --hdr-bg:rgba(255,255,255,.86);
+  --nav-bg:rgba(255,255,255,.94);
+
+  /* 浅色下投影必须极淡，否则像拟物；主要靠 1px 边分界 */
+  --sh-1:0 1px 2px rgba(15,23,42,.05);
+  --sh-2:0 1px 2px rgba(15,23,42,.05), 0 10px 26px -18px rgba(15,23,42,.20);
+}
+
+/* ---------- 二、画布：一层非常轻的顶光，别让它像纯色块 ---------- */
+:root:not([data-theme="dark"]) body{
+  background:#edf0f6;
+}
+:root:not([data-theme="dark"]) #bgLayer{
+  background-color:#edf0f6;
+}
+/* 有自定义背景图时让图片透出来，但压低到不抢字 */
+:root:not([data-theme="dark"]) body.hasimg #bgMask{
+  background:linear-gradient(180deg, rgba(237,240,246,.90), rgba(233,237,244,.95));
+}
+
+/* ---------- 三、顶栏：白玻璃 + 一条极细的分界 ---------- */
+:root:not([data-theme="dark"]) header{
+  background:rgba(255,255,255,.86);
+  border-bottom:1px solid rgba(15,23,42,.07);
+  box-shadow:0 1px 0 rgba(255,255,255,.9) inset;
+}
+:root:not([data-theme="dark"]) header h1{color:var(--txt)}
+:root:not([data-theme="dark"]) header .sub{color:var(--txt-3)}
+:root:not([data-theme="dark"]) header .logo,
+:root:not([data-theme="dark"]) header .hlogo{
+  box-shadow:0 2px 8px -2px rgba(37,99,235,.45);
+}
+
+/* ---------- 四、hero：唯一的深色面板，用品牌蓝的深版而不是灰 ---------- */
+/* 浅色页面里放一块深色面板，是「贵」的界面的常用手法（对比锚点）。
+   但不能是灰：灰会读成「没上色」，深蓝才读成「设计过」。 */
+:root:not([data-theme="dark"]) #statusCard{
+  color:#fff;
+  border:0;
+  background:
+    radial-gradient(120% 96% at 4% -20%, rgba(96,165,250,.26), transparent 56%),
+    radial-gradient(90% 70% at 100% 0%, var(--hero-glow, transparent), transparent 62%),
+    linear-gradient(158deg, #1a3259 0%, #13203b 48%, #0c1526 100%);
+  box-shadow:0 20px 44px -30px rgba(13,26,52,.80), 0 1px 0 rgba(255,255,255,.07) inset;
+}
+:root:not([data-theme="dark"]) #statusCard::after{
+  background:linear-gradient(90deg, transparent, rgba(255,255,255,.30), transparent);
+}
+:root:not([data-theme="dark"]) #statusCard .h3s{color:rgba(255,255,255,.72)}
+:root:not([data-theme="dark"]) #statusCard .tlabel{color:rgba(255,255,255,.52)}
+:root:not([data-theme="dark"]) #statusCard .today{
+  border-top:1px solid rgba(255,255,255,.13);
+}
+:root:not([data-theme="dark"]) #statusCard .linkbtn,
+:root:not([data-theme="dark"]) #statusCard #h3up{
+  color:rgba(255,255,255,.66);
+}
+:root:not([data-theme="dark"]) #statusCard .linkbtn:active{color:#fff}
+
+/* ---------- 五、卡片：纯白 + 1px 细边 + 极淡投影，才浮得起来 ---------- */
+:root:not([data-theme="dark"]) .card{
+  background:#fff;
+  border:1px solid rgba(15,23,42,.075);
+  box-shadow:0 1px 2px rgba(15,23,42,.04), 0 10px 26px -20px rgba(15,23,42,.22);
+}
+:root:not([data-theme="dark"]) .card h2{color:var(--txt-3)}
+/* 段标题前的小竖条：给每一块一个「起笔」，不是纯文字堆 */
+:root:not([data-theme="dark"]) .card h2::before{
+  content:"";
+  position:absolute;
+  left:0; top:50%;
+  width:2px; height:11px;
+  margin-top:-5.5px;
+  border-radius:1px;
+  background:var(--accent);
+  opacity:.55;
+}
+:root:not([data-theme="dark"]) .card h2{position:relative;padding-left:9px}
+
+/* ---------- 六、四个常用动作：一整条，四格用 1px 分隔线切开 ---------- */
+:root:not([data-theme="dark"]) .quick{
+  background:#fff;
+  border:1px solid rgba(15,23,42,.075);
+  box-shadow:0 1px 2px rgba(15,23,42,.04), 0 10px 26px -22px rgba(15,23,42,.22);
+}
+:root:not([data-theme="dark"]) .qk{
+  background:transparent;
+  color:var(--txt-2);
+}
+:root:not([data-theme="dark"]) .qk:active{
+  background:rgba(37,99,235,.06);
+}
+/* 图标做成 28px 的淡蓝圆角块：整页唯一的彩色点位 */
+:root:not([data-theme="dark"]) .qk .qi{
+  width:28px; height:28px;
+  border-radius:9px;
+  background:rgba(37,99,235,.09);
+  color:var(--accent);
+}
+:root:not([data-theme="dark"]) .qk .qi svg{width:17px;height:17px}
+:root:not([data-theme="dark"]) .qk.lock{opacity:.5}
+:root:not([data-theme="dark"]) .qk.lock .qi{
+  background:rgba(15,23,42,.05);
+  color:var(--txt-3);
+}
+
+/* ---------- 七、提示条：白面 + 左侧 2px 强调边，别再用整块底色 ---------- */
+:root:not([data-theme="dark"]) #noticeWrap{
+  background:#fff;
+  border:1px solid rgba(15,23,42,.075);
+  border-left:2px solid rgba(37,99,235,.45);
+  box-shadow:0 1px 2px rgba(15,23,42,.04);
+}
+
+/* ---------- 八、实例行：本来就是卡片里的一行，别再套一层白框（盒中盒） ---------- */
+:root:not([data-theme="dark"]) .inst{
+  background:transparent;
+  border:0;
+}
+:root:not([data-theme="dark"]) .inst .iav{
+  box-shadow:0 0 0 2px rgba(37,99,235,.10);
+}
+:root:not([data-theme="dark"]) .inst .inm i{color:var(--txt-3)}
+
+/* ---------- 九、状态磁贴（展开后）：浅底块，和卡片分开 ---------- */
+:root:not([data-theme="dark"]) .tile{
+  background:#f5f7fb;
+  border:1px solid rgba(15,23,42,.06);
+}
+:root:not([data-theme="dark"]) .tile .tv{color:var(--txt)}
+
+/* ---------- 十、按钮：主操作淡蓝底，危险操作用红描边 ---------- */
+:root:not([data-theme="dark"]) button.primary{
+  background:rgba(37,99,235,.08);
+  border:1px solid rgba(37,99,235,.26);
+  color:var(--acc-ink);
+}
+:root:not([data-theme="dark"]) button.primary:active{
+  background:rgba(37,99,235,.14);
+  border-color:rgba(37,99,235,.38);
+}
+:root:not([data-theme="dark"]) .btns > button.primary:only-child{
+  background:rgba(37,99,235,.10);
+  border-color:rgba(37,99,235,.28);
+  color:var(--acc-ink);
+  box-shadow:0 1px 0 rgba(255,255,255,.7) inset;
+}
+:root:not([data-theme="dark"]) button.small{
+  background:#fff;
+  border:1px solid rgba(15,23,42,.10);
+  color:var(--txt-2);
+}
+:root:not([data-theme="dark"]) button.danger,
+:root:not([data-theme="dark"]) .btns button.danger,
+:root:not([data-theme="dark"]) button.small.danger{
+  background:#fff;
+  border-color:rgba(196,74,92,.30);
+  color:#c04a5c;
+}
+:root:not([data-theme="dark"]) .dots{
+  background:#fff;
+  border-color:rgba(15,23,42,.10);
+  color:var(--txt-2);
+}
+
+/* ---------- 十一、输入控件：白底 + 细边，聚焦时强调色 ---------- */
+:root:not([data-theme="dark"]) select,
+:root:not([data-theme="dark"]) input,
+:root:not([data-theme="dark"]) textarea{
+  background:#fff;
+  border:1px solid rgba(15,23,42,.12);
+  color:var(--txt);
+}
+:root:not([data-theme="dark"]) select:focus,
+:root:not([data-theme="dark"]) input:focus,
+:root:not([data-theme="dark"]) textarea:focus{
+  border-color:rgba(37,99,235,.45);
+  box-shadow:0 0 0 3px rgba(37,99,235,.10);
+  outline:none;
+}
+
+/* ---------- 十二、底栏：白面 + 当前项淡蓝胶囊 ---------- */
+:root:not([data-theme="dark"]) nav{
+  background:rgba(255,255,255,.94);
+  border:1px solid rgba(15,23,42,.075);
+  box-shadow:0 -1px 0 rgba(255,255,255,.9) inset, 0 -8px 28px -18px rgba(15,23,42,.35);
+}
+:root:not([data-theme="dark"]) nav button{color:var(--txt-3)}
+:root:not([data-theme="dark"]) nav button.on{
+  color:var(--accent);
+  background:rgba(37,99,235,.085);
+}
+:root:not([data-theme="dark"]) nav button.on svg{color:var(--accent)}
+
+/* ---------- 十三、分段控件 / 开关：浅色下要能看出「选中」 ---------- */
+:root:not([data-theme="dark"]) .seg{
+  background:#f1f4f9;
+  border:1px solid rgba(15,23,42,.06);
+}
+:root:not([data-theme="dark"]) .seg button{color:var(--txt-2)}
+:root:not([data-theme="dark"]) .seg button.on{
+  background:#fff;
+  color:var(--txt);
+  box-shadow:0 1px 2px rgba(15,23,42,.10);
+}
+
+/* ---------- 十四、日志框：浅色下用浅底深字，别抄暗色的黑框 ---------- */
+:root:not([data-theme="dark"]) pre#logBox,
+:root:not([data-theme="dark"]) .logbox{
+  background:#f7f9fc;
+  border:1px solid rgba(15,23,42,.08);
+  color:#243044;
+}
+
+/* ---------- 十五、落款：浅色下再退一档，但别退到看不清 ---------- */
+:root:not([data-theme="dark"]) .pagefoot .pf1{color:var(--txt-2);opacity:.72}
+:root:not([data-theme="dark"]) .pagefoot .pf2{color:var(--txt-3);opacity:.85}
+
+/* ---------- 十六、结构（两主题共用）：四个常用动作收成一条 ----------
+   原来是四个各自飘着的小白块，看着像四个随机按钮；
+   收进同一张卡、用 1px 竖线切开，才读成一组控件的四个键。 */
+.quick{
+  gap:0;
+  padding:3px;
+  border-radius:var(--r-md);
+  background:var(--card-bg);
+  border:1px solid var(--line);
+  box-shadow:var(--sh-1);
+}
+.qk{
+  background:transparent;
+  border:0;
+  border-radius:calc(var(--r-md) - 3px);
+  padding:12px 4px 10px;
+  transition:background .14s ease;
+}
+.qk:active{background:rgba(128,140,160,.14)}
+.qk:not(:last-child){box-shadow:1px 0 0 var(--line)}
+
+/* ---------- 十七、实例块（机器人页）：换成浅色面，去掉蓝框 ----------
+   .bot / .bot.active 原本是白面 + 1px 边 + 蓝描边高亮，在浅色卡片里
+   像"卡里又套了个卡"，还把「当前使用」这件事重复喊了两遍。 */
+:root:not([data-theme="dark"]) .bot{
+  background:#f7f9fc;
+  border:1px solid rgba(15,23,42,.055);
+  box-shadow:none;
+}
+:root:not([data-theme="dark"]) .bot.active{
+  background:#f3f7ff;
+  border-color:rgba(37,99,235,.16);
+  box-shadow:none;
+}
+:root:not([data-theme="dark"]) .bot .row{border-color:rgba(15,23,42,.055)}
+
+/* ---------- 十八、浅色下的收尾细节 ----------
+   1) 卡片不是纯白，而是极淡的面上渐变：多一块"材质"，少一块"纸"；
+   2) 关于页/设置页的小图标做成淡蓝方块，和首页四个快捷动作同一套语言；
+   3) 「← 返回主页」是导航动作，不该长成一个白底描边的按钮。 */
+:root:not([data-theme="dark"]) .card{
+  background:linear-gradient(180deg,#ffffff 0%,#fdfeff 100%);
+}
+:root:not([data-theme="dark"]) .lkic{
+  background:rgba(37,99,235,.075);
+  border:1px solid rgba(37,99,235,.10);
+  color:var(--accent);
+}
+:root:not([data-theme="dark"]) button[data-act="backhome"]{
+  background:transparent;
+  border-color:transparent;
+  color:var(--acc-ink);
+  padding-left:2px;
+  padding-right:8px;
+}
+:root:not([data-theme="dark"]) button[data-act="backhome"]:active{
+  background:rgba(37,99,235,.08);
+}
+/* 段标题前的小竖条：细一点、软一点，是"起笔"不是"记号笔" */
+:root:not([data-theme="dark"]) .card h2::before{
+  width:2px;
+  background:linear-gradient(180deg, rgba(37,99,235,.85), rgba(37,99,235,.35));
+}
+
+/* ---------- 十九、两处观感修正 ----------
+   1)「更多工具」原来是悬在空白里的一行小字，像个没人认领的链接；
+     给两侧各加一条细线，就变成标准的"展开更多"分隔行，落在页面里而不是浮着。
+   2) 顶部提示卡左侧的强调边加粗到 3px —— 2px 在浅色白卡上几乎看不见。 */
+.moretoggle{
+  justify-content:center;
+  gap:10px;
+}
+.moretoggle::before,
+.moretoggle::after{
+  content:"";
+  flex:1 1 auto;
+  height:1px;
+  background:var(--line);
+}
+#noticeWrap{border-left:3px solid rgba(37,99,235,.38) !important}
+
+/* ==========================================================================
+   v6 视觉层 · 清新（只作用于浅色主题）
+   目标：把「克制的精确」那套灰白纸面，换成有空气感的浅色界面。
+   三条规则：
+     1. 背景是全页唯一的大面积颜色 —— 柔和多色渐变 + 两团光晕，卡片只盖住它一部分；
+     2. 卡片是半透明白 + 背景模糊，颜色从背后透上来，不给卡片本身染色；
+     3. 圆角放大一档、按钮做成胶囊，用形状而不是描边分主次。
+   深色主题不受影响（选择器全部带 :root:not([data-theme="dark"])）。
+   ========================================================================== */
+
+/* ---------- 一、令牌 ---------- */
+:root:not([data-theme="dark"]) {
+  --bg: #eef3fc;
+
+  /* 背景三段渐变：上蓝 → 中紫 → 下薄荷。
+     #bgMask 的图层顺序是 glow1, glow2, veil —— glow 在 veil 之上，
+     所以 veil 铺成不透明也不会盖掉光晕。 */
+  --bg-veil: linear-gradient(176deg, #e3eeff 0%, #e9e9ff 34%, #f6e9fd 64%, #e2f6ee 100%);
+  --bg-glow-1: radial-gradient(120% 74% at -6% -12%, rgba(96, 165, 250, .50), transparent 62%);
+  --bg-glow-2: radial-gradient(96% 58% at 104% 3%, rgba(196, 140, 255, .38), transparent 62%);
+
+  --card-bg: rgba(255, 255, 255, .74);
+  --line: rgba(17, 32, 66, .065);
+  --line-2: rgba(17, 32, 66, .105);
+
+  --txt: #0e1729;
+  --txt-2: #4f5d78;
+  --txt-3: #77839a;
+
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 22px;
+  --r-xl: 28px;
+
+  --sh-1: 0 1px 2px rgba(23, 38, 78, .05);
+  --sh-2: 0 10px 26px -18px rgba(23, 38, 78, .34);
+
+  --hdr-bg: rgba(255, 255, 255, .70);
+  --nav-bg: rgba(255, 255, 255, .78);
+  --acc-ink: #1d4ed8;
+  --acc-ink-2: #3b6ef0;
+}
+
+/* ---------- 二、顶栏：透明一些，让背景从后面透出来 ---------- */
+:root:not([data-theme="dark"]) header {
+  background: var(--hdr-bg);
+  border-bottom: 1px solid rgba(255, 255, 255, .55);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+}
+
+/* ---------- 三、卡片：半透明白 + 背景模糊 ---------- */
+:root:not([data-theme="dark"]) .card {
+  background: var(--card-bg);
+  border: 1px solid rgba(255, 255, 255, .88);
+  border-radius: var(--r-lg);
+  padding: 18px;
+  margin-bottom: 13px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .92),
+    0 14px 34px -26px rgba(23, 38, 78, .46);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+}
+
+/* 卡片标题：比「克制的精确」时期大一号，浅色界面上小字会显得没内容 */
+:root:not([data-theme="dark"]) .card h2 {
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -.008em;
+  color: var(--txt);
+}
+
+:root:not([data-theme="dark"]) .card h2::before {
+  width: 3px;
+  height: 13px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #5b8cff, #8b6cf0);
+}
+
+/* 次级面：在白卡上必须比卡片「暗」一点才读得出内凹，用冷色薄纱而不是更白 */
+:root:not([data-theme="dark"]) .tile {
+  background: rgba(23, 42, 86, .038);
+  border: 1px solid rgba(23, 42, 86, .05);
+  border-radius: var(--r-md);
+}
+
+:root:not([data-theme="dark"]) .qimg,
+:root:not([data-theme="dark"]) .duo-col pre,
+:root:not([data-theme="dark"]) .logbox,
+:root:not([data-theme="dark"]) pre#logBox {
+  background: rgba(23, 42, 86, .035);
+  border: 1px solid rgba(23, 42, 86, .06);
+  border-radius: var(--r-md);
+  color: var(--txt-2);
+}
+
+/* ---------- 四、hero：从深色面板换成浅色渐变面板 ---------- */
+:root:not([data-theme="dark"]) #statusCard {
+  color: var(--txt);
+  border: 1px solid rgba(255, 255, 255, .96);
+  /* 状态光挪到右下角：绿色压在薄荷绿上，不会在左上角的蓝紫里发灰 */
+  background:
+    radial-gradient(104% 92% at 96% 108%, var(--hero-glow, transparent), transparent 62%),
+    linear-gradient(148deg, #dbe9ff 0%, #e6defe 46%, #d5f2e7 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .98),
+    0 22px 48px -30px rgba(52, 66, 150, .62);
+}
+
+:root:not([data-theme="dark"]) #statusCard::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .98), transparent);
+}
+
+/* 注：v5 里这几条带 #statusCard 前缀（特异性 1,2,0），这里必须同样带上才能压过 */
+:root:not([data-theme="dark"]) #statusCard .h3v { color: var(--txt); }
+:root:not([data-theme="dark"]) #statusCard .h3s { color: var(--txt-2); }
+:root:not([data-theme="dark"]) #statusCard .today { border-top: 1px solid rgba(17, 32, 66, .09); }
+:root:not([data-theme="dark"]) #statusCard .tlabel { color: var(--txt-3); }
+:root:not([data-theme="dark"]) #statusCard .tval { color: var(--txt); }
+:root:not([data-theme="dark"]) #statusCard .linkbtn { color: var(--txt-3); }
+:root:not([data-theme="dark"]) #statusCard .linkbtn:active { color: var(--txt-2); }
+:root:not([data-theme="dark"]) #statusCard .h3up { color: var(--txt-3); }
+:root:not([data-theme="dark"]) #statusCard .h3up b { color: var(--txt-2); }
+:root:not([data-theme="dark"]) #statusCard #astrBoot {
+  background: rgba(255, 255, 255, .62);
+  border: 1px solid rgba(17, 32, 66, .08);
+  color: var(--txt-2);
+}
+
+/* ---------- 五、四个常用动作：胶囊卡片 + 四种颜色的图标块 ---------- */
+:root:not([data-theme="dark"]) .quick {
+  background: var(--card-bg);
+  border: 1px solid rgba(255, 255, 255, .88);
+  border-radius: var(--r-lg);
+  padding: 6px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .92),
+    0 14px 34px -26px rgba(23, 38, 78, .46);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+}
+
+:root:not([data-theme="dark"]) .qk {
+  border-radius: var(--r-md);
+  padding: 13px 4px 11px;
+  font-size: 12px;
+  color: var(--txt-2);
+}
+
+:root:not([data-theme="dark"]) .qk .qi {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: rgba(37, 99, 235, .10);
+  color: #2f6bf0;
+}
+
+/* 四个动作各自一个色相：整页不再只有一个蓝 */
+:root:not([data-theme="dark"]) .quick > .qk:nth-child(1) .qi { background: rgba(37, 99, 235, .10); color: #2f6bf0; }
+:root:not([data-theme="dark"]) .quick > .qk:nth-child(2) .qi { background: rgba(139, 92, 246, .11); color: #7c53e8; }
+:root:not([data-theme="dark"]) .quick > .qk:nth-child(3) .qi { background: rgba(16, 185, 129, .11); color: #0f9d75; }
+:root:not([data-theme="dark"]) .quick > .qk:nth-child(4) .qi { background: rgba(245, 158, 11, .12); color: #c07c12; }
+
+/* ---------- 六、实例块：浅面 + 细边，当前实例用淡蓝 ---------- */
+:root:not([data-theme="dark"]) .bot {
+  background: rgba(23, 42, 86, .032);
+  border: 1px solid rgba(23, 42, 86, .055);
+  border-radius: var(--r-md);
+}
+
+:root:not([data-theme="dark"]) .bot.active {
+  background: rgba(37, 99, 235, .07);
+  border: 1px solid rgba(37, 99, 235, .18);
+}
+
+/* ---------- 七、按钮：全部做成胶囊 ---------- */
+:root:not([data-theme="dark"]) button.small,
+:root:not([data-theme="dark"]) .btns > button,
+:root:not([data-theme="dark"]) button.primary,
+:root:not([data-theme="dark"]) .lkbtns button.small,
+:root:not([data-theme="dark"]) .rowmore,
+:root:not([data-theme="dark"]) .seg button {
+  border-radius: 999px;
+}
+
+:root:not([data-theme="dark"]) button.small {
+  background: rgba(255, 255, 255, .82);
+  border-color: rgba(17, 32, 66, .085);
+}
+
+/* 主按钮：胶囊 + 蓝紫渐变实心，但整屏只允许「真正的主操作」用它。
+   规则：只有 .btns 里唯一的那个 primary 才饱和；一对多（复制/打开、复制/加群）
+   和无边框的行内操作一律退成白底细边。否则一屏能冒出五颗实心块，层级又会糊。
+   注意 v5 有 :root:not([data-theme="dark"]) .btns > button.primary:only-child
+   （特异性 0,4,1），这里必须同样点出 :only-child / [style] 才压得住。 */
+:root:not([data-theme="dark"]) button.primary,
+:root:not([data-theme="dark"]) .btns > button.primary:only-child,
+:root:not([data-theme="dark"]) .btns > button.primary[style*="flex:1"] {
+  background: linear-gradient(135deg, #4f7df3, #7b5cf0);
+  border: 1px solid rgba(70, 96, 200, .38);
+  color: #fff;
+  box-shadow: 0 8px 20px -12px rgba(70, 92, 200, .80);
+}
+
+:root:not([data-theme="dark"]) button.primary:active,
+:root:not([data-theme="dark"]) .btns > button.primary:only-child:active,
+:root:not([data-theme="dark"]) .btns > button.primary[style*="flex:1"]:active {
+  background: linear-gradient(135deg, #4370e6, #6d4fe3);
+}
+
+/* 两个以上按钮并排时（复制 + 打开 / 复制 + 加群），primary 退回白底细边，只留蓝字 */
+:root:not([data-theme="dark"]) .btns > button.primary:not(:only-child),
+:root:not([data-theme="dark"]) .lkbtns button.small.primary {
+  background: rgba(255, 255, 255, .82);
+  border: 1px solid rgba(37, 99, 235, .24);
+  color: var(--acc-ink);
+  box-shadow: none;
+}
+
+/* 「检查更新」「查看」这类跟着 lkrow 走的按钮，一个行一个，也不该饱和 */
+:root:not([data-theme="dark"]) .lkrow .btns > button.primary {
+  background: rgba(255, 255, 255, .82);
+  border: 1px solid rgba(37, 99, 235, .24);
+  color: var(--acc-ink);
+  box-shadow: none;
+}
+
+/* 顶部提示条里的按钮是「提醒」，不是主操作，一律安静 */
+:root:not([data-theme="dark"]) #noticeWrap button.primary {
+  background: rgba(255, 255, 255, .86);
+  border: 1px solid rgba(37, 99, 235, .24);
+  color: var(--acc-ink);
+  box-shadow: none;
+}
+
+/* ---------- 八、底栏：悬浮胶囊，磨砂 ---------- */
+:root:not([data-theme="dark"]) nav {
+  background: var(--nav-bg);
+  border: 1px solid rgba(255, 255, 255, .90);
+  border-radius: var(--r-xl);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .95),
+    0 16px 36px -22px rgba(23, 38, 78, .50);
+  -webkit-backdrop-filter: blur(20px) saturate(170%);
+  backdrop-filter: blur(20px) saturate(170%);
+}
+
+:root:not([data-theme="dark"]) nav button.on {
+  background: rgba(37, 99, 235, .10);
+}
+
+/* ---------- 九、提示条：白面 + 左侧色条，别再有纯色底 ---------- */
+:root:not([data-theme="dark"]) #noticeWrap {
+  border-left: 3px solid rgba(37, 99, 235, .34) !important;
+  border-radius: var(--r-md);
+  margin-bottom: 9px !important;
+}
+
+/* 真机上三条堆一起会把 hero 挤到第二屏，所以每行压紧一点 */
+:root:not([data-theme="dark"]) #noticeWrap > .bootbar,
+:root:not([data-theme="dark"]) #noticeWrap > #riskBar,
+:root:not([data-theme="dark"]) #noticeWrap > #powBar {
+  padding: 9px 12px !important;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+:root:not([data-theme="dark"]) #noticeWrap .small {
+  padding: 5px 10px !important;
+  font-size: 11.5px;
+}
+
+/* ---------- 十、分隔行、落款 ---------- */
+:root:not([data-theme="dark"]) .moretoggle {
+  color: var(--txt-3);
+}
+
+:root:not([data-theme="dark"]) .pagefoot {
+  color: var(--txt-3);
+}
+
+/* 减少动效分支：磨砂在低端机上跟不动，直接退回纯色面 */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-theme="dark"]) .card,
+  :root:not([data-theme="dark"]) .quick,
+  :root:not([data-theme="dark"]) nav,
+  :root:not([data-theme="dark"]) header {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: #ffffff;
+  }
+}
+/* ---------- 顶栏图标：换成 App 自己的图标 ----------
+   原来这里是内联 SVG 气泡，但用户认「软件图标」这个入口，所以直接贴图标本体。
+   .mark 的渐变底留着当加载前的占位，圆角由 border-radius:inherit 继承，
+   这样不管以后改多少度圆角，图片都会跟着走。 */
+.mark{overflow:hidden}
+.mark img{
+  width:100%;
+  height:100%;
+  display:block;
+  object-fit:cover;
+  border-radius:inherit;
+}
+/* ---------- 暗色画布：压掉背景预设的暖色偏 ----------
+   --bg-veil 只到 .66 时，深棕色的预设会透上来，卡片缝隙读成土黄，
+   和中性近黑的卡片放在一起像脏了。这里把暗色遮罩提到 .80/.88 并保持中性，
+   预设仍然隐约能看见，但整屏基调是冷的。 */
+:root[data-theme="dark"] {
+  --bg-veil: linear-gradient(180deg, rgba(10, 11, 14, .80), rgba(8, 9, 12, .88));
+}
+
 </style>
 </head>
 <body>
@@ -2419,7 +3112,7 @@ section.tab.on{display:flex;flex-direction:column}
 <header>
   <div class="hdrow">
     <div class="brand">
-      <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.4A7.4 7.4 0 0 1 11.4 4h1.2A7.4 7.4 0 0 1 20 11.4v1.2a7.4 7.4 0 0 1-7.4 7.4H8.6L4.7 23v-4.3A7.4 7.4 0 0 1 4 12.6z"/></svg></span>
+      <span class="mark" aria-hidden="true"><img src="appicon.png" alt="" width="30" height="30"></span>
       <div class="hdmain">
         <h1>烛之控制台</h1>
         <div class="sub" id="hdrSub">正在读取状态…</div>
@@ -2852,6 +3545,7 @@ section.tab.on{display:flex;flex-direction:column}
 <div class="card" id="storageCard">
       <h2><span class="dot" id="d-storage"></span>存储占用</h2>
       <div class="hint" style="margin-top:0">沙盒里最占地方的五个目录。缓存可以直接清，只删可再生成的临时文件，不动登录数据与配置。</div>
+      <div class="hint" id="bundleStat" style="margin-top:8px">内置离线包：检测中…</div>
       <div id="stgDirs" style="margin-top:6px"></div>
       <div class="hint" id="stgTotal" style="margin-top:8px">正在统计…</div>
       <div class="stgtop" id="stgTopWrap" style="display:none">
@@ -3142,6 +3836,32 @@ section.tab.on{display:flex;flex-direction:column}
     <div class="dfoot">
       <button class="small" data-act="statscancel">暂不开启</button>
       <button class="primary" style="flex:1" data-act="statsok">了解并开启</button>
+    </div>
+  </div>
+</div>
+
+<!-- 扫码登录弹窗（v1.1.38）：NapCat 起来了但账号还没登录时自动弹一次。
+     以前二维码只在「日志」页里，新人根本不知道要去那里找，就卡在「容器运行中但没登上」。
+     判据只看 qrcode.png 的 mtime —— 等扫码时 NapCat 每两分钟重画一张，登录后就不动了。 -->
+<div class="dlgmask" id="dlgQr">
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="qrDlgTitle">
+    <h3 id="qrDlgTitle">扫码登录 QQ</h3>
+    <div class="dbody">
+      <p id="qrDlgSub">NapCat 已启动，还没有账号登录。用手机 QQ「扫一扫」扫下面这张二维码即可。</p>
+      <div class="qrwrap">
+        <img id="qrDlgImg" alt="登录二维码" style="display:none">
+        <div class="qrnone" id="qrDlgNone">正在获取二维码…</div>
+      </div>
+      <p class="qrmeta" id="qrDlgMeta"></p>
+      <ul class="qrhint">
+        <li>用<b>另一台手机</b>的 QQ 扫码，别用正登录的这台。</li>
+        <li>二维码约 2 分钟过期，过期会自动换一张，也可点下面「刷新二维码」。</li>
+        <li>登录成功后这个窗口会自己关掉，以后启动也不用再扫。</li>
+      </ul>
+    </div>
+    <div class="dfoot">
+      <button class="small" data-act="qrreload">刷新二维码</button>
+      <button class="small quiet" style="flex:1" data-act="qrclose">稍后再说</button>
     </div>
   </div>
 </div>
@@ -3854,6 +4574,7 @@ function refreshAll(){
      每个内部都有自己的节流与 try/catch：桥方法还没实现时只是空态，
      绝不会把上面这些渲染一起带翻 —— 它们在 refresh() 的护栏里，这里再包一层更稳。 */
   try { refreshExtras(st); } catch (e) {}
+  try { qrAutoCheck(st); } catch (e) {}
   /* 所有控件的置灰外观放在最后统一刷：上面每个 render 都可能刚重建过 DOM，
      新节点上没有 .locked。这里每轮重算，部署完成那一刻下一轮就自动解锁。 */
   paintLocks();
@@ -4242,6 +4963,16 @@ function bootPending(){
   return (Date.now() - BOOT.at) < BOOT_TIMEOUT * 1000;
 }
 
+/* 已配置的实例条数。state() 里的 bots 是 {active, bots[]}；解析不出来时按「有」算，
+   免得读状态失败那一轮把首屏误报成「还没有实例」。 */
+function botCount(st){
+  try {
+    var b = st && st.bots && st.bots.bots;
+    if (!b || typeof b.length !== "number") return 1;
+    return b.length;
+  } catch (e) { return 1; }
+}
+
 function paintHero(st, installed){
   var v = el("h3v");
   if (!v) return;
@@ -4252,6 +4983,11 @@ function paintHero(st, installed){
   if (!installed){
     k = "idle"; t = "还没部署";
     sub = "第一次使用，先点「开始部署」，装好大约 8 分钟";
+  } else if (!botCount(st)){
+    /* 实例全删了：组件可能还在跑，端口也还通，但一条 QQ 都收发不了。
+       不说「一切正常」——那句话会让用户以为能用了。 */
+    k = "warn"; t = "还没有实例";
+    sub = "到「机器人」页新增一个实例，填 QQ 号和 Token 后会自动登录";
   } else if (bootPending()){
     /* 应用刚打开、容器还在起：这一刻 supervisorAlive 还是 false，
        按字面会报「服务已停止」，但用户其实只是在等冷启动。 */
@@ -4305,8 +5041,13 @@ function renderBots(){
     if (bopen) {
       h.push('<div class="bmore">');
       h.push('<button class="small" data-act="copytok" data-arg="' + esc(b.token || "zhuxin") + '">复制 Token</button>');
+      /* 手动入口：账号没登上时随时可以把二维码调回来。v4 收按钮时把这条漏掉了，
+         结果「显示二维码」只能从日志页找，这里补回来。 */
+      h.push('<button class="small" data-act="showqr" data-arg="' + esc(b.id) + '">扫码登录</button>');
       h.push(toggleBtnHtml(b));
-      h.push('<button class="small" data-act="usebot" data-arg="' + esc(b.id) + '">设为当前</button>');
+      /* 当前实例本来就不用切换：以前这里无条件给一个「设为当前」，点了只会弹一句
+         「已切换到该实例」把整个容器重启一遍，等于自找一次掉线。 */
+      if (!act) h.push('<button class="small" data-act="usebot" data-arg="' + esc(b.id) + '">设为当前</button>');
       h.push('<button class="small" data-act="editbot" data-arg="' + esc(b.id) + '">编辑</button>');
       h.push('<button class="small danger" data-act="delbot" data-arg="' + esc(b.id) + '">删除</button>');
       h.push('</div>');
@@ -4864,8 +5605,13 @@ function doDelBot(id){
     S.bots.bots = out;
     if (S.bots.active === id) S.bots.active = out.length ? out[0].id : "";
   }
+  /* 立即把这个 id 从实例状态缓存里摘掉：原生 removeBot 是异步的（要开 proot 沙盒，
+     十几秒到一分钟），instancesInfo 在那之前读到的还是旧表。不清掉的话，
+     用户点完删除去看主页，实例卡还会留着上一次的读数。 */
+  try { var _im = ext().inst.map; if (_im && _im[id]) delete _im[id]; } catch (e0) {}
   renderHomeBots();
   renderBots();
+  try { renderInst(); } catch (e1) {}
   var msg = "";
   try { msg = String(Android.removeBot(id)); } catch (e) { msg = "删除已提交"; }
   Android.toast(msg);
@@ -4995,6 +5741,152 @@ function loadQr(){
   }
 }
 
+/* ---------- 扫码登录弹窗（v1.1.38） ----------
+   场景：NapCat 容器已经起来了，但账号还没登录。以前二维码只藏在「日志」页里，
+   新人根本不知道要去那儿找，就永远停在「容器运行中却没登上」。
+   判据只认 qrcode.png 的 mtime：
+     - 还在等扫码 → NapCat 每两分钟重画一张 → 文件一直是新的 → 弹
+     - 登录成功以后就不再写了 → mtime 越来越旧 → 不弹
+   这个判据不需要 Java 侧新增任何桥方法，也不依赖日志文本（日志会被脱敏/轮转）。 */
+var QR_FRESH = 150000;   /* 2.5 分钟内的二维码才算「正在等扫码」 */
+var QR_SNOOZE = 600000;  /* 用户关掉之后安静 10 分钟 */
+
+function qrState(){
+  var E = ext();
+  if (!E.qr) E.qr = { open: false, id: "", auto: false, timer: 0, until: 0, probeAt: 0, mt: 0, at: 0 };
+  return E.qr;
+}
+
+function qrProbe(id){
+  if (!brHas("qr")) return null;
+  var r = null;
+  try { r = JSON.parse(Android.qr(id || "")); } catch (e) { r = null; }
+  return (r && typeof r === "object") ? r : null;
+}
+
+/* 只有「文件确实存在」且「最近还在被重写」才算在等扫码 */
+function qrFresh(r){
+  if (!r || !r.ok) return false;
+  var age = Date.now() - Number(r.mtime || 0);
+  return age >= 0 && age < QR_FRESH;
+}
+
+function qrApply(r, id){
+  var img = el("qrDlgImg"), none = el("qrDlgNone"), meta = el("qrDlgMeta");
+  if (!img || !none) return;
+  if (r && r.ok && r.data){
+    img.setAttribute("src", r.data);
+    img.style.display = "";
+    none.style.display = "none";
+    if (meta){
+      var age = Math.max(0, Math.round((Date.now() - Number(r.mtime || 0)) / 1000));
+      meta.textContent = (age < 90 ? age + " 秒前生成" : Math.round(age / 60) + " 分钟前生成") +
+        " · 实例 " + (id || r.id || "-");
+    }
+  } else {
+    img.style.display = "none";
+    img.removeAttribute("src");
+    none.style.display = "";
+    if (meta) meta.textContent = "";
+  }
+}
+
+function qrOpen(id, auto){
+  var stt = qrState();
+  var wantId = id || (S.bots && S.bots.active) || "";
+  if (!wantId && S.bots && S.bots.bots && S.bots.bots.length) wantId = S.bots.bots[0].id || "";
+  stt.id = wantId;
+  stt.auto = !!auto;
+  stt.at = Date.now();
+  var m = el("dlgQr");
+  if (!m) return;
+  var sub = el("qrDlgSub");
+  if (sub){
+    sub.textContent = id
+      ? ("实例 " + id + " 还没有登录 QQ。用手机 QQ「扫一扫」扫下面这张二维码即可。")
+      : "NapCat 已启动，还没有账号登录。用手机 QQ「扫一扫」扫下面这张二维码即可。";
+  }
+  qrApply(qrProbe(wantId), wantId);
+  m.classList.add("on");
+  stt.open = true;
+  if (stt.timer) { clearInterval(stt.timer); stt.timer = 0; }
+  /* 弹窗开着的时候每 6 秒重取一次：二维码过期会自动换图，登录成功也能自己收掉 */
+  stt.timer = setInterval(function(){ try { qrTick(); } catch (e) {} }, 6000);
+}
+
+function qrClose(silent){
+  var stt = qrState();
+  if (stt.timer) { clearInterval(stt.timer); stt.timer = 0; }
+  stt.open = false;
+  var m = el("dlgQr");
+  if (m) m.classList.remove("on");
+  /* 只有「自动弹出来的」才记安静期；用户自己点开再关掉不该被记仇 */
+  if (stt.auto) stt.until = Date.now() + QR_SNOOZE;
+  stt.auto = false;
+  if (!silent) { /* 手动关闭不提示，安静收掉 */ }
+}
+
+function qrTick(){
+  var stt = qrState();
+  if (!stt.open) return;
+  var r = qrProbe(stt.id);
+  qrApply(r, stt.id);
+  if (!stt.at || Date.now() - stt.at < 40000) return;
+  /* 两种情况要分开：
+     - 文件没了（r.ok 假）= NapCat 登录成功后会删掉二维码 / 或者容器停了 → 收起
+     - 文件还在但很久没重写 = 只是这张过期了 → 不收起，改成提示用户点刷新
+       以前把这两种混在一起，没人扫码时也会被当成「已登录」误关窗口。 */
+  if (!r || !r.ok){
+    qrClose(true);
+    extToast("扫码窗口已关闭");
+    return;
+  }
+  if (!qrFresh(r)){
+    var meta = el("qrDlgMeta");
+    if (meta) meta.textContent = "二维码已过期 · 点下方「刷新二维码」重新获取";
+  }
+}
+
+function qrReload(){
+  var stt = qrState();
+  qrApply(qrProbe(stt.id), stt.id);
+}
+
+/* 每轮 refreshAll 调用一次：决定要不要自动弹 */
+function qrAutoCheck(st){
+  var stt = qrState();
+  if (stt.open) return;
+  if (Date.now() < stt.until) return;
+  if (!st || !st.deployDone) return;
+  /* 已经有别的弹窗开着（协议 / 更新 / 统计）就先别插队，等它关掉下一轮再来 */
+  try {
+    var masks = document.querySelectorAll(".dlgmask.on");
+    for (var mi = 0; mi < masks.length; mi++){
+      if (masks[mi].id !== "dlgQr") return;
+    }
+  } catch (e) {}
+  var bs = (S.bots && S.bots.bots) ? S.bots.bots : [];
+  if (!bs.length) return;
+  /* 正在填表 / 选东西时别弹，弹出层会把输入框和键盘一起顶掉 */
+  try {
+    var ae = document.activeElement;
+    if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(String(ae.tagName || ""))) return;
+  } catch (e) {}
+  var id = (S.bots && S.bots.active) || (bs[0] && bs[0].id) || "";
+  if (!id) return;
+  var inst = ext().inst;
+  var cur = (inst && inst.map) ? inst.map[id] : null;
+  if (cur && cur.alive === false) return;   /* 容器都没起来，二维码不会刷新 */
+  var now = Date.now();
+  if (stt.probeAt && now - stt.probeAt < 15000) return;  /* 探查节流，别每 4 秒读一次文件 */
+  stt.probeAt = now;
+  var r = qrProbe(id);
+  if (!qrFresh(r)) return;
+  if (String(stt.mt) === String(r.mtime)) return;  /* 同一张图不重复弹 */
+  stt.mt = r.mtime;
+  qrOpen(id, true);
+}
+
 function toggleSlim(){
   S.slim = !S.slim;
   el("btnSlim").textContent = "精简模式：" + (S.slim ? "开" : "关");
@@ -5068,7 +5960,9 @@ document.addEventListener("click", function(ev){
   else if (act === "openpanel") Android.openPanel(arg || "");
   else if (act === "reload") { loadLog(); loadDuo(); }
   else if (act === "qrrefresh") { loadQr(); Android.toast("已刷新二维码"); }
-  else if (act === "showqr") { showTab("logs"); fillQrSelect(); el("qrSel").value = arg || ""; loadQr(); }
+  else if (act === "showqr") { qrOpen(arg || "", false); }
+  else if (act === "qrreload") { qrReload(); extToast("已刷新二维码"); }
+  else if (act === "qrclose") { qrClose(false); }
   else if (act === "showlogs") { showLogCards(); showTab("logs"); Android.toast("日志框已恢复"); }
   else if (act === "rmcard") rmCard(arg);
   else if (act === "clearlog") doClearLog(arg);
@@ -6201,9 +7095,17 @@ function renderInst(){
   if (!box || !card) return;
   var map = E.inst.map || {};
   var list = validBots((S.bots && S.bots.bots) ? S.bots.bots : []);
-  var ids = [], seen = {}, i, k;
-  for (i = 0; i < list.length; i++){ var bid = String(list[i].id); ids.push(bid); seen[bid] = 1; }
-  for (k in map){ if (Object.prototype.hasOwnProperty.call(map, k) && !seen[k]){ ids.push(k); seen[k] = 1; } }
+  /* 只渲染 bots.json 里还在的实例，map 只用来补启动时间 / 昵称这些「附加信息」。
+     以前这里把 map 的键也并进 ids（`for (k in map) if (!seen[k]) ids.push(k)`），
+     于是 instances.json 里残留的旧记录会变成一张删不掉的实例卡：删掉实例后原生那边
+     只在 bots.json 非空时才重写 instances.json（v1.1.35 已修），而界面这边完全不知道，
+     照旧把旧 id 渲染出来 —— 表现就是「实例删了，主页还在」。 */
+  var ids = [], seen = {}, i;
+  for (i = 0; i < list.length; i++){
+    var bid = String(list[i].id || "");
+    if (!bid || seen[bid]) continue;
+    ids.push(bid); seen[bid] = 1;
+  }
   if (!ids.length){ card.style.display = "none"; return; }
 
   var now = Math.floor(Date.now() / 1000);
@@ -6224,7 +7126,7 @@ function renderInst(){
     h.push('<div class="inst" data-act="instopen" data-arg="' + esc(id) + '" role="button" tabindex="0">');
     h.push(instAvatar(uin, nick, id));
     h.push('<div class="inb"><div class="inn"><span class="dot ' + (alive ? "ok" : "mute") + '"></span><span>' + esc(nick) + '</span></div>'
-      + '<div class="inm"><i>在线 ' + esc(upTxt) + '</i><i>最近掉线 ' + esc(offTxt) + '</i>'
+      + '<div class="inm"><i>' + esc(alive ? ("在线 " + upTxt) : "未运行") + '</i><i>最近掉线 ' + esc(offTxt) + '</i>'
       + (uin ? '<i>' + esc(uin) + '</i>' : "") + '</div></div>');
     h.push('<span class="ingo" aria-hidden="true">' + INST_CHEV + '</span>');
     h.push('</div>');
@@ -6486,6 +7388,35 @@ function refreshStorage(force){
   E.stg.at = now;
   E.stg.data = brCall(["storageStats", "storageInfo"]);
   renderStorage();
+  try { renderBundle(); } catch (e9) {}
+}
+
+/* 内置离线包状态（1.2.0）：只在「更多 → 存储占用」里露一行，不单独占卡片。 */
+function renderBundle(){
+  var node = el("bundleStat");
+  if (!node) return;
+  var r = null;
+  try { r = brHas("bundleInfo") ? normJson(Android.bundleInfo()) : null; } catch (e) { r = null; }
+  if (!r || r.ok === false){
+    node.textContent = "内置离线包：这个安装包没有提供查询接口";
+    return;
+  }
+  if (!r.asset){
+    node.textContent = "内置离线包：没带（首次部署要联网下载约 1 GB 的组件）";
+    return;
+  }
+  var total = Number(r.total || 0), have = Number(r.size || 0);
+  var arch = r.arch ? " · 架构 " + r.arch : "";
+  if (r.ready){
+    node.textContent = "内置离线包已就绪：" + (total ? extBytes(total) : "已释放") + arch + "，部署时直接解压，全程不需要联网";
+  } else if (r.done){
+    node.textContent = "内置离线包已用于部署，解压后已删除，不再占用空间";
+  } else if (r.pending || have > 0){
+    var pct = total > 0 ? Math.floor(have / total * 100) : 0;
+    node.textContent = "正在释放内置包 " + pct + "%（" + extBytes(have) + " / " + (total ? extBytes(total) : "?") + "）";
+  } else {
+    node.textContent = "内置离线包待释放" + arch + (total ? "：" + extBytes(total) : "") + "，开始部署时会自动拷贝";
+  }
 }
 
 function renderStorage(){
@@ -6926,7 +7857,13 @@ function fitFoot(){
     if (s.className.indexOf("on") < 0) continue;
     var top = s.getBoundingClientRect().top;
     var h = vh - top - navH;
-    if (h > 0) s.style.minHeight = Math.round(h) + "px";
+    if (h <= 0) continue;
+    /* 只要内容装得下，就把这一页撑满，让落款贴着底栏站定。
+       试过「内容短就紧跟正文」：真机上落款会悬在半山腰，下面留一块空白，
+       反而像页面没渲染完。撑满之后底部留白由 --bg-veil 渐变自然收尾。 */
+    var pf = s.querySelector(".pagefoot");
+    var used = pf ? (pf.getBoundingClientRect().bottom - top) : s.scrollHeight;
+    if (h > used) s.style.minHeight = Math.round(h) + "px";
   }
 }
 
@@ -6991,6 +7928,7 @@ function refreshExtras(st){
   /* 存储 / 崩溃 / 统计：不在对应页签时不主动扫盘，省电也省桥调用 */
   if (tabOn("more")){
     try { refreshStorage(false); } catch (e6) {}
+    try { renderBundle(); } catch (e6b) {}
     try { refreshCrash(false); } catch (e7) {}
     try { refreshRestartCard(st); } catch (e8) {}
   }

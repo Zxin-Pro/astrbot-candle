@@ -77,6 +77,8 @@ Remove-Item "$ROOT\_apkwork\smali_classes30" -Recurse -Force -ErrorAction Silent
 Copy-Item "$ROOT\ui\smali" "$ROOT\_apkwork\smali_classes30" -Recurse -Force
 New-Item -ItemType Directory -Force -Path "$ROOT\_apkwork\assets\qqbot" | Out-Null
 Copy-Item "$ROOT\ui\assets\qqbot\index.html" "$ROOT\_apkwork\assets\qqbot\index.html" -Force
+# header logo: the app's own icon, served from assets so the WebView can load it.
+Copy-Item "$ROOT\ui\assets\qqbot\appicon.png" "$ROOT\_apkwork\assets\qqbot\appicon.png" -Force
 Write-Host 'smali + asset copied'
 
 # 3d) app icon: copy ui\assets\icon\res into _apkwork\res before apktool b.

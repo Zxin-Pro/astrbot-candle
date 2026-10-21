@@ -945,6 +945,33 @@ public class QqbotBridge {
         return AvatarCache.avatarPath(act.filesDirPub(), uin);
     }
 
+    /** 内置离线包状态（1.2.0）：安装包带没带离线包、释放进度、目标架构。
+     *
+     *  只探一个 asset 加读两个小文件，不做磁盘扫描 —— 这个方法会被 4 秒一次的刷新调用。
+     */
+    @JavascriptInterface
+    public String bundleInfo() {
+        try {
+            if (!act.hasBundle()) {
+                return "{\"ok\":true,\"asset\":false}";
+            }
+            java.io.File b = act.bundleFile();
+            long have = b.isFile() ? b.length() : 0L;
+            StringBuilder sb = new StringBuilder(160);
+            sb.append("{\"ok\":true,\"asset\":true");
+            sb.append(",\"total\":").append(act.bundleAssetSize());
+            sb.append(",\"size\":").append(have);
+            sb.append(",\"ready\":").append(act.bundleReady());
+            sb.append(",\"pending\":").append(act.bundlePendingFile().isFile());
+            sb.append(",\"done\":").append(act.deployDoneFile().isFile());
+            sb.append(",\"arch\":\"").append(act.bundleArch()).append("\"");
+            sb.append("}");
+            return sb.toString();
+        } catch (Throwable t) {
+            return failJson("内置包状态读取失败：" + t);
+        }
+    }
+
     /* ================= v1.1.30 第三批：备份 / 恢复（功能 50） ================= */
     /* 这一批一律 start + poll：备份要打包几百 MB、恢复要停服解包再重启，
        同步等会把 WebView 的 JS 线程卡死几十秒。全部结果落 state/backup.json、

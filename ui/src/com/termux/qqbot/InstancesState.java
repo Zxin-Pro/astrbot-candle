@@ -60,10 +60,16 @@ public final class InstancesState {
                     o.put("alive", on); // 多存一个内部字段：下一轮判断「原本活着」要用
                     out.put(id, o);
                 }
+                /* 写入条件必须放在 arr != null 里面：botsRoot 读失败时 out 也是空的，
+                   在外面无条件写会把「读不到」当成「没有实例」，把有用的状态抹掉。 */
+                if (!out.toString().equals(cur.toString())) {
+                    StateIO.write(StateIO.file(filesDir, NAME), out.toString());
+                }
             }
-            if (out.length() > 0 && !out.toString().equals(cur.toString())) {
-                StateIO.write(StateIO.file(filesDir, NAME), out.toString());
-            }
+            /* v1.1.35：以前这里是 out.length() > 0 && ...
+               删掉最后一个实例时 out 是空的，于是永远不写盘，instances.json 里那条旧记录
+               一直留着 —— 界面上就出现一张「删掉了还在」的幽灵实例卡。
+               现在只要 bots.json 读到了就照实写（包括空表），读失败（arr == null）才跳过。 */
         } catch (Throwable ignored) {
         }
     }

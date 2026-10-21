@@ -23,11 +23,14 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.net.Inet4Address;
 import java.net.InetAddress;
@@ -676,6 +679,9 @@ public class QqbotActivity extends Activity {
         File script = new File(usrDir(), "opt/qqbot/deploy.sh");
         if (!script.isFile()) return "找不到部署脚本，覆盖安装一次应用可以恢复";
         String qh = qqbotDir().getAbsolutePath();
+        // 内置离线包必须先落盘：部署脚本读不到 APK 的 assets。这里只是踢一下后台线程，
+        // 真正「等它拷完」由步骤 2 自己轮询 .bundle-ok 完成。
+        try { kickBundleCopy(); } catch (Throwable ignored) {}
         // 必须用 setsid：runShell 返回后会 destroy() 掉这个 shell，而 Android 的
         // ProcessImpl.destroyProcess 是按进程组发 SIGTERM 的，同组的后台进程会被连带杀死，
         // 于是部署脚本刚起来就没了（表现为 supervisor/deploy 的 pid 写了却查不到进程）。
@@ -713,6 +719,9 @@ public class QqbotActivity extends Activity {
         try {
             if (!new File(usrDir(), "bin/bash").isFile()) return;
             if (!deployDoneFile().isFile()) {
+                // 部署要跑起来之前，先让内置离线包在后台就位（没有内置包的 APK 这里是空操作）。
+                // 不放在部署脚本里做：脚本在 Termux 里跑，读不到 APK 的 assets。
+                try { kickBundleCopy(); } catch (Throwable ignored) {}
                 if (pidAlive(deployPidFile())) return;
                 if (!new File(usrDir(), "opt/qqbot/deploy.sh").isFile()) return;
                 startDeploy();
@@ -809,6 +818,159 @@ public class QqbotActivity extends Activity {
             // 老 APK / UI-Only 构建里可能没有这个 asset，静默跳过即可
             return false;
         }
+    }
+
+    /* ===================== 内置离线包（1.2.0） ===================== */
+
+    /** 内置离线包在 assets 里的名字。构建脚本按目标架构往里塞不同的包。 */
+    public static final String BUNDLE_ASSET = "qqbot-bundle.tar.xz";
+
+    /** APK 里有没有带内置离线包。 */
+    public boolean hasBundle() {
+        InputStream in = null;
+        try {
+            in = getAssets().open(BUNDLE_ASSET);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        } finally {
+            if (in != null) {
+                try {
+                    in.close();
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+    }
+
+    public File bundleFile() { return new File(qqbotDir(), "bundle.tar.xz"); }
+
+    public File bundleOkFile() { return new File(qqbotDir(), ".bundle-ok"); }
+
+    public File bundlePendingFile() { return new File(qqbotDir(), ".bundle-pending"); }
+
+    private String bundleStamp() {
+        try {
+            return String.valueOf(getPackageManager().getPackageInfo(getPackageName(), 0).lastUpdateTime);
+        } catch (Throwable t) {
+            return "0";
+        }
+    }
+
+    /** 内置离线包的标称大小（字节），构建时写进 opt/qqbot/BUNDLE_SIZE；没有就返回 0。
+     *
+     *  为什么不用 assets.openFd().getLength()：构建脚本可能把 .tar.xz 以 deflate 存进 APK，
+     *  那时 openFd 会抛 FileNotFoundException，而界面只想知道「大概多大」，读一个小文本更稳。
+     */
+    public long bundleAssetSize() {
+        String s = readSmall(new File(new File(usrDir(), "opt/qqbot"), "BUNDLE_SIZE"));
+        if (s == null) return 0L;
+        try {
+            return Long.parseLong(s.trim());
+        } catch (Throwable t) {
+            return 0L;
+        }
+    }
+
+    /** 内置离线包的架构标记（amd64 / arm64）；装了个没带包的版本时返回空串。 */
+    public String bundleArch() {
+        String s = readSmall(new File(new File(usrDir(), "opt/qqbot"), "BUNDLE_ARCH"));
+        return s == null ? "" : s.trim();
+    }
+
+    /** 内置包是不是已经在磁盘上放好了（可以交给 tar 解压）。 */
+    public boolean bundleReady() {
+        File b = bundleFile();
+        if (!b.isFile() || b.length() <= 0) return false;
+        String have = readSmall(bundleOkFile());
+        return have != null && have.trim().equals(bundleStamp());
+    }
+
+    /** 把内置离线包从 assets 拷到 $HOME/.qqbot/bundle.tar.xz。
+     *
+     *  为什么必须拷出来：部署脚本在 Termux 里跑，读不到 APK 里的 assets，而 tar 只认路径。
+     *  代价是多占一份磁盘（约 650 MB），解压完由 deploy 步骤立刻删掉，不是永久占用。
+     *
+     *  返回 null 表示成功；否则是给界面看的失败原因。
+     */
+    public String ensureBundle() {
+        if (!hasBundle()) return null;
+        if (bundleReady()) return null;
+        File dst = bundleFile();
+        File part = new File(qqbotDir(), "bundle.tar.xz.part");
+        File qq = qqbotDir();
+        if (!qq.isDirectory() && !qq.mkdirs()) return "工作目录建不出来";
+        InputStream in = null;
+        OutputStream out = null;
+        try {
+            writeFileRobust(bundlePendingFile(), bundleStamp().getBytes("UTF-8"));
+            in = new BufferedInputStream(getAssets().open(BUNDLE_ASSET), 1 << 20);
+            out = new BufferedOutputStream(new FileOutputStream(part), 1 << 20);
+            byte[] buf = new byte[1 << 20];
+            long total = 0;
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                out.write(buf, 0, n);
+                total += n;
+            }
+            out.flush();
+            out.close();
+            out = null;
+            if (!part.renameTo(dst)) {
+                if (dst.exists()) dst.delete();
+                if (!part.renameTo(dst)) {
+                    part.delete();
+                    return "内置包写入失败";
+                }
+            }
+            writeFileRobust(bundleOkFile(), bundleStamp().getBytes("UTF-8"));
+            return null;
+        } catch (Throwable t) {
+            try {
+                if (out != null) out.close();
+            } catch (Throwable ignored) {
+            }
+            part.delete();
+            try {
+                writeFileRobust(new File(qqbotDir(), "logs/bundle.log"),
+                        ("bundle copy failed: " + t + (char) 10).getBytes("UTF-8"));
+            } catch (Throwable ignored) {
+            }
+            return "内置包释放失败：" + t;
+        } finally {
+            try {
+                if (in != null) in.close();
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    /** 后台线程里释放内置包。拷贝 650 MB 期间界面必须还能动。 */
+    public void kickBundleCopy() {
+        // 沙盒已经装好了就一个字节都不拷：内置包只对「首次部署」有用，
+        // 拷出来白占 604 MB，而且解压出来的 2.2 GB 会跟现有沙盒打架。
+        if (deployDoneFile().isFile()) {
+            dropBundle();
+            return;
+        }
+        if (!hasBundle() || bundleReady()) return;
+        final File flag = new File(qqbotDir(), ".bundle-copying");
+        if (flag.isFile()) return;
+        try {
+            writeFileRobust(flag, bundleStamp().getBytes("UTF-8"));
+        } catch (Throwable ignored) {
+        }
+        Thread th = new Thread(new BundleCopyTask(this, flag), "qqbot-bundle-copy");
+        th.setDaemon(true);
+        th.start();
+    }
+
+    /** 清掉内置包相关的所有落盘文件（拷贝中 / 拷贝完 / 待拷标记）。 */
+    private void dropBundle() {
+        try { bundleFile().delete(); } catch (Throwable ignored) {}
+        try { new File(qqbotDir(), "bundle.tar.xz.part").delete(); } catch (Throwable ignored) {}
+        try { bundleOkFile().delete(); } catch (Throwable ignored) {}
+        try { bundlePendingFile().delete(); } catch (Throwable ignored) {}
     }
 
     /** 读完一个 zip 条目的全部字节（先整块读进内存，才好「写临时文件再改名」）。 */

@@ -78,3 +78,7 @@ tools/ext/
 tools/entries.txt
 ui/Mini.java
 ui/*.java
+
+# 内置离线包的架构/体积标记：由 build-apk.ps1 -Arch 每次重建时写入，不入库
+build/opt/qqbot/BUNDLE_ARCH
+build/opt/qqbot/BUNDLE_SIZE

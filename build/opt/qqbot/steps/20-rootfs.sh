@@ -1,12 +1,179 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # 步骤 2：下载并解压 Ubuntu 24.04 rootfs（按设备架构自动选择 amd64 / arm64）
+#
+# 1.2.0 起多一条路：APK 里带了内置离线包（bundle.tar.xz）时，直接把整棵装好的
+# rootfs 解出来，一次到位 —— 后面 30/40/50/60 四步（apt / QQ / NapCat / AstrBot）
+# 全都已经是装好的状态，直接标成完成，全程不需要联网。
 . "$PREFIX/opt/qqbot/common.sh"
 
 ROOTFS="$QQBOT_ROOTFS"
 TAR="$QQBOT_CACHE/$QQBOT_ROOTFS_TAR"
 STAMP="$QQBOT_HOME/rootfs.arch"
+BUNDLE="$QQBOT_HOME/bundle.tar.xz"
+BUNDLE_OK="$QQBOT_HOME/.bundle-ok"
+BUNDLE_PENDING="$QQBOT_HOME/.bundle-pending"
+# 构建时写进 APK 的一行（amd64 / arm64），用来挡住「拿错架构的包装上去」
+BUNDLE_ARCH_HINT="$QQBOT_OPT/BUNDLE_ARCH"
 CUR=""
 [ -f "$STAMP" ] && CUR="$(cat "$STAMP" 2>/dev/null)"
+
+# ---------------------------------------------------------------------------
+# 内置离线包：先在旁边等它从 APK 里拷出来。
+# 拷贝是应用侧（Java）在后台做的，650 MB 大概要几十秒；部署脚本不能因为「文件还没到」
+# 就去联网下载 —— 那正好是内置版要避免的事。
+# ---------------------------------------------------------------------------
+qq_bundle_ready() {
+  [ -s "$BUNDLE" ] && [ -f "$BUNDLE_OK" ]
+}
+
+if [ ! -f "$QQBOT_HOME/deploy.done" ] && ! qq_bundle_ready && [ -f "$BUNDLE_PENDING" ]; then
+  qqlog "正在释放内置离线包（APK 自带的沙盒镜像，无需联网）"
+  _w=0
+  while [ "$_w" -lt 600 ]; do
+    qq_bundle_ready && break
+    # Java 那边拷失败会把 .bundle-pending 删掉；这时别死等，回落到在线部署。
+    [ -f "$BUNDLE_PENDING" ] || break
+    sleep 2
+    _w=$((_w + 2))
+    [ $((_w % 20)) -eq 0 ] && qqlog "  等待内置包就位… ${_w}s"
+  done
+  if qq_bundle_ready; then
+    qqok "内置离线包已就位（$(ls -l "$BUNDLE" | awk '{print $5}') 字节）"
+  else
+    qqwarn "内置包没能就位，回落到联网部署"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 有内置包：整棵 rootfs 一次解出来，然后跳过已经装好的步骤。
+#
+# 什么时候该用内置包，判据有两条，缺一不可地看「现在这棵树到底能不能用」：
+#   ① 架构标记跟设备不一致 —— 从没在这台机器上装过；
+#   ② 这棵树不完整 —— 上次装到一半（比如联网装到 30-apt 就被杀、或 apt 失败后
+#      被重建回 base），此时 rootfs.arch 已经写下，光看 ① 会把它当成「已完成」，
+#      于是一棵只有 84 MB 的残树被当成装好的沙盒继续往下跑，最后卡在 link 报
+#      「python3: command not found」。判据换成「整棵树的成品标志在不在」，才自洽。
+# ---------------------------------------------------------------------------
+BUNDLE_USE=0
+if qq_bundle_ready; then
+  if [ "$CUR" != "$QQBOT_ARCH" ]; then
+    BUNDLE_USE=1
+  elif [ ! -f "$ROOTFS/opt/AstrBot/main.py" ]; then
+    qqlog "检测到沙盒不完整（缺 /opt/AstrBot），改用内置离线包重装"
+    BUNDLE_USE=1
+  fi
+fi
+
+if [ "$BUNDLE_USE" = "1" ]; then
+  # 内置包是按架构编的，架构不符必须拒收 —— 解出一棵 amd64 的树到 arm64 手机上，
+  # 表现是每一步都报「Exec format error」，而报错点在 30-apt，根因在第 2 步。
+  BARCH="$(cat "$BUNDLE_ARCH_HINT" 2>/dev/null)"
+  if [ -n "$BARCH" ] && [ "$BARCH" != "$QQBOT_ARCH" ]; then
+    qqerr "内置包架构不匹配（包是 $BARCH，设备是 $QQBOT_ARCH），已忽略，改为联网部署"
+    rm -f "$BUNDLE" "$BUNDLE_OK" "$BUNDLE_PENDING"
+    BUNDLE_USE=0
+  fi
+fi
+
+if [ "$BUNDLE_USE" = "1" ]; then
+  qqlog "使用内置离线包解压沙盒（不需要联网）"
+  qq_fsprobe "$ROOTFS"
+  PRC=$?
+  if [ "$PRC" = "3" ]; then
+    qqlog "重建沙盒目录 $ROOTFS"
+    chmod -R u+rwX "$ROOTFS" 2>/dev/null || true
+    rm -rf "$ROOTFS" 2>/dev/null || true
+  fi
+  rm -rf "$ROOTFS"
+  mkdir -p "$ROOTFS" || { qqerr "沙盒目录建不出来"; exit 1; }
+  # 总量取 xz 索引里的 uncompressed size，用来算百分比。拿不到就不显示百分比，
+  # 绝不能因为这一句解析失败就让整个部署停下。
+  TOTAL="$("$PREFIX/bin/xz" --robot -l "$BUNDLE" 2>/dev/null | awk -F'\t' '/^totals/{print $5}' | head -1)"
+  case "$TOTAL" in
+    ''|*[!0-9]*) TOTAL=0 ;;
+  esac
+  set +e
+  # 解压走「xz 出流 + tar 读流」而不是 tar -xJf：
+  # GNU tar 的 -J 是按名字去 exec 一个 xz，PATH 里没有就报 "xz: Cannot exec"；
+  # 实测在 adb shell 这类非 Termux PATH 下必然失败，而 App 内跑时又依赖 PATH 恰好对。
+  # 直接给 xz 绝对路径，两种环境都稳。
+  #
+  # 必须开 pipefail 并把整个管道放进子 shell：
+  # 只看 tar 的退出码是不够的 —— xz 中途死了（被杀 / 磁盘满）时 tar 读到空流会正常返回 0，
+  # 于是一次彻底失败的解压被当成成功，后面 4 步全被标成已完成，最终卡在 link 阶段报
+  # 「python3: command not found」，而真因在解压那一行。
+  (
+    set -o pipefail
+    "$PREFIX/bin/xz" -dc "$BUNDLE" | tar -xf - -C "$ROOTFS" --no-same-owner
+  ) >/dev/null 2>"$QQBOT_CACHE/bundle-tar.err" &
+  TPID=$!
+  _last=""
+  while kill -0 "$TPID" 2>/dev/null; do
+    sleep 3
+    if [ "$TOTAL" -gt 0 ]; then
+      _c="$(du -sb "$ROOTFS" 2>/dev/null | cut -f1)"
+      case "$_c" in ''|*[!0-9]*) _c=0 ;; esac
+      _p=$(( _c * 100 / TOTAL ))
+      # 只在整数百分比变化时打一行：解压要几分钟，每 3 秒一条会把日志刷成一片。
+      if [ "$_p" != "$_last" ]; then
+        _last="$_p"
+        qqlog "  解压中 ${_p}%"
+      fi
+    fi
+  done
+  wait "$TPID"
+  BRC=$?
+  set -e
+  if [ "$BRC" != "0" ]; then
+    qqerr "内置包解压失败（tar 返回 $BRC，详见 $QQBOT_CACHE/bundle-tar.err）"
+    rm -rf "$ROOTFS"
+    exit 1
+  fi
+  if [ ! -x "$ROOTFS/bin/bash" ] || [ ! -d "$ROOTFS/var/lib/dpkg" ]; then
+    qqerr "内置包解压后缺少关键目录，镜像可能损坏"
+    rm -rf "$ROOTFS"
+    exit 1
+  fi
+  # 上面的两个路径在「只解出一棵 ubuntu-base」的残缺树里同样存在，判据还不够。
+  # 内置包按定义是把整台机器都装好了，所以再验一个只有装完才会有的东西：
+  # AstrBot 主程序。它在 tar 里排在靠后的位置，能解出它就说明流是完整的。
+  if [ ! -f "$ROOTFS/opt/AstrBot/main.py" ]; then
+    qqerr "内置包只解出一部分（缺 /opt/AstrBot/main.py），已放弃本次离线安装"
+    rm -rf "$ROOTFS"
+    exit 1
+  fi
+  # 解压完立刻删掉，650 MB 不能留成永久占用。
+  rm -f "$BUNDLE" "$BUNDLE_OK" "$BUNDLE_PENDING"
+  echo "$QQBOT_ARCH" > "$STAMP"
+  qqok "内置包已解压：$ROOTFS（$QQBOT_ARCH）"
+  # 内置包是用 --exclude 打的，故意不带 dev / proc / sys / run / tmp：
+  # 这些是运行期才挂载或由系统给出的目录，打进包里既没意义也会带进宿主设备节点。
+  # 但解出来必须补空目录，否则 TMPDIR=/tmp 指不到东西，dpkg 的维护者脚本、
+  # apt 的临时文件、pip 的构建目录全部会报 No such file or directory。
+  mkdir -p "$ROOTFS/dev" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/run" \
+           "$ROOTFS/tmp" "$ROOTFS/root" "$ROOTFS/opt" 2>/dev/null || true
+  chmod 1777 "$ROOTFS/tmp" 2>/dev/null || true
+  qqok "已补齐运行时目录 dev / proc / sys / run / tmp"
+  # 包里已经装好哪几步，就标哪几步完成。标记只在包内清单里写明的情况下才落，
+  # 半成品的包不会让后面四步被误跳过。
+  if [ -f "$ROOTFS/.qqbot-bundle" ]; then
+    for _s in $(tr -d '\r' < "$ROOTFS/.qqbot-bundle" | tr ' ' '\n'); do
+      case "$_s" in
+        30-apt|40-qq|50-napcat|60-astrbot) : > "$QQBOT_STEPS/$_s" ;;
+      esac
+    done
+    rm -f "$ROOTFS/.qqbot-bundle"
+    qqok "内置包已包含的步骤已标记完成，跳过下载与安装"
+  fi
+  # 内置包这条路到此为止。下面那段是「下载 ubuntu-base 再解压」的在线流程，
+  # 它的第一件事就是 rm -rf "$ROOTFS" —— 走到那里会把刚解好的 2.2 GB 整棵树
+  # 覆盖成 84 MB 的裸 base，然后 30~60 步带着「已完成」的戳全部跳过，最后卡在
+  # 65-link 报「python3: command not found」，而真因在第 2 步这一行。
+  # （1.2.0 第一版就踩了这个：日志里能看到「内置包已解压」紧接着「解压 rootfs 到 …」。）
+  # 收尾的 DNS / apt 源 / CA 这些内置包里已经写好了，不需要再跑一遍。
+  qqok "步骤 20-rootfs 完成（内置包，跳过在线解压）"
+  exit 0
+fi
 
 # ---------------------------------------------------------------------------
 # 前置体检：在花时间下载 / 解压之前，先确认这个目录能写、能建硬链接。
