@@ -1,11 +1,15 @@
 import fs from "node:fs";
 import cp from "node:child_process";
-const V = "C:\\Users\\zjh19\\DSH\\qqbot-sandbox\\vps-deploy\\";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+// 路径相对脚本自身，仓库克隆到任何位置 / Linux / CI 都能直接跑；
+// 原来写死 C:\Users\zjh19\...，换台机器就 ENOENT。
+const V = path.dirname(fileURLToPath(import.meta.url)) + path.sep;
 const rd = (f) => fs.readFileSync(V + f, "utf8").replace(/\r\n/g, "\n").replace(/\n+$/, "");
 const py = rd("astrbot_download_sync.py");
 const svc = rd("zhuxin-astrbot-dl.service");
 const tmr = rd("zhuxin-astrbot-dl.timer");
-const stat = fs.readFileSync(V + "data\\astrbot.json", "utf8").replace(/\r\n/g, "\n").trim();
+const stat = fs.readFileSync(path.join(V, "data", "astrbot.json"), "utf8").replace(/\r\n/g, "\n").trim();
 JSON.parse(stat);
 const L = [];
 const P = (...xs) => xs.forEach((x) => L.push(x));
@@ -189,6 +193,9 @@ for (const d of dels) {
   const c = full.split("\n").filter((l) => l === d).length;
   if (o !== 1 || c !== 1) console.log("!! " + d + " open=" + o + " close=" + c);
 }
-const r = cp.spawnSync("C:\\Program Files\\Git\\bin\\bash.exe", ["-n", V + "deploy-astrbot-page.sh"], { encoding: "utf8" });
+const bash = process.platform === "win32" ? "bash.exe" : "bash";
+const r = cp.spawnSync(bash, ["-n", path.join(V, "deploy-astrbot-page.sh")], { encoding: "utf8" });
 console.log("bash -n rc=" + r.status + " " + (r.stderr || "").trim());
+if (r.error) console.log("bash -n skipped: " + r.error.message);
+else if (r.status !== 0) process.exit(1);
 console.log("installer bytes=" + Buffer.byteLength(full) + " lines=" + full.split("\n").length);

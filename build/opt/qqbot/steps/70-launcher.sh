@@ -30,7 +30,7 @@ echo "  QQ / NapCat 日志 : qqbot-log qq"
 echo "  AstrBot 日志     : qqbot-log astrbot"
 # heredoc 是引号形式（<<'EOS'），$(...) 生成阶段不展开、只写进脚本，
 # 由生成的 qqbot-start 在运行期展开 —— 它第 8 行 . 了 common.sh，函数取得到。
-echo "  NapCat WebUI     : http://127.0.0.1:$(qq_napcat_port)  （Token: zhuxin）"
+echo "  NapCat WebUI     : http://127.0.0.1:$(qq_napcat_port)  （Token 见 App 实例卡片，默认 zhuxin）"
 echo "  AstrBot 控制台   : http://127.0.0.1:$(qq_astrbot_port)  （账号 astrbot / 密码 Astrbot123，登录后请改密）"
 EOS
 
@@ -111,7 +111,7 @@ cat <<TXT
 
   首次使用顺序：
     1. qqbot-start（或直接打开本应用，会自动后台启动）
-    2. 浏览器打开 http://127.0.0.1:$(qq_napcat_port)，Token 填 zhuxin，页面会显示 QQ 登录二维码
+    2. 浏览器打开 http://127.0.0.1:$(qq_napcat_port)，Token 见 App 的实例卡片（默认 zhuxin），页面会显示 QQ 登录二维码
        （二维码要在另一台设备上扫码：同一局域网内用电脑/平板打开
          http://<手机IP>:$(qq_napcat_port)，再用本机 QQ 扫码；NapCat 也会把二维码存成图片）
     3. 手机浏览器打开 http://127.0.0.1:$(qq_astrbot_port) 进入 AstrBot 控制台
@@ -123,7 +123,7 @@ cat <<TXT
   说明：
     * 沙盒是 proot 模拟的 Ubuntu 24.04，不是真虚拟机，不需要 root。
     * 数据都在 ~/ubuntu 和 ~/.qqbot 下，卸载应用会一并清除。
-    * 本应用基于 Termux 改造，包名为 com.termux。
+    * 本应用基于 Termux 改造，包名为 zhuxin.astrbot（1.2.2 起；更早版本是 com.termux）。
 
 TXT
 EOS

@@ -443,9 +443,14 @@ public class QqbotGuardService extends Service {
         b.setOnlyAlertOnce(true);
         b.setShowWhen(false);
         b.setContentIntent(pi);
+        // 通知栏小图标必须是纯白剪影，不能用启动图标：启动图标是彩色 / 自适应图标，
+        // Android 8+ 会把它渲染成一团色块或直接裁掉，部分 ROM 上还会因为
+        // adaptive-icon 不是合法的 notification small icon 而整条通知不显示。
+        // 清单里已经带了专门画的 res/drawable/ic_stat_qqbot.xml，优先用它。
         int icon;
         try {
-            icon = getApplicationInfo().icon;
+            int res = getResources().getIdentifier("ic_stat_qqbot", "drawable", getPackageName());
+            icon = (res != 0) ? res : getApplicationInfo().icon;
         } catch (Throwable t) {
             icon = android.R.drawable.stat_notify_sync;
         }

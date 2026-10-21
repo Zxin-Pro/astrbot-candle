@@ -11,6 +11,28 @@
 
 ---
 
+## [Unreleased]
+
+### 修复
+
+- **`bots.json` 写盘失败仍提示「已保存」**：`writeBots()` 原来把两次 `writeFile()` 的返回值丢掉、无条件 `return true`，磁盘满 / 文件被占用时界面照样显示保存成功，重启后实例配置却没变。现在两份副本都检查结果；`writeFile()` 也改成「同目录临时文件 + rename」的原子写，避免截断后写到一半被杀留下 0 字节文件。
+- **0 字节 / 超大 `bots.json` 被当成默认配置**：`readBots()` 以前把 `""` 当「全新安装」直接返回默认单实例，用户随后一点保存就会覆盖真实的多实例配置。现在 0 字节与超过 8 MB 的文件都按损坏处理（备份为 `bots.json.bad`，并拦住第一次写盘）。
+- **备份「另存为」失败仍删源文件**：`BackupFlow.saveToUri()` 用 `closeQuiet()` 吞掉了输出流 `close()` 的异常（云盘 / 下载管理器往往在 close 时才真正提交），随后删掉缓存里的源备份并提示成功。现在 close 失败会如实报错并保留源文件，同时校验写入字节数。
+- **导入备份前先清空上一份**：`BackupFlow.copyIn()` 一进来就 `cleanDir()`，新备份读到一半失败时旧备份已经没了。现在先写临时文件，成功后再替换并清理旧文件。
+- **通知栏小图标使用启动图标**：`QqbotGuardService` / `RiskReader` 的 `setSmallIcon(getApplicationInfo().icon)` 在 Android 8+ 会把彩色自适应图标渲染成色块，部分 ROM 上整条通知不显示。改用包里已有的 `res/drawable/ic_stat_qqbot.xml`，取不到再回退。
+- **`StateIO` 状态文件并发写**：多个后台线程（守护 / 网络 / UI）会写同一个 `state/*.json`，固定 `.tmp` 名会互相截断。`write()` 现在串行化并使用带线程 id 的临时文件名。
+- **内置包拷贝标记残留**：上次拷贝被系统杀掉后 `.bundle-copying` 永远不消失，之后每次启动都跳过拷贝、部署干等 600 秒。现在超过 10 分钟的标记会自动清掉，`dropBundle()` 也会一并清理。
+- **二维码接口路径穿越**：`qr(wantId)` 把 WebView 传来的 id 直接拼进 `/opt/qqbot-inst/<id>/QQ`，`../..` 可读到任意目录文件。现在只放行字母数字、下划线、连字符和点，并限制二维码文件 4 MB。
+- **官网版本轮询无限重试**：`siteVerTick()` 超时后 `d.site` 仍是 null，下一轮 4 秒刷新会再次发起 GitHub 请求，网络不通时每 20 秒打一次。现在超时会落一条「读取失败」结果，不再自动重试。
+- **站点安装器 `deploy-astrbot-page.sh` 与同步脚本脱节**：仓库里提交的生成文件还是旧版 `pick_apk()`（取 release 里第一个 `.apk`，1.2.2 的资产顺序下会把 amd64 包装给 arm64 手机），且下载卡片仍写「包名 com.termux」。已用 `_gen_installer.mjs` 重新生成。
+- **`_gen_installer.mjs` 写死 Windows 路径**：换机器 / Linux / CI 直接 `ENOENT`。改为相对脚本目录，并用 `bash -n` 校验失败即退出。
+- **隐私政策仍是旧包名**：页面里「包名 com.termux」「/data/data/com.termux」与 1.2.2 实际不符；同时补充「匿名统计默认关闭、上报字段」的说明，避免和「不收集任何数据」的表述冲突。
+- **`qqbot-help` 仍写「包名为 com.termux」**、WebUI Token 写死 `zhuxin`：更新为新包名与「Token 见实例卡片」。
+- **首页「今日概览」只有三格却按四列排**：`.today-grid` 是 `1.3fr 1fr 1fr 1.2fr` 四列，HTML 里 `tdTraffic` 在 v4 改版时被删掉，`todayPaint()` 还在更新一个不存在的节点；补回「今日流量」格，避免三格被拉宽。
+- **部署全屏遮罩可能卡死**：完成后的 2.6 秒自动隐藏靠 `setTimeout`，页面切后台被冻结时 `hideAt` 不会归零，`running` 分支旧逻辑不消费它，回前台时遮罩可能一直盖住页面。现在过期标记会立即清掉。
+- **`tools/reloc_bootstrap.py --report` 在未装 lief 时抛 `NameError`**：校验分支直接引用 `lief`（只在 `patch_elf` 的 try 里 import），会把已经生成好的 `.so` 误判为失败；改为 try/except 并打印跳过原因。
+- **`reinstall.sh` 在 `PREFIX` 为空时回退到旧包名路径**：改为按脚本自身位置回推 `$PREFIX`，并保留新包名兜底。
+
 ## [1.2.2] - 2026-10-21
 
 ### 变更

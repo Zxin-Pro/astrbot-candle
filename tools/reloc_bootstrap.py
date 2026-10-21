@@ -140,5 +140,16 @@ def main():
         print("reopen ok entries=%d names_equal=%s" % (len(z2.infolist()), [a.filename for a in z2.infolist()] == [a.filename for a in infos]))
         i = [x for x in z2.infolist() if x.filename == "bin/bash"]
         if i:
-            b = lief.parse(io.BytesIO(z2.read(i[0])) and tempfile.NamedTemporaryFile(delete=False).name or "")
+            # lief 只在 patch_elf() 的 try 里 import；--report 这段原来直接引用，
+            # 没装 lief 的环境会在校验阶段抛 NameError，把已经生成好的 .so 判成失败。
+            try:
+                import lief
+                _tmp2 = tempfile.NamedTemporaryFile(delete=False, suffix=".elf")
+                _tmp2.write(z2.read(i[0]))
+                _tmp2.close()
+                b = lief.parse(_tmp2.name)
+                print("bin/bash 可解析=%s" % (b is not None))
+                os.unlink(_tmp2.name)
+            except Exception as e:
+                print("bin/bash 解析跳过：%s" % e)
 main()

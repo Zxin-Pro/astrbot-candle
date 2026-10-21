@@ -14,7 +14,14 @@
 # 控制台日志页的「其它日志文件」下拉里能看到它。
 set -u
 
-PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+# PREFIX 正常由 Termux 环境传入（启动器 / App 的 QqbotShell 都会给）。从 adb shell
+# 或旧脚本手动调用时它是空的，写死 com.termux 会在 1.2.2 改名后指向不存在的旧路径。
+# 脚本自己就在 $PREFIX/opt/qqbot/ 下，按自身位置回推最稳。
+if [ -z "${PREFIX:-}" ]; then
+  _self_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
+  PREFIX="$(cd "$_self_dir/../.." 2>/dev/null && pwd)"
+fi
+PREFIX="${PREFIX:-/data/data/zhuxin.astrbot/files/usr}"
 COMP="${1:-}"
 case "$COMP" in napcat|astrbot) ;; *) echo "用法: reinstall.sh napcat|astrbot"; exit 2 ;; esac
 

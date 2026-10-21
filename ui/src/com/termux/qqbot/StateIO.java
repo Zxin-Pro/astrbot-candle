@@ -53,21 +53,28 @@ final class StateIO {
         return read(file(filesDir, name));
     }
 
-    /** 原子写：同目录 .tmp 写完再 rename，避免守护线程读到半截内容。 */
-    static boolean write(File f, String text) {
+    /** 原子写：同目录 .tmp 写完再 rename，避免守护线程读到半截内容。
+     *  加 synchronized：同一个 state 文件会被守护线程、网络监听、UI 三处同时写，
+     *  固定 .tmp 名会让两个线程抢同一个临时文件（一个刚写一半被另一个截断），
+     *  再 rename 上去就是一份损坏的 JSON。串行化后成本可以忽略（都是几百字节）。 */
+    static synchronized boolean write(File f, String text) {
         if (f == null) return false;
         FileOutputStream out = null;
         try {
             File d = f.getParentFile();
             if (d != null && !d.isDirectory()) d.mkdirs();
-            File tmp = new File(f.getAbsolutePath() + ".tmp");
+            File tmp = new File(f.getAbsolutePath() + ".tmp." + Thread.currentThread().getId());
             out = new FileOutputStream(tmp);
             out.write((text == null ? "" : text).getBytes("UTF-8"));
             out.flush();
             out.close();
             out = null;
-            if (f.exists()) f.delete();
-            return tmp.renameTo(f);
+            // POSIX 的 rename 可以直接原子覆盖目标；先 delete 会在「删完、还没改名」
+            // 的瞬间留下一个不存在的目标文件，进程恰好被杀就把状态丢了。
+            // 只有个别文件系统不支持覆盖式 rename 时才退回「先删再改」。
+            if (tmp.renameTo(f)) return true;
+            if (f.exists() && f.delete()) return tmp.renameTo(f);
+            return false;
         } catch (Throwable t) {
             return false;
         } finally {

@@ -167,7 +167,10 @@ public final class RiskReader {
             b.setContentIntent(pi);
             // 24-25 没有渠道，优先级得在 Builder 上给；26+ 以渠道为准，这行只是兼容老系统。
             try { b.setPriority(Notification.PRIORITY_DEFAULT); } catch (Throwable ignored) {}
-            try { b.setSmallIcon(svc.getApplicationInfo().icon); } catch (Throwable ignored) {}
+            try {
+                int res = svc.getResources().getIdentifier("ic_stat_qqbot", "drawable", svc.getPackageName());
+                b.setSmallIcon(res != 0 ? res : svc.getApplicationInfo().icon);
+            } catch (Throwable ignored) {}
             nm.notify(NOTI_ID, b.build());
         } catch (Throwable ignored) {
         }
