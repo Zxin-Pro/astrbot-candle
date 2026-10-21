@@ -254,11 +254,24 @@ final class BackupFlow {
                 sha = copy(in, out, cnt);
                 bytes = cnt[0];
                 out.flush();
+                // close 才是真正落盘的时刻：云盘 / 下载管理器这类 ContentProvider
+                // 往往在 close 时才把缓冲区的数据提交上去，失败也只在这里报。
+                // 以前用 closeQuiet 把它吞掉，然后在下面删掉源备份并提示「已保存」，
+                // 结果用户唯一的备份文件没了、目标位置却是个空文件。
+                try {
+                    out.close();
+                } catch (Throwable closeErr) {
+                    throw new java.io.IOException("保存文件失败（关闭输出流时出错）：" + closeErr);
+                }
+                out = null;
             } finally {
                 closeQuiet(in);
                 closeQuiet(out);
             }
             if (bytes <= 0) throw new java.io.IOException("写出去的是空文件");
+            if (src.length() > 0 && bytes != src.length()) {
+                throw new java.io.IOException("写入不完整（应写 " + src.length() + " 字节，实际 " + bytes + "）");
+            }
         } catch (Throwable t) {
             err = "写入失败：" + t;
         }
@@ -447,12 +460,19 @@ final class BackupFlow {
             ContentResolver cr = act.getContentResolver();
             name = safeName(displayName(cr, uri));
             File dir = restoreDir(filesDir);
+            File parent = dir.getParentFile();
+            if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
+                throw new java.io.IOException("创建缓存目录失败");
+            }
             if (!dir.isDirectory() && !dir.mkdirs()) throw new java.io.IOException("创建缓存目录失败");
-            cleanDir(dir);
-            dest = new File(dir, name);
+            // 先写到缓存目录旁边的临时文件，整份拷完再清空目录并改名。
+            // 原写法一进来就 cleanDir(dir)，然后直接写目标文件：用户选中新备份但
+            // 读取中途失败（文件被删 / 断流）时，上一份还能用的备份已经被清掉了。
+            File tmp = new File(parent == null ? dir : parent, ".restore-incoming.part");
+            try { if (tmp.exists()) tmp.delete(); } catch (Throwable ignored) {}
             InputStream in = cr.openInputStream(uri);
             if (in == null) throw new java.io.IOException("系统没有给可读的输入流");
-            OutputStream out = new FileOutputStream(dest);
+            OutputStream out = new FileOutputStream(tmp);
             long[] cnt = new long[1];
             try {
                 sha = copy(in, out, cnt);
@@ -463,6 +483,14 @@ final class BackupFlow {
                 closeQuiet(out);
             }
             if (bytes <= 0) throw new java.io.IOException("选中的文件是空的");
+            dest = new File(dir, name);
+            // 先把新文件改名到位（同名时 POSIX rename 原子覆盖），再清掉旧备份；
+            // 这样改名失败时上一份备份还在。
+            if (!tmp.renameTo(dest)) {
+                try { tmp.delete(); } catch (Throwable ignored) {}
+                throw new java.io.IOException("备份文件落盘失败");
+            }
+            cleanDirExcept(dir, dest);
         } catch (Throwable t) {
             err = "读取备份文件失败：" + t;
         }
@@ -897,11 +925,18 @@ final class BackupFlow {
 
     /** 清掉 cache/restore 里上一轮留下的旧包（同一个目录，避免越攒越多）。 */
     private static void cleanDir(File dir) {
+        cleanDirExcept(dir, null);
+    }
+
+    /** 清空目录里的文件，但保留 keep（刚落盘的新备份）。 */
+    private static void cleanDirExcept(File dir, File keep) {
         try {
             File[] kids = dir.listFiles();
             if (kids == null) return;
             for (int i = 0; i < kids.length; i++) {
-                if (kids[i].isFile()) kids[i].delete();
+                if (!kids[i].isFile()) continue;
+                if (keep != null && kids[i].getAbsolutePath().equals(keep.getAbsolutePath())) continue;
+                kids[i].delete();
             }
         } catch (Throwable ignored) {
         }

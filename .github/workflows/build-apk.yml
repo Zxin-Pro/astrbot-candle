@@ -1,0 +1,113 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: "Target ABI"
+        required: true
+        default: arm64
+        type: choice
+        options:
+          - arm64
+          - amd64
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Prepare build dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force _research, _sdk\platform\android-34, _sdk\bt\android-14\lib, _apkwork | Out-Null
+
+          # 两个 APK 分工：
+          #  - termux-arm64.apk = 官方 Termux，只用来取 pristine bootstrap.so
+          #  - base-ui.apk     = 本项目上一个 release，用来 apktool d 出 _apkwork
+          #    因为官方 Termux 没有 QqbotActivity / QqbotPanelActivity 的 manifest
+          #    条目，直接拿它当 UI 基底会构建出「点开只有 Termux 终端」的包。
+          Write-Host "Downloading stock Termux APK (pristine bootstrap)"
+          Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/termux/termux-app/releases/download/v0.118.3/termux-app_v0.118.3%2Bgithub-debug_arm64-v8a.apk" -OutFile "_research\termux-arm64.apk"
+          Write-Host "Downloading previous AstrBot release (UI base)"
+          Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/Zxin-Pro/astrbot-candle/releases/download/v1.2.2/AstrBot-1.2.2-arm64.apk" -OutFile "_research\base-ui.apk"
+
+          Write-Host "Downloading apktool"
+          Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar" -OutFile "_sdk\apktool.jar"
+
+          Write-Host "Downloading Android build-tools (d8)"
+          Invoke-WebRequest -UseBasicParsing -Uri "https://dl.google.com/android/repository/build-tools_r34-windows.zip" -OutFile "$env:TEMP\build-tools.zip"
+          Expand-Archive -Path "$env:TEMP\build-tools.zip" -DestinationPath "$env:TEMP\build-tools" -Force
+          Copy-Item "$env:TEMP\build-tools\android-14\lib\d8.jar" "_sdk\bt\android-14\lib\d8.jar" -Force
+
+          Write-Host "Downloading Android platform 34 (android.jar)"
+          Invoke-WebRequest -UseBasicParsing -Uri "https://dl.google.com/android/repository/platform-34-ext7_r03.zip" -OutFile "$env:TEMP\platform-34.zip"
+          Expand-Archive -Path "$env:TEMP\platform-34.zip" -DestinationPath "$env:TEMP\platform-34" -Force
+          $jar = Get-ChildItem "$env:TEMP\platform-34" -Recurse -Filter android.jar | Select-Object -First 1
+          if (-not $jar) { throw "android.jar not found in platform-34 zip" }
+          Copy-Item $jar.FullName "_sdk\platform\android-34\android.jar" -Force
+
+          Write-Host "Downloading uber-apk-signer"
+          Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar" -OutFile "_research\uber-apk-signer.jar"
+
+          Write-Host "Installing lief (bootstrap ELF relocation)"
+          python -m pip install --disable-pip-version-check lief
+
+          Write-Host "Decoding UI base APK with apktool"
+          & "$env:JAVA_HOME\bin\java.exe" -jar "_sdk\apktool.jar" d "_research\base-ui.apk" -o "_apkwork" -f
+          if ($LASTEXITCODE -ne 0) { throw "apktool d failed" }
+
+      - name: Prepare signing keystore
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ($env:ANDROID_KEYSTORE_BASE64) {
+            Write-Host "Using repository secret ANDROID_KEYSTORE_BASE64"
+            [IO.File]::WriteAllBytes("$PWD\_research\debug.keystore", [Convert]::FromBase64String($env:ANDROID_KEYSTORE_BASE64))
+          } else {
+            Write-Host "::warning::ANDROID_KEYSTORE_BASE64 not set; generating a temporary debug keystore. This APK will NOT update over the released 1.2.2 build."
+            & "$env:JAVA_HOME\bin\keytool.exe" -genkeypair -v -keystore "$PWD\_research\debug.keystore" -storepass android -keypass android -alias androiddebugkey -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+            if ($LASTEXITCODE -ne 0) { throw "keytool failed" }
+          }
+
+      - name: Build UI
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\build-ui.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build APK
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch "${{ inputs.arch }}"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AstrBot-${{ inputs.arch }}-apk
+          path: AstrBot-*-${{ inputs.arch }}.apk
+          if-no-files-found: error

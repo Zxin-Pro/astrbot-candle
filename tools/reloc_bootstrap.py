@@ -109,6 +109,7 @@ def patch_stage2(data, pkg):
 
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    report = "--report" in sys.argv[1:]
     if len(args) < 4:
         raise SystemExit("usage: reloc_bootstrap.py <repacked.so> <out.so> <new.pkg> <pristine.so>")
     src, dst, pkg, pristine = args[0], args[1], args[2].encode(), args[3]
@@ -159,6 +160,16 @@ def main():
     print("entries=%d elf_patched=%d elf_hits=%d text_patched=%d com.termux_left=%d"
           % (len(z.infolist()), stats["elf"], stats["elf_hits"], stats["text"], stats["left"]))
     print("zip=%d pad=%d tail=%d size=%d" % (len(body), pad, len(tail), HEAD + len(body) + pad + len(tail)))
+    if report:
+        # sanity: reopen the new file sequentially; no lief needed so --report works on a bare python
+        try:
+            _d, _z, _e = read_zip(dst)
+            print("reopen ok entries=%d" % len(_z.infolist()))
+            _i = [x for x in _z.infolist() if x.filename == "bin/bash"]
+            if _i:
+                print("bin/bash size=%d" % len(_z.read(_i[0])))
+        except Exception as e:
+            print("reopen check skipped: %s" % e)
 
 
 if __name__ == "__main__":

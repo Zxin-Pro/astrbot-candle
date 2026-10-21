@@ -218,10 +218,32 @@ def human_size(n):
 
 
 def pick_apk(rel):
+    """挑一个安装包镜像到站内：只认已传完的 arm64 完整包（不是 -update.apk）。
+
+    三条硬规则，都是踩过坑之后加的：
+    1. GitHub 的资产列表按 id 降序返回，最新上传的排在最前；1.2.0 起同一个 release
+       里既有完整包也有更新包（"-update.apk"，只有 25 MB），直接取第一个会把更新包
+       当成主下载，所以要按名字打分挑。
+    2. **state 不是 uploaded 的一律跳过**：传到一半断掉的资产会留在接口里，size 字段
+       仍是目标大小、digest 为空，但下载是 404。拿它去镜像只会把站内好文件冲掉。
+       另外 /releases/latest 不返回这类残骸，一旦它被跳过，下一个候选就是 amd64 包，
+       所以还要限制架构。
+    3. **只认 arm64**：站内下载卡片写的是「仅 arm64-v8a」，把 x86_64 的包装进去，
+       真机装上会报 INSTALL_FAILED_NO_MATCHING_ABIS，而且日志上看不出任何异常。
+    """
+    best, best_score = None, -1
     for a in (rel.get("assets") or []):
-        if str(a.get("name", "")).lower().endswith(".apk"):
-            return a
-    return None
+        if str(a.get("state") or "uploaded") != "uploaded":
+            continue
+        name = str(a.get("name", "")).lower()
+        if not name.endswith(".apk") or "arm64" not in name:
+            continue
+        if "-update" in name:
+            continue            # 更新包是给老用户覆盖安装的瘦包，不能当主下载（第一次装它会联网下 1 GB）
+        score = 4
+        if score > best_score:
+            best, best_score = a, score
+    return best
 
 
 def sha256_file(path):
@@ -303,18 +325,43 @@ def mirror_releases(rels, quiet=False):
         if rel.get("draft"):
             continue
         apk = pick_apk(rel)
-        if not apk:
-            continue
         ver = str(rel.get("tag_name") or "").lstrip("vV")
         if not ver or "/" in ver or ver in out:
             continue
         name = APK_TPL % ver
         dest = os.path.join(DL_DIR, name)
+        if not apk:
+            # 这一版没有可用的 arm64 完整包（正在上传 / 传坏了）。站内已经有旧文件就
+            # 原样留着，别让它从下载页消失，也别被 _prune_downloads 清掉。
+            have = os.path.getsize(dest) if os.path.isfile(dest) else 0
+            if have > 0:
+                print("[astrbot-dl] %s 这一版没有可用的 arm64 完整包，保留站内旧文件" % ver,
+                      file=sys.stderr)
+                kept.append(name)
+                out[ver] = {
+                    "ver": ver,
+                    "tag": str(rel.get("tag_name") or ver),
+                    "name": name,
+                    "url": DL_URL + "/" + name,
+                    "bytes": have,
+                    "size": human_size(have),
+                    "sha": sha256_file(dest),
+                    "date": (rel.get("published_at") or "")[:10],
+                    "notes": (rel.get("body") or "").strip(),
+                }
+            continue
         want = int(apk.get("size") or 0)
         _dg = str(apk.get("digest") or "")
         sha_want = _dg.split(":", 1)[1] if _dg.startswith("sha256:") else ""
         have = os.path.getsize(dest) if os.path.isfile(dest) else -1
-        if want and have == want:
+        fresh = bool(want) and have == want
+        if fresh and sha_want:
+            try:
+                if sha256_file(dest) != sha_want:
+                    fresh = False   # 字节数一样但内容换过（同版本重打包），必须重下
+            except Exception:
+                fresh = False
+        if fresh:
             got = have          # 之前下过、字节数也对，不重复下
         elif have > 0 and not want:
             got = have
@@ -727,7 +774,17 @@ def build(latest, all_rels, extra=None, mirror=None):
     if mine.get("size"):
         apk_size = mine["size"]
     pub = (latest.get("published_at") or "")[:10]
+    try:
+        _vnum = tuple(int(x) for x in ver.split(".")[:3])
+    except Exception:
+        _vnum = (0, 0, 0)
     now = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    # 1.2.1 起 APK 只带程序本身，沙盒镜像要等首次启动才下载。站里存没存镜像，
+    # 决定卡片能不能直接告诉用户「镜像也从本站下」。
+    bundle_here = os.path.exists(os.path.join(SITE, "dl", "bundle-arm64.tar.xz"))
+    bundle_line = ("沙盒镜像也放在本站，直接从本站下载，带 SHA-256 校验和断点续传。" + NL
+                   if bundle_here else "")
 
     d_cards = [
         {
@@ -736,8 +793,14 @@ def build(latest, all_rels, extra=None, mirror=None):
             # 文件名放第一行：卡片里的说明会被样式截断，把「下载下来叫什么」摆在最前面才不会看不到。
             "desc": "文件名 AstrBot-%s.apk（下载下来就是这个名字）" % ver + NL +
                     "安卓安装包 · %s%s" % (apk_size, (" · " + pub) if pub else "") + NL +
+                    "安装包约 25 MB，只含程序本身；首次启动自动从本站下载约 600 MB 沙盒镜像，只需一次，"
+                    "之后再打开不会重复下载。" + NL +
+                    bundle_line +
                     "安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）" + NL +
-                    "包名 com.termux，如果装过官方 Termux 要先卸载" + NL +
+                    "包名 zhuxin.astrbot（1.2.2 起改名，和官方 Termux 不再冲突、可以共存）" + NL +
+                    (("从 1.2.1 及更早版本升级：包名变了没法覆盖安装，要先卸载旧版"
+                      "（卸载会清掉旧沙盒，请先在旧版「更多 → 备份与恢复」里导出备份）" + NL)
+                     if _vnum >= (1, 2, 2) else "") +
                     ("点这张卡直接下载 —— 就在本站，不用跳 GitHub。" if local
                      else "点这张卡下载（这一版本站没存住，暂时指向 GitHub）。"),
             "link": dl,
@@ -801,7 +864,7 @@ def build(latest, all_rels, extra=None, mirror=None):
         {
             "icon": "2️⃣",
             "title": "打开应用，等它自动部署",
-            "desc": "第一次打开会自动下载并安装运行环境，一共要下 250 MB 左右，大概 20 到 60 分钟，"
+            "desc": "第一次打开会自动从本站下载约 600 MB 的沙盒镜像（只需一次），大概 5 到 20 分钟（看网速），"
                     "取决于网速。期间请保持应用在前台、别锁屏。" + NL +
                     "中途断了也不要紧，下次打开会接着上次的进度继续。",
         },
@@ -1086,9 +1149,9 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
       "cards": [
         {
           "icon": "📦",
-          "title": "AstrBot烛版 1.1.34（最新版）",
-          "desc": "文件名 AstrBot-1.1.34.apk（下载下来就是这个名字）\n安卓安装包 · 24.6 MB · 2026-10-20\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
-          "link": "/downloads/AstrBot-1.1.34.apk",
+          "title": "AstrBot烛版 1.2.2（最新版）",
+          "desc": "文件名 AstrBot-1.2.2.apk（下载下来就是这个名字）\n安卓安装包 · 24.9 MB · 2026-10-21\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 zhuxin.astrbot（1.2.2 起；1.2.1 及更早为 com.termux，升级需先卸载旧版）\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
+          "link": "/downloads/AstrBot-1.2.2.apk",
           "text": ""
         },
         {
@@ -1096,7 +1159,7 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
           "title": "复制下载直链",
           "desc": "点这张卡就把地址复制下来，可以直接发给别人或贴进浏览器。",
           "link": "",
-          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.1.34.apk"
+          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.2.2.apk"
         },
         {
           "icon": "🕘",
@@ -1107,10 +1170,10 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
         },
         {
           "icon": "🔐",
-          "title": "SHA-256 校验值（v1.1.34）",
+          "title": "SHA-256 校验值（v1.2.2）",
           "desc": "点这张卡复制，然后和下载到的文件比对，一样就说明没被改过。",
           "link": "",
-          "text": "7a9d409aae4a409b5657c595ac3410fb310a2f269ab86ffa9b2f1fc4002a6e15"
+          "text": "0a95421ed67ec1fd97204a545df165d345393eb3e08c5bc09122c23654fa8a01"
         }
       ]
     },
@@ -1259,7 +1322,7 @@ cat > "$SCRIPTS/astrbot_download_sync.fallback.json" <<'__ASTRBOT_DL_STATIC__'
       ]
     }
   ],
-  "updated": "2026-10-20 16:31:23"
+  "updated": "2026-10-22 02:30:00"
 }
 __ASTRBOT_DL_STATIC__
 log "离线兜底内容已装到 $SCRIPTS/astrbot_download_sync.fallback.json"

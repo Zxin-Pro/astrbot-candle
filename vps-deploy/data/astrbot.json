@@ -11,9 +11,9 @@
       "cards": [
         {
           "icon": "📦",
-          "title": "AstrBot烛版 1.1.34（最新版）",
-          "desc": "文件名 AstrBot-1.1.34.apk（下载下来就是这个名字）\n安卓安装包 · 24.6 MB · 2026-10-20\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 com.termux，如果装过官方 Termux 要先卸载\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
-          "link": "/downloads/AstrBot-1.1.34.apk",
+          "title": "AstrBot烛版 1.2.2（最新版）",
+          "desc": "文件名 AstrBot-1.2.2.apk（下载下来就是这个名字）\n安卓安装包 · 24.9 MB · 2026-10-21\n安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）\n包名 zhuxin.astrbot（1.2.2 起；1.2.1 及更早为 com.termux，升级需先卸载旧版）\n点这张卡直接下载 —— 就在本站，不用跳 GitHub。",
+          "link": "/downloads/AstrBot-1.2.2.apk",
           "text": ""
         },
         {
@@ -21,7 +21,7 @@
           "title": "复制下载直链",
           "desc": "点这张卡就把地址复制下来，可以直接发给别人或贴进浏览器。",
           "link": "",
-          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.1.34.apk"
+          "text": "https://xn--15t839a.xyz/downloads/AstrBot-1.2.2.apk"
         },
         {
           "icon": "🕘",
@@ -32,10 +32,10 @@
         },
         {
           "icon": "🔐",
-          "title": "SHA-256 校验值（v1.1.34）",
+          "title": "SHA-256 校验值（v1.2.2）",
           "desc": "点这张卡复制，然后和下载到的文件比对，一样就说明没被改过。",
           "link": "",
-          "text": "7a9d409aae4a409b5657c595ac3410fb310a2f269ab86ffa9b2f1fc4002a6e15"
+          "text": "0a95421ed67ec1fd97204a545df165d345393eb3e08c5bc09122c23654fa8a01"
         }
       ]
     },
@@ -184,5 +184,5 @@
       ]
     }
   ],
-  "updated": "2026-10-20 16:31:23"
+  "updated": "2026-10-22 02:30:00"
 }

@@ -3317,6 +3317,7 @@ section.tab.on{display:flex;flex-direction:column}
           <div class="tcell"><span class="tlabel">今日在线</span><b class="tval" id="tdOnline">—</b></div>
           <div class="tcell"><span class="tlabel">今日消息</span><b class="tval" id="tdMsgs">—</b></div>
           <div class="tcell"><span class="tlabel">今日异常</span><b class="tval" id="tdErrs">—</b></div>
+          <div class="tcell"><span class="tlabel">今日流量</span><b class="tval" id="tdTraffic">—</b></div>
         </div>
       </div>
 
@@ -3904,7 +3905,7 @@ section.tab.on{display:flex;flex-direction:column}
         <li>本软件只是一个<b>本地运行环境管理器</b>：它在你的手机上创建一个 Linux 沙盒，并在其中安装 <b>NapCat</b> 与 <b>AstrBot</b> 两个第三方开源项目。这两个项目由各自作者独立开发维护，本软件不对其功能、稳定性与后续更新作任何保证。</li>
         <li>本软件<b>不是腾讯官方产品</b>，与腾讯公司及 QQ 团队无任何关联，也未获得其授权或认可。</li>
         <li>使用第三方客户端登录可能<b>违反平台服务条款</b>，存在账号被限制或封禁的风险。你需要为自己账号的使用行为负责，请自行评估并承担后果。</li>
-        <li>本软件<b>不收集、不上传</b>你的任何数据。QQ 登录凭据、聊天记录、配置与日志全部只保存在本机，随时可由你自行删除。</li>
+        <li>本软件<b>默认不收集、不上传</b>你的任何数据。QQ 登录凭据、聊天记录、配置与日志全部只保存在本机，随时可由你自行删除。只有你主动点「上传错误日志」或手动开启「匿名统计」时，才会按隐私政策所列的范围发送诊断信息。</li>
         <li>本软件按「现状」提供，不附带任何明示或暗示的担保。因使用或无法使用本软件造成的任何直接或间接损失，作者不承担责任。</li>
         <li>请勿将本软件用于任何违法违规用途。</li>
       </ul>
@@ -3922,18 +3923,18 @@ section.tab.on{display:flex;flex-direction:column}
   <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="privTitle">
     <h3 id="privTitle">隐私政策</h3>
     <div class="dbody">
-      <p><b>AstrBot烛版</b>（包名 com.termux）是一个本地运行环境管理器。我们把"收集什么、为什么收集、存在哪里、怎么删除"逐条写清楚，请在使用前完整阅读。</p>
+      <p><b>AstrBot烛版</b>（包名 zhuxin.astrbot，1.2.1 及更早为 com.termux）是一个本地运行环境管理器。我们把"收集什么、为什么收集、存在哪里、怎么删除"逐条写清楚，请在使用前完整阅读。</p>
       <p><b>一、我们不收集个人信息</b></p>
       <ul>
         <li>本软件没有账号体系，不要求手机号、邮箱、实名信息，也不需要你注册登录。</li>
-        <li>不做用户画像、行为统计、广告投放，不集成任何第三方统计或广告 SDK。</li>
+        <li>不做用户画像、个性化广告，不集成任何第三方统计或广告 SDK。匿名统计默认关闭，只有你手动开启后才会按第二节的字段发送。</li>
         <li>QQ 登录凭据（含扫码登录产生的票据）、聊天记录、机器人配置全部只保存在本机应用私有目录，我们无法访问。</li>
       </ul>
-      <p><b>二、唯一会上传的数据：你主动提交的错误日志</b></p>
+      <p><b>二、会上传的两类数据（都由你主动开启或提交）</b></p>
       <ul>
-        <li>只有你本人点击「上传错误日志」时，软件才会把本机的诊断日志（启动脚本输出、进程状态、系统与设备型号、崩溃堆栈）打包上传到我们的日志服务器。</li>
-        <li>目的只有一个：定位你反馈的故障。上传内容不包含聊天记录、好友列表、账号密码、二维码图片。</li>
-        <li>你可以拒绝上传，软件的全部功能不受影响；也可以在设置里随时停止使用该功能。</li>
+        <li><b>错误日志（手动提交）</b>：只有你本人点击「上传错误日志」时，软件才会把本机的诊断日志（启动脚本输出、进程状态、系统与设备型号、崩溃堆栈）打包上传到我们的日志服务器。上传前会自动抹掉 QQ 号、群号、手机号、邮箱、令牌与二维码链接。目的只有一个：定位你反馈的故障。内容不含聊天记录、好友列表、账号密码、二维码图片。</li>
+        <li><b>匿名统计（默认关闭，需你手动开启）</b>：开启后每天最多上报一条，字段仅限随机安装 ID、应用版本、日期、当日在线秒数 / 消息数 / 异常数、Android 大版本号、CPU 架构和打开次数。不含 QQ 号、聊天内容、设备型号、文件名或 IP。你可以在「更多 → 匿名统计」随时关闭，关闭后立即停止发送；也可以随时重新生成安装 ID。</li>
+        <li>你可以拒绝以上两项中的任何一项，软件的全部功能不受影响。</li>
       </ul>
       <p><b>三、申请的系统权限及用途</b></p>
       <ul>
@@ -3952,7 +3953,7 @@ section.tab.on{display:flex;flex-direction:column}
       </ul>
       <p><b>五、数据存储位置与删除方式</b></p>
       <ul>
-        <li>所有运行数据都在本机 <b>/data/data/com.termux</b> 私有目录内，不写入公共存储。</li>
+        <li>所有运行数据都在本机 <b>/data/data/zhuxin.astrbot</b> 私有目录内（1.2.1 及更早为 /data/data/com.termux），不写入公共存储。</li>
         <li>删除方式：在系统设置里「清除数据」或卸载本软件，即可一次性删除全部本地数据；已上传的日志可联系我们删除。</li>
       </ul>
       <p><b>六、未成年人</b></p>
@@ -3962,7 +3963,7 @@ section.tab.on{display:flex;flex-direction:column}
         <li>官方网站：https://xn--15t839a.xyz</li>
         <li>官方交流群：1127997343（问题反馈与数据删除申请）</li>
       </ul>
-      <p>本政策自 2026-10-19 起生效。若内容有变更，我们会在软件内更新本页面并注明日期。</p>
+      <p>本政策自 2026-10-22 起生效（上一版 2026-10-19）。若内容有变更，我们会在软件内更新本页面并注明日期。</p>
     </div>
     <div class="dfoot">
       <button class="small" data-act="copydiscp">复制全文</button>
@@ -5089,6 +5090,10 @@ function depovPaint(d){
     return;
   }
   D.wasRun = 1;
+  /* 完成后的 2.6 秒自动隐藏靠 setTimeout；页面被切后台时 WebView 会冻结定时器，
+     回前台时 hideAt 可能还停在未来，旧逻辑只在 done 分支消费它，running 分支
+     会让全屏遮罩一直盖着。过期就立刻清掉。 */
+  if (D.hideAt && Date.now() >= D.hideAt) D.hideAt = 0;
   if (D.off && Date.now() < D.off) { depovShow(false); return; }
   D.off = 0;
   var tot = d.total || 8, dc = d.doneCount || 0;
@@ -8453,7 +8458,17 @@ function siteVerTick(){
   var t = setInterval(function(){
     var raw = "";
     try { raw = String(Android.siteVerPoll() || ""); } catch (e) { raw = ""; }
-    if (!raw) { if (++n > 25) { clearInterval(t); d.siteBusy = false; } return; }
+    if (!raw) {
+      if (++n > 25) {
+        clearInterval(t); d.siteBusy = false;
+        /* 超时必须落一个「已尝试」的结果：d.site 一直是 null 的话，下一轮 4 秒
+           refresh 又会 siteVerStart()，网络不通时变成每 20 秒打一次 GitHub，
+           页面还永远停在「读取失败」。 */
+        d.site = { ok: false, site: "", err: "timeout" };
+        siteVerPaint(d.site);
+      }
+      return;
+    }
     clearInterval(t);
     d.siteBusy = false;
     var r = null;

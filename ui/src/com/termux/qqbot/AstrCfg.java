@@ -290,6 +290,10 @@ public final class AstrCfg {
         } finally {
             try { out.close(); } catch (Throwable ignored) {}
         }
+        // 同 StateIO：先试原子覆盖式 rename，只有在文件系统不支持时才先删后改。
+        // 原写法每次都在「删掉旧配置、还没换上新的」之间留一个空窗，此时被系统杀掉
+        // 就会留下一个没有 cmd_config.json 的 AstrBot，启动直接回到出厂配置。
+        if (tmp.renameTo(f)) return;
         if (f.exists() && !f.delete()) {
             try { tmp.delete(); } catch (Throwable ignored) {}
             throw new Exception("配置文件被占用，写不进去");

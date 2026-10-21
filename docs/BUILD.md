@@ -1,6 +1,6 @@
 # 从源码构建 AstrBot烛版
 
-本文说明如何从本仓库的源码重新构建出可安装的 `AstrBot-<版本>-<架构>.apk`（当前版本 1.2.2，即 `AstrBot-1.2.2-arm64.apk` / `AstrBot-1.2.2-amd64.apk`）。
+本文说明如何从本仓库的源码重新构建出可安装的 `AstrBot-<版本>-<架构>.apk`（当前版本 1.2.3，即 `AstrBot-1.2.3-arm64.apk` / `AstrBot-1.2.3-amd64.apk`）。
 
 > 构建过程**只能在一台配好工具链的 Windows 机器上**完成（脚本是 PowerShell + 本机 JDK）。
 > 构建不联网、不跑 Gradle，也不需要 Android Studio。
@@ -28,6 +28,17 @@
 > **3d** 把 `ui\assets\icon\res\**` 拷进 `_apkwork\res`（先删掉会压过 PNG 的矢量
 > `drawable\ic_foreground.xml`）；**3e** 把 `ui\assets\android-res\**`（小组件布局/图标/背景）
 > 拷进去，并把 `ui\assets\android\widget-manifest.xml` 插到 `</application>` 之前。
+> 从 **1.2.3** 起，`build-ui.ps1` 又多了一段 **3c3 清单收敛**（同样幂等，重复跑只打印
+> `manifest: nothing to trim (already clean)`）：删掉 7 条源码里从未使用过的权限 ——
+> `READ_LOGS`、`DUMP`、`WRITE_SECURE_SETTINGS`、`PACKAGE_USAGE_STATS`、`MANAGE_EXTERNAL_STORAGE`、
+> `SYSTEM_ALERT_WINDOW`、`com.android.alarm.permission.SET_ALARM` —— 并把 `RunCommandService` 的
+> `android:exported="true"` 改成 `false`（那是 Termux 给外部应用发命令的遗留接口，本应用不用；
+> 一个导出的命令服务正是小米 / 腾讯 `a.gray.devicemaster.a` 的启发式特征之一）。收完后清单里只剩
+> INTERNET / ACCESS_NETWORK_STATE / WAKE_LOCK / VIBRATE / FOREGROUND_SERVICE /
+> REQUEST_IGNORE_BATTERY_OPTIMIZATIONS / WRITE_EXTERNAL_STORAGE / RECEIVE_BOOT_COMPLETED /
+> POST_NOTIFICATIONS / REQUEST_INSTALL_PACKAGES。**`com.termux.permission.RUN_COMMAND` 这条自定义
+> 权限声明要留着** —— `TermuxOpenReceiver$ContentProvider` 还引用它，删了引用会悬空。
+> 有改动时打印 `manifest: trimmed N dangerous entries, RunCommandService unexported`。
 > 同时 `build-apk.ps1` 的 **2b** 段会在打包前把根目录 `VERSION` 写进
 > `build\opt\qqbot\VERSION`（打包后删除），崩溃聚合与 doctor 读的就是包内这个文件。
 > 所以**新增 manifest 条目或 res 资源必须写进 ps1**，直接手改 `_apkwork` 下次构建会被覆盖。
@@ -102,7 +113,31 @@ powershell -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch amd64
 1. **[1/5] 取 pristine bootstrap**：从 `_research\termux-arm64.apk` 里解出 `lib/arm64-v8a/libtermux-bootstrap.so` 到 `out\_pristine-bootstrap.so`。
    > 注意：**永远从原始 stock APK 取**，不要从上一步的 UI APK 取 —— 注入的偏移数学、以及后面要用的尾部字节都必须基于原始布局。
 2. **[2/5] 重新打包 bootstrap**：调 `tools` 下的 `RepackBootstrap`，把 `build/` 下的**所有文件**（递归，相对路径按 `/` 分隔）作为新条目加进内嵌 ZIP，同时 `--drop` 掉一批用不到的条目腾空间，输出 `out\libtermux-bootstrap.so`。
-3. **[3/5] + [3c/5] 打包脚本并重定位前缀**：先把 `build\opt\qqbot\**` 和 `build\etc\profile.d\50-qqbot-sandbox.sh` 打成 `assets/qqbot-scripts.zip`；再调 `tools\reloc_bootstrap.py`，把 `libtermux-bootstrap.so` 内嵌用户态里写死的 `/data/data/com.termux` 前缀改成 `/data/data/zhuxin.astrbot` —— **249 个 ELF** 的 `RUNPATH`/`RPATH` 改成新前缀，**201 处文本替换**。第 4 个参数必须传 pristine `.so`：脚本要从它那里原样搬 2,761 B 尾部（动态段 + 节头表），只按「ELF 头 + 新 ZIP」写回会把 `.so` 写坏。
+3. **[3/5] + [3c/5] 打包脚本并原地等长改写前缀（in-place, same length）**：
+   先把 `build\opt\qqbot\**` 和 `build\etc\profile.d\50-qqbot-sandbox.sh` 打成 `assets/qqbot-scripts.zip`；
+   再调 `tools\reloc_bootstrap.py`（用法：`reloc_bootstrap.py <repacked.so> <out.so> <新包名> <pristine.so>`），
+   把 `libtermux-bootstrap.so` 内嵌用户态里写死的 `/data/data/com.termux` 前缀换成新包名。要点：
+
+   - **只做等长替换，绝不重建 ELF**：长路径 `/data/data/<pkg>/files/usr` 缩写成 `/data/data/<pkg>/u`，
+     `/data/data/<pkg>/files/home` 缩写成 `/data/data/<pkg>/h`；替换后用 `NUL` 把这条字符串剩下的字节填满。
+     **文件长度、节头表、程序头表、所有偏移一个字节都不动** —— 产物 `.so` 必须仍是 **29,392,992 字节**，
+     程序头 / 节头与 pristine **逐字节一致**。这是 `TermuxInstaller` 能 `dlopen` 它、以及沙盒里的
+     `dpkg` / `apt` 在真机 Android 16 上能被 `execve` 的前提。
+   - **短路径靠运行时符号链接解析**：`ui\src\com\termux\qqbot\PrefixAlias.java`（包声明必须是 `com.termux.app`，
+     源文件放在 `qqbot\` 目录只是历史原因）在 Activity / GuardService / Shell 三个入口调 `PrefixAlias.ensure(...)`，
+     幂等地建 `files/u -> files/usr`、`files/h -> files/home`；建不出来就静默失败（最坏回落到 `LD_LIBRARY_PATH`）。
+     所以设备上 `/data/data/zhuxin.astrbot/u` 就是 `/data/data/zhuxin.astrbot/files/usr`。
+   - **为什么不再用 lief（1.2.2 的做法）**：lief 改 `RUNPATH` 时为塞下更长的字符串，会给 ELF **新增一个 `PT_LOAD` 段**
+     （`bin/apt` 11→12 段，`lib/libiconv.so`、`lib/liblz4.so`、`lib/libxxhash.so.0.8.3`、`libexec/coreutils/libstdbuf.so`
+     等共 32 个文件），文件大小也跟着变。MuMu（ARM 转译）能跑，真机 Android 16 的 linker 直接拒绝 `execve`，
+     表现为 second stage 失败 —— 用户看到的就是「Unable to install bootstrap」。
+   - **second-stage 脚本要先换前缀再加料**：`etc/termux/bootstrap/termux-bootstrap-second-stage.sh` 必须
+     **先 `patch_text()` 按新包名整体重写前缀、再 `patch_stage2()`**（插日志重定向到
+     `~/.qqbot/logs/second-stage.log` 与 postinst 容错）。顺序反了或漏了 `patch_text`，`dpkg` 的 admindir 还指
+     `/data/data/com.termux/files/usr/var/lib/dpkg`，第二阶段必挂、`usr/` 被清空，同样是「Unable to install bootstrap」。
+   - **第 4 个参数必须传 pristine `.so`**：脚本要从它那里原样搬 2,761 B 尾部（动态段 + 节头表），并先校验
+     `len(pristine) == len(repacked)`；只按「ELF 头 + 新 ZIP」写回会把 `.so` 写坏。
+   - 跑完核对脚本输出：`elf_patched` 约 249、`com.termux_left=0`、`size=29392992`。
 4. **[4/5] + [4b/5] 换回 APK 并重写 manifest**：`ApkReplace2` 把 `.so` 和 `qqbot-scripts.zip` 换进 `out\termux-ui-unsigned.apk`（存在时）或 stock APK，输出 `out\termux-qqbot-unsigned.apk`；随后调 `tools\patch_manifest.py` 重写二进制 `AndroidManifest.xml` 的字符串池，把 `package`、`com.termux.RUN_COMMAND` 权限、`com.termux.documents` / `com.termux.filereceiver` / `com.termux.files` authorities 换成 `zhuxin.astrbot` 对应值。`tools\patch_smali.py` 只替换**不是** `com.termux.app.` 的引用 —— Java 类仍在 `com.termux.app` 包里，把这些类名一起改掉会让 `Class.forName` / `setClassName` 找不到类。
 5. **[5/5] 签名**：调 uber-apk-signer 输出到 `out\signed\`。
 
@@ -179,7 +214,7 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 也就是说：前 1328 字节是 ELF 头（给 Android 的 linker 看的），从偏移 1328 开始的 29388903 字节是一整段 ZIP 数据（给 `TermuxInstaller` 解包用的），最后 2761 字节是动态段与节头表。`TermuxInstaller` 会先 `System.loadLibrary("termux-bootstrap")` 再读 ZIP 字节，所以这个 `.so` 必须能被 `dlopen`：**节头表不能移位、不能丢**。
 
-重打包后的写回顺序必须是：**pristine 的前 1328 字节 + 新 ZIP + 零填充 + pristine 的 2761 B 尾部**，ZIP 结束位置固定为 29390231。`tools\reloc_bootstrap.py` 就是按这个绝对偏移重建的；如果只写「ELF 头 + 新 ZIP」，`dlopen` 会报 `has invalid shdr offset/size: 29391584/1408`（1.2.2 修的就是这个截断问题）。
+重打包后的写回顺序必须是：**pristine 的前 1328 字节 + 新 ZIP + 零填充 + pristine 的 2761 B 尾部**，ZIP 结束位置固定为 29390231。`tools\reloc_bootstrap.py` 就是按这个绝对偏移重建的；如果只写「ELF 头 + 新 ZIP」，`dlopen` 会报 `has invalid shdr offset/size: 29391584/1408`（1.2.2 修的就是这个截断问题）。之后的 `[3c/5]` 原地等长改写**不会动上面任何一个数字**：它只在 ZIP 内逐文件替换字符串、把剩余字节填 NUL，写完 `size=` 仍是 29392992；一旦这步改成「重建 ELF」（例如用 lief 改 RUNPATH），程序头 / 节头就会变，真机上不是 `dlopen` 失败就是 `execve` 失败。
 
 注入流程（`tools\RepackBootstrap.java`，用法：`RepackBootstrap repack <in.so> <prefixOff> <sectionSize> <out.so> [--drop <prefix>]... [--add <rel>=<hostpath>]...`）：
 
@@ -211,7 +246,7 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 | 位置 | 字段 | 当前值 |
 | --- | --- | --- |
-| `VERSION` | `versionName` / 派生 `versionCode` | `1.2.2` / `10202` |
+| `VERSION` | `versionName` / 派生 `versionCode` | `1.2.3` / `10203` |
 
 规则：`versionCode = MAJOR*10000 + MINOR*100 + PATCH`。
 
@@ -234,8 +269,9 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 3. **注入偏移是硬编码的。**
    `build-apk.ps1` 里的 `$PREFIX_OFF = 1328` 与 `$SECTION = 29388903` 只对**这一版**的上游 Termux bootstrap 成立。
    换上游 Termux 版本时，必须先重新测量这两个值（以及文件总长 29392992 与尾部 2761 B），否则会写出损坏的 `.so`。
+   改写后的 `.so` 必须仍是 **29,392,992 字节**、程序头 / 节头逐字节与 pristine 一致 —— 这是 `dlopen` 能过的前提，也是沙盒里 `dpkg` / `apt` 在真机 Android 16 上能被 `execve` 的前提；发版前用 `cmp` 比对一遍 pristine 的尾部 2,761 B。
 4. **1.2.1 及更早版本不能直接覆盖安装。**
-   1.2.2 的包名从 `com.termux` 改成 `zhuxin.astrbot`，装过 1.2.1 及更早版本的设备**必须先卸载**再装（卸载会清掉旧包名下的沙盒数据，先让用户「更多 → 备份与恢复」导出备份）；官方 Termux 不再冲突。1.2.2 之后同签名可以继续覆盖升级。
+   1.2.2 起包名从 `com.termux` 改成 `zhuxin.astrbot`，装过 1.2.1 及更早版本的设备**必须先卸载**再装（卸载会清掉旧包名下的沙盒数据，先让用户「更多 → 备份与恢复」导出备份）；官方 Termux 不再冲突。1.2.2 之后同签名可以继续覆盖升级（1.2.2 → 1.2.3 可直接覆盖）。
 5. **`build/` 下新增或改名文件后不需要改脚本。**
    `build-apk.ps1` 是递归扫描 `build/` 的，加文件自动带上；但如果新文件需要新的 `--drop` 前缀腾空间，要手动加到 `$dropPrefixes` 里。
 6. **构建脚本都在仓库根目录，`$ROOT` 自动定位。**

@@ -944,7 +944,10 @@ public class QqbotActivity extends Activity {
         InputStream in = null;
         OutputStream out = null;
         try {
-            writeFileRobust(bundlePendingFile(), bundleStamp().getBytes("UTF-8"));
+            if (!writeFileRobust(bundlePendingFile(), bundleStamp().getBytes("UTF-8"))) {
+                // 没有这个标记，20-rootfs 不会等内置包，会直接走 600 MB 在线下载。
+                return "内置包待拷标记写入失败";
+            }
             in = new BufferedInputStream(getAssets().open(BUNDLE_ASSET), 1 << 20);
             out = new BufferedOutputStream(new FileOutputStream(part), 1 << 20);
             byte[] buf = new byte[1 << 20];
@@ -964,7 +967,11 @@ public class QqbotActivity extends Activity {
                     return "内置包写入失败";
                 }
             }
-            writeFileRobust(bundleOkFile(), bundleStamp().getBytes("UTF-8"));
+            if (!writeFileRobust(bundleOkFile(), bundleStamp().getBytes("UTF-8"))) {
+                // 标记写不进去，20-rootfs 就永远认不到这份包，下次启动还会重拷 600 MB。
+                // 如实返回，让日志里留下原因。
+                return "内置包标记写入失败";
+            }
             return null;
         } catch (Throwable t) {
             try {
@@ -1004,6 +1011,13 @@ public class QqbotActivity extends Activity {
         }
         if (bundleReady()) return;
         final File flag = new File(qqbotDir(), ".bundle-copying");
+        // 这个标记只表示「有线程正在拷」，但线程随进程死亡时不会自己清掉。
+        // 上一次拷贝被系统杀掉后，残留的标记会让之后每次启动都直接 return，
+        // 内置包永远拷不出来，部署只能干等 600 秒再退回联网。超过 10 分钟的标记
+        // 一定是死掉的（600 MB 在手机上不会拷这么久），清掉重试。
+        if (flag.isFile() && System.currentTimeMillis() - flag.lastModified() > 600000L) {
+            try { flag.delete(); } catch (Throwable ignored) {}
+        }
         if (flag.isFile()) return;
         try {
             writeFileRobust(flag, bundleStamp().getBytes("UTF-8"));
@@ -1020,6 +1034,8 @@ public class QqbotActivity extends Activity {
         try { new File(qqbotDir(), "bundle.tar.xz.part").delete(); } catch (Throwable ignored) {}
         try { bundleOkFile().delete(); } catch (Throwable ignored) {}
         try { bundlePendingFile().delete(); } catch (Throwable ignored) {}
+        // 拷贝线程的互斥标记也要一起清，否则下一轮 kickBundleCopy 会以为还在拷。
+        try { new File(qqbotDir(), ".bundle-copying").delete(); } catch (Throwable ignored) {}
     }
 
     /** 读完一个 zip 条目的全部字节（先整块读进内存，才好「写临时文件再改名」）。 */
@@ -1038,7 +1054,8 @@ public class QqbotActivity extends Activity {
      */
     private boolean writeFileRobust(File dst, byte[] data) {
         try {
-            File tmp = new File(dst.getPath() + ".qqbotnew");
+            // 带线程 id：多个后台线程同时写不同/相同文件时不会抢同一个临时文件。
+            File tmp = new File(dst.getPath() + ".qqbotnew." + Thread.currentThread().getId());
             FileOutputStream fo = new FileOutputStream(tmp);
             fo.write(data);
             fo.close();
@@ -1125,11 +1142,22 @@ public class QqbotActivity extends Activity {
         if (!f.isFile()) return defaultBots();
         try {
             RandomAccessFile raf = new RandomAccessFile(f, "r");
-            byte[] buf = new byte[(int) raf.length()];
+            long len = raf.length();
+            // 正常 bots.json 只有几 KB。异常巨大的文件不能按 length() 直接分配，
+            // 否则一次 OOM 会把整个 JavaBridge 线程带走（catch 只接 Exception，接不住 Error）。
+            if (len > 8L * 1024 * 1024) {
+                raf.close();
+                noteBotsCorrupt(f);
+                return defaultBots();
+            }
+            byte[] buf = new byte[(int) len];
             raf.readFully(buf);
             raf.close();
             String s = new String(buf, "UTF-8").trim();
-            if (s.length() == 0) return defaultBots();
+            // 0 字节不是「全新安装」：全新安装时文件根本不在这里（上面已 return）。
+            // 它只可能是上一次写盘写到一半被杀/磁盘满留下的残骸，必须按损坏处理并备份，
+            // 否则界面会显示默认单实例，用户一点保存就把真实配置覆盖掉了。
+            if (s.length() == 0) { noteBotsCorrupt(f); return defaultBots(); }
             new JSONObject(s);
             return s;
         } catch (Exception e) {
@@ -1254,7 +1282,7 @@ public class QqbotActivity extends Activity {
     // 所以这里只保留持久化字段，丢掉其它键。
     // 另外加一道保护：删除实例只由 delbot.sh 负责，页面的任何保存动作都不会
     // 删实例；若这次写入会让磁盘上已有的实例消失，说明前端拿着过期副本，拒绝。
-    public boolean writeBots(String json) {
+    public synchronized boolean writeBots(String json) {
         try {
             JSONObject in = new JSONObject(json);
             JSONArray arr = in.optJSONArray("bots");
@@ -1344,11 +1372,15 @@ public class QqbotActivity extends Activity {
             String text = out.toString();
             File d = qqbotDir();
             if (!d.isDirectory()) d.mkdirs();
-            writeFile(botsFile(), text);
+            // 两份副本都必须确认落盘：home 下的是权威数据，cache 下的是沙盒脚本
+            // （run-napcat.sh / delbot.sh）读的那份。以前两个返回值都被丢掉、无条件
+            // return true，磁盘满或文件被占用时界面照样提示「已保存」，用户重启后
+            // 才发现改了半天的实例配置没生效，甚至被旧内容覆盖。
+            boolean homeOk = writeFile(botsFile(), text);
             File cacheDir = new File(qqbotDir(), "cache");
             if (!cacheDir.isDirectory()) cacheDir.mkdirs();
-            writeFile(new File(cacheDir, "bots.json"), text);
-            return true;
+            boolean cacheOk = writeFile(new File(cacheDir, "bots.json"), text);
+            return homeOk && cacheOk;
         } catch (Exception e) {
             return false;
         }
@@ -1446,12 +1478,26 @@ public class QqbotActivity extends Activity {
 
     // 返回某个 NapCat 实例的登录二维码（NapCat 会把二维码存成 cache/qrcode.png）。
     // 直接读文件并转成 data: URL 交给 WebView，避免 file:// 跨源被拦。
+    /** 实例 id 会拼进文件路径：只放行字母数字、下划线、连字符和点，并禁掉 .. */
+    private static boolean safeBotId(String id) {
+        if (id == null || id.length() == 0 || id.length() > 64 || id.indexOf("..") >= 0) return false;
+        for (int i = 0; i < id.length(); i++) {
+            char c = id.charAt(i);
+            if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+                    || c == '_' || c == '-' || c == '.')) return false;
+        }
+        return true;
+    }
+
     public String qr(String wantId) {
         try {
             JSONObject bots = new JSONObject(readBots());
             JSONArray arr = bots.optJSONArray("bots");
             String active = bots.optString("active", "");
             if (wantId == null || wantId.length() == 0) wantId = active;
+            // WebView 里传进来的 id 不可信：直接拼进 /opt/qqbot-inst/<id>/QQ 会被
+            // "../.." 穿越到任意目录读文件（再 base64 回页面）。这里按白名单挡掉。
+            if (!safeBotId(wantId)) return "{\"ok\":false}";
             String foundId = wantId;
             // 与 run-napcat.sh 的 QQ 目录选择保持一致：实例一旦建好自己的
             // /opt/qqbot-inst/<id>/QQ 副本就一直用它；没有副本的实例里，只有
@@ -1470,7 +1516,9 @@ public class QqbotActivity extends Activity {
             JSONObject o = new JSONObject();
             o.put("id", foundId);
             o.put("active", active);
-            if (found == null || !found.isFile() || found.length() <= 0) {
+            // 二维码是几百 KB 的 PNG；超过 4 MB 只可能是文件坏了或是被替换的别的东西，
+            // 不能直接按 length() 分配数组（大文件会把 JavaBridge 线程 OOM 掉）。
+            if (found == null || !found.isFile() || found.length() <= 0 || found.length() > 4L * 1024 * 1024) {
                 o.put("ok", false);
                 return o.toString();
             }
@@ -1732,11 +1780,12 @@ public class QqbotActivity extends Activity {
     /** 写文本文件，返回是否真的写成功（调用方要看结果时别再把失败当成功）。 */
     private boolean writeFile(File f, String text) {
         try {
-            RandomAccessFile raf = new RandomAccessFile(f, "rw");
-            raf.setLength(0);
-            raf.write(text.getBytes("UTF-8"));
-            raf.close();
-            return true;
+            // 先写同目录临时文件再改名，不能直接 RandomAccessFile.setLength(0) 截断：
+            // 截断之后如果写一半被系统杀掉 / 磁盘满，原文件就永久变成 0 字节。
+            // bots.json 正好是这种「截断即丢配置」的文件（readBots 只能回落默认值）。
+            File d = f.getParentFile();
+            if (d != null && !d.isDirectory()) d.mkdirs();
+            return writeFileRobust(f, text.getBytes("UTF-8"));
         } catch (Exception ignored) {
             return false;
         }
