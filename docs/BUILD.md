@@ -208,7 +208,11 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 2. **同版本重打包、大小恰好相同也会自动重下**。脚本判断站内包是否新鲜时，先比字节数，再按 GitHub 资产自带的
    `digest`（`sha256:…`）核对本地文件哈希；大小一样但内容不同（同版本重新构建常见）会判为过期并重下，
    不会出现「页面写新 SHA-256、下载文件还是旧包」。反过来，大小与哈希都对得上就不会重复下载几百 MB。
-3. `pick_apk()` 现在按名字打分：完整包优先（`-update.apk` 排后）、`arm64` 优先；同一个 Release 里有四个包也不会把
+3. `pick_apk()` 现在只认「**`state=uploaded` + `arm64` + 非 `-update`**」的资产：同一个 Release 里有四个包也不会把
    25 MB 的更新包当成主下载。第三节末尾「完整包必须排在更新包前面」是旧版 `pick_apk` 的经验，现在上传顺序不再是硬约束，
    但建议仍先传完整包，便于人核对。
-4. 站内文件名固定为 `AstrBot-<版本>.apk`；要强制换包，删掉 `downloads/AstrBot-<版本>.apk` 再跑同步。
+4. **上传断掉会在 GitHub 上留下 `state=starter` 的残骸**（`size` 是目标大小、`digest` 为空、下载 404，而且 `/releases/latest`
+   不列它）。这种残骸会骗过「大小相同即新鲜」的判断，也会让旧的 `pick_apk()` 顺位选中 amd64 包把站内 arm64 包覆盖掉。
+   传完大包务必用 `/releases/{id}/assets` 确认 `state=uploaded` 且 `digest` 有值；一版里找不到可用包时脚本会沿用站内旧文件，
+   不会把它从下载页上抹掉。
+5. 站内文件名固定为 `AstrBot-<版本>.apk`；要强制换包，删掉 `downloads/AstrBot-<版本>.apk` 再跑同步。

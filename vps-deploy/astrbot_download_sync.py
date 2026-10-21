@@ -112,20 +112,29 @@ def human_size(n):
 
 
 def pick_apk(rel):
-    """挑一个安装包镜像到站内：优先完整包（不是 -update.apk），其次优先 arm64。
+    """挑一个安装包镜像到站内：只认已传完的 arm64 完整包（不是 -update.apk）。
 
-    GitHub 的资产列表按 id 降序返回，最新上传的排在最前；1.2.0 起同一个 release
-    里既有完整包也有更新包（"-update.apk"，只有 25 MB），直接取第一个会把更新包
-    当成主下载，所以要按名字打分挑。
+    三条硬规则，都是踩过坑之后加的：
+    1. GitHub 的资产列表按 id 降序返回，最新上传的排在最前；1.2.0 起同一个 release
+       里既有完整包也有更新包（"-update.apk"，只有 25 MB），直接取第一个会把更新包
+       当成主下载，所以要按名字打分挑。
+    2. **state 不是 uploaded 的一律跳过**：传到一半断掉的资产会留在接口里，size 字段
+       仍是目标大小、digest 为空，但下载是 404。拿它去镜像只会把站内好文件冲掉。
+       另外 /releases/latest 不返回这类残骸，一旦它被跳过，下一个候选就是 amd64 包，
+       所以还要限制架构。
+    3. **只认 arm64**：站内下载卡片写的是「仅 arm64-v8a」，把 x86_64 的包装进去，
+       真机装上会报 INSTALL_FAILED_NO_MATCHING_ABIS，而且日志上看不出任何异常。
     """
     best, best_score = None, -1
     for a in (rel.get("assets") or []):
-        name = str(a.get("name", "")).lower()
-        if not name.endswith(".apk"):
+        if str(a.get("state") or "uploaded") != "uploaded":
             continue
-        score = 4 if "-update" not in name else 0
-        if "arm64" in name:
-            score += 2
+        name = str(a.get("name", "")).lower()
+        if not name.endswith(".apk") or "arm64" not in name:
+            continue
+        if "-update" in name:
+            continue            # 更新包是给老用户覆盖安装的瘦包，不能当主下载（第一次装它会联网下 1 GB）
+        score = 4
         if score > best_score:
             best, best_score = a, score
     return best
@@ -210,13 +219,31 @@ def mirror_releases(rels, quiet=False):
         if rel.get("draft"):
             continue
         apk = pick_apk(rel)
-        if not apk:
-            continue
         ver = str(rel.get("tag_name") or "").lstrip("vV")
         if not ver or "/" in ver or ver in out:
             continue
         name = APK_TPL % ver
         dest = os.path.join(DL_DIR, name)
+        if not apk:
+            # 这一版没有可用的 arm64 完整包（正在上传 / 传坏了）。站内已经有旧文件就
+            # 原样留着，别让它从下载页消失，也别被 _prune_downloads 清掉。
+            have = os.path.getsize(dest) if os.path.isfile(dest) else 0
+            if have > 0:
+                print("[astrbot-dl] %s 这一版没有可用的 arm64 完整包，保留站内旧文件" % ver,
+                      file=sys.stderr)
+                kept.append(name)
+                out[ver] = {
+                    "ver": ver,
+                    "tag": str(rel.get("tag_name") or ver),
+                    "name": name,
+                    "url": DL_URL + "/" + name,
+                    "bytes": have,
+                    "size": human_size(have),
+                    "sha": sha256_file(dest),
+                    "date": (rel.get("published_at") or "")[:10],
+                    "notes": (rel.get("body") or "").strip(),
+                }
+            continue
         want = int(apk.get("size") or 0)
         _dg = str(apk.get("digest") or "")
         sha_want = _dg.split(":", 1)[1] if _dg.startswith("sha256:") else ""

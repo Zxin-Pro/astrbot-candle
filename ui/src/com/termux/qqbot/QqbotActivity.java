@@ -170,6 +170,16 @@ public class QqbotActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Android 13+ 通知权限：不申请的话常驻通知（守护卡片）不会出现，
+        // 用户也就看不到「重启 / 扫码 / 关闭进程」。targetSdk 28 时系统不会自动弹，只能自己请求。
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 33
+                    && checkSelfPermission("android.permission.POST_NOTIFICATIONS")
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 7301);
+            }
+        } catch (Throwable ignored) {
+        }
         web = new WebView(this);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);

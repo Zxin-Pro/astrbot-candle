@@ -424,7 +424,7 @@ public class QqbotGuardService extends Service {
 
     /**
      * 常驻卡片：标题带在线实例数（state/ui.json 的 online，读不到用「?」），
-     * 正文是当前自检结论，右侧三个 Action：重启 / 看日志 / 扫码。
+     * 正文是当前自检结论，右侧三个 Action：重启 / 扫码 / 关闭进程。
      * 全部用平台 API（Notification.Builder.addAction），minSdk 24 可用，不引入 androidx。
      */
     public Notification buildNoti(String text) {
@@ -461,15 +461,9 @@ public class QqbotGuardService extends Service {
             b.addAction(icon, "重启", pr);
         } catch (Throwable ignored) {
         }
-        // Action 2 看日志 / Action 3 扫码：带 tab extra 唤起 Activity（singleTask，会走 onNewIntent）
-        try {
-            Intent l = new Intent(this, QqbotActivity.class);
-            l.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            l.putExtra("tab", "logs");
-            PendingIntent pl = PendingIntent.getActivity(this, 12, l, PendingIntent.FLAG_IMMUTABLE);
-            b.addAction(icon, "看日志", pl);
-        } catch (Throwable ignored) {
-        }
+        // Action 2 扫码：带 tab extra 唤起 Activity（singleTask，会走 onNewIntent）
+        // 「看日志」不进通知栏：Android 的标准通知模板只渲染前三个动作（第 4 个会被直接丢掉），
+        // 而这个模板没有溢出菜单，所以必须按优先级只留三个。日志在应用内「日志」页，点通知正文即到。
         try {
             Intent s = new Intent(this, QqbotActivity.class);
             s.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -478,7 +472,8 @@ public class QqbotGuardService extends Service {
             b.addAction(icon, "扫码", ps);
         } catch (Throwable ignored) {
         }
-        // Action 4「关闭进程」：Android 7+ 会把第 4 个收进折叠区，正好适合低频且危险的操作。
+        // Action 3「关闭进程」：Android 只渲染前三个动作，第 4 个会被静默丢弃（v1.2.0 实测），
+        // 所以要占住第三个位置；这是低频且危险的操作，放最右边。
         // 打回本服务（服务在跑，getService 一定能送达），由 GuardKillTask 停沙盒后自我收尾。
         try {
             Intent k = new Intent(this, QqbotGuardService.class);

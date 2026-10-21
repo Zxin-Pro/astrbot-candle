@@ -99,13 +99,27 @@ Write-Host "version $VER ($VC)"
 #     从 manifest 里删掉 android:debuggable="true"，重复执行安全（幂等）。
 #     注意：不要加 android:privacyPolicy —— 该属性在 Android 里不存在，aapt2 会直接报错。
 $mf = "$ROOT\_apkwork\AndroidManifest.xml"
-$xml = Get-Content $mf -Raw
+$xml = Get-Content $mf -Raw -Encoding UTF8   # 必须显式 UTF8：无 BOM 的 XML 会被 PS 5.1 当 GBK 读，中文 label 会被写坏
 $xml2 = $xml -replace '\s+android:debuggable="true"', ''
 if ($xml2 -ne $xml) {
   [System.IO.File]::WriteAllText($mf, $xml2, (New-Object System.Text.UTF8Encoding($false)))
   Write-Host 'manifest: removed android:debuggable'
 } else {
   Write-Host 'manifest: debuggable already absent'
+}
+# 3c2) Android 13+ 通知权限：清单里没有 POST_NOTIFICATIONS，应用连申请都没法申请，
+#      常驻守护通知会静默消失（重要性 NONE，实测）。这里幂等补一行，重复执行安全。
+if ($xml2 -notmatch 'android\.permission\.POST_NOTIFICATIONS') {
+  $boot = '<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>'
+  if ($xml2.Contains($boot)) {
+    $xml2 = $xml2.Replace($boot, $boot + "`r`n<uses-permission android:name=`"android.permission.POST_NOTIFICATIONS`"/>")
+    [System.IO.File]::WriteAllText($mf, $xml2, (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host 'manifest: added POST_NOTIFICATIONS'
+  } else {
+    Write-Host 'manifest: RECEIVE_BOOT_COMPLETED anchor missing - POST_NOTIFICATIONS NOT added'
+  }
+} else {
+  Write-Host 'manifest: POST_NOTIFICATIONS already present'
 }
 Remove-Item "$ROOT\_apkwork\smali_classes30" -Recurse -Force -ErrorAction SilentlyContinue
 Copy-Item "$ROOT\ui\smali" "$ROOT\_apkwork\smali_classes30" -Recurse -Force -ErrorAction Stop
