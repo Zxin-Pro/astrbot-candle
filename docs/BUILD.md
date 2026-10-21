@@ -192,3 +192,23 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
    `MISSING _apkwork - run apktool d first`。
 9. **首次构建较慢。**
    `javac` + `d8` + `apktool b` 加起来通常要几分钟；`apktool b` 阶段最慢，属正常现象。
+
+---
+
+## 七、发布到站点
+
+官网 `https://xn--15t839a.xyz` 的下载卡不是手写的，由 VPS 上的 `astrbot_download_sync.py` 每天从 GitHub Releases 同步生成：
+`zhuxin-astrbot-dl.service`（oneshot）+ `zhuxin-astrbot-dl.timer`（每日）跑 `/data/www/zhuxin-site/scripts/astrbot_download_sync.py`，
+把安装包镜像到 `/data/www/zhuxin-site/downloads/`（最多留 4 个版本），再改写 `data/astrbot.json`。本仓库的 `vps-deploy/astrbot_download_sync.py` 只是源文件。
+
+注意事项：
+
+1. **改动（patch）脚本后要重新部署**。`vps-deploy/astrbot_download_sync.py` 提交后不会自动上线，必须覆盖 VPS 上的
+   `/data/www/zhuxin-site/scripts/astrbot_download_sync.py`，再手动跑一次（先 `--dry-run` 看输出，再去掉 `--dry-run` 正式同步）。
+2. **同版本重打包、大小恰好相同也会自动重下**。脚本判断站内包是否新鲜时，先比字节数，再按 GitHub 资产自带的
+   `digest`（`sha256:…`）核对本地文件哈希；大小一样但内容不同（同版本重新构建常见）会判为过期并重下，
+   不会出现「页面写新 SHA-256、下载文件还是旧包」。反过来，大小与哈希都对得上就不会重复下载几百 MB。
+3. `pick_apk()` 现在按名字打分：完整包优先（`-update.apk` 排后）、`arm64` 优先；同一个 Release 里有四个包也不会把
+   25 MB 的更新包当成主下载。第三节末尾「完整包必须排在更新包前面」是旧版 `pick_apk` 的经验，现在上传顺序不再是硬约束，
+   但建议仍先传完整包，便于人核对。
+4. 站内文件名固定为 `AstrBot-<版本>.apk`；要强制换包，删掉 `downloads/AstrBot-<版本>.apk` 再跑同步。
