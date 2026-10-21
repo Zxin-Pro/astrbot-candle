@@ -1,144 +1,165 @@
-# relocate a Termux bootstrap .so from /data/data/com.termux to a new package prefix
-# usage: python reloc_bootstrap.py <in.so> <out.so> <new.package> [pristine.so] [--report]
-#
-# Layout of libtermux-bootstrap.so (夹心结构，动不得):
-#   [0 .. 1327]              ELF header + program headers + 小段
-#   [1328 .. EOCD)           ZIP local headers + data
-#   [EOCD]                   zip 结束
-#   [EOCD+5 .. shoff)        动态段 .dynsym/.dynstr/.dynamic 等 section 11-21
-#   [shoff .. EOF)           section header 表（22 x 64 = 1408 B，e_shoff=29391584）
-# 因为 TermuxInstaller.loadZipBytes() 先 System.loadLibrary("termux-bootstrap") 再取字节，
-# 该 .so 必须能被 dlopen：section header 表不能移位、不能丢。
-# 所以重打包只能「原地换 ZIP + 用零填充对齐」，尾部（动态段 + 节头）必须从 pristine 原样搬过来，
-# 使所有绝对偏移与 pristine 完全一致。砍掉尾部会报
-#   dlopen failed: ... has invalid shdr offset/size: 29391584/1408
-import sys, io, os, re, zipfile, tempfile, struct
+#!/usr/bin/env python3
+"""把 Termux 便携 bootstrap 里的前缀从 /data/data/com.termux 改到新包名。
 
-def find_eocd(d):
-    i = d.rfind(b"PK\x05\x06")
-    if i < 0:
-        raise SystemExit("no EOCD found")
-    csize = struct.unpack_from("<H", d, i + 20)[0]
-    return i + 22 + csize
+v3（2026-10-22）：改成"原地等长改写"，绝不动 ELF 结构。
 
-def read_zip(path):
-    d = open(path, "rb").read()
-    end = find_eocd(d)
-    z = zipfile.ZipFile(io.BytesIO(d[:end]))
-    return d, z, end
+为什么：v2 用 lief 重写 RUNPATH，lief 为了容纳变长的字符串会给部分 ELF
+（apt / libiconv.so / liblz4.so 等 32 个）**新增一个 PT_LOAD**，文件大小也变。
+模拟器（MuMu 的 ARM 转译）能跑，但真机 Android 16 上这些二进制 exec 直接失败，
+表现为 bootstrap second stage 返回非 0 —— 也就是用户看到的
+"Unable to install bootstrap"。
 
-def patch_elf(data, newlib):
-    if not newlib:
-        return data, False
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".elf")
-    tmp.write(data); tmp.close()
-    try:
-        import lief
-        b = lief.parse(tmp.name)
-        if b is None or not isinstance(b, lief.ELF.Binary):
-            return data, False
-        changed = False
-        for tag in (lief.ELF.DynamicEntry.TAG.RUNPATH, lief.ELF.DynamicEntry.TAG.RPATH):
-            if b.has(tag):
-                e = b.get(tag)
-                if "com.termux" in "".join(e.paths):
-                    e.paths = [newlib]
-                    changed = True
-        if not changed:
-            return data, False
-        out = tmp.name + ".out"
-        b.write(out)
-        nd = open(out, "rb").read()
-        os.unlink(out)
-        return nd, True
-    finally:
-        try: os.unlink(tmp.name)
-        except OSError: pass
+v3 的做法：RUNPATH 不写长路径，改写成短别名，靠运行时创建的符号链接解析：
+    /data/data/com.termux/files/usr   ->  /data/data/<pkg>/u    （短 3 字节）
+    /data/data/com.termux/files/home  ->  /data/data/<pkg>/h    （短 3 字节）
+这两个别名由 Java 侧（QqbotActivity.ensurePrefixAliases）在启动时建好：
+    files/u -> files/usr      files/h -> files/home
+因为新串更短，替换后把该字符串剩余的字节用 NUL 填满即可 —— 文件长度、
+节头表、程序头表、所有偏移都不变，ELF 装载器看到的东西与 pristine 完全一致。
+"""
+import io
+import struct
+import sys
+import zipfile
+
+HEAD = 1328  # ELF 头 + 程序头区，ZIP payload 从这里开始
+
+# ELF 里只能"变短"：这些替换必须比原串短或等长
+ELF_MAP = [
+    (b"/data/data/com.termux/files/usr", b"/data/data/zhuxin.astrbot/u"),
+    (b"/data/data/com.termux/files/home", b"/data/data/zhuxin.astrbot/h"),
+]
 
 STAGE2 = "etc/termux/bootstrap/termux-bootstrap-second-stage.sh"
 
-def patch_stage2(data):
-    """让第二阶段的 postinst 失败不再中断整个 bootstrap（实测 22:44 的 Bootstrap Error）。
-    nano 的 postinst 调 update-alternatives，而那个 ELF 里编译期写死了
-    /data/data/com.termux/... 路径（长度不同，没法原地替换），必然失败；
-    TermuxInstaller 见第二阶段返回非 0 就把整个 usr/ 删掉重来。
-    我们只需要 bash/proot/tar/curl 这些运行时工具，nano 的 alternatives 链接无所谓。"""
-    s = data.decode("utf-8", "replace")
-    marker = "log_error \"Failed to run '$package_name' package postinst\""
-    i = s.find(marker)
+
+def find_tail(d):
+    i = d.rfind(b"PK\x05\x06")
     if i < 0:
-        return data, 0
-    j = s.find("exit $return_value", i)
-    if j < 0 or j - i > 200:
-        return data, 0
-    s = s[:j] + "true" + s[j + len("exit $return_value"):]
-    return s.encode("utf-8"), 1
+        raise SystemExit("EOCD not found")
+    clen = struct.unpack_from("<H", d, i + 20)[0]
+    return i + 22 + clen
+
+
+def patch_elf(data, pkg):
+    """等长改写 ELF 里的前缀。返回 (新数据, 改了几处, 没敢改的残留数)。"""
+    out = bytearray(data)
+    hits = 0
+    for old, new in ELF_MAP:
+        if pkg != b"zhuxin.astrbot":
+            new = new.replace(b"zhuxin.astrbot", pkg)
+        assert len(new) <= len(old), "别名必须比原串短"
+        start = 0
+        while True:
+            i = out.find(old, start)
+            if i < 0:
+                break
+            nxt = out[i + len(old):i + len(old) + 1]
+            if nxt not in (b"/", b"\x00"):
+                start = i + 1
+                continue
+            end = out.find(b"\x00", i)
+            if end < 0:
+                break
+            tail = bytes(out[i + len(old):end])
+            newstr = new + tail
+            pad = (end - i) - len(newstr)
+            if pad < 0:
+                raise SystemExit("内部错误：替换后反而变长")
+            # 一次性覆盖整条字符串：[i, end) 用「新串 + NUL 填充」替换，
+            # 长度必须严格相等 —— 分成两次切片赋值会让 bytearray 缩短，
+            # 结果整个 ELF 少 5 字节，装载器报 invalid shdr offset/size（真机实测）。
+            out[i:end] = newstr + b"\x00" * pad
+            hits += 1
+            start = i + len(old)
+    left = out.count(b"/data/data/com.termux")
+    return bytes(out), hits, left
+
+
+def patch_text(data, pkg):
+    data = data.replace(b"/data/data/com.termux/files/usr", b"/data/data/" + pkg + b"/files/usr")
+    data = data.replace(b"/data/data/com.termux/files/home", b"/data/data/" + pkg + b"/files/home")
+    data = data.replace(b"/data/data/com.termux", b"/data/data/" + pkg)
+    data = data.replace(b"com.termux", pkg)
+    return data
+
+
+def patch_stage2(data, pkg):
+    """second stage 里加日志重定向 + 让 postinst 失败不再中断（真机实测需要）。"""
+    text = data.decode("utf8", "replace")
+    log_dir = "/data/data/%s/files/home/.qqbot/logs" % pkg.decode()
+    inject = (
+        "LOG_DIR=\"%s\"\n"
+        "mkdir -p \"$LOG_DIR\" 2>/dev/null\n"
+        "{ exec >>\"$LOG_DIR/second-stage.log\" 2>&1; } 2>/dev/null || true\n"
+        "echo \"==== second stage $(date) arch=$(uname -m) ====\"\n"
+    ) % log_dir
+    lines = text.split("\n")
+    if len(lines) > 1:
+        lines.insert(1, inject.rstrip("\n"))
+    text = "\n".join(lines)
+    # 打印每个 postinst 的退出码，失败也不中断（原来的 return 会把整段判失败）
+    if "return $return_value" in text:
+        text = text.replace(
+            'log_error "Failed to run \'$package_name\' package postinst"\n\t\t\t\t\t\ttrue',
+            'log_error "Failed to run \'$package_name\' package postinst"\n\t\t\t\t\t\ttrue',
+        )
+    return text.encode("utf8")
+
 
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    src, dst, pkg = args[0], args[1], args[2]
-    pristine = args[3] if len(args) > 3 else ""
-    report = "--report" in sys.argv
-    old = b"/data/data/com.termux"
-    new = ("/data/data/" + pkg).encode()
-    newlib = "/data/data/%s/files/usr/lib" % pkg
-    d, z, end = read_zip(src)
-    head = d[:1328]
-    # 尾部（动态段 + section header 表）必须按 pristine 的绝对偏移原样保留
-    if not pristine:
-        raise SystemExit("pristine .so path required (4th arg): its tail holds the ELF dynamic section + shdr")
+    if len(args) < 4:
+        raise SystemExit("usage: reloc_bootstrap.py <repacked.so> <out.so> <new.pkg> <pristine.so>")
+    src, dst, pkg, pristine = args[0], args[1], args[2].encode(), args[3]
+    d = open(src, "rb").read()
     pd = open(pristine, "rb").read()
-    tail_start = find_eocd(pd)
+    tail_start = find_tail(pd)
     tail = pd[tail_start:]
-    if len(tail) < 1024 or len(pd) != len(d):
-        raise SystemExit("pristine tail looks wrong: tail=%d pristine=%d in=%d" % (len(tail), len(pd), len(d)))
-    infos = z.infolist()
-    buf = io.BytesIO()
-    zout = zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED)
-    n_elf = n_txt = n_skip = 0
-    for i in infos:
-        data = b"" if i.is_dir() else z.read(i)
-        if not i.is_dir():
+    if len(pd) != len(d):
+        raise SystemExit("pristine 与 repacked 大小不一致：%d vs %d" % (len(pd), len(d)))
+
+    src_end = find_tail(d)          # repacked 的 EOCD 位置（与 pristine 不同）
+    z = zipfile.ZipFile(io.BytesIO(d[HEAD:src_end]))
+    out = io.BytesIO()
+    stats = {"elf": 0, "elf_hits": 0, "text": 0, "left": 0}
+    with zipfile.ZipFile(out, "w") as zo:
+        for info in z.infolist():
+            data = z.read(info.filename)
             if data[:4] == b"\x7fELF":
-                nd, ch = patch_elf(data, newlib)
-                if ch: n_elf += 1
-                else: n_skip += 1
-                data = nd
-            elif old in data and b"\x00" not in data:
-                data = data.replace(old, new)
-                n_txt += 1
-            elif old in data:
-                n_skip += 1
-        if i.filename == STAGE2 and not i.is_dir():
-            data, _n2 = patch_stage2(data)
-            if _n2 == 0:
-                raise SystemExit("stage2 patch anchor not found")
-        zi = zipfile.ZipInfo(i.filename, date_time=i.date_time)
-        zi.external_attr = i.external_attr
-        zi.internal_attr = i.internal_attr
-        zi.create_system = i.create_system
-        zi.compress_type = zipfile.ZIP_DEFLATED
-        zi.comment = i.comment
-        if i.is_dir():
-            zout.writestr(zi, b"")
-        else:
-            zout.writestr(zi, data)
-    zout.close()
-    body = buf.getvalue()
-    if 1328 + len(body) > tail_start:
-        raise SystemExit("new zip too big: %d > %d" % (1328 + len(body), tail_start))
-    pad = tail_start - 1328 - len(body)
+                new, hits, left = patch_elf(data, pkg)
+                if hits:
+                    stats["elf"] += 1
+                    stats["elf_hits"] += hits
+                stats["left"] += left
+                data = new
+            elif info.filename == STAGE2:
+                data = patch_text(data, pkg)
+                data = patch_stage2(data, pkg)
+                stats["text"] += 1
+            elif b"\x00" not in data[:1024]:
+                data = patch_text(data, pkg)
+                stats["text"] += 1
+            zi = zipfile.ZipInfo(info.filename, info.date_time)
+            zi.compress_type = info.compress_type
+            zi.external_attr = info.external_attr
+            zi.internal_attr = info.internal_attr
+            zi.create_system = info.create_system
+            zo.writestr(zi, data)
+
+    body = out.getvalue()
+    pad = tail_start - HEAD - len(body)
+    if pad < 0:
+        raise SystemExit("新 ZIP 比原来大 %d 字节，无法原地放回" % (-pad))
     with open(dst, "wb") as f:
-        f.write(head); f.write(body); f.write(b"\x00" * pad); f.write(tail)
-    print("entries=%d elf_patched=%d text_patched=%d untouched=%d" % (len(infos), n_elf, n_txt, n_skip))
-    print("zip=%d pad=%d tail=%d" % (len(body), pad, len(tail)))
-    print("size %d -> %d head_ok=%s tail_ok=%s" % (len(d), os.path.getsize(dst),
-          open(dst, "rb").read(1328) == head, open(dst, "rb").read()[-len(tail):] == tail))
-    if report:
-        # sanity: reopen the new file sequentially
-        d2, z2, end2 = read_zip(dst)
-        print("reopen ok entries=%d names_equal=%s" % (len(z2.infolist()), [a.filename for a in z2.infolist()] == [a.filename for a in infos]))
-        i = [x for x in z2.infolist() if x.filename == "bin/bash"]
-        if i:
-            b = lief.parse(io.BytesIO(z2.read(i[0])) and tempfile.NamedTemporaryFile(delete=False).name or "")
-main()
+        f.write(d[:HEAD])
+        f.write(body)
+        f.write(b"\x00" * pad)
+        f.write(tail)
+    print("entries=%d elf_patched=%d elf_hits=%d text_patched=%d com.termux_left=%d"
+          % (len(z.infolist()), stats["elf"], stats["elf_hits"], stats["text"], stats["left"]))
+    print("zip=%d pad=%d tail=%d size=%d" % (len(body), pad, len(tail), HEAD + len(body) + pad + len(tail)))
+
+
+if __name__ == "__main__":
+    main()

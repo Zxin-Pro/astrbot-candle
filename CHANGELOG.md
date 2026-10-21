@@ -11,6 +11,21 @@
 
 ---
 
+## [1.2.3] - 2026-10-21
+
+### 修复
+
+- **bootstrap 装不上（弹「Unable to install bootstrap」之后退回桌面）**：包名改成 `zhuxin.astrbot` 之后，bootstrap 里那份 `termux-bootstrap-second-stage.sh` 的前缀没有一起改写，`dpkg` 的 admindir 还指向 `/data/data/com.termux/files/usr/var/lib/dpkg`，第二阶段必然失败、`usr/` 被清空。现在改写 .so 时会先把整份 second-stage 脚本按新前缀重写，再往里加日志重定向。
+- **32 个 ELF 程序头被改坏，真机 Android 16 上 `dpkg`/`apt` 起不来**：上一版用 lief 改 RUNPATH，lief 为了塞下更长的字符串给这些文件**新增了 PT_LOAD 段**（`bin/apt` 11→12 段等），模拟器（ARM 转译）能跑，真机 linker 直接 `execve` 失败。现在改成**原地等长改写**：长前缀 `/data/data/<包名>/files/usr` 缩成 `/data/data/<包名>/u`（`files/home` → `h`），由应用启动时建的两个符号链接解析，ELF 的节头/程序头/所有偏移一个字节都不动。
+
+### 变更
+
+- **清单收敛，降低杀毒误报特征**：删掉 7 条代码里从未使用过的权限（`READ_LOGS` / `DUMP` / `WRITE_SECURE_SETTINGS` / `PACKAGE_USAGE_STATS` / `MANAGE_EXTERNAL_STORAGE` / `SYSTEM_ALERT_WINDOW` / `SET_ALARM`），`RunCommandService` 从 `exported="true"` 改成不导出（本应用不用「外部应用发命令」这套 Termux 遗留接口）。
+
+### 说明
+
+- 小米/腾讯报的 `a.gray.devicemaster.a` 是启发式判定，主要看「终端类应用 + 一堆高危权限 + 导出的命令服务」。1.2.1 起安装包不再内嵌 583 MB 的沙盒镜像（体积 609 MB → 25 MB），1.2.3 再把上面的权限和服务收掉，特征已经明显变轻；但如果厂商库还没更新，仍可能弹「增强防护」，安装时选单次授权即可。
+
 ## [1.2.2] - 2026-10-21
 
 ### 变更

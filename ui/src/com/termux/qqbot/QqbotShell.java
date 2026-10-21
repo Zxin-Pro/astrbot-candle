@@ -110,6 +110,9 @@ public class QqbotShell {
             env.put("COLORTERM", "truecolor");
             // 让 profile.d 里的自动部署脚本不要在我们的子 shell 里再次触发
             env.put("QQBOT_SANDBOX_ENTERED", "1");
+            // 短路径别名（/data/data/<pkg>/u -> files/usr）：bootstrap 里的 ELF 把前缀
+            // 原地改写成这个短路径，别名不在的话 bin/bash 连 libc 都找不到。
+            PrefixAlias.ensure(filesDir);
             pb.redirectErrorStream(true);
             pb.directory(homeDir(filesDir));
             p = pb.start();

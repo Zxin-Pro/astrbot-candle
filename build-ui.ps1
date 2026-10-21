@@ -121,6 +121,45 @@ if ($xml2 -notmatch 'android\.permission\.POST_NOTIFICATIONS') {
 } else {
   Write-Host 'manifest: POST_NOTIFICATIONS already present'
 }
+# 3c3) AV heuristics (v1.2.3): Xiaomi/Tencent flag this as a.gray.devicemaster.a because it is a
+#      terminal app carrying several high-risk permissions plus an exported command service.
+#      None of these permissions are used anywhere in the sources (grep-verified); the RunCommand
+#      IPC service is Termux legacy for third-party apps and is not needed here. Idempotent.
+$drop = @(
+  'android.permission.READ_LOGS',
+  'android.permission.DUMP',
+  'android.permission.WRITE_SECURE_SETTINGS',
+  'android.permission.PACKAGE_USAGE_STATS',
+  'android.permission.MANAGE_EXTERNAL_STORAGE',
+  'android.permission.SYSTEM_ALERT_WINDOW',
+  'com.android.alarm.permission.SET_ALARM'
+)
+$xml3 = Get-Content $mf -Raw -Encoding UTF8
+$orig3 = $xml3
+$removed = 0
+foreach ($perm in $drop) {
+  $pat = '\s*<uses-permission android:name="' + [regex]::Escape($perm) + '"\s*/>'
+  $n = [regex]::Matches($xml3, $pat).Count
+  if ($n -gt 0) { $xml3 = [regex]::Replace($xml3, $pat, ''); $removed += $n }
+}
+# The RUN_COMMAND <permission> declaration stays: TermuxOpenReceiver$ContentProvider still references
+# it, and dropping a permission that something points at is worse than keeping it.
+# RunCommandService is the Termux IPC entry point (any app with the RUN_COMMAND permission could ask us
+# to run shell commands). Nothing in this app uses it, and an exported command service is exactly the
+# kind of thing Xiaomi's scanner calls a.gray.devicemaster.a. Unexport it in place.
+$svcPat = '<service\s+[^>]*RunCommandService[^>]*>'
+$svc = [regex]::Match($xml3, $svcPat)
+if ($svc.Success -and ($svc.Value -match 'android:exported="true"')) {
+  $fixed = $svc.Value -replace 'android:exported="true"', 'android:exported="false"'
+  $xml3 = $xml3.Replace($svc.Value, $fixed)
+  $removed++
+}
+if ($xml3 -ne $orig3) {
+  [System.IO.File]::WriteAllText($mf, $xml3, (New-Object System.Text.UTF8Encoding($false)))
+  Write-Host ("manifest: trimmed {0} dangerous entries, RunCommandService unexported" -f $removed)
+} else {
+  Write-Host 'manifest: nothing to trim (already clean)'
+}
 Remove-Item "$ROOT\_apkwork\smali_classes30" -Recurse -Force -ErrorAction SilentlyContinue
 Copy-Item "$ROOT\ui\smali" "$ROOT\_apkwork\smali_classes30" -Recurse -Force -ErrorAction Stop
 New-Item -ItemType Directory -Force -Path "$ROOT\_apkwork\assets\qqbot" | Out-Null

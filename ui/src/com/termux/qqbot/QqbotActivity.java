@@ -218,6 +218,13 @@ public class QqbotActivity extends Activity {
             UploadState.coldStart(this);
         } catch (Throwable ignored) {
         }
+        // 先建好 /data/data/<pkg>/u -> files/usr 之类的短路径别名：
+        // bootstrap 里的 249 个 ELF 把前缀原地改写成 /data/data/<pkg>/u（文件长度不变），
+        // 没有这两个符号链接，bin/bash 的 RUNPATH 会悬空。必须早于 bootstrap 解包。
+        try {
+            PrefixAlias.ensure(this);
+        } catch (Throwable ignored) {
+        }
         // 首次启动时先确保 Termux bootstrap 已解包（本 Activity 现在是启动页）。
         // TermuxInstaller 是包级私有类，编译期不可见，故用反射调用。
         try {

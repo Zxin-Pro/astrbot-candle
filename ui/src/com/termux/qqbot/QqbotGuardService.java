@@ -254,6 +254,11 @@ public class QqbotGuardService extends Service {
 
     public void onCreate() {
         super.onCreate();
+        // 服务可能先于 Activity 起来（开机自启 / 通知栏动作），别名也得在这建一份
+        try {
+            PrefixAlias.ensure(this);
+        } catch (Throwable ignored) {
+        }
         guardRunning = true;
         try {
             startForeground(NOTI_ID, buildNoti("正在检查沙盒…"));
