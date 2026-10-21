@@ -45,8 +45,15 @@ jobs:
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force _research, _sdk\platform\android-34, _sdk\bt\android-14\lib, _apkwork | Out-Null
 
-          Write-Host "Downloading Termux base APK"
+          # 两个 APK 分工：
+          #  - termux-arm64.apk = 官方 Termux，只用来取 pristine bootstrap.so
+          #  - base-ui.apk     = 本项目上一个 release，用来 apktool d 出 _apkwork
+          #    因为官方 Termux 没有 QqbotActivity / QqbotPanelActivity 的 manifest
+          #    条目，直接拿它当 UI 基底会构建出「点开只有 Termux 终端」的包。
+          Write-Host "Downloading stock Termux APK (pristine bootstrap)"
           Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/termux/termux-app/releases/download/v0.118.3/termux-app_v0.118.3%2Bgithub-debug_arm64-v8a.apk" -OutFile "_research\termux-arm64.apk"
+          Write-Host "Downloading previous AstrBot release (UI base)"
+          Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/Zxin-Pro/astrbot-candle/releases/download/v1.2.2/AstrBot-1.2.2-arm64.apk" -OutFile "_research\base-ui.apk"
 
           Write-Host "Downloading apktool"
           Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar" -OutFile "_sdk\apktool.jar"
@@ -69,8 +76,8 @@ jobs:
           Write-Host "Installing lief (bootstrap ELF relocation)"
           python -m pip install --disable-pip-version-check lief
 
-          Write-Host "Decoding Termux APK with apktool"
-          & "$env:JAVA_HOME\bin\java.exe" -jar "_sdk\apktool.jar" d "_research\termux-arm64.apk" -o "_apkwork" -f
+          Write-Host "Decoding UI base APK with apktool"
+          & "$env:JAVA_HOME\bin\java.exe" -jar "_sdk\apktool.jar" d "_research\base-ui.apk" -o "_apkwork" -f
           if ($LASTEXITCODE -ne 0) { throw "apktool d failed" }
 
       - name: Prepare signing keystore
