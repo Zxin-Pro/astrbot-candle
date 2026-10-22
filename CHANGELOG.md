@@ -11,6 +11,21 @@
 
 ---
 
+## [1.2.4] - 2026-10-22
+
+### 修复
+
+- **arm64 真机部署必然失败：proot 缺少 loader**。打包时只带上了 `proot-arm64` 本体，没有带它运行时依赖的 `libexec/proot/loader`（和 `loader32`）。proot 启动时会去 `$PREFIX/libexec/proot/loader` 找 loader，找不到就报 `proot error: execve("/system/bin/sh"): No such file or directory` + `the loader was not found or doesn't work`，于是第 1 步 `10-termux` 的 proot 自检连试三次全挂、部署中断。x86_64 模拟器用的是随包的静态 `proot-x86_64`（自带 loader），所以这个坑一直只在真机上暴露。现在两个 loader 都随 bootstrap 一起发（`build/libexec/proot/`），文件总长仍是 29,392,992 字节（塞在 .so 里 ZIP 区的空余处）。
+- **覆盖升级拿不到新 bootstrap 文件**：`TermuxInstaller` 只在 `files/usr` 不存在时才解包 `.so`，所以老用户升级到 1.2.4 时新的 loader 不会落地，仍然会失败。现在 loader 同时放进了 `assets/qqbot-scripts.zip`（`build/opt/qqbot/libexec/proot/`），`steps/10-termux.sh` 发现 `$PREFIX/libexec/proot/loader` 缺失就从 `$PREFIX/opt/qqbot/libexec/proot/` 补装并 `chmod 755`；补不上时还会打一条明确的警告，不再静默。
+
+### 变更
+
+- 清单再收掉两条权限：`REQUEST_INSTALL_PACKAGES`（应用内更新本来就是「交给系统浏览器下载」，用不到装包权限）和 `WRITE_EXTERNAL_STORAGE`（代码里没有任何运行时申请，按 targetSdk 28 本来就拿不到）。现在清单只剩 8 条：网络、网络状态、前台服务、唤醒锁、震动、忽略电池优化、开机自启、通知。
+
+### 说明
+
+- `sharedUserId` 保留：实测去掉它会让已经装着的 1.2.3 直接报 `INSTALL_FAILED_UID_CHANGED`，等于强制卸载重装；等下次必须重装的版本再一起去掉。
+- 1.2.3 → 1.2.4 可以直接覆盖安装（签名、包名、sharedUserId 都没变），装完打开应用，第 1 步会把 loader 补上，再点「开始部署」即可。
 ## [1.2.3] - 2026-10-21
 
 ### 修复

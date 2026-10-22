@@ -181,11 +181,11 @@ public class QqbotBridge {
             o.put("steps", steps);
             o.put("doneCount", doneCount);
             o.put("total", defs.length);
-            o.put("logTail", act.tail(act.deployLogFile(), 14));
+            o.put("logTail", act.stripAnsi(act.tail(act.deployLogFile(), 14)));   /* ANSI 颜色码在 WebView 里会变成 [36m 之类的乱码 */
             // 上一次部署留下的失败原因（common.sh 的 qqerr 会写这个文件）。
             // 首页把它直接显示出来，用户就不必自己去日志页翻几百行 apt 输出。
             File errf = new File(act.qqbotDir(), "deploy.error");
-            String errTxt = errf.isFile() ? act.tail(errf, 6).trim() : "";
+            String errTxt = errf.isFile() ? act.stripAnsi(act.tail(errf, 6)).trim() : "";
             if (errTxt.length() > 900) errTxt = errTxt.substring(errTxt.length() - 900);
             o.put("err", errTxt);
             // 部署日志有多少秒没更新了：界面据此判断「是在慢慢装」还是「真的卡住了」。
@@ -514,7 +514,7 @@ public class QqbotBridge {
         if ("copylog".equals(what)) {
             // 一键把部署日志复制出来。用户反馈「卡在第三步」时，让他念一遍 apt 的输出
             // 是不现实的；复制到剪贴板粘给我，才可能定位到真正的原因。
-            String t = act.tail(act.deployLogFile(), 200);
+            String t = act.stripAnsi(act.tail(act.deployLogFile(), 200));
             if (t == null) t = "";
             int n = t.length() == 0 ? 0 : t.split("\n").length;
             copy(t);

@@ -132,7 +132,9 @@ $drop = @(
   'android.permission.PACKAGE_USAGE_STATS',
   'android.permission.MANAGE_EXTERNAL_STORAGE',
   'android.permission.SYSTEM_ALERT_WINDOW',
-  'com.android.alarm.permission.SET_ALARM'
+  'com.android.alarm.permission.SET_ALARM',
+  'android.permission.REQUEST_INSTALL_PACKAGES',
+  'android.permission.WRITE_EXTERNAL_STORAGE'
 )
 $xml3 = Get-Content $mf -Raw -Encoding UTF8
 $orig3 = $xml3
@@ -154,6 +156,13 @@ if ($svc.Success -and ($svc.Value -match 'android:exported="true"')) {
   $xml3 = $xml3.Replace($svc.Value, $fixed)
   $removed++
 }
+# sharedUserId is intentionally KEPT: removing it changes the app UID and Android then
+# refuses the in-place upgrade with INSTALL_FAILED_UID_CHANGED (verified on 1.2.4 build).
+# Dropping it has to wait for a release that tells users to uninstall once.
+# Do NOT unexport the two Termux content providers: Android throws
+# 'Provider must be exported' at startup for providers that declare
+# grantUriPermissions=true (verified: app crashed on launch with
+# SecurityException Unable to get provider TermuxDocumentsProvider).
 if ($xml3 -ne $orig3) {
   [System.IO.File]::WriteAllText($mf, $xml3, (New-Object System.Text.UTF8Encoding($false)))
   Write-Host ("manifest: trimmed {0} dangerous entries, RunCommandService unexported" -f $removed)

@@ -8,6 +8,22 @@
 # 构建时随包塞进 $PREFIX（build/bin/proot-arm64 + build/lib/libtalloc.so.2 和
 # libandroid-shmem.so）。装了内置版就不再碰 apt —— 一个包都不需要联网。
 # ---------------------------------------------------------------------------
+# proot 的编译期 loader 路径是 $PREFIX/libexec/proot/loader。全新安装时它随
+# bootstrap 一起解包；但覆盖升级不会重新解包 bootstrap，所以这里从随包同步的
+# $PREFIX/opt/qqbot/libexec/proot 兜底补一次（1.2.4 真机就是缺它才起不来）。
+if [ ! -x "$PREFIX/libexec/proot/loader" ] && [ -f "$PREFIX/opt/qqbot/libexec/proot/loader" ]; then
+  mkdir -p "$PREFIX/libexec/proot"
+  cp -f "$PREFIX/opt/qqbot/libexec/proot/loader" "$PREFIX/libexec/proot/loader" 2>/dev/null || true
+  chmod 755 "$PREFIX/libexec/proot/loader" 2>/dev/null || true
+  if [ -f "$PREFIX/opt/qqbot/libexec/proot/loader32" ]; then
+    cp -f "$PREFIX/opt/qqbot/libexec/proot/loader32" "$PREFIX/libexec/proot/loader32" 2>/dev/null || true
+    chmod 755 "$PREFIX/libexec/proot/loader32" 2>/dev/null || true
+  fi
+  qqlog "已补装 proot loader：$PREFIX/libexec/proot/loader"
+fi
+if [ ! -f "$PREFIX/libexec/proot/loader" ] && [ "$QQBOT_ARCH" = "arm64" ]; then
+  qqwarn "缺少 proot loader（$PREFIX/libexec/proot/loader）：arm64 上 proot 会报 the loader was not found"
+fi
 if [ "$QQBOT_ARCH" = "arm64" ] && [ -x "$PREFIX/bin/proot-arm64" ] && [ ! -x "$PREFIX/bin/proot" ]; then
   qqlog "使用 APK 内置的 arm64 proot"
   cp -f "$PREFIX/bin/proot-arm64" "$PREFIX/bin/proot" 2>/dev/null || true
