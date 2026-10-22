@@ -50,11 +50,12 @@ QQBOT_TUNA="https://mirrors.tuna.tsinghua.edu.cn"
 QQBOT_PYPI="$QQBOT_TUNA/pypi/simple"
 QQBOT_GH_MIRRORS="https://ghfast.top/ https://gh-proxy.com/ https://ghproxy.net/ https://github.moeyy.xyz/ https://gh.llkk.cc/ https://ghproxy.cc/ https://gh.xxooo.cf/ https://gh-proxy.net/ https://hub.gitmirror.com/"
 
-# 1.2.1：沙盒镜像（bundle-<arch>.tar.xz）放在官网 /dl/ 下，部署时直连下载。
+# 1.2.1：沙盒镜像（bundle-<arch>.tar.xz）放在自建站点的 /dl/ 下，部署时直连下载（该站点 2026-10 已停用，见下）。
 # 只有整包镜像模式才用得到：部署前 export QQBOT_BUNDLE=1 才去下这份 604 MB 的镜像，
 # 默认走官方镜像站在线安装（清华 / 中科大 / 阿里），不再默认下整包。
 # 换地址只要改这里，或者部署前 export QQBOT_CDN=…（任何支持 Range 的静态目录都行）。
-QQBOT_CDN="${QQBOT_CDN:-https://xn--15t839a.xyz/dl}"
+# 1.2.5 起整包镜像默认不走，只有 QQBOT_BUNDLE=1 才用到；改指向 GitHub Releases 的固定下载路径，因为自建站点已下线。
+QQBOT_CDN="${QQBOT_CDN:-https://github.com/Zxin-Pro/astrbot-candle/releases/latest/download}"
 
 # 1.2.2：包名从 com.termux 改成 zhuxin.astrbot 之后，curl 的编译期 CA 路径还指着
 # /data/data/com.termux/files/usr/etc/tls/cert.pem，所有 https 下载都会报
@@ -623,7 +624,7 @@ qq_gh_dl() {
 }
 
 # ---------------------------------------------------------------------------
-# 1.2.1：从官网拉一份「已经装好」的沙盒镜像
+# 1.2.1：从自建站点拉一份「已经装好」的沙盒镜像
 #
 # 1.2.0 是把 600 MB 镜像塞进 APK（懒人包）。实测两个问题：安装包大到小米安全扫描
 # 直接报「包含病毒」并只给「取消安装」；手机空间紧张时连装都装不上。1.2.1 改成
@@ -668,7 +669,7 @@ qq_bundle_pull() {
     done
     wait "$_bp_pid"
     _bp_rc=$?
-    # curl 33 = 服务端不接受我们带来的 Range（.part 已经下完，或者官网那份镜像换了）。
+    # curl 33 = 服务端不接受我们带来的 Range（.part 已经下完，或者远端那份镜像换了）。
     # 不移掉 .part 的话每一轮都是 416，三次跑完直接报「没下成」，永远好不了。
     if [ "$_bp_rc" -eq 33 ]; then
       rm -f "$_bp_part"
@@ -689,7 +690,7 @@ qq_bundle_pull() {
     qqwarn "沙盒镜像没下成，详见 $QQBOT_LOGS/download-bundle.log"
     return 1
   fi
-  # 校验：官网同目录放了一份 .sha256（「<hex>  bundle-<arch>.tar.xz」）。
+  # 校验：镜像同目录放了一份 .sha256（「<hex>  bundle-<arch>.tar.xz」）。
   # 拿不到校验文件不算失败（老目录没有），能拿到就必须对上。
   _bp_sha=""
   _bp_shaf="$QQBOT_CACHE/bundle.sha256"
@@ -1239,49 +1240,76 @@ qq_json_esc() { qq_risk_esc "${1:-}"; }
 # 设计要点：
 #   * 只打「像凭据 / 账号」的片段。端口（6099/6185/6199）、文件大小、时间戳、
 #     行号、版本号必须原样保留 —— 它们是排查问题的关键，抹掉报告就白传了。
-#   * 一条规则一遍 sed，命中数单独统计：一次性大 sed 说不清改了几处，而用户需要
-#     那句「已脱敏 N 处」来判断这份报告还能不能帮我们定位问题。
+#   * 规则大小写不敏感（sed -E 的 I 标志）；覆盖 token / password / 密码 /
+#     Authorization: Bearer / invite_code / Bot(数字) / QQ 号等常见形态。
+#   * 命中数必须真实：每条规则先在替换处插入 ASCII 标记，再用 grep -F 数标记；
+#     sed 失败、写回失败都不计数。toybox 的 grep -a 对中文 pattern 支持不稳，
+#     不能再用 grep 直接数中文规则。
+#   * 值里排除 *，已经打码成 *** 的不会重复计数。
 #   * 调用顺序有讲究：必须在 1.5 MB 截断**之后**再脱敏（截断会把最后一段切在半路，
 #     先脱敏再截断等于漏掉被切掉那部分里的命中数）。
 # ---------------------------------------------------------------------------
 qq_redact_file() {
-  local f="${1:-}" total=0 n pat rep rule
+  local f="${1:-}" total=0 n cur base pat rep rule tmp mark
   [ -n "$f" ] && [ -f "$f" ] || { printf '0'; return 1; }
+  tmp="$f.redact"
+  mark="@@QQBOT_REDACT_HIT@@"
+  base=$(grep -a -o -F "$mark" "$f" 2>/dev/null | wc -l 2>/dev/null | tr -d ' \n')
+  case "$base" in ''|*[!0-9]*) base=0 ;; esac
   while IFS= read -r rule; do
     case "$rule" in ''|'#'*) continue ;; esac
     pat=${rule%%@@*}
     rep=${rule#*@@}
-    n=$(grep -a -o -E -e "$pat" "$f" 2>/dev/null | wc -l 2>/dev/null | tr -d ' \n')
-    case "$n" in ''|*[!0-9]*) n=0 ;; esac
-    if [ "$n" -gt 0 ]; then
-      # 不用 sed -i：个别机型上 sed -i 会重写 inode 与权限位，报告文件随后可能被
-      # 其它进程读不到。写临时文件再 mv，权限沿用原文件的。
-      if sed -E "s#$pat#$rep#g" "$f" > "$f.redact" 2>/dev/null; then
-        cat "$f.redact" > "$f" 2>/dev/null
-      fi
-      total=$((total + n))
+    # 先给每个真正被替换的位置加一个 ASCII 标记，再数标记；sed 失败/无输出就跳过。
+    if ! sed -E "s#$pat#$rep$mark#gI" "$f" > "$tmp" 2>/dev/null; then
+      rm -f "$tmp" 2>/dev/null
+      continue
     fi
+    if [ ! -s "$tmp" ] && [ -s "$f" ]; then
+      rm -f "$tmp" 2>/dev/null
+      continue
+    fi
+    cur=$(grep -a -o -F "$mark" "$tmp" 2>/dev/null | wc -l 2>/dev/null | tr -d ' \n')
+    case "$cur" in ''|*[!0-9]*) cur=0 ;; esac
+    n=$((cur - base))
+    if [ "$n" -gt 0 ] 2>/dev/null; then
+      # 去掉标记后再写回；写回失败不计入，宁可不报也不虚报。
+      if sed "s#$mark##g" "$tmp" > "$tmp.clean" 2>/dev/null && cat "$tmp.clean" > "$f" 2>/dev/null; then
+        total=$((total + n))
+        base=0
+      fi
+    fi
+    rm -f "$tmp" "$tmp.clean" 2>/dev/null
   done <<'QQBOT_REDACT_RULES'
-"([A-Za-z_]*(token|secret|passw[a-z]*|api[_-]?key|apikey)[A-Za-z_]*)"[[:space:]]*:[[:space:]]*"[^"]*"@@"\1": "***"
-# WebUI token 还会以「散文」形式出现，JSON 规则抓不到：
-#   [napcat] 启动实例 bot1（WebUI 端口 6099，WebUI token zhuxin，日志 …）
-#   10-20 07:33:19 [info] [NapCat] [WebUi] WebUi Token: zhuxin
-# 这两行都是我们自己/上游打出来的，实测会整段进报告 —— token 是控制台密码，
-# 属于必须抹掉的一类。值里排除 * 是为了幂等：已经抹成 *** 的不会再被数一遍。
-([Ww]eb[Uu][Ii][[:space:]]*[Tt]oken[:：]?[[:space:]]*)[A-Za-z0-9._~+/=-]+@@\1***
-([Tt]oken[:：][[:space:]]*)[A-Za-z0-9._~+/=-]{6,}@@\1***
-(NAPCAT_WEBUI_SECRET_KEY|NAPCAT_WEBUI_JWT_SECRET_KEY|WEBUI_TOKEN|QQBOT_TOKEN)=[^[:space:]]+@@\1=***
-[Bb]earer[[:space:]]+[A-Za-z0-9._~+/=-]{8,}@@Bearer ***
+"([A-Za-z0-9_.-]*(token|secret|passw[a-z]*|passwd|pwd|api[_-]?key|apikey|invite[ _-]?code)[A-Za-z0-9_.-]*)"[[:space:]]*:[[:space:]]*"[^"]*[^"*][^"]*"@@"\1": "***"
+'([A-Za-z0-9_.-]*(token|secret|passw[a-z]*|passwd|pwd|api[_-]?key|apikey|invite[ _-]?code)[A-Za-z0-9_.-]*)'[[:space:]]*:[[:space:]]*'[^']*[^'*][^']*'@@'\1': '***'
+"(uin|qq|user_?id|group_?id|account|name|nickname)"[[:space:]]*:[[:space:]]*("[^"]*[^"*][^"]*"|[0-9]{5,12})@@"\1": "***"
+(webui[[:space:]]*token(:|：)?[[:space:]]*)[^[:space:]*，,；;）)（(已未:：]+@@\1***
+(token(:|：)[[:space:]]*)[^[:space:]*，,；;）)（(已未]+@@\1***
+(^|[^A-Za-z0-9_])([A-Za-z0-9_.-]*(token|secret|passw[a-z]*|passwd|pwd|api[_-]?key|apikey|invite[ _-]?code)[A-Za-z0-9_.-]*)[[:space:]]*(:|：|=)[[:space:]]*[^[:space:]"',;，；）)（(*]+@@\1\2=***
+(^|[^A-Za-z0-9_])([A-Za-z0-9_.-]*(token|secret|passw[a-z]*|passwd|pwd|api[_-]?key|apikey|invite[ _-]?code)[A-Za-z0-9_.-]*)[[:space:]]*(:|：|=)[[:space:]]*"[^"]*[^"*][^"]*"@@\1\2=***
+(^|[^A-Za-z0-9_])([A-Za-z0-9_.-]*(token|secret|passw[a-z]*|passwd|pwd|api[_-]?key|apikey|invite[ _-]?code)[A-Za-z0-9_.-]*)[[:space:]]*(:|：|=)[[:space:]]*'[^']*[^'*][^']*'@@\1\2=***
+(NAPCAT_WEBUI_SECRET_KEY|NAPCAT_WEBUI_JWT_SECRET_KEY|WEBUI_TOKEN|QQBOT_TOKEN)[[:space:]]*=[[:space:]]*[^[:space:]*]+@@\1=***
+(authorization[[:space:]]*:[[:space:]]*bearer[[:space:]]+)[A-Za-z0-9._~+/=-]+@@\1***
+(^|[^A-Za-z0-9_.-])(bearer[[:space:]]+)[A-Za-z0-9._~+/=-]+@@\1\2***
 sk-[A-Za-z0-9_-]{8,}@@sk-***
-AIza[0-9A-Za-z_-]{10,}@@AIza***
-https?://txz\.qq\.com/p\?[^[:space:]"]+@@https://txz.qq.com/p?k=***
-([?&](token|access_token|key|secret|password)=)[^&[:space:]"]+@@\1***
-("(uin|qq|user_id|group_id|account|uin_list)"[[:space:]]*:[[:space:]]*"?)[0-9]{5,12}@@\1***
-(账号|群号|QQ号|用户号|uin|user_id|group_id)([[:space:]]*(:|：|=)[[:space:]]*)[0-9]{5,12}@@\1\2***
+aiza[0-9a-z_-]{10,}@@AIza***
+https?://txz\.qq\.com/p\?[^[:space:]"*]+@@https://txz.qq.com/p?k=***
+([?&](token|access_token|key|secret|password|passwd|pwd|invite[_-]?code)=)[^&[:space:]"*]+@@\1***
+(密码|口令)([[:space:]]*(是|为)?[[:space:]]*(:|：|=)?[[:space:]]*)[^[:space:]*，,；;）)（(已未:：=是为]+@@\1\2***
+(^|[^A-Za-z0-9_])((password|passwd|pwd)[[:space:]]+)([^[:space:]*，,；;）)（(已未:：=]+)@@\1\2***
+(^|[^A-Za-z0-9_])(bot[[:space:]]*[\(（][[:space:]]*)[0-9]{6,12}([[:space:]]*[\)）])@@\1\2***\3
+(^|[^A-Za-z0-9_])(bot[[:space:]]*\[[[:space:]]*)[0-9]{6,12}([[:space:]]*\])@@\1\2***\3
+(^|[^A-Za-z0-9_])(bot[[:space:]]*(:|：|=)?[[:space:]]*)[0-9]{6,12}([^0-9]|$)@@\1\2***\4
+(^|[^0-9A-Za-z_])((qq[[:space:]]*号|qq|账号|帐号|群号|用户号|uin|user_?id|group_?id)[[:space:]]*(:|：|=)?[[:space:]]*)[0-9]{5,12}([^0-9]|$)@@\1\2***\5
+(^|[^0-9])([0-9]{5,12})([[:space:]]*[（(]?[[:space:]]*(qq[[:space:]]*号|qq|账号|帐号)[[:space:]]*[）)]?)@@\1***\3
+(^|[^A-Za-z0-9_])(name|qq)[[:space:]]*(:|：|=)[[:space:]]*("[^"]*[^"*][^"]*"|'[^']*[^'*][^']*'|[^[:space:]"',;，；）)（(*]+)@@\1\2=***
+(^|[^A-Za-z0-9_])(name|qq)[[:space:]]+((is|是|为)[[:space:]]+)?("[^"]*[^"*][^"]*"|'[^']*[^'*][^']*'|[A-Za-z0-9_.@-]+)@@\1\2=***
+(^|[^A-Za-z0-9_./-])(zhuxin|astrbot123)([^A-Za-z0-9_./-]|$)@@\1***\3
 (^|[^0-9])1[3-9][0-9]{9}([^0-9]|$)@@\1***\2
 [A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}@@***@***
 QQBOT_REDACT_RULES
-  rm -f "$f.redact" 2>/dev/null
+  rm -f "$tmp" 2>/dev/null
   printf '%s' "$total"
   return 0
 }

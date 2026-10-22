@@ -19,6 +19,10 @@ if [ -z "$QQBOT_SANDBOX_ENTERED" ]; then
     # 每次打开应用自动恢复机器人服务（已在运行则跳过）
     if [ -f "$QQBOT_HOME_DIR/supervisor.pid" ] && kill -0 "$(cat "$QQBOT_HOME_DIR/supervisor.pid")" 2>/dev/null; then
       printf '  \033[36m[QQBot]\033[0m 机器人服务已在运行（PID %s）。\n' "$(cat "$QQBOT_HOME_DIR/supervisor.pid")"
+    elif [ -f "$QQBOT_HOME_DIR/state/offline" ]; then
+      # state/offline 是「关闭进程 / 紧急下线」留下的标记（v1.2.11）。以前这里不看它，
+      # 用户关掉之后一开终端（profile.d 重跑）沙盒就被悄悄拉起来。
+      printf '  \033[36m[QQBot]\033[0m 已按「关闭进程」关闭，不再自动启动。要用请执行 \033[1mqqbot-start\033[0m。\n'
     else
       mkdir -p "$QQBOT_HOME_DIR/logs"
       # setsid 让 proot 脱离当前进程组，避免被上层 shell 的进程组 kill 连带杀死；

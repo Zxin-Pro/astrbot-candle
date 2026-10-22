@@ -23,6 +23,16 @@ import java.io.File;
  */
 public class StatsUploadTask implements Runnable {
 
+    /**
+     * 总开关（2026-10 写死 false）。
+     *
+     * 原因两条：1) 自建站点服务端随 VPS 一起停了，现在没有免密钥能收统计的地方——
+     * GitHub 那边只有私有仓库 Zxin-Pro/astrbot-errlogs，进去要 token，不能塞进 APK；
+     * 2) 匿名上报本来就默认关闭（UploadState.statsOn 默认 false）。
+     * 日后服务端恢复，把这里改回 true 即可，下面的上报逻辑一行没删。
+     */
+    private static final boolean ENABLED = false;
+
     /** 同一时刻只允许一个统计上报在跑。 */
     private static volatile boolean busy = false;
 
@@ -37,6 +47,7 @@ public class StatsUploadTask implements Runnable {
 
     @Override
     public void run() {
+        if (!ENABLED) return;
         if (filesDir == null) return;
         // 第一道闸：开关关着一个字节都不发（连 DNS 都不解析）
         if (!UploadState.statsOn(filesDir)) return;

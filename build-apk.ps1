@@ -7,7 +7,8 @@
 #   build-apk.ps1 -Arch amd64     -> slim APK for x86_64 (image pulled from the site on first run)
 #   build-apk.ps1 -Arch arm64     -> slim APK for arm64  (image pulled from the site on first run)
 #   build-apk.ps1 -Arch arm64 -Bundle -> fat APK carrying the 580 MB sandbox image (offline)
-param([string]$Arch = "", [switch]$Bundle, [switch]$Update)
+#   build-apk.ps1 -AllowStock      -> allow _research\termux-arm64.apk when out\termux-ui-unsigned.apk is missing
+param([string]$Arch = "", [switch]$Bundle, [switch]$Update, [switch]$AllowStock)
 $ErrorActionPreference = "Stop"
 
 $ROOT = $PSScriptRoot
@@ -41,7 +42,11 @@ $PREFIX_OFF = 1328
 $SECTION = 29388903
 $STOCK_APK = Join-Path $ROOT "_research\termux-arm64.apk"
 $UI_APK = Join-Path $ROOT "out\termux-ui-unsigned.apk"
-# Base APK: the apktool-rebuilt one (with the native UI) when present, else the stock APK.
+# Base APK: the apktool-rebuilt one (with the native UI). A silent fallback to the stock
+# APK would let an old UI build ship under the new VERSION, so require an explicit switch.
+if (-not (Test-Path $UI_APK) -and -not $AllowStock) {
+  throw "out\termux-ui-unsigned.apk not found - run build-ui.ps1 first (or pass -AllowStock to build from _research\termux-arm64.apk)"
+}
 if (Test-Path $UI_APK) { $APK_SRC = $UI_APK } else { $APK_SRC = $STOCK_APK }
 $SIGNER = Join-Path $ROOT "_research\uber-apk-signer.jar"
 $TOOLS = Join-Path $ROOT "tools"
@@ -101,6 +106,10 @@ $dropPrefixes = @(
 foreach ($p in $dropPrefixes) { $jargs.Add("--drop"); $jargs.Add($p) }
 # NOTE: share/LICENSES, share/terminfo, share/termux-keyring, var/lib/dpkg/**,
 # lib/**/*.so, bin/**, etc/** and SYMLINKS.txt are deliberately KEPT.
+# A previous -Arch build may have left BUNDLE_ARCH/BUNDLE_SIZE in build/. Clear them before
+# build/ is packed into the bootstrap .so, or stale architecture markers get baked in.
+Remove-Item -Force (Join-Path $BUILD "opt\qqbot\BUNDLE_ARCH") -ErrorAction SilentlyContinue
+Remove-Item -Force (Join-Path $BUILD "opt\qqbot\BUNDLE_SIZE") -ErrorAction SilentlyContinue
 $n = 0
 Get-ChildItem -Recurse -File $BUILD | Sort-Object FullName | ForEach-Object {
   $rel = $_.FullName.Substring($BUILD.Length + 1).Replace("\", "/")
@@ -128,13 +137,11 @@ $rootVer = (Get-Content (Join-Path $ROOT "VERSION") -Raw).Trim()
 Write-Host ("     version file: {0}" -f $rootVer)
 
 Write-Host "[3/5] pack deploy scripts asset"
-# 上一轮 -Arch 构建可能把架构标记留在 build/ 里，先清掉，免得瘦包/普通包带着旧标记出厂。
-Remove-Item -Force (Join-Path $BUILD "opt\qqbot\BUNDLE_ARCH") -ErrorAction SilentlyContinue
-Remove-Item -Force (Join-Path $BUILD "opt\qqbot\BUNDLE_SIZE") -ErrorAction SilentlyContinue
+# BUNDLE_ARCH/BUNDLE_SIZE were already cleared before build/ was injected into the .so.
 $SCRIPTSZIP = Join-Path $OUT "qqbot-scripts.zip"
 Remove-Item -Force $SCRIPTSZIP -ErrorAction SilentlyContinue
 $sfiles = @()
-$sfiles += Get-ChildItem -Recurse -File (Join-Path $BUILD "opt\qqbot")
+$sfiles += Get-ChildItem -Recurse -File -Force (Join-Path $BUILD "opt\qqbot")
 $prof = Join-Path $BUILD "etc\profile.d\50-qqbot-sandbox.sh"
 if (Test-Path $prof) { $sfiles += (Get-Item $prof) }
 $zout = [System.IO.Compression.ZipFile]::Open($SCRIPTSZIP, [System.IO.Compression.ZipArchiveMode]::Create)
@@ -151,35 +158,71 @@ $zout.Dispose()
 Remove-Item -Force $VERF -ErrorAction SilentlyContinue
 Write-Host ("     {0} files -> {1} ({2} bytes)" -f $sfiles.Count, $SCRIPTSZIP, (Get-Item $SCRIPTSZIP).Length)
 
+# 3a) error report token
+# The build machine keeps the fine-grained GitHub token of Zxin-Pro/astrbot-errlogs in
+# _research\errdump-token.txt (gitignored: never in git, never in the sources). Copy it
+# verbatim into the scripts asset (no BOM, no extra newline) so upload-log.sh can read it
+# on the device as opt/qqbot/errdump-token.txt. Without the file the APK simply cannot
+# report anything, so the build only warns and goes on.
+$TOKF = Join-Path $ROOT "_research\errdump-token.txt"
+$TOKOK = (Test-Path -LiteralPath $TOKF) -and ((Get-Item -LiteralPath $TOKF).Length -gt 20)
+if ($TOKOK) {
+  $tokBytes = [System.IO.File]::ReadAllBytes($TOKF)
+  $tokOff = 0
+  if (($tokBytes.Length -ge 3) -and ($tokBytes[0] -eq 0xEF) -and ($tokBytes[1] -eq 0xBB) -and ($tokBytes[2] -eq 0xBF)) {
+    $tokOff = 3
+  }
+  $tokLen = $tokBytes.Length - $tokOff
+  $zout = [System.IO.Compression.ZipFile]::Open($SCRIPTSZIP, [System.IO.Compression.ZipArchiveMode]::Update)
+  $oldsz = $zout.GetEntry("opt/qqbot/errdump-token.txt")
+  if ($oldsz) { $oldsz.Delete() }
+  $zesz = $zout.CreateEntry("opt/qqbot/errdump-token.txt", [System.IO.Compression.CompressionLevel]::Optimal)
+  $zssz = $zesz.Open()
+  $zssz.Write($tokBytes, $tokOff, $tokLen)
+  $zssz.Dispose()
+  $zout.Dispose()
+  $zout = $null
+  Write-Host ("  token: injected errdump-token.txt ({0} bytes)" -f $tokLen)
+} else {
+  Write-Host "  token: _research/errdump-token.txt missing, this APK cannot send error reports"
+}
+
 # 3b) bundled offline image
 # When -Arch is given, ship the fully installed sandbox as assets/qqbot-bundle.tar.xz so a
 # first run needs no network at all: step 2 extracts it and steps 3-6 are already "done".
 # The size hint goes into the scripts (opt/qqbot/BUNDLE_ARCH) so a wrong-arch package is
 # rejected instead of unpacked (an amd64 tree on arm64 fails every later step with exec errors).
 $ARCHF = Join-Path $BUILD "opt\qqbot\BUNDLE_ARCH"
+$SIZEF = Join-Path $BUILD "opt\qqbot\BUNDLE_SIZE"
 $BUNDLE_PAYLOAD = ""
 if ($Arch -ne "" -and $Arch -ne "amd64" -and $Arch -ne "arm64") { throw "-Arch must be amd64 or arm64" }
-if ($Arch -ne "" -and $Bundle) {
-  $BUNDLE_PAYLOAD = Join-Path $OUT ("bundle-" + $Arch + ".tar.xz")
-  if (-not (Test-Path $BUNDLE_PAYLOAD)) { throw ("bundle payload not found: " + $BUNDLE_PAYLOAD) }
-  [System.IO.File]::WriteAllText($ARCHF, $Arch + "`n")
-  # Re-pack the scripts asset so it carries BUNDLE_ARCH (it was built a moment ago).
-  $zout = [System.IO.Compression.ZipFile]::Open($SCRIPTSZIP, [System.IO.Compression.ZipArchiveMode]::Update)
-  $ze = $zout.CreateEntry("opt/qqbot/BUNDLE_ARCH", [System.IO.Compression.CompressionLevel]::Optimal)
-  $zs = $ze.Open()
-  $zb = [System.Text.Encoding]::ASCII.GetBytes($Arch + "`n")
-  $zs.Write($zb, 0, $zb.Length)
-  $zs.Dispose()
-  # BUNDLE_SIZE lets the UI show "x MB / y MB" without opening the 600 MB asset.
-  $ze2 = $zout.CreateEntry("opt/qqbot/BUNDLE_SIZE", [System.IO.Compression.CompressionLevel]::Optimal)
-  $zs2 = $ze2.Open()
-  $zb2 = [System.Text.Encoding]::ASCII.GetBytes([string](Get-Item $BUNDLE_PAYLOAD).Length + "`n")
-  $zs2.Write($zb2, 0, $zb2.Length)
-  $zs2.Dispose()
-  $zout.Dispose()
-  Write-Host ("     bundle: {0} ({1} bytes) arch={2}" -f $BUNDLE_PAYLOAD, (Get-Item $BUNDLE_PAYLOAD).Length, $Arch)
-} else {
+# try/finally: markers are build inputs only, never source files. Remove them even when
+# the bundle branch throws, so the next run cannot pick up a stale architecture marker.
+try {
+  if ($Arch -ne "" -and $Bundle) {
+    $BUNDLE_PAYLOAD = Join-Path $OUT ("bundle-" + $Arch + ".tar.xz")
+    if (-not (Test-Path $BUNDLE_PAYLOAD)) { throw ("bundle payload not found: " + $BUNDLE_PAYLOAD) }
+    [System.IO.File]::WriteAllText($ARCHF, $Arch + "`n")
+    # Re-pack the scripts asset so it carries BUNDLE_ARCH (it was built a moment ago).
+    $zout = [System.IO.Compression.ZipFile]::Open($SCRIPTSZIP, [System.IO.Compression.ZipArchiveMode]::Update)
+    $ze = $zout.CreateEntry("opt/qqbot/BUNDLE_ARCH", [System.IO.Compression.CompressionLevel]::Optimal)
+    $zs = $ze.Open()
+    $zb = [System.Text.Encoding]::ASCII.GetBytes($Arch + "`n")
+    $zs.Write($zb, 0, $zb.Length)
+    $zs.Dispose()
+    # BUNDLE_SIZE lets the UI show "x MB / y MB" without opening the 600 MB asset.
+    $ze2 = $zout.CreateEntry("opt/qqbot/BUNDLE_SIZE", [System.IO.Compression.CompressionLevel]::Optimal)
+    $zs2 = $ze2.Open()
+    $zb2 = [System.Text.Encoding]::ASCII.GetBytes([string](Get-Item $BUNDLE_PAYLOAD).Length + "`n")
+    $zs2.Write($zb2, 0, $zb2.Length)
+    $zs2.Dispose()
+    $zout.Dispose()
+    Write-Host ("     bundle: {0} ({1} bytes) arch={2}" -f $BUNDLE_PAYLOAD, (Get-Item $BUNDLE_PAYLOAD).Length, $Arch)
+  }
+} finally {
+  # Never leave per-build markers in build/ for the next run.
   Remove-Item -Force $ARCHF -ErrorAction SilentlyContinue
+  Remove-Item -Force $SIZEF -ErrorAction SilentlyContinue
 }
 
 # 3c) relocate the bootstrap prefix. The Termux userland hardcodes /data/data/com.termux
@@ -222,6 +265,28 @@ Get-ChildItem -File $SIGNEDDIR | ForEach-Object { Write-Host ("  {0}  {1} bytes"
 #    (release assets are published as AstrBot-<version>.apk so downloads are self-labelling)
 $VER = (Get-Content (Join-Path $ROOT "VERSION") -Raw).Trim()
 $SIGNED = Join-Path $SIGNEDDIR "termux-qqbot-aligned-debugSigned.apk"
+# Guard release naming: the signed APK is built from out\termux-ui-unsigned.apk, but its
+# version comes from _apkwork\apktool.yml. A stale UI build must never be published under
+# the new VERSION, so compare both values before generating the release filename.
+$verMatch = [regex]::Match($VER, '^(\d+)\.(\d+)\.(\d+)$')
+if (-not $verMatch.Success) { throw ("VERSION is not MAJOR.MINOR.PATCH: " + $VER) }
+$EXPECT_CODE = [int]$verMatch.Groups[1].Value * 10000 + [int]$verMatch.Groups[2].Value * 100 + [int]$verMatch.Groups[3].Value
+$APKTOOL_YML = Join-Path $ROOT "_apkwork\apktool.yml"
+if (-not (Test-Path -LiteralPath $APKTOOL_YML)) {
+  throw ("_apkwork\apktool.yml not found - run build-ui.ps1 first to rebuild out\termux-ui-unsigned.apk for " + $VER)
+}
+$apktoolYml = Get-Content -LiteralPath $APKTOOL_YML -Raw
+if (-not $apktoolYml) { throw "_apkwork\apktool.yml is empty - run build-ui.ps1 first" }
+$mCode = [regex]::Match($apktoolYml, '(?m)^\s*versionCode:\s*([^\r\n]+?)\s*$')
+$mName = [regex]::Match($apktoolYml, '(?m)^\s*versionName:\s*([^\r\n]+?)\s*$')
+if (-not $mCode.Success -or -not $mName.Success) {
+  throw "_apkwork\apktool.yml has no versionCode/versionName - run build-ui.ps1 first"
+}
+$apkCode = [int]($mCode.Groups[1].Value.Trim().Trim([char]0x27).Trim([char]0x22))
+$apkName = $mName.Groups[1].Value.Trim().Trim([char]0x27).Trim([char]0x22)
+if ($apkCode -ne $EXPECT_CODE -or $apkName -ne $VER) {
+  throw ("APK version mismatch: _apkwork\apktool.yml has versionCode={0} versionName={1}, but VERSION={2} expects versionCode={3}. Run build-ui.ps1 first to rebuild out\termux-ui-unsigned.apk." -f $apkCode, $apkName, $VER, $EXPECT_CODE)
+}
 if (Test-Path $SIGNED) {
   # Only the file this run is about to write may be removed: with -Arch there are two
   # builds of the same version sitting in the repo root and a blanket wildcard delete
@@ -232,4 +297,23 @@ if (Test-Path $SIGNED) {
   if (Test-Path $REL) { Remove-Item -Force $REL }
   Copy-Item -Force $SIGNED $REL
   Write-Host ("  release copy: {0} ({1} bytes)" -f $REL, (Get-Item $REL).Length)
+
+  # 6b) copy the signed APK to the desktop on every build, replacing any previous copy:
+  #     the desktop should always hold exactly the latest installer.
+  $DESK = [Environment]::GetFolderPath('Desktop')
+  if (-not $DESK -and $env:USERPROFILE) { $DESK = Join-Path $env:USERPROFILE "Desktop" }
+  if ($DESK -and (Test-Path -LiteralPath $DESK -PathType Container)) {
+    $DESKAPK = Join-Path $DESK ([System.IO.Path]::GetFileName($REL))
+    $DESKTMP = $DESKAPK + ".tmp"
+    Remove-Item -Force $DESKTMP -ErrorAction SilentlyContinue
+    Copy-Item -Force $REL $DESKTMP
+    Move-Item -Force $DESKTMP $DESKAPK
+    # Only after the new copy is in place remove older installers.
+    Get-ChildItem -LiteralPath $DESK -File -Force -Filter "AstrBot-*.apk" -ErrorAction SilentlyContinue |
+      Where-Object { $_.FullName -ne $DESKAPK } |
+      Remove-Item -Force -ErrorAction SilentlyContinue
+    Write-Host ("  desktop copy: {0} ({1} bytes)" -f $DESKAPK, (Get-Item $DESKAPK).Length)
+  } else {
+    Write-Host "  WARN: desktop folder not found - skipped desktop copy"
+  }
 }

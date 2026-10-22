@@ -154,6 +154,26 @@ powershell -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch amd64
    > `$PREFIX/libexec/proot/` 并 `chmod 755`。**两处必须同时保留**：前者管全新安装，后者管覆盖升级 ——
    > `TermuxInstaller` 只在 `files/usr` 不存在时解包 `.so`，覆盖升级不会重新解包 bootstrap。加进这两个文件后
    > `.so` 总长仍是 **29,392,992 字节**（空间靠 `--drop` 腾）。
+
+   > **错误报告令牌注入（1.2.11 起）**：`assets/qqbot-scripts.zip` 里还要带一份「只能读写
+   > `Zxin-Pro/astrbot-errlogs` 这一个仓库」的 GitHub 细粒度令牌。源文件是仓库根的
+   > `_research\errdump-token.txt`（`_research/` 已在 `.gitignore` 里，**绝不入库**，也不要贴进提交信息或截图）。
+   > `build-apk.ps1` 在 **[3/5] 段打完之后**，另开一次 `[System.IO.Compression.ZipFile]::Open(..., ZipArchiveMode::Update)`
+   > 往同一个 zip 里补写条目 **`opt/qqbot/errdump-token.txt`**；运行时落成
+   > `$PREFIX/opt/qqbot/errdump-token.txt`，由 `build\opt\qqbot\upload-log.sh` 第 20 行的
+   > `TOKF="$PREFIX/opt/qqbot/errdump-token.txt"` 读取，上传时作为 `Authorization: Bearer` 打进 GitHub Contents API 请求。
+   > **令牌缺失时构建照常成功**，只是包内不带这个条目（不报错、不阻断出包）；这一版 App 里点「上传错误日志」会提示
+   > 「上传失败：这台手机上没有报告令牌（…/errdump-token.txt 不存在或是空的）」，并把报告留在本机缓存
+   > `$QQBOT_CACHE/errreport.txt`，等装上带令牌的包再点一次。出包后的核对办法见第八节第 7 条。
+   > 令牌**怎么生成**（不要把账号级全权限令牌打进包）：
+   > 1. GitHub 网页右上角头像 → **Settings** → 左侧最下 **Developer settings** → **Personal access tokens** → **Fine-grained tokens** → **Generate new token**；
+   > 2. Repository access 选 **Only select repositories**，**只勾 `Zxin-Pro/astrbot-errlogs` 一个仓库**；
+   >    Permissions 只给 **Contents: Read and write**，其余（Actions / Administration / Secrets / Workflows…）全部留空；
+   > 3. 生成后立刻复制，存成 `_research\errdump-token.txt` —— **一行纯令牌**，不要引号、不要空格、不要换行前缀，
+   >    脚本是原样写进包里的；App 侧会再 `tr -d ' \r\n\t'` 清一遍空白，但别指望它救格式错误；
+   > 4. **绝不要用 classic 全权限令牌**（勾 `repo` 的那种）：它能改本仓库、能删 Release，一旦从 APK 里被抠出来就是全盘失守；
+   >    细粒度令牌最多只能读写出 `astrbot-errlogs` 的 `reports/`，泄露面就是一份错误日志；
+   > 5. 令牌有有效期（默认 30 天），过期后上传会返回 401 —— 换新的之后重新出包即可，App 侧不需要改动。
 4. **[4/5] + [4b/5] 换回 APK 并重写 manifest**：`ApkReplace2` 把 `.so` 和 `qqbot-scripts.zip` 换进 `out\termux-ui-unsigned.apk`（存在时）或 stock APK，输出 `out\termux-qqbot-unsigned.apk`；随后调 `tools\patch_manifest.py` 重写二进制 `AndroidManifest.xml` 的字符串池，把 `package`、`com.termux.RUN_COMMAND` 权限、`com.termux.documents` / `com.termux.filereceiver` / `com.termux.files` authorities 换成 `zhuxin.astrbot` 对应值。`tools\patch_smali.py` 只替换**不是** `com.termux.app.` 的引用 —— Java 类仍在 `com.termux.app` 包里，把这些类名一起改掉会让 `Class.forName` / `setClassName` 找不到类。
 5. **[5/5] 签名**：调 uber-apk-signer 输出到 `out\signed\`。
 
@@ -167,7 +187,7 @@ powershell -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch amd64
 
 > **发布只发一个精简包**：只上传 `AstrBot-<版本>-arm64.apk` 到 GitHub Release；模拟器也直接装这个包（内容与真机包相同）。
 > 全量包不再作为 Release 资产，更新包与 `AstrBot-<版本>-<架构>-update.apk` 已取消。
-> 沙盒镜像单独传到 VPS 的 `/dl/` 目录（见第四节），不随版本发布。
+> 沙盒镜像不随版本发布：需要离线镜像时单独放到支持 HTTP Range 的托管目录，默认地址已指向 GitHub Releases（见第四节）。
 
 > **两个脚本必须串行执行**：`build-ui.ps1` 会**写出** `out\termux-ui-unsigned.apk`，`build-apk.ps1` 会**读取并覆盖**它，
 > 并行跑会互相踩踏，产物不可预测。**永远先 build-ui，再 build-apk。**
@@ -180,49 +200,51 @@ powershell -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch amd64
 
 1.2.0 的「懒人包」把约 580～604 MB 的沙盒镜像打进 APK（`assets/qqbot-bundle.tar.xz`），安装包体积过大，
 小米安全扫描会直接报「包含病毒 a.gray.devicemaster.a」。1.2.1 起 APK 只带程序（约 25 MB）。
-1.2.5 起默认不走 `/dl` 的整包：首次部署改成「下载 Ubuntu base（约 30 MB）→ apt 从官方镜像站
+1.2.5 起默认不走托管目录的整包：首次部署改成「下载 Ubuntu base（约 30 MB）→ apt 从官方镜像站
 （清华 / 中科大 / 阿里）装依赖」的在线流程；只有部署前 `export QQBOT_BUNDLE=1` 时，`steps/20-rootfs.sh`
 才会调用 `common.sh` 的 `qq_bundle_pull()` 按设备架构拉 `bundle-<arch>.tar.xz`（离线 / 内网 / 镜像站不可用时用），
 下不到就回落在线安装。
 
-### 1. 上传到 VPS
+### 1. 放到托管目录
+
+> 旧版这一步是「上传到 VPS 的 `/dl/`」——那台 VPS 与自建站点已随 2026-10 停用（530 / 全端口超时），
+> `/dl/` 目录不复存在，所以这里只讲「托管目录」的通用要求；`QQBOT_CDN` 现在默认指向 GitHub Releases 的固定下载路径。
 
 镜像构建产物在仓库的 `out\` 下（`build\` 是随 APK 部署的脚本树，不放镜像），每个架构一份：
 
-| 本地文件 | 大小 | VPS 路径 | 公开地址 |
-| --- | --- | --- | --- |
-| `out\bundle-arm64.tar.xz` | 583,010,488 B（约 556 MiB） | `/data/www/zhuxin-site/dl/bundle-arm64.tar.xz` | `https://xn--15t839a.xyz/dl/bundle-arm64.tar.xz` |
-| `out\bundle-amd64.tar.xz` | 604,245,316 B（约 576 MiB） | `/data/www/zhuxin-site/dl/bundle-amd64.tar.xz` | `https://xn--15t839a.xyz/dl/bundle-amd64.tar.xz` |
+| 本地文件 | 大小 |
+| --- | --- |
+| `out\bundle-arm64.tar.xz` | 583,010,488 B（约 556 MiB） |
+| `out\bundle-amd64.tar.xz` | 604,245,316 B（约 576 MiB） |
 
-上传后在 VPS 的同目录生成同名 `.sha256`（`sha256sum` 标准格式，`qq_bundle_pull()` 只取第一列）：
+托管目录里必须能按 `bundle-<arch>.tar.xz` 的原名直接取到文件（现在的默认位置是 Release 的
+`releases/latest/download`），并在同目录生成同名 `.sha256`（`sha256sum` 标准格式，`qq_bundle_pull()` 只取第一列）：
 
 ```bash
-cd /data/www/zhuxin-site/dl
 sha256sum bundle-arm64.tar.xz > bundle-arm64.tar.xz.sha256
 sha256sum bundle-amd64.tar.xz > bundle-amd64.tar.xz.sha256
 ```
 
-传完用 `stat -c %s` 和 `sha256sum` 核对一遍，确认与上表、本地文件一致。`dl/` 必须是支持
-HTTP Range 的静态目录（`curl -C -` 断点续传依赖它），nginx 默认就支持。
+传完用 `stat -c %s` 和 `sha256sum` 核对一遍，确认与上表、本地文件一致。托管目录必须是支持
+HTTP Range 的静态目录（`curl -C -` 断点续传依赖它），nginx 默认就支持，GitHub Releases 的资产下载也支持。
 
 ### 2. 客户端下载行为
 
-- 1.2.5 起默认不走这里：只有部署前 `export QQBOT_BUNDLE=1` 才会调用 `qq_bundle_pull()` 去 `/dl` 下整包；
-  默认走官方镜像站（清华 / 中科大 / 阿里）在线安装。站点 `/dl/` 下两份镜像继续保留。
-- 默认地址是 `https://xn--15t839a.xyz/dl`，定义在 `common.sh`：
-  `QQBOT_CDN="${QQBOT_CDN:-https://xn--15t839a.xyz/dl}"`。换镜像源或临时改地址只要部署前
+- 1.2.5 起默认不走这里：只有部署前 `export QQBOT_BUNDLE=1` 才会调用 `qq_bundle_pull()` 去托管目录下整包；
+  默认走官方镜像站（清华 / 中科大 / 阿里）在线安装。
+- 默认地址是 GitHub Releases 的固定下载路径，定义在 `common.sh`：
+  `QQBOT_CDN="${QQBOT_CDN:-https://github.com/Zxin-Pro/astrbot-candle/releases/latest/download}"`。换镜像源或临时改地址只要部署前
   `export QQBOT_CDN=https://…`，也可以直接改这一行。
 - 先下到 `$QQBOT_HOME/bundle.tar.xz.part`，`curl -C -` 断点续传：网络中断后重试会接着
   `.part` 的已有字节下，不重新下整个镜像。
 - 下完再取同目录的 `.sha256` 校验；校验不通过会删除 `.part` 并按失败处理，下次部署重新下载。
-  站点没有 `.sha256` 时只告警、不阻断（兼容老目录）。
-- 下载失败（断网、站点没有文件、体积明显不对）不会中断部署：`20-rootfs` 打一条警告后
+  目录里没有 `.sha256` 时只告警、不阻断（兼容老目录）。
+- 下载失败（断网、目录里没有文件、体积明显不对）不会中断部署：`20-rootfs` 打一条警告后
   **自动回落到在线安装**（Ubuntu base + apt + pip），只是慢一些。
 - 校验通过后把 `.part` 改名为 `bundle.tar.xz` 并写 `.bundle-ok`；两者都在时直接复用，
   不会重复下载。
 
-> `-Bundle` 全量包读的就是同一份 `out\bundle-<arch>.tar.xz`，因此离线包与官网镜像内容完全一致。
-
+> `-Bundle` 全量包读的就是同一份 `out\bundle-<arch>.tar.xz`，因此离线包与托管镜像内容完全一致。
 ## 五、bootstrap 注入原理
 
 Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`，而是一个 **ELF 头 + 内嵌 ZIP 段 + 动态段/节头表尾部** 的「夹心」结构，三段都不能丢：
@@ -290,6 +312,10 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
    Windows PowerShell 5.1 读取**没有 BOM** 的 `.ps1` 时会按 ANSI（中文系统上是 GBK）解码，
    脚本里的非 ASCII 字面量会变成乱码，轻则提示文案错乱，重则**解析报错直接跑不起来**。
    需要中文提示时，优先放进 `.sh` 或前端 HTML 里。
+   > 例外是**从文件读出来的字节**：`_research\errdump-token.txt` 是 GitHub 生成的一行 ASCII 令牌，
+   > `build-apk.ps1` 按字节（`[System.IO.File]::ReadAllBytes`）原样写进 zip 条目，不经过 PowerShell 的
+   > ANSI 解码，所以这个文件的内容不受上面的编码坑影响；但**绝不要把令牌写成 ps1 里的字符串字面量** ——
+   > 那样既会踩上面的坑，也等于把令牌提交进仓库。用法见第三节第 3 小步的「错误报告令牌注入」。
 2. **两个构建脚本必须串行。**
    `build-ui.ps1` 和 `build-apk.ps1` 都动 `out\termux-ui-unsigned.apk`，并行会互相覆盖。
 3. **注入偏移是硬编码的。**
@@ -358,16 +384,19 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 ---
 
-## 八、发布到站点
+## 八、发布到站点（历史：自建站点已停用）
+
+> **本节以及第四节里出现的 `https://xn--15t839a.xyz` 与 VPS 都已经停用（530 / 全端口超时），只保留历史用途。**
+> 现在安装包分发、检查更新、错误日志上报全部走 GitHub，运行时用到的外部地址列在第九节「上报与更新地址」。
 
 官网 `https://xn--15t839a.xyz` 的下载卡不是手写的，由 VPS 上的 `astrbot_download_sync.py` 每天从 GitHub Releases 同步生成：
 `zhuxin-astrbot-dl.service`（oneshot）+ `zhuxin-astrbot-dl.timer`（每日）跑 `/data/www/zhuxin-site/scripts/astrbot_download_sync.py`，
 把安装包镜像到 `/data/www/zhuxin-site/downloads/`（最多留 4 个版本），再改写 `data/astrbot.json`。本仓库的 `vps-deploy/astrbot_download_sync.py` 只是源文件。
 
 1.2.5 起 Release 只放一个精简包（`AstrBot-<版本>-arm64.apk`，约 25 MB），模拟器也直接装这个包；全量包与更新包都不再上传；
-沙盒镜像按第四节单独传到 VPS 的 `/dl/`，不随 GitHub Release 走。
+沙盒镜像按第四节单独托管（默认位置已指向 GitHub Releases 的 `releases/latest/download`），不随每次 Release 必传。
 
-注意事项：
+注意事项（下面几条是那台机器还活着时的操作，站点停用后不需要再执行，保留是为了将来复活时不用重写）：
 
 1. **改动（patch）脚本后要重新部署**。`vps-deploy/astrbot_download_sync.py` 提交后不会自动上线，必须覆盖 VPS 上的
    `/data/www/zhuxin-site/scripts/astrbot_download_sync.py`，再手动跑一次（先 `--dry-run` 看输出，再去掉 `--dry-run` 正式同步）。
@@ -380,5 +409,51 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
    `/releases/{id}/assets` 确认 `state=uploaded` 且 `digest` 有值；一版里找不到可用包时脚本会沿用站内旧文件，
    不会把它从下载页上抹掉。
 5. 站内文件名固定为 `AstrBot-<版本>.apk`；要强制换包，删掉 `downloads/AstrBot-<版本>.apk` 再跑同步。
-6. **沙盒镜像（约 580～604 MB）不走 GitHub Release**：只传到 VPS 的 `/data/www/zhuxin-site/dl/`（见第四节）；
+6. **沙盒镜像（约 580～604 MB）不随每个 Release 必传**：默认在线安装，需要离线镜像时单独放到 `QQBOT_CDN` 指向的托管目录（见第四节；旧版的 VPS `/dl/` 已随站点停用）；
    GitHub 上只有约 25 MB 的精简包，本机直接上传即可，不需要再走 SFTP 中转。
+
+7. **出包后必须核对包内 `assets/qqbot-scripts.zip` 里有 `opt/qqbot/errdump-token.txt`。**
+   没有这个条目就说明令牌没注入（`_research\errdump-token.txt` 缺失或为空），用户点「上传错误日志」会直接失败。
+   不要解压 APK，直接用 python 的 `zipfile` 读（`out\qqbot-scripts.zip` 与包内那份是同一个文件）：
+   ```powershell
+   python -c "import zipfile,sys; n=zipfile.ZipFile(r'out\\qqbot-scripts.zip').namelist(); print('errdump-token:', 'opt/qqbot/errdump-token.txt' in n, '| entries:', len(n))"
+   # 或者直接读成品 APK 里的同一条目（等价、且能验证 ApkReplace2 真的换进去了）：
+   python -c "import zipfile; z=zipfile.ZipFile(r'AstrBot-1.2.11-arm64.apk'); i=z.getinfo('assets/qqbot-scripts.zip'); import io; print('opt/qqbot/errdump-token.txt' in zipfile.ZipFile(io.BytesIO(z.read(i))).namelist())"
+   ```
+   第一条打印 `errdump-token: True` 才算过；打印 `False` 就别发版 —— 带令牌的包要重新出，
+   因为令牌是**构建时**写进 zip 的，事后改包会破坏签名。
+
+---
+
+## 九、上报与更新地址
+
+**1.2.11 起不再访问 `xn--15t839a.xyz`，自建站点与 VPS 仅保留历史用途**
+（域名解析还在，但整机已停用：HTTP 530、全端口超时；第四节与第八节里出现的地址都是这套旧链路）。
+
+运行时（App / 沙盒脚本）用到、且当前仍然生效的外部地址只有下面这几条，全部指向 GitHub：
+
+| 用途 | 地址 | 认证 | 代码位置 |
+| --- | --- | --- | --- |
+| 检查更新 / 「GitHub 最新」版本号 | `https://api.github.com/repos/Zxin-Pro/astrbot-candle/releases/latest` | 无（匿名，走 GitHub API 限额 60 次/小时） | `ui\src\com\termux\qqbot\CheckUpdate.java:22`、`SiteVer.java:30` |
+| 检查更新的国内兜底 | `https://ghfast.top/`、`https://gh-proxy.com/`、`https://ghproxy.net/` + 上面的完整 URL | 无 | `CheckUpdate.java:23-25`（四个候选依次试，全挂才报「检查超时」） |
+| 错误日志上报 | `https://api.github.com/repos/Zxin-Pro/astrbot-errlogs/contents` | **细粒度令牌**，包里 `$PREFIX/opt/qqbot/errdump-token.txt` | `build\opt\qqbot\upload-log.sh:18`（`API=` 那一行）、第 20 行 `TOKF=` |
+| NapCat 版本号 | `https://api.github.com/repos/NapNeko/NapCatQQ/releases/latest` | 无 | `build\opt\qqbot\common.sh:1337`（`_qq_ver_fetch`），结果缓存 24 h 到 `$QQBOT_STATE/versions.json` |
+
+说明：
+
+- **GitHub Releases API** 只用来读版本号与 `htmlUrl`（下载页链接），不下载 APK —— App 让系统浏览器去 GitHub 下载页取包。
+  国内直连 `api.github.com` 经常超时，所以 `CheckUpdate` 里内置了直连 + 三个反代共四个候选地址，**互不阻塞**；
+  `SiteVer`（界面上的「GitHub 最新」一行）与检查更新共用同一次结果，不再单独敲自建站的 `/data/astrbot.json`。
+- **GitHub Contents API** 是唯一的写口：`upload-log.sh` 先把报告整份脱敏（`bots.json` 里的令牌打码），
+  再 `PUT` 到私有仓库 `Zxin-Pro/astrbot-errlogs` 的 `reports/` 目录，文件名「报告编号-版本.txt」。
+  认证头是 `Authorization: Bearer <令牌>`；令牌只对这个仓库有 Contents 读写权，构建时从 `_research\errdump-token.txt`
+  注入（见第三节第 3 小步）。令牌过期 / 权限不对时 GitHub 返回 **401/403**，`upload-log.sh:259` 会直说
+  「令牌无效或权限不够」；换一把新令牌重新出包即可，App 侧不需要改动。
+- **匿名崩溃统计、每日统计与公告已经显式停用**（`CrashUploadTask.java:33`、`StatsUploadTask.java:34`、
+  `AnnounceTask.java:39` 各自写死 `ENABLED = false`，1.2.11 起），
+  `AtomNet.BASE` 虽然写成 `https://api.github.com` 只为让残留调用点不白等自建站的 8 秒超时，
+  **不是**新的收件端；真正能收到报告的只有上面那一次 Contents API 上传。
+- 沙盒侧的 `QQBOT_CDN`（`common.sh:57`）默认值仍是 `https://xn--15t839a.xyz/dl`，但它**只在部署前
+  `export QQBOT_BUNDLE=1` 时才会被用到**（离线整包导入，默认在线安装走官方镜像源），属于历史遗留开关；
+  站点没了就是下载失败后自动回落在在线安装，不阻断部署。
+

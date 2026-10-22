@@ -1195,7 +1195,7 @@ PY
     log "警告：实例 $id 反检测 bypass 补丁失败，已跳过（不影响启动）"
   fi
 
-  log "启动实例 $id（WebUI 端口 $np，WebUI token $tok，日志 $LOGF）"
+  log "启动实例 $id（WebUI 端口 $np，WebUI token 已设置（${#tok} 字节），日志 $LOGF）"
   # ---- 无头模式优先（v1.2.8）：不启 QQ 客户端，省一半以上内存、也不用 Xvfb ----
   if napcat_headless_on; then
     setup_crashwatch

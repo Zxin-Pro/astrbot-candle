@@ -213,9 +213,20 @@ public class QqbotActivity extends Activity {
         // 最外层防掉线：常驻前台服务。没有它，应用一退到后台就会被系统当缓存进程
         // 冻结甚至杀掉，沙盒里的 NapCat/AstrBot 会「进程还在但完全没有反应」。
         // 用户关掉守护开关时 apply() 会自动跳过启动。
+        // 但 state/offline 还在时不能拉：那说明用户刚按过通知栏「关闭进程」或界面上的
+        // 「紧急下线」，这次打开只是想把界面翻出来看一眼。服务一旦被拉起，
+        // QqbotGuardTask 的 60 秒自检马上就会把沙盒重新启动，「彻底关掉」就白按了。
+        // 标记只由用户显式「启动」时清除（SandboxStart / start-sandbox.sh），这里绝不能删。
+        boolean closedByUser = false;
         try {
-            QqbotGuardService.apply(this);
+            closedByUser = StateIO.file(getFilesDir(), "offline").isFile();
         } catch (Throwable ignored) {
+        }
+        if (!closedByUser) {
+            try {
+                QqbotGuardService.apply(this);
+            } catch (Throwable ignored) {
+            }
         }
         // v1.1.30：崩溃 / 匿名统计的真实上报（冷启动链路）。
         // 两个开关都关着时这里只读一次 prefs 就返回：不写计数、不解析 DNS、一个字节都不发；
@@ -414,7 +425,7 @@ public class QqbotActivity extends Activity {
     }
 
     /**
-     * 用系统浏览器打开外部链接（官网 / 群链接等）。返回空串 = 已发出跳转，
+     * 用系统浏览器打开外部链接（GitHub 项目主页 / 群链接等）。返回空串 = 已发出跳转，
      * 否则返回给用户看的中文原因。必须跑在主线程上，见 runOnUiSync()。
      */
     public String doOpenUrl(String url) {
@@ -744,6 +755,10 @@ public class QqbotActivity extends Activity {
     public void maybeAutoDeploy() {
         try {
             if (!new File(usrDir(), "bin/bash").isFile()) return;
+            // 用户刚用「关闭进程 / 紧急下线」关过（state/offline 还在）：本次打开只显示界面，
+            // 既不续跑部署也不拉起沙盒。少了这一句，「关闭进程」之后一开 App，沙盒就又被
+            // startServices() 拉回来了。标记只由用户显式「启动」清除，这里不碰它。
+            if (StateIO.file(getFilesDir(), "offline").isFile()) return;
             if (!deployDoneFile().isFile()) {
                 // 部署要跑起来之前，先让内置离线包在后台就位（没有内置包的 APK 这里是空操作）。
                 // 不放在部署脚本里做：脚本在 Termux 里跑，读不到 APK 的 assets。
@@ -1009,7 +1024,7 @@ public class QqbotActivity extends Activity {
         }
         // 精简包里没有内置镜像：这里只能清「上一份完整包留下的拷贝状态」，
         // 绝不能像以前那样把 bundle.tar.xz / .bundle-ok 一起删掉 —— 1.2.1 起镜像是
-        // 部署脚本自己从官网下载的，删了就等于让用户每开一次应用丢 600 MB 下载进度。
+        // 部署脚本自己从 GitHub Releases 下载的，删了就等于让用户每开一次应用丢 600 MB 下载进度。
         // .bundle-pending 只由 Java 的拷贝线程创建，删掉它是安全的（20-rootfs 会因此不再傻等）。
         if (!hasBundle()) {
             try { bundlePendingFile().delete(); } catch (Throwable ignored) {}

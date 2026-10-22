@@ -23,6 +23,12 @@ public class BootRetry implements Runnable {
         } catch (InterruptedException ignored) {
             return;
         }
+        // 这 1.2 秒里用户可能刚按了通知栏「关闭进程」（会写 state/offline）：
+        // 标记在就不要再补这一刀，否则刚关掉的守护又回来了。
+        try {
+            if (StateIO.file(ctx.getFilesDir(), "offline").isFile()) return;
+        } catch (Throwable ignored) {
+        }
         try {
             QqbotGuardService.apply(ctx);
         } catch (Throwable ignored) {

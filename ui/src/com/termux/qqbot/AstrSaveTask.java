@@ -99,7 +99,7 @@ public class AstrSaveTask implements Runnable {
         String usr = act.usrDir().getAbsolutePath();
         String qh = act.qqbotDir().getAbsolutePath();
         String restart = "mkdir -p " + qh + "/logs; nohup setsid bash " + usr
-                + "/opt/qqbot/start-sandbox.sh > " + qh + "/logs/supervisor.log 2>&1 < /dev/null & sleep 4; echo ok";
+                + "/opt/qqbot/start-sandbox.sh --user-start > " + qh + "/logs/supervisor.log 2>&1 < /dev/null & sleep 4; echo ok";
         try {
             set(S_STOP, "热改没成功（" + why + "），改用重启方式保存：正在停止服务…");
             QqbotShell.run(filesDir, "bash " + usr + "/opt/qqbot/stop-sandbox.sh", 180);

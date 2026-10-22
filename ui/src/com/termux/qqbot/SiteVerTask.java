@@ -1,6 +1,6 @@
 package com.termux.app;
 
-/** 拉官网版本号的工作线程；单独成类是为了绕开 d8 对匿名内部类的崩溃。 */
+/** 拉 GitHub Releases 最新版本号的工作线程；单独成类是为了绕开 d8 对匿名内部类的崩溃。 */
 public class SiteVerTask implements Runnable {
 
     public void run() {
