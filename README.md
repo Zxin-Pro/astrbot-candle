@@ -11,13 +11,13 @@
 | --- | --- |
 | 应用名 | **AstrBot烛版** |
 | 控制台标题 | **烛之控制台** |
-| 安装包 | `AstrBot-1.2.9-arm64.apk`（只发这一个包，真机 / 模拟器通用，**26,107,645** 字节，约 25 MB） |
+| 安装包 | `AstrBot-1.2.10-arm64.apk`（只发这一个包，真机 / 模拟器通用，**26,111,741** 字节，约 25 MB） |
 | 包名 | `zhuxin.astrbot`（1.2.1 及更早为 `com.termux`） |
-| 当前版本 | **v1.2.9**（versionCode `10209`） |
-| 安装包 SHA-256 | 920613E503E131CE58E7C71D944434DFE7B700DE3BF2C7A69B661E798724D717 |
+| 当前版本 | **v1.2.10**（versionCode `10210`） |
+| 安装包 SHA-256 | 3E6D81894A86AC349301610D3520336D0B1E1DF838A1122672D1CFFD85C6D130 |
 | 签名证书 SHA-256 | `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3） |
 | 项目地址 | [github.com/Zxin-Pro/astrbot-candle](https://github.com/Zxin-Pro/astrbot-candle) |
-| 下载安装包 | 官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的 AstrBot 下载页与 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 提供 `AstrBot-1.2.9-arm64.apk`（约 25 MB；只发一个包，模拟器也能直接装，**站内直接下载，不用跳 GitHub**） |
+| 下载安装包 | 官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的 AstrBot 下载页与 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 提供 `AstrBot-1.2.10-arm64.apk`（约 25 MB；只发一个包，模拟器也能直接装，**站内直接下载，不用跳 GitHub**） |
 | 官方网站 | [烛心.xyz](https://烛心.xyz) |
 | 官方 QQ 群 | **1127997343** |
 
@@ -31,6 +31,7 @@
 - 在沙盒里自动部署 **Linux QQ 3.2.34-53644** + **NapCat v4.18.38** + **AstrBot v4.28.2**；
 - 三者**出厂即预接线**：NapCat 通过反向 WebSocket 连到 AstrBot 的 aiocqhttp 平台（`ws://127.0.0.1:6199/ws`）；
 - 用户界面是一个**本地 HTML 控制台**（WebView 加载 `file:///android_asset/qqbot/index.html`），有 **主页 / 机器人 / 日志 / 更多** 四个页签，扫码、开关服务、看日志、改端口全在界面里点。
+- 从 **1.2.10** 起：**模型配置终于读得对了，改参数也不用再重启沙盒**。AstrBot v4.29 启动时会把 `cmd_config.json` 里的 provider 拆成 `provider[]` + `provider_sources[]`（密钥 / API 地址搬到后者），App 原来只翻 `provider[]`，于是「配过模型、第二次打开又显示没配置」；现在按 AstrBot 运行时的合并顺序读，并优先显示默认对话模型指向的那条。保存模型 / 人格改成走 AstrBot 的 HTTP 接口**热生效**（`provider-sources` → `providers` → `personas` → `system-config` 四步），实测一秒内卡片就变、机器人不中断，只有接口够不着时才回落到停沙盒改文件的旧流程。另外：主页模型卡显示中转站地址（复制 / 打开）、第一次点「控制台」弹账号密码卡可复制、NapCat 直达链接自带 token、登录 QQ 后自动回填 QQ 号、AstrBot 冷启动时 OneBot 磁贴显示「启动中」不再误报未连接。
 - 从 **1.2.9** 起：**修好真机上 NapCat 反复崩溃** —— 1.2.8 把无头模式默认开在了所有机型上，但真机 arm64 上 NapCat 的 native 插件在 Electron utilityProcess 里一加载就 SIGSEGV（`退出码: 11`，pc 落在 `napi2native.linux.arm`），20 秒一轮重启、AstrBot 收不到任何消息。现在**真机默认回到完整客户端（Xvfb）模式**，无头模式（285 MB）只留给 x86_64 模拟器；架构判定改用 App 传进 proot 的 `QQBOT_ARCH`（x86_64 模拟器会把 `uname` 伪装成 aarch64），「无头起来了」的判据也从「日志出现 NapCat.Core Version」改成「端口在听 + 进程活着 + 6 秒无崩溃」。想手动指定：`$HOME/.qqbot/cache/napcat-mode.txt` 写 `util` / `fork` / `gui`。
 - 从 **1.2.8** 起：**NapCat 改无头模式运行** —— 不再为每个实例拉起整套 Electron QQ 客户端（8 个进程、810~930 MB）和 Xvfb 虚拟屏，改为 `qq --ozone-platform=headless napcat.mjs` 只跑 NapCat 本体，实测 QQ 侧内存降到 **285 MB**（4 个进程），省下约 870 MB；扫码、面板、收发消息都不变，起不来会自动退回老的 Xvfb 流程，也能用 `$HOME/.qqbot/cache/napcat-headless.off` 手动回退。（1.2.9 起无头模式只对 x86_64 模拟器默认生效，真机默认走完整客户端，原因见上一条。）
 - 从 **1.2.5** 起：**首次部署改回官方镜像源** —— 默认不再从自己站点下 604 MB 整包镜像，改成「下载 Ubuntu base（约 30 MB）→ apt 从清华 / 中科大 / 阿里镜像站装依赖」的在线流程，耗时通常 10~30 分钟。整包镜像没有删，改成手动开启：部署前 `export QQBOT_BUNDLE=1` 才会去 `QQBOT_CDN` 下 `bundle-<arch>.tar.xz`（离线 / 内网 / 镜像站不可用时用）。这一版**只发一个包**：arm64 与 amd64 两个包逐条比对 724 个条目，只有 `assets/qqbot-scripts.zip` 的时间戳不同、内容完全相同，架构由运行时按设备 ABI 选镜像，所以合并成 `AstrBot-1.2.5-arm64.apk` 一个包。

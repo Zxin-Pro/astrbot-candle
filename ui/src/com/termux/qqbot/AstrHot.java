@@ -55,36 +55,67 @@ public final class AstrHot {
             if (m.length() == 0) throw new Exception("模型名不能为空");
             String k = (key == null) ? "" : key.trim();
 
-            /* 1) provider：有就原地更新（会重建实例并落盘），没有就新增。 */
+            /*
+             * 1) 中转站（provider_sources）：地址、密钥、超时都挂在这一层。
+             * AstrBot 4.29 起 provider 只当「指向某个 source 的模型条目」用，
+             * 连接信息必须写进 provider_sources，否则文件里会留下两套值：
+             * 运行时按 provider 覆盖 source（新密钥照样生效），但读配置的一侧
+             * 看到的是 source 里的旧值 —— 卡片就会一直显示旧地址、旧尾号。
+             */
             Resp r = send(root + "/api/v1/providers", "GET", null, token);
             must(r, "读取模型配置");
             JSONObject cfg = pickProvider(r.body);
             boolean isNew = (cfg == null);
-            if (isNew) {
-                cfg = new JSONObject();
-                cfg.put("id", AstrCfg.PROVIDER_ID);
-                cfg.put("provider", "openai");
-                cfg.put("type", "openai_chat_completion");
-                cfg.put("provider_type", "chat_completion");
-                cfg.put("proxy", "");
-                cfg.put("custom_headers", new JSONObject());
+            String sid = (cfg == null) ? "" : cfg.optString("provider_source_id", "");
+            if (sid.length() == 0) sid = AstrCfg.PROVIDER_ID + "_source";
+            JSONObject src = null;
+            Resp gs = send(root + "/api/v1/provider-sources/by-id?source_id=" + sid, "GET", null, token);
+            if (gs.code == 200) {
+                try {
+                    JSONObject gd = new JSONObject(gs.body).optJSONObject("data");
+                    src = (gd == null) ? null : gd.optJSONObject("provider_source");
+                } catch (Throwable ignored) {
+                    src = null;
+                }
             }
-            /* 控制台回的这份是「已生效」的完整配置，直接改字段再发回去，
-               不会把用户手工加的 custom_headers / extra_body 抹掉。 */
-            cfg.put("enable", true);
-            cfg.put("api_base", b);
-            cfg.put("model", m);
-            cfg.put("timeout", 120);
+            if (src == null) {
+                src = new JSONObject();
+                src.put("id", sid);
+                src.put("provider", "openai");
+                src.put("type", "openai_chat_completion");
+                src.put("provider_type", "chat_completion");
+                src.put("proxy", "");
+                src.put("custom_headers", new JSONObject());
+            }
+            src.put("api_base", b);
+            src.put("timeout", 120);
             if (k.length() > 0) {
                 JSONArray keys = new JSONArray();
                 keys.put(k);
-                cfg.put("key", keys);
-            } else if (cfg.optJSONArray("key") == null) {
-                cfg.put("key", new JSONArray());
+                src.put("key", keys);
+            } else if (src.opt("key") == null) {
+                src.put("key", new JSONArray());
             }
+            JSONObject sb = new JSONObject();
+            sb.put("source_id", sid);
+            sb.put("config", src);
+            r = send(root + "/api/v1/provider-sources/by-id", "PUT", sb.toString(), token);
+            must(r, "保存中转站配置");
+
+            /*
+             * 2) provider：只留「用哪个模型、指向哪个 source」。
+             * 刻意不发 api_base / key —— 发了就会和 source 里的值分叉。
+             */
+            JSONObject np = new JSONObject();
+            np.put("id", AstrCfg.PROVIDER_ID);
+            np.put("enable", true);
+            np.put("model", m);
+            np.put("provider_source_id", sid);
+            np.put("modalities", (cfg != null && cfg.has("modalities")) ? cfg.get("modalities") : new JSONArray());
+            np.put("custom_extra_body", (cfg != null && cfg.has("custom_extra_body")) ? cfg.get("custom_extra_body") : new JSONObject());
             JSONObject pb = new JSONObject();
             pb.put("provider_id", AstrCfg.PROVIDER_ID);
-            pb.put("config", cfg);
+            pb.put("config", np);
             if (isNew) {
                 r = send(root + "/api/v1/providers", "POST", pb.toString(), token);
                 must(r, "新增模型配置");
@@ -93,7 +124,7 @@ public final class AstrHot {
                 must(r, "更新模型配置");
             }
 
-            /* 2) 人格：改 system_prompt，persona_manager 会同步内存缓存。 */
+            /* 3) 人格：改 system_prompt，persona_manager 会同步内存缓存。 */
             String ps = (persona == null) ? "" : persona.trim();
             if (ps.length() == 0) ps = AstrCfg.DEFAULT_PERSONA;
             JSONObject per = new JSONObject();
@@ -108,7 +139,7 @@ public final class AstrHot {
                 must(r, "新增人格");
             }
 
-            /* 3) 默认模型/人格指向：只在不对的时候才改，避免无谓地重载 pipeline。 */
+            /* 4) 默认模型/人格指向：只在不对的时候才改，避免无谓地重载 pipeline。 */
             boolean retarget = false;
             Resp sc = send(root + "/api/v1/system-config", "GET", null, token);
             must(sc, "读取运行配置");
@@ -117,13 +148,27 @@ public final class AstrHot {
             if (conf != null) {
                 JSONObject ar = conf.optJSONObject("agent_runner");
                 if (ar == null) { ar = new JSONObject(); conf.put("agent_runner", ar); }
-                if (!ar.has("runner_type")) ar.put("runner_type", "local");
+                /* runner_type 不是 local 时，模型那一段配置根本不会被用到。 */
+                if (!"local".equals(ar.optString("runner_type"))) {
+                    ar.put("runner_type", "local");
+                    retarget = true;
+                }
                 JSONObject ac = ar.optJSONObject("config");
                 if (ac == null) { ac = new JSONObject(); ar.put("config", ac); }
                 JSONObject mm = ac.optJSONObject("model");
                 if (mm == null) { mm = new JSONObject(); ac.put("model", mm); }
                 if (!AstrCfg.PROVIDER_ID.equals(mm.optString("provider_id"))) {
                     mm.put("provider_id", AstrCfg.PROVIDER_ID);
+                    retarget = true;
+                }
+                /* 旧 fallback 列表会把请求悄悄导到别的 provider，这里一并清掉。 */
+                JSONArray fb = mm.optJSONArray("fallback_provider_ids");
+                if (fb == null || fb.length() > 0) {
+                    mm.put("fallback_provider_ids", new JSONArray());
+                    if (fb != null) retarget = true;
+                }
+                if (!mm.has("request_max_retries") || mm.optInt("request_max_retries", 0) != 5) {
+                    mm.put("request_max_retries", 5);
                     retarget = true;
                 }
                 JSONObject pp = ac.optJSONObject("persona");
@@ -133,9 +178,14 @@ public final class AstrHot {
                     retarget = true;
                 }
                 if (retarget) {
-                    JSONObject sb = new JSONObject();
-                    sb.put("config", conf);
-                    Resp sr = send(root + "/api/v1/system-config", "PUT", sb.toString(), token);
+                    /*
+                     * PUT /api/v1/system-config 的请求体就是「配置本体」：后端签名是
+                     * update_system_config(payload: ConfigContentRequest)，而 ConfigContentRequest
+                     * 是 extra="allow" 的空模型，_model_dict(payload) 直接把整个 JSON 当成 config。
+                     * 早先这里包了一层 {"config": conf}，于是 config 被替换成只有一个 config 键的对象，
+                     * provider_id 永远改不到 —— 换默认模型静默失效。
+                     */
+                    Resp sr = send(root + "/api/v1/system-config", "PUT", conf.toString(), token);
                     must(sr, "切换默认模型");
                 }
             }

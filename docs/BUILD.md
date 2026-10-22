@@ -332,6 +332,30 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
     ④ 就绪判据是 `hl_wait_ready()`：**端口在听 + 进程活着 + 之后 6 秒无崩溃日志**，别退回「日志出现 `NapCat.Core Version` 就算成功」—— 真机上那行打完约 2 秒 worker 才 SIGSEGV，会误判成启动成功、实际每 20 秒重启一轮（1.2.8 的事故）。起不来要能自动退回 Xvfb 全流程，别把 `start_inst` 里那条回退删掉。
     改完可以用 `adb push` 直接替换设备上的 `files/usr/opt/qqbot/sandbox/run-napcat.sh` 快速验证，不必先出包；验证前先 `bash -n`（proot 里跑，PATH 要手工 export）。
 
+13. **模拟器验收必须「删容器 + 全新部署」，不能只覆盖安装。**
+    覆盖安装（`adb install -r`）会保留上一版部署出来的 rootfs、NapCat、AstrBot 与缓存，
+    很容易把「上一版能跑」误当成「这一版能跑」，也会掩盖首次部署才走的步骤
+    （20-rootfs → 30-apt → 40-qq → 50-napcat → 60-astrbot → 70-launcher）。
+    每换一个版本包都按这个顺序走一遍：
+    ```
+    adb -s <serial> install -r AstrBot-<版本>-arm64.apk
+    adb -s <serial> shell pm clear zhuxin.astrbot     # 清掉上一版部署的整个容器
+    adb -s <serial> shell am start -n zhuxin.astrbot/com.termux.app.QqbotActivity
+    ```
+    之后看 `files/home/.qqbot/logs/deploy.log` 里步骤是否一路绿灯、`deploy.done` 是否写出，
+    再看 `supervisor.log` 的 NapCat 模式与 `free -m` / `ps` 的内存，最后确认主页显示「一切正常」。
+    用 `pm clear` 而不是手工删目录：`pm clear` 同时清掉 shared_prefs、appops 与缓存标记，最接近用户首次安装。
+
+14. **模型 / 人格保存是热生效的，改 `AstrHot.java` 先看 `provider_sources`。**
+    AstrBot v4.29 起，`cmd_config.json` 里的 `api_base` / `key` / `timeout` 归 `provider_sources[]`，
+    `provider[]` 只留 `id` / `model` / `provider_source_id`（启动时 `migra_helper._migra_provider_to_source_structure` 会自动拆）。
+    写侧顺序固定为 `PUT /api/v1/provider-sources/by-id` → `PUT /api/v1/providers/by-id` → `PUT /api/v1/personas/by-id`
+    → `PUT /api/v1/system-config`（最后这个 body 是 **config 本体**，包一层 `{"config":…}` 不报错但 provider_id 改不到）；
+    读侧 `AstrCfg.info()` 要按运行时的合并顺序 `{**provider_source, **provider}`（provider 扁平字段优先）。
+    验收三件事：保存后 **1 秒内**主页卡片就变；`GET /api/v1/system-config` 里 `agent_runner.config.model.provider_id` 是 `candle`；
+    落盘的 `provider[]` 里**没有** `api_base` / `key`（有的话说明写错了地方，下次启动会被迁移覆盖）。
+    查问题时开 `~/.qqbot/.webdebug` + CDP 直接读 DOM 最快，测完记得删掉这个文件。
+
 ---
 
 ## 八、发布到站点

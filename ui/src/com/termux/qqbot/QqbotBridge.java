@@ -645,6 +645,16 @@ public class QqbotBridge {
         return act.readBots();
     }
 
+    /** 扫沙盒里 NapCat 写下的 napcat_<uin>.json，把登录后的 QQ 号回给界面自动填。 */
+    @JavascriptInterface
+    public String qqDetect() {
+        try {
+            return act.detectQq();
+        } catch (Throwable t) {
+            return errJson("读取 QQ 号失败", t);
+        }
+    }
+
     // ---- 首次启动免责声明 ----
     // 只回 "1"/"0"；标记文件读不了（权限错等）时按「没同意过」处理，页面还会再弹一次，
     // 比默默当作已同意安全。绝不把异常抛到 JS 侧。

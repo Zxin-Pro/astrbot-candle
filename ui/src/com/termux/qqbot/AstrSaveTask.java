@@ -103,6 +103,12 @@ public class AstrSaveTask implements Runnable {
         try {
             set(S_STOP, "热改没成功（" + why + "），改用重启方式保存：正在停止服务…");
             QqbotShell.run(filesDir, "bash " + usr + "/opt/qqbot/stop-sandbox.sh", 180);
+            /* 停不下来就别写文件。运行中的 AstrBot 退出时会把内存里的旧配置写回
+               cmd_config.json，先写后启动等于白写；更糟的是界面会显示「已保存」，
+               用户以为改成了、实际还是旧的。宁可报错让他重试。 */
+            if (QqbotShell.pidAlive(new File(qh, "supervisor.pid"), "proot")) {
+                throw new Exception("服务没有停下来（stop-sandbox.sh 超时），这次没有改配置，请稍后再试");
+            }
 
             set(S_WRITE, "正在写入配置…");
             AstrCfg.apply(filesDir, base, model, key, persona);

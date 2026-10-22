@@ -1172,6 +1172,105 @@ public class QqbotActivity extends Activity {
         }
     }
 
+    /**
+     * 把登录后的 QQ 号读回来，给 bots.json 自动填上。
+     *
+     * NapCat 登录成功后会在自己那份 config/ 目录里按账号建一个 napcat_<uin>.json，
+     * 文件名里的那串数字就是 QQ 号。用户反馈「扫完码登录了，主页的 QQ 号还是空的」，
+     * 根因就是以前只让用户手填。这里只读目录、不碰网络，也不改任何文件；
+     * 写回 bots.json 由前端调 saveBots() 完成（要复用它的实例丢失保护）。
+     */
+    public String detectQq() {
+        JSONObject out = new JSONObject();
+        try {
+            JSONArray found = new JSONArray();
+            String raw = readBots();
+            JSONObject root = new JSONObject(raw);
+            String active = root.optString("active", "");
+            JSONArray bs = root.optJSONArray("bots");
+            if (bs != null) {
+                for (int i = 0; i < bs.length(); i++) {
+                    JSONObject b = bs.optJSONObject(i);
+                    if (b == null) continue;
+                    String id = b.optString("id", "");
+                    if (id.length() == 0) continue;
+                    String qq = scanNapcatUin(id, id.equals(active));
+                    if (qq.length() == 0) continue;
+                    JSONObject f = new JSONObject();
+                    f.put("id", id);
+                    f.put("qq", qq);
+                    found.put(f);
+                }
+            }
+            out.put("ok", true);
+            out.put("found", found);
+        } catch (Throwable t) {
+            try {
+                out.put("ok", false);
+                out.put("err", String.valueOf(t));
+            } catch (Throwable ignored) {}
+        }
+        return out.toString();
+    }
+
+    /**
+     * 实例自己的 QQ 目录优先；只有 bots.json 里的 active 实例才会用共享的 opt/QQ。
+     *
+     * 根目录是 home/ubuntu，不是 files/usr：files/usr 是 Termux 的前缀（只有
+     * bin/etc/lib/opt/qqbot），QQ 与实例目录都装在 home/ubuntu 下面。
+     * 这跟同一个类里 qr() 取二维码的路径必须一致，否则「扫完码读不到 QQ 号」。
+     */
+    private String scanNapcatUin(String id, boolean active) {
+        File ub = new File(homeDir(), "ubuntu");
+        String q = scanNapcatUinDir(new File(ub,
+                "opt/qqbot-inst/" + id + "/QQ/resources/app/app_launcher/napcat/config"));
+        if (q.length() > 0) return q;
+        if (!active) return "";
+        return scanNapcatUinDir(new File(ub,
+                "opt/QQ/resources/app/app_launcher/napcat/config"));
+    }
+
+    /** 在 config 目录里找 napcat_<数字>.json，取最新改过的那份（换号登录后会留下多份）。 */
+    private static String scanNapcatUinDir(File dir) {
+        try {
+            if (dir == null || !dir.isDirectory()) return "";
+            File[] fs = dir.listFiles();
+            if (fs == null) return "";
+            String best = "";
+            long bestAt = -1;
+            for (int i = 0; i < fs.length; i++) {
+                File f = fs[i];
+                if (f == null || !f.isFile()) continue;
+                String n = f.getName();
+                /* 登录成功后 NapCat 会写两份 per-uin 文件：napcat_<uin>.json 与
+                   onebot11_<uin>.json。前者偶尔会因为 selfInfo.uin 还没填好而退化回
+                   不带 uin 的名字，所以后者也认上作兜底。 */
+                String pre = "";
+                if (n.startsWith("napcat_")) pre = "napcat_";
+                else if (n.startsWith("onebot11_")) pre = "onebot11_";
+                if (pre.length() == 0 || !n.endsWith(".json")) continue;
+                String num = n.substring(pre.length(), n.length() - 5);
+                if (!isQqDigits(num)) continue;
+                long t = f.lastModified();
+                if (t > bestAt) { bestAt = t; best = num; }
+            }
+            return best;
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    private static boolean isQqDigits(String s) {
+        if (s == null) return false;
+        int n = s.length();
+        if (n < 5 || n > 12) return false;
+        for (int i = 0; i < n; i++) {
+            char c = s.charAt(i);
+            if (c < '0' || c > '9') return false;
+        }
+        return true;
+    }
+
     private void noteBotsCorrupt(File f) {
         if (botsCorrupt) return;
         botsCorrupt = true;

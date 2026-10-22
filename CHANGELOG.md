@@ -11,6 +11,30 @@
 
 ---
 
+## [1.2.10] - 2026-10-22
+
+### 新增
+
+- **主页「模型与人格」卡片改成直接读 AstrBot 的真实配置**。AstrBot v4.29 启动时会把 `cmd_config.json` 里扁平的 provider 拆成 `provider[]` + `provider_sources[]` 两段（`astrbot/core/utils/migra_helper.py` 的 `_migra_provider_to_source_structure`），把 `api_base` / `key` / `timeout` 整包搬进 `provider_sources`，`provider[]` 里只留 `id` / `model` / `provider_source_id`。原来的读取只翻 `provider[]`，迁移之后永远读到空 —— 这正是「明明配过模型，第二次打开又显示没配置」的原因（配置一直是好的，机器人也一直能聊，纯粹是读错地方）。现在读侧按 AstrBot 运行时的合并顺序（`{**provider_source, **provider}`，后者优先）取，并且优先显示 `agent_runner.config.model.provider_id` 指向的那条；万一密钥实在读不到但模型名有值，卡片写「已配置 X，但密钥读不到，重贴一次就能修好」，不再一律说没配。
+- **卡片上直显中转站地址**（第三行，带「复制」与「打开」）。没填就整行不显示，不再拿预置地址冒充。
+- **保存即热生效，不再停沙盒重启**。以前保存模型 / 人格走 `stop-sandbox.sh` → 写文件 → `start-sandbox.sh`，四十秒起步、期间机器人离线；现在直接走 AstrBot 的 HTTP 接口：`PUT /api/v1/provider-sources/by-id` 写中转站地址与密钥 → `PUT /api/v1/providers/by-id` 写模型 → `PUT /api/v1/personas/by-id` 写人格 → `PUT /api/v1/system-config` 把默认对话模型指到刚配的这个 provider（`runner_type=local`、清空 `fallback_provider_ids`、`request_max_retries=5`）。实测**一秒内**卡片就变，服务不动、聊天不中断；只有 AstrBot 还没起来或接口不通时才退回老的停起流程（此时会明确提示「已保存，服务正在启动」）。
+- **第一次点「控制台」先弹一张凭据卡**：账号 `astrbot`、密码 `Astrbot123`（AstrBot 出厂初始密码），两个都能一键复制，看完点「知道了」，之后不再打扰（`localStorage` 记 `qqbot_astr_login_seen`）。检测到密码已被改过（`dashboard.password` 的 MD5 不等于默认值）时只显示账号，不显示密码。
+- **登录 QQ 后自动回填 QQ 号**。NapCat 登录成功会写 `config/napcat_<uin>.json`，App 侧翻这个目录（优先实例自己的目录，没有再看 `opt/QQ` 共享目录），把号码填进 `bots.json`；只填空位、绝不覆盖手填的，主页实例卡与机器人页立刻显示号码，不再是「未命名」。
+
+### 修复
+
+- **主页 NapCat 直达链接不带 token**：静态 `data-arg` 是写死的无 token 地址，只有刷新跑完才注入 token。现在静态值就带 `?token=zhuxin`，点击时再按当前实例的端口与 token 实时拼一次（`/webui/?token=`，必须是 query —— hash 形式的 `#/web_login?token=` NapCat 面板不认）。AstrBot 控制台按钮同样改成点击时实时拼。
+- **`PUT /api/v1/system-config` 的请求体格式错了**：原来包了一层 `{"config": …}`，而这个接口要的是 config 本体（`dashboard/schemas.py` 的 `ConfigContentRequest` 是 `extra="allow"` 的空模型，包一层不报错，但 `provider_id` 静默改不到），所以「保存后自动选上刚配的模型」一直没生效。现在直传本体。
+- **停服务超时也照样改配置**：老流程里 `stop-sandbox.sh` 的返回值被忽略，服务没停下来就写 `cmd_config.json`，运行中的 AstrBot 退出时会把旧配置写回、覆盖这次修改。现在停完检查 `supervisor.pid`，还活着就直接报错「服务没有停下来，这次没有改配置，请稍后再试」。
+- **OneBot 磁贴误报「未连接」**：AstrBot 冷启动 40~60 秒里 6199 还没人听，NapCat 那侧每 5 秒打一条 `ws://127.0.0.1:6199/ws ECONNREFUSED`（用户上报的错误报告 `20261022-164456-14073` 里就这 5 条，16:43:21 之后自己好了）。现在 AstrBot 还没起来时磁贴显示「AstrBot 启动中」，不再是一进来就红「未连接」。
+- **保存完卡片要等下一轮刷新才更新**：热改完成的回调里补了一次卡片重绘。
+- **全新部署第一次启动的那条日志噪音**：`/qqbot-cache/logs/qq-bot1.log: No such file or directory`（`hl_start_one()` 在日志目录还不存在时就去 `wc -c`）。现在函数入口先 `mkdir -p`。
+
+### 说明
+
+- 1.2.9 → 1.2.10 直接覆盖安装，沙盒与登录态都不动；模型 / 人格保存改热生效后，**再也不会因为改配置而重启沙盒**。
+- 为排查这几个问题给 WebView 加了一个调试开关：手机里建 `~/.qqbot/.webdebug` 才会开 `WebView.setWebContentsDebuggingEnabled(true)`。正式用户没有这个文件，页面调试口保持关闭。
+- 新装 / 升级后 Android 13+ 的通知权限仍是系统弹窗（拒绝后常驻通知不出现、「关闭进程」也就用不了），主页会给一条提醒，点它直接跳到本应用的系统通知设置页。
 ## [1.2.9] - 2026-10-22
 
 ### 修复

@@ -34,8 +34,14 @@ public final class AstrCfg {
     public static final String PERSONA_ID = "zhuxin";
     /** 默认中转站地址（worldcodes 的 OpenAI 兼容入口）。 */
     public static final String DEFAULT_BASE = "https://worldcodes.online/v1";
-    /** 推荐注册地址，界面上做「烛心推荐用这商」的入口。 */
+    /** 推荐注册地址，界面上做「烛心推荐用这家」的入口。 */
     public static final String RELAY_REG = "https://worldcodes.online/register?invite_code=CZLT";
+    /** 控制台初始账号 / 密码，见 build/opt/qqbot/sandbox/run-astrbot.sh 的 ASTRBOT_DASHBOARD_INITIAL_PASSWORD。 */
+    public static final String DEFAULT_USER = "astrbot";
+    public static final String DEFAULT_PASS = "Astrbot123";
+    /** md5("Astrbot123")：cmd_config.json 的 dashboard.password 就是密码的 MD5，
+        用它比对就能知道用户有没有改过密码（改过就别再显示默认密码，否则会误导）。 */
+    public static final String DEFAULT_PASS_MD5 = "51e5572f83abe165783942404477e6bf";
 
     /** 默认人格：手机上跑的小助手，说话要短、要口语，不要列表和标题。 */
     public static final String DEFAULT_PERSONA =
@@ -83,18 +89,52 @@ public final class AstrCfg {
             out.put("defaultBase", DEFAULT_BASE);
             out.put("defaultPersona", DEFAULT_PERSONA);
             out.put("cfgExists", f.isFile());
+            out.put("personaSel", "default");
             String base = "";
             String model = "";
             String key = "";
+            String picked = "";
+            String srcId = "";
+            String srcHost = "";
             if (f.isFile()) {
                 JSONObject root = new JSONObject(readText(f));
-                JSONObject p = findProvider(root);
+                JSONObject p = pickProvider(root);
                 if (p != null) {
-                    base = p.optString("api_base", "");
+                    picked = p.optString("id", "");
                     model = p.optString("model", "");
-                    JSONArray ks = p.optJSONArray("key");
-                    if (ks != null && ks.length() > 0) key = ks.optString(0, "");
+                    /*
+                     * AstrBot 4.29（config_version 5）把 provider 拆成两段：provider[] 只留
+                     * id/model/provider_source_id 这类「指向」，连接信息全挪到 provider_sources[]。
+                     * 早期版本是本文件直接写的扁平 api_base/key。只读扁平字段的话，用户配好的
+                     * 密钥和地址永远读出来是空的 —— 界面就一直显示「还没配置模型」，
+                     * 这不是保存失败，是读错了地方。两代结构都要认。
+                     */
+                    srcId = p.optString("provider_source_id", "");
+                    JSONObject src = (srcId.length() == 0) ? null : findSource(root, srcId);
+                    if (src != null) {
+                        base = src.optString("api_base", "");
+                        key = firstKey(src);
+                    }
+                    /*
+                     * 这里必须和 AstrBot 运行时的合并顺序一致：core/provider/manager.py
+                     * 的 get_merged_provider_config() 是 {**provider_source, **provider}，
+                     * provider 上的扁平字段会盖掉 source。老版本写的是扁平结构，
+                     * 所以「source 有值也要再用 provider 的非空值覆盖一次」，否则
+                     * 同一个文件两种读法会给出不同答案。
+                     */
+                    String pFlatBase = p.optString("api_base", "");
+                    String pFlatKey = firstKey(p);
+                    if (pFlatBase.length() > 0) base = pFlatBase;
+                    if (pFlatKey.length() > 0) key = pFlatKey;
                 }
+                JSONObject dash = root.optJSONObject("dashboard");
+                String du = (dash == null) ? DEFAULT_USER : dash.optString("username", DEFAULT_USER);
+                boolean passDefault = (dash == null)
+                        || DEFAULT_PASS_MD5.equalsIgnoreCase(dash.optString("password", ""));
+                out.put("dashUser", du.length() == 0 ? DEFAULT_USER : du);
+                out.put("dashPassDefault", passDefault);
+                out.put("dashPassChangeRequired",
+                        dash != null && dash.optBoolean("password_change_required", false));
                 JSONObject ar = root.optJSONObject("agent_runner");
                 if (ar != null) {
                     JSONObject ac = ar.optJSONObject("config");
@@ -103,9 +143,16 @@ public final class AstrCfg {
                         if (pm != null) out.put("personaSel", pm.optString("persona_id", "default"));
                     }
                 }
+            } else {
+                out.put("dashUser", DEFAULT_USER);
+                out.put("dashPassDefault", true);
+                out.put("dashPassChangeRequired", false);
             }
             out.put("base", base);
             out.put("model", model);
+            out.put("pickedId", picked);
+            out.put("sourceId", srcId);
+            out.put("srcHost", hostOf(base));
             out.put("hasKey", key.length() > 0);
             out.put("keyTail", tailOf(key));
             out.put("persona", personaPrompt(filesDir));
@@ -150,6 +197,102 @@ public final class AstrCfg {
         return null;
     }
 
+    /** 按 id 在 provider[] 里找一条（不限定 candle）。 */
+    private static JSONObject findProviderById(JSONObject root, String id) {
+        JSONArray arr = root.optJSONArray("provider");
+        if (arr == null) return null;
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject o = arr.optJSONObject(i);
+            if (o != null && id.equals(o.optString("id"))) return o;
+        }
+        return null;
+    }
+
+    /**
+     * 界面上该显示哪一个 provider：优先我们自己写的 candle；找不到就退到第一条启用的。
+     * 用户可能是在 AstrBot 网页控制台里配的，id 就不是 candle —— 那种情况也必须如实显示，
+     * 不能因为「不是我们写的那条」就报「还没配置模型」。
+     */
+    private static JSONObject pickProvider(JSONObject root) {
+        /*
+         * 先看「当前实际在用哪一条」：agent_runner.config.model.provider_id。
+         * 用户在网页控制台里换过 provider 时，卡片要跟着变，不能一直显示 candle。
+         */
+        JSONObject ar = root.optJSONObject("agent_runner");
+        if (ar != null) {
+            JSONObject ac = ar.optJSONObject("config");
+            JSONObject mm = (ac == null) ? null : ac.optJSONObject("model");
+            String want = (mm == null) ? "" : mm.optString("provider_id", "");
+            if (want.length() > 0) {
+                JSONObject hit = findProviderById(root, want);
+                if (hit != null) return hit;
+            }
+        }
+        JSONObject p = findProvider(root);
+        if (p != null) return p;
+        JSONArray arr = root.optJSONArray("provider");
+        if (arr == null) return null;
+        JSONObject first = null;
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject o = arr.optJSONObject(i);
+            if (o == null) continue;
+            if (!o.optBoolean("enable", true)) continue;
+            if (first == null) first = o;
+            if (o.optString("provider_source_id", "").length() > 0) return o;
+        }
+        return first;
+    }
+
+    /** 在 provider_sources[] 里按 id 找连接信息那一条。 */
+    private static JSONObject findSource(JSONObject root, String sid) {
+        JSONArray arr = root.optJSONArray("provider_sources");
+        if (arr == null) return null;
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject o = arr.optJSONObject(i);
+            if (o != null && sid.equals(o.optString("id"))) return o;
+        }
+        return null;
+    }
+
+    /** key 在新结构里是数组（支持多把轮询），老结构也可能是字符串。 */
+    private static String firstKey(JSONObject o) {
+        JSONArray ks = o.optJSONArray("key");
+        if (ks != null && ks.length() > 0) return ks.optString(0, "");
+        String sk = o.optString("key", "");
+        return sk;
+    }
+
+    /** 从 api_base 里取主机名，给「中转站」那一行做短标签用。 */
+    static String hostOf(String base) {
+        try {
+            String b = (base == null) ? "" : base.trim();
+            int i = b.indexOf("://");
+            if (i >= 0) b = b.substring(i + 3);
+            int j = b.indexOf('/');
+            if (j >= 0) b = b.substring(0, j);
+            return b;
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    /** 密码只以哈希形式存在，改密后要能判断出来，所以这里只需要 MD5。 */
+    static String md5(String s) {
+        try {
+            java.security.MessageDigest d = java.security.MessageDigest.getInstance("MD5");
+            byte[] b = d.digest(s.getBytes("UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < b.length; i++) {
+                int v = b[i] & 0xff;
+                if (v < 16) sb.append('0');
+                sb.append(Integer.toHexString(v));
+            }
+            return sb.toString();
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
     /* ---------- 写 ---------- */
 
     /**
@@ -174,24 +317,63 @@ public final class AstrCfg {
         if (p == null) {
             p = new JSONObject();
             p.put("id", PROVIDER_ID);
-            p.put("provider", "openai");
-            p.put("type", "openai_chat_completion");
-            p.put("provider_type", "chat_completion");
             isNew = true;
         }
         p.put("enable", true);
-        p.put("api_base", b);
         p.put("model", m);
-        p.put("timeout", 120);
-        if (!p.has("proxy")) p.put("proxy", "");
-        if (!p.has("custom_headers")) p.put("custom_headers", new JSONObject());
         String k = (key == null) ? "" : key.trim();
-        if (k.length() > 0) {
-            JSONArray keys = new JSONArray();
-            keys.put(k);
-            p.put("key", keys);
-        } else if (p.optJSONArray("key") == null) {
-            p.put("key", new JSONArray());
+
+        /*
+         * 两代结构都要写对：
+         *  - AstrBot 4.29（config_version 5）已经有 provider_sources[]：连接信息必须写进
+         *    对应的 source，provider 里只留 provider_source_id。只写扁平的 api_base/key 的话，
+         *    AstrBot 启动时会把它们迁移成一条新 source，但下次我们自己再读又读不到 —— 表现为
+         *    「明明保存成功了，再打开还是没配置」。
+         *  - 老版本没有 provider_sources：照旧把扁平字段写在 provider 上。
+         */
+        JSONArray sources = root.optJSONArray("provider_sources");
+        if (sources != null) {
+            String sid = p.optString("provider_source_id", "");
+            if (sid.length() == 0) sid = PROVIDER_ID + "_source";
+            p.put("provider_source_id", sid);
+            JSONObject src = findSource(root, sid);
+            if (src == null) {
+                src = new JSONObject();
+                src.put("id", sid);
+                src.put("provider", "openai");
+                src.put("type", "openai_chat_completion");
+                src.put("provider_type", "chat_completion");
+                src.put("proxy", "");
+                src.put("custom_headers", new JSONObject());
+                sources.put(src);
+            }
+            src.put("api_base", b);
+            if (!src.has("timeout")) src.put("timeout", 120);
+            if (k.length() > 0) {
+                JSONArray keys = new JSONArray();
+                keys.put(k);
+                src.put("key", keys);
+            } else if (firstKey(src).length() == 0) {
+                src.put("key", new JSONArray());
+            }
+            root.put("provider_sources", sources);
+            if (!p.has("modalities")) p.put("modalities", new JSONArray());
+            if (!p.has("custom_extra_body")) p.put("custom_extra_body", new JSONObject());
+        } else {
+            p.put("provider", "openai");
+            p.put("type", "openai_chat_completion");
+            p.put("provider_type", "chat_completion");
+            p.put("api_base", b);
+            p.put("timeout", 120);
+            if (!p.has("proxy")) p.put("proxy", "");
+            if (!p.has("custom_headers")) p.put("custom_headers", new JSONObject());
+            if (k.length() > 0) {
+                JSONArray keys = new JSONArray();
+                keys.put(k);
+                p.put("key", keys);
+            } else if (p.optJSONArray("key") == null) {
+                p.put("key", new JSONArray());
+            }
         }
         if (isNew) arr.put(p);
         root.put("provider", arr);

@@ -884,7 +884,11 @@ hl_wait_ready() {
 hl_start_one() {
   local id="$1" qqdir="$2" nap="$3" insthome="$4" logf="$5" np="$6" tok="$7" mode="$8" extra="${9:-}"
   local t0 pid disp="" envs=() e
-  t0=$(wc -c < "$logf" 2>/dev/null | tr -d " \n")
+  # 日志目录在全新部署的第一次启动时还不存在。重定向 `<` 失败是 shell 自己报的，
+  # 后面的 2>/dev/null 压不住，会在 supervisor.log 里留一条红色噪音，所以先建目录。
+  mkdir -p "$(dirname "$logf")" 2>/dev/null || true
+  t0=0
+  [ -f "$logf" ] && t0=$(wc -c < "$logf" 2>/dev/null | tr -d " \n")
   [ -n "$t0" ] || t0=0
 
   # worker 进程模型：util 强制 0，fork 强制 1；用户在 qq-env.txt 里写过的就尊重用户
@@ -967,6 +971,9 @@ start_headless() {
   # $QQBOT_DEVDIR/shm（chmod 1777）绑到了 /dev/shm；这里再兜一次权限。
   mkdir -p /dev/shm 2>/dev/null
   chmod 1777 /dev/shm 2>/dev/null
+  # 日志目录可能还不存在（全新部署第一次启动时 /qqbot-cache/logs 还没建），
+  # 否则下面 hl_start_one 里 `wc -c < $logf` 会先报一句 No such file or directory。
+  mkdir -p "$(dirname "$logf")" 2>/dev/null || true
 
   arch=$(napcat_arch)
   ov=$(napcat_mode_override)

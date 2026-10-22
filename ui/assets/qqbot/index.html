@@ -2747,6 +2747,12 @@ section.tab.on{display:flex;flex-direction:column}
 .modelcard .mcb span{font-size:12px;color:var(--txt-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .modelcard .mcg{flex:0 0 auto;display:flex;align-items:center;gap:2px;font-size:12.5px;color:var(--hint-b)}
 .modelcard .mcg svg{width:16px;height:16px}
+/* 模型卡下面那条「中转站」：模型名、密钥尾号之外，用户最常要确认的就是
+   「我这个密钥是哪个站点的」。以前只能点进弹窗才看得到，现在直接摆在卡片里，
+   还能一键复制 / 打开。 */
+.modelcard .mcrelay{display:flex;align-items:center;gap:8px;padding:0 15px 12px;font-size:12px;color:var(--txt-3)}
+.modelcard .mcrelay .mrk{flex:0 0 auto;color:var(--hint-b)}
+.modelcard .mcrelay .mrv{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--txt-2);font-family:var(--mono,ui-monospace,SFMono-Regular,Menlo,monospace)}
 
 /* ---------- 十七、实例块（机器人页）：换成浅色面，去掉蓝框 ----------
    .bot / .bot.active 原本是白面 + 1px 边 + 蓝描边高亮，在浅色卡片里
@@ -3337,6 +3343,12 @@ section.tab.on{display:flex;flex-direction:column}
         <span class="mcb"><b id="mcModel">正在读取…</b><span id="mcSub">模型与人格</span></span>
         <span class="mcg">修改<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></span>
       </button>
+      <div class="mcrelay" id="mcRelay" style="display:none">
+        <span class="mrk">中转站</span>
+        <span class="mrv" id="mcRelayHost"></span>
+        <button class="small" data-act="copyrelay" aria-label="复制中转站地址">复制</button>
+        <button class="small" data-act="openrelay" aria-label="打开中转站注册页">打开</button>
+      </div>
     </div>
 
     <div class="notichip" id="notiChip" style="display:none">
@@ -3347,7 +3359,7 @@ section.tab.on{display:flex;flex-direction:column}
     <!-- 四个真正常用的动作：留在首屏。其余（部署、组件开关、连接、访问地址）
          全部折进下面的「更多工具」。 -->
     <div class="quick" id="quickRow">
-      <button class="qk" data-act="openpanel" id="qkNap" data-arg="http://127.0.0.1:6099/webui"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18"/><circle cx="6.4" cy="6.6" r=".8"/><circle cx="9" cy="6.6" r=".8"/></svg></span><span>NapCat</span></button>
+      <button class="qk" data-act="openpanel" id="qkNap" data-arg="http://127.0.0.1:6099/webui/?token=zhuxin"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18"/><circle cx="6.4" cy="6.6" r=".8"/><circle cx="9" cy="6.6" r=".8"/></svg></span><span>NapCat</span></button>
       <button class="qk" data-act="openpanel" id="qkAstr" data-arg="http://127.0.0.1:6185"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.6 14.8h4"/></svg></span><span>控制台</span></button>
       <button class="qk" data-act="showlogs" id="qkLog"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6.5h14"/><path d="M5 12h14"/><path d="M5 17.5h9"/></svg></span><span>日志</span></button>
       <button class="qk" data-act="gorestart" id="qkRestart"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4.5V9h-4.5"/></svg></span><span>重启</span></button>
@@ -3433,7 +3445,7 @@ section.tab.on{display:flex;flex-direction:column}
       <div class="row"><span class="k">账号</span><span class="v mono">astrbot</span></div>
       <div class="row"><span class="k">密码</span><span class="v mono">Astrbot123</span></div>
       <div class="btns" style="margin-top:10px">
-        <button class="small primary" style="flex:1" data-act="openpanel" id="btnNapPanel" data-arg="">在浏览器打开 NapCat 面板</button>
+        <button class="small primary" style="flex:1" data-act="openpanel" id="btnNapPanel" data-arg="http://127.0.0.1:6099/webui/?token=zhuxin">在浏览器打开 NapCat 面板</button>
       </div>
       <div class="btns" style="margin-top:8px">
         <button class="small" data-act="copyuser">复制账号</button>
@@ -4050,6 +4062,30 @@ section.tab.on{display:flex;flex-direction:column}
   </div>
 </div>
 
+<!-- 第一次打开 AstrBot 控制台时的账号密码（v1.2.10）：
+     账号密码是部署时定死的（run-astrbot.sh 里的初始密码），但界面上只有
+     「更多 → 访问地址」深处才看得到。用户第一次点「控制台」多半是去改模型，
+     结果卡在登录页不知道该填什么 —— 先把这两行摆出来，能一键复制。 -->
+<div class="dlgmask" id="dlgAstrLogin">
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="alTitle">
+    <h3 id="alTitle">AstrBot 控制台登录</h3>
+    <div class="dbody">
+      <div class="hint" style="margin-top:0">控制台的账号密码在部署时就固定好了。登录之后建议在控制台里改掉密码，改成自己的。</div>
+      <div class="row"><span class="k">账号</span><span class="v mono" id="alUser">astrbot</span></div>
+      <div class="row"><span class="k">密码</span><span class="v mono" id="alPass">Astrbot123</span></div>
+      <div class="btns" style="margin-top:10px">
+        <button class="small" data-act="alcopyuser">复制账号</button>
+        <button class="small" id="alCopyPass" data-act="alcopypass">复制密码</button>
+        <button class="small primary" style="flex:1" data-act="algo">打开控制台</button>
+      </div>
+      <div class="hint" id="alNote" style="margin-top:8px"></div>
+    </div>
+    <div class="dfoot">
+      <button class="small quiet" style="flex:1" data-act="alclose">知道了</button>
+    </div>
+  </div>
+</div>
+
 
 <div class="depov" id="depov" role="status" aria-live="polite">
   <div class="depov-in">
@@ -4456,7 +4492,10 @@ var NO_LOCK_ACTS = [
      部署没完成时也该能设 —— 用户可能正是想先在电脑上看着装。 */
   "lantoggle",
   /* 功能 9：紧急下线是「出事时」用的入口，部署没完成也得能点（沙盒可能正是起不来才要停） */
-  "askstop", "stopnow", "stopcancel"
+  "askstop", "stopnow", "stopcancel",
+  /* v1.2.10：控制台凭据弹窗与中转站链接纯粹是「看信息 / 复制」，
+     部署没完成时也该能开（用户常常正是想在装之前先把密钥准备好）。 */
+  "algo", "alclose", "alcopyuser", "alcopypass", "copyrelay", "openrelay"
 ];
 
 /* 这个 act 在未部署时要不要拦 */
@@ -4593,21 +4632,26 @@ function riskAck(){
 /* 「去处理」的地址：端口取 state() 里这个实例的真实值（主号不一定 6099），拿不到才退回
    约定的 http://127.0.0.1:6099；带 token 跟主页「在浏览器打开 NapCat 面板」那个按钮保持一致。
    主机固定 127.0.0.1：面板就在这台手机上，走本机回环不用管 Wi-Fi 切没切。 */
-function riskNapcatUrl(){
+function napcatPanelUrl(wantId){
   var port = 0, tok = "";
   try {
     var st = S.st || {};
     var bs = validBots(S.bots.bots);
-    var want = (RISK_LAST && RISK_LAST.instance) ? String(RISK_LAST.instance) : "";
+    var want = wantId ? String(wantId) : "";
     var i, b = null;
     for (i = 0; i < bs.length; i++) if (want && String(bs[i].id) === want) { b = bs[i]; break; }
-    if (!b) for (i = 0; i < bs.length; i++) if (bs[i].id === S.bots.active) { b = bs[i]; break; }
+    if (!b) for (i = 0; i < bs.length; i++) if (String(bs[i].id) === String(S.bots.active)) { b = bs[i]; break; }
     if (!b && bs.length) b = bs[0];
     if (b) { port = parseInt(b.napcatPort, 10) || 0; tok = String(b.token || ""); }
     if (!port) port = parseInt(st.napcatPort, 10) || 0;
   } catch (e) { port = 0; tok = ""; }
   if (!port) return "http://127.0.0.1:6099";
-  return "http://127.0.0.1:" + port + (tok ? "/webui?token=" + encodeURIComponent(tok) : "");
+  /* 带 token 的 query 才是免登录入口：NapCat WebUI 前端只读 window.location.search，
+     换成 #/web_login?token= 这种 hash 写法实测仍停在登录页。尾斜杠顺手去掉一次 301。 */
+  return "http://127.0.0.1:" + port + (tok ? "/webui/?token=" + encodeURIComponent(tok) : "");
+}
+function riskNapcatUrl(){
+  return napcatPanelUrl((RISK_LAST && RISK_LAST.instance) ? String(RISK_LAST.instance) : "");
 }
 /* 「查看日志」：切到日志页，并把日志框切到风控命中的那个文件（取不到就留在当前文件）。
    用户点这个按钮时想看的是「到底哪一行命中了关键词」，不该让他自己翻下拉。 */
@@ -4707,6 +4751,10 @@ function refreshAll(){
     var obTxt, obCls;
     if (st.astrbotOff) { obTxt = "已停止"; obCls = "warn"; }
     else if (st.napcatOff) { obTxt = st.onebotUp ? "端口在听，NapCat 关着" : "未连接"; obCls = st.onebotUp ? "warn" : "bad"; }
+    /* AstrBot 冷启动要 40~60 秒，这段时间 6199 根本没人听，NapCat 会每 5 秒刷一条
+       ECONNREFUSED（用户上传的 1.2.5 错误报告就是这 5 行红字）。这不是故障，
+       所以 AstrBot 还没起来时这里说「启动中」，别报警红。 */
+    else if (!st.onebotUp && !st.astrbotUp) { obTxt = "AstrBot 启动中"; obCls = "warn"; }
     else { obTxt = st.onebotUp ? "已连接" : "未连接"; obCls = st.onebotUp ? "ok" : "bad"; }
     el("v-onebot").textContent = obTxt;
     setTile("t-onebot", obCls, "端口 " + st.onebotPort);
@@ -4729,8 +4777,10 @@ function refreshAll(){
   for (var i = 0; i < bs.length; i++) if (bs[i].id === S.bots.active) { tok = bs[i].token || "zhuxin"; napPort = bs[i].napcatPort || 6099; }
   el("v-token").textContent = tok;
   el("tokText").textContent = tok;
-  el("btnNapPanel").setAttribute("data-arg", "http://127.0.0.1:" + napPort + "/webui?token=" + encodeURIComponent(tok));
-  var _qn = el("qkNap"); if (_qn) _qn.setAttribute("data-arg", "http://127.0.0.1:" + napPort + "/webui?token=" + encodeURIComponent(tok));
+  /* 尾斜杠不是洁癖：NapCat 的 /webui?token= 会先 301 到 /webui/?token=，多一次跳转；
+     直接给 /webui/?token= 少一次（实机试过，两种都能自动登录）。 */
+  el("btnNapPanel").setAttribute("data-arg", "http://127.0.0.1:" + napPort + "/webui/?token=" + encodeURIComponent(tok));
+  var _qn = el("qkNap"); if (_qn) _qn.setAttribute("data-arg", "http://127.0.0.1:" + napPort + "/webui/?token=" + encodeURIComponent(tok));
   var p = [];
   /* 「待部署 / 已部署」这颗永远按真实部署状态走，其余三颗在没装好时说「未安装」 */
   p.push(pill(st.deployDone ? "已部署" : "待部署", st.deployDone ? "ok" : "warn"));
@@ -4779,6 +4829,7 @@ function refreshAll(){
   try { qrAutoCheck(st); } catch (e) {}
   try { astrRefresh(); } catch (e) {}
   try { astrHomePaint(); } catch (e) {}
+  try { qqAutoFill(); } catch (e) {}
   try { siteVerTick(); } catch (e) {}
   /* 所有控件的置灰外观放在最后统一刷：上面每个 render 都可能刚重建过 DOM，
      新节点上没有 .locked。这里每轮重算，部署完成那一刻下一轮就自动解锁。 */
@@ -6248,7 +6299,29 @@ document.addEventListener("click", function(ev){
   else if (act === "copylog") Android.copy(el("logBox").textContent);
   else if (act === "copynap") Android.copy(el("logNap").textContent);
   else if (act === "copyastr") Android.copy(el("logAstr").textContent);
-  else if (act === "openpanel") Android.openPanel(arg || "");
+  /* 面板地址不再信 data-arg 的静态值：首屏 refresh 没跑完、或该实例端口不是 6099 时，
+     静态值会把人送进「要手输 Token」的登录页。点下去现算一次最稳。 */
+  else if (act === "openpanel") {
+    var _pid = t.id || "";
+    if (_pid === "qkNap" || _pid === "btnNapPanel") Android.openPanel(napcatPanelUrl(""));
+    else if (_pid === "qkAstr" || _pid === "btnAstrPanel") {
+      /* 第一次点控制台：先把账号密码摆到眼前（能复制），看过一次就不再拦。 */
+      if (!astrLoginSeen() && astrLoginOpen()) { /* 弹窗里点「打开控制台」再走 */ }
+      else Android.openPanel(astrPanelUrl());
+    }
+    else Android.openPanel(arg || "");
+  }
+  else if (act === "algo") { astrLoginClose(); Android.openPanel(astrPanelUrl()); }
+  else if (act === "alclose") astrLoginClose();
+  else if (act === "alcopyuser") { astrLoginPaint(); Android.copy(el("alUser").textContent); }
+  else if (act === "alcopypass") { astrLoginPaint(); Android.copy(el("alPass").textContent); }
+  else if (act === "copyrelay") {
+    var _rj = null; try { _rj = astrInfo(); } catch (e) { _rj = null; }
+    var _ru = astrRelayUrl(_rj);
+    if (!_ru) extToast("还没填中转站地址");
+    else Android.copy(_ru);
+  }
+  else if (act === "openrelay") astrRelayOpen();
   else if (act === "reload") { loadLog(); loadDuo(); }
   else if (act === "qrrefresh") { loadQr(); Android.toast("已刷新二维码"); }
   else if (act === "showqr") { qrOpen(arg || "", false); }
@@ -8322,20 +8395,91 @@ function astrHomePaint(){
   if (!j || j.ok === false) { card.style.display = "none"; return; }
   card.style.display = "";
   var m = el("mcModel"), sub = el("mcSub");
+  /* 中转站地址直接摆在卡片里：用户最常问的两件事就是「现在用的什么模型」和
+     「密钥是哪个站的」，以前第二件要点进弹窗才看得到。 */
+  var rl = astrRelayUrl(j);
+  var box = el("mcRelay"), rh = el("mcRelayHost");
+  if (box) box.style.display = rl ? "" : "none";
+  if (rh) { rh.textContent = rl || ""; rh.title = rl || ""; }
   if (!j.hasKey){
-    if (m) m.textContent = "还没配置模型";
-    if (sub) sub.textContent = "点这里贴上中转站密钥，配好就能开始聊";
+    /* 读到模型名却读不到密钥，是 AstrBot 4.29 之后的结构变化造成的（连接信息搬去了
+       provider_sources[]），不是「没配过」。以前一律说「还没配置模型」，
+       把已经能正常聊天的用户吓一跳 —— 分开说。 */
+    if (j.model){
+      if (m) m.textContent = "已配置 " + String(j.model);
+      if (sub) sub.textContent = "读不到密钥，点这里重贴一次就能修好";
+    } else {
+      if (m) m.textContent = "还没配置模型";
+      if (sub) sub.textContent = "点这里贴上中转站密钥，配好就能开始聊";
+    }
     return;
   }
   if (m) m.textContent = j.model ? String(j.model) : "模型名没填";
   if (sub){
     var pn = String(j.personaSel || "zhuxin");
     if (pn === "zhuxin" || pn === "default") pn = "烛心";
-    var bits = ["人格 " + pn];
+    var bits = [];
     if (j.keyTail) bits.push("密钥尾号 " + j.keyTail);
+    bits.push("人格 " + pn);
     bits.push("改完立刻生效");
     sub.textContent = bits.join(" · ");
   }
+}
+
+/* 中转站地址：只认 AstrBot 里真正生效的 api_base（用户可能自己换过站）。
+   读不到就返回空 —— 不能拿安装时预置的那家冒充，否则用户以为自己在用 A 站、
+   实际配置里是空的或者别的站，越看越糊涂。空的时候那一行直接不显示。 */
+function astrRelayUrl(j){
+  try {
+    if (j && j.base) return String(j.base);
+  } catch (e) {}
+  return "";
+}
+function astrRelayOpen(){
+  var _j0 = null; try { _j0 = astrInfo(); } catch (e) { _j0 = null; }
+  if (!astrRelayUrl(_j0)) { extToast("还没填中转站地址"); return; }
+  var j = null;
+  try { j = astrInfo(); } catch (e) { j = null; }
+  var b = astrRelayUrl(j).replace(/\/+$/, "").replace(/\/v1$/i, "");
+  openExternal(b || "https://worldcodes.online");
+}
+
+/* ---------- 控制台登录凭据弹窗（只看第一次） ---------- */
+var ASTR_LOGIN_KEY = "qqbot_astr_login_seen";
+function astrLoginSeen(){
+  try { return localStorage.getItem(ASTR_LOGIN_KEY) === "1"; } catch (e) { return true; }
+}
+function astrPanelUrl(){
+  var port = 6185;
+  try { port = parseInt((S.st || {}).astrbotPort, 10) || 6185; } catch (e) { port = 6185; }
+  return "http://127.0.0.1:" + port;
+}
+function astrLoginPaint(){
+  var j = null;
+  try { j = astrInfo(); } catch (e) { j = null; }
+  var u = (j && j.dashUser) ? String(j.dashUser) : "astrbot";
+  /* dashPassDefault 由原生侧比对 md5("Astrbot123") 得出：用户改过密码就绝不能
+     还在这儿显示默认密码，那等于让人拿着错密码去试。 */
+  var isDef = !j || j.dashPassDefault !== false;
+  if (el("alUser")) el("alUser").textContent = u;
+  if (el("alPass")) el("alPass").textContent = isDef ? "Astrbot123" : "（你改过密码）";
+  var cp = el("alCopyPass");
+  if (cp) cp.style.display = isDef ? "" : "none";
+  if (el("alNote")) el("alNote").textContent = isDef
+    ? "改完密码后这里会显示「你改过密码」，不再提示默认密码。"
+    : "这个装置上的控制台密码已经不是默认值了，用你自己设的那个；忘了可以重新部署一次（会保留数据）。";
+}
+function astrLoginOpen(){
+  var m = el("dlgAstrLogin");
+  if (!m) return false;
+  astrLoginPaint();
+  m.classList.add("on");
+  return true;
+}
+function astrLoginClose(){
+  var m = el("dlgAstrLogin");
+  if (m) m.classList.remove("on");
+  try { localStorage.setItem(ASTR_LOGIN_KEY, "1"); } catch (e) {}
 }
 
 function astrData(){
@@ -8356,10 +8500,17 @@ function astrRefresh(){
   if (!brHas("astrInfo")) { s.textContent = "这个安装包还不支持模型配置"; return; }
   var j = astrInfo();
   if (!j || j.ok === false) { s.textContent = "还没装好 AstrBot，装完再回来配"; return; }
-  if (!j.hasKey) { s.innerHTML = "还没有配置模型。<b>点下面「配置模型与人格」</b>，贴上中转站密钥就能用。"; return; }
+  if (!j.hasKey) {
+    if (j.model) s.innerHTML = "已配置模型 <b>" + esc(j.model) + "</b>，但密钥读不到。"
+      + "这是 AstrBot 4.29 换了存储结构、旧读法漏读导致的，<b>点下面「配置模型与人格」重贴一次密钥</b>就能修好。";
+    else s.innerHTML = "还没有配置模型。<b>点下面「配置模型与人格」</b>，贴上中转站密钥就能用。";
+    return;
+  }
   var who = (j.personaSel === j.personaId) ? "烛心" : (j.personaSel || "默认");
+  var rl = astrRelayUrl(j);
   s.innerHTML = "当前模型 <b>" + esc(j.model || "未设置") + "</b> · 密钥尾号 <b>"
-    + esc(j.keyTail || "----") + "</b> · 人格 <b>" + esc(who) + "</b>";
+    + esc(j.keyTail || "----") + "</b> · 人格 <b>" + esc(who) + "</b>"
+    + (rl ? '<br><span class="hint">中转站 ' + esc(rl) + "</span>" : "");
 }
 function astrOpen(){
   var j = astrInfo(true) || {};
@@ -8370,7 +8521,7 @@ function astrOpen(){
     el("astrKey").value = "";
     el("astrKey").placeholder = j.hasKey
       ? ("已保存，留空表示不修改（尾号 " + (j.keyTail || "----") + "）")
-      : "粘贴中转站密钥";
+      : (j.model ? "已保存但读不到，重贴一次即可" : "粘贴中转站密钥");
   }
   if (el("astrModel")) el("astrModel").value = j.model || "";
   if (el("astrPersona")) el("astrPersona").value = j.persona || j.defaultPersona || "";
@@ -8445,6 +8596,8 @@ function astrSave(){
         extToast("配置已保存，服务正在启动");
       }
       try { astrRefresh(); } catch (e) {}
+      /* 主页那张卡片也立刻重画：热改完成时不用等下一轮 refresh（最长 8 秒）。 */
+      try { astrHomePaint(); } catch (e) {}
     } else if (s.state === "error") {
       clearInterval(t); d.busy = false; d.info = null;
       if (h) h.textContent = "保存失败：" + (s.msg || "");
@@ -8452,6 +8605,56 @@ function astrSave(){
     }
   }, 1200);
 }
+/* ---- 登录后自动回填 QQ 号 ----
+   用户扫码登录完，主页那行「QQ 号」还是空的，得自己再抄一遍。
+   NapCat 登录成功后会在自己的 config 目录写 napcat_<uin>.json，文件名就是 QQ 号，
+   原生侧 qqDetect() 把它读出来；这里只负责比对、写回 bots.json。
+   15 秒一次、只在真的有变化时写盘，避免每轮 refresh 都在写文件。 */
+function qqFillData(){
+  var E = ext();
+  if (!E.qf) E.qf = { at: 0, busy: false };
+  return E.qf;
+}
+function qqAutoFill(){
+  if (!brHas("qqDetect")) return;
+  /* 全都填过了就不用再扫盘：每个实例都要 listFiles 一遍 config 目录。 */
+  var bsNow = validBots(S.bots.bots), need = false;
+  for (var q = 0; q < bsNow.length; q++) if (!String(bsNow[q].qq || "").length) { need = true; break; }
+  if (!need) return;
+  var d = qqFillData();
+  if (d.busy) return;
+  var now = Date.now();
+  if (d.at && now - d.at < 15000) return;
+  d.at = now;
+  var r = null;
+  try { r = normJson(Android.qqDetect()); } catch (e) { r = null; }
+  if (!r || !r.ok) return;
+  var found = r.found || [];
+  if (!found.length) return;
+  var bs = validBots(S.bots.bots);
+  var changed = "";
+  for (var i = 0; i < found.length; i++){
+    var f = found[i] || {};
+    var id = String(f.id || ""), qq = String(f.qq || "");
+    if (!id || !/^[0-9]{5,12}$/.test(qq)) continue;
+    for (var k = 0; k < bs.length; k++){
+      if (String(bs[k].id) !== id) continue;
+      /* 只填空位，绝不覆盖用户手填的号：他可能故意填了另一个号（多号切换）。 */
+      if (String(bs[k].qq || "").length > 0) break;
+      bs[k].qq = qq;
+      if (!changed) changed = qq;
+      break;
+    }
+  }
+  if (!changed) return;
+  d.busy = true;
+  try { Android.saveBots(JSON.stringify(S.bots)); } catch (e) {}
+  d.busy = false;
+  extToast("已自动填入 QQ 号 " + changed);
+  try { renderBots(); } catch (e) {}
+  try { renderHomeBots(); } catch (e) {}
+}
+
 /* ---- 官网版本号 ---- */
 function siteVerNum(s){
   var a = String(s || "").replace(/^v/i, "").split(".");
