@@ -14,14 +14,14 @@
 | 安装包 | `AstrBot-1.2.11-arm64.apk`（只发这一个包，真机 / 模拟器通用，**`26,128,125`** 字节，约 25 MB） |
 | 包名 | `zhuxin.astrbot`（1.2.1 及更早为 `com.termux`） |
 | 当前版本 | **v1.2.11**（versionCode `10211`） |
-| 安装包 SHA-256 | `dc68e24fbe6053013a7e066eb970fb58d3e25da53f49cadbcf2e0bf730547113` |
+| 安装包 SHA-256 | `331508fb4ddebbb303d74bad623973156c0441ff1ed3cf7c151e3b004ffc5de6` |
 | 签名证书 SHA-256 | `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3） |
 | 项目地址 | [github.com/Zxin-Pro/astrbot-candle](https://github.com/Zxin-Pro/astrbot-candle) |
 | 下载安装包 | [GitHub Releases](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 提供 `AstrBot-1.2.11-arm64.apk`（约 25 MB；只发一个包，模拟器也能直接装；1.2.11 起安装包只在 GitHub Releases 分发，不再走自建站点） |
 | 更新日志 | [CHANGELOG.md](CHANGELOG.md) · [GitHub Releases](https://github.com/Zxin-Pro/astrbot-candle/releases) |
 | 官方 QQ 群 | **1127997343** |
 
-<!-- 1.2.11 已出包：26,128,125 字节 / SHA-256 dc68e24f……47113（约 25 MB）。 -->
+<!-- 1.2.11 已出包：26,128,125 字节 / SHA-256 331508fb……c5de6（约 25 MB）。 -->
 
 ---
 
