@@ -712,6 +712,142 @@ stop_inst() {
   return 0
 }
 
+# ---------- 崩溃现场记录器（v1.1.22，抽成函数以便无头模式复用）----------
+setup_crashwatch() {
+  # ---- 崩溃现场记录器（v1.1.22）----
+  # 真机上 NapCat 的 worker 以「退出码 11」反复退出，日志里没有任何 native 层的报错，
+  # proot 里又没有 root / debuggerd，拿不到 tombstone。这里用 LD_PRELOAD 注入一个
+  # 只负责「死前把现场写下来」的小库：信号号 / si_code / 故障地址 / pc / lr / sp /
+  # 栈顶 512B / 完整的 /proc/self/maps。LD_PRELOAD 会被 QQ 的所有子进程继承，
+  # 所以崩在 worker 里也能抓到。有了 maps，pc 减去对应段的 base 就知道崩在哪个 .so。
+  # 编译失败、源码缺失、没有 g++ 一律静默跳过 —— 它只影响诊断，绝不影响启动。
+  CRASH_DIR="/qqbot-cache/crashes"
+  mkdir -p "$CRASH_DIR" 2>/dev/null
+  # 真机上 worker 每 15 秒崩一轮，不清理会攒出几百个一百多 KB 的文件，
+  # 错误报告也会被撑爆。只留最近 4 份（够看出是不是同一个崩点）。
+  ls -1t "$CRASH_DIR"/crash-*.log 2>/dev/null | tail -n +5 | while IFS= read -r _old; do
+    rm -f "$_old" 2>/dev/null
+  done
+  _cw_src="/qqbot-opt/sandbox/crashwatch.c"
+  _cw_so="/qqbot-cache/crashwatch.so"
+  if [ -f "$_cw_src" ]; then
+    if [ ! -f "$_cw_so" ] || [ "$_cw_src" -nt "$_cw_so" ]; then
+      if command -v g++ >/dev/null 2>&1; then
+        if g++ -shared -fPIC -O2 -o "$_cw_so.tmp" "$_cw_src" -ldl 2>"$CRASH_DIR/cw-build.log"; then
+          mv -f "$_cw_so.tmp" "$_cw_so" 2>/dev/null
+          log "崩溃现场记录器就绪（$_cw_so）"
+        else
+          rm -f "$_cw_so.tmp"
+          log "警告：崩溃现场记录器编译失败，跳过（不影响启动），见 $CRASH_DIR/cw-build.log"
+        fi
+      fi
+    fi
+  fi
+  [ -f "$_cw_so" ] || _cw_so=""
+  # 无头分支用的是同一个库，统一成大写变量名给 start_headless 用
+  CW_SO="$_cw_so"
+}
+
+# ---------- 无头模式（v1.2.8）----------
+# NapCat 官方支持「不启 QQ 客户端界面」：napcat.mjs 直接跑在 QQ 自带的 Electron 里
+# （Electron 在 --ozone-platform=headless 下可以当纯 node 用）。参考项目 astrbot-pc 在
+# Windows 上就是这么跑的（services.py 里 node.exe napcat.mjs，压根不启 QQ.exe）。
+#
+# 为什么值得切：完整 LinuxQQ 是 Electron 应用，实测 8 个进程占 810~930 MB，还要再起一个
+# Xvfb + mesa 软件渲染 —— 那套「1x1x8 必挂 / 16 位配不出 EGL / GPU 崩三次直接 Goodbye」
+# 的坑全是它带来的。无头模式实测 4 个进程共 285 MB、不需要 Xvfb、启动也快。
+#
+# 代价：登录态和 QQ 客户端不共用，切过来的实例要重新扫一次码（扫完就一直在）。
+# 回退：删掉下面的开关文件、或往里写任意内容，实例重新拉起就回到完整客户端模式。
+#       Termux 侧路径：~/.qqbot/cache/napcat-headless.off
+napcat_headless_on() {
+  [ ! -f /qqbot-cache/napcat-headless.off ]
+}
+
+# 起一个无头 NapCat；成功时把 pid 交给全局 HL_PID 并返回 0，全部档次失败返回 1。
+# 调用前 QE / CW_SO / CRASH_DIR 必须已经准备好（QE 在 start_inst 里已按默认补过
+# NAPCAT_FORCE_NODE_PROCESS=1 —— 无头模式同样是纯 Node 子进程，这个开关照样需要）。
+start_headless() {
+  local id="$1" qqdir="$2" nap="$3" insthome="$4" logf="$5" np="$6" tok="$7"
+  local tries off pid n chunk t0 verdict
+
+  # Chromium 多进程要用的共享内存。start-sandbox.sh 已经把宿主侧的
+  # $QQBOT_DEVDIR/shm（chmod 1777）绑到了 /dev/shm；这里再兜一次权限。
+  # 万一还是不可写（老版本启动器没绑），第二档用 --disable-dev-shm-usage 让它走 /tmp。
+  # 不处理就是实测症状：Creating shared memory in /dev/shm/... failed +
+  # FATAL ... incorrect permissions on /dev/shm
+  mkdir -p /dev/shm 2>/dev/null
+  chmod 1777 /dev/shm 2>/dev/null
+
+  # worker 进程模型：无头模式下不能用 NAPCAT_FORCE_NODE_PROCESS=1。
+  # 那个开关本意是绕开 Electron UtilityProcess 在 arm64/proot 上的 SIGSEGV（上游 PR #1984），
+  # 但它的实现是 child_process.fork(process.execPath) —— 子进程是一个裸 Electron 进程，
+  # 拿不到 --ozone-platform=headless（父进程参数不会传下去），于是：
+  #   Missing X server or $DISPLAY / The platform failed to initialize. Exiting.
+  #   [Fork] Worker进程意外退出 (2/3)，正在尝试重新拉起...
+  # 实测就是这样无限重启。改成 0 走 Electron 自己的 utilityProcess，子进程由浏览器进程
+  # 按同样的参数拉起，不需要 X。若用户自己在 qq-env.txt 里写了这个开关，就尊重用户的。
+  HLE=()
+  local _e
+  for _e in "${QE[@]}"; do
+    case "$_e" in
+      NAPCAT_FORCE_NODE_PROCESS=*)
+        if [ -n "${_qe_mode:-}" ]; then HLE=( "${HLE[@]}" "$_e" );
+        else HLE=( "${HLE[@]}" "NAPCAT_FORCE_NODE_PROCESS=0" ); fi ;;
+      *) HLE=( "${HLE[@]}" "$_e" ) ;;
+    esac
+  done
+  log "实例 $id 无头模式的 worker 走 Electron utilityProcess（NAPCAT_FORCE_NODE_PROCESS=0）"
+
+  # 第一档就带 --disable-dev-shm-usage：实测 proot 里 Chromium 建共享内存时对 /dev/shm
+  # 会报 EACCES（bash 自己 touch 却能写，是 Chromium 的 create+link 路径问题），
+  # 它一失败就是 FATAL: incorrect permissions on /dev/shm + GPU 连崩三次 Goodbye。
+  # 用 /tmp 就没这个坑（/tmp 在 rootfs 里，容量跟 /data 一样）。
+  tries=( "--disable-dev-shm-usage" "" )
+  for off in "${tries[@]}"; do
+    log "实例 $id 尝试无头模式（附加参数: ${off:-无}）"
+    t0=$(wc -c < "$logf" 2>/dev/null | tr -d " \n")
+    [ -n "$t0" ] || t0=0
+    # 必须 cd 到 napcat 目录再起：napcat.mjs 用相对路径找 ../major.node 与 config/
+    (
+      cd "$nap" || exit 1
+      exec env "${HLE[@]}" LD_PRELOAD="$CW_SO" \
+        QQBOT_CRASH_DIR="$CRASH_DIR" QQBOT_CRASH_TAG="$id" \
+        HOME="$insthome" \
+        NAPCAT_WEBUI_SECRET_KEY="$tok" \
+        NAPCAT_WEBUI_JWT_SECRET_KEY="${tok}_jwt" \
+        NAPCAT_WEBUI_PREFERRED_PORT="$np" \
+        "$qqdir/qq" --no-sandbox --ozone-platform=headless $EXTRA $off napcat.mjs
+    ) >> "$logf" 2>&1 &
+    pid=$!
+    n=0
+    verdict=""
+    while [ "$n" -lt 100 ]; do
+      if ! kill -0 "$pid" 2>/dev/null; then verdict="died"; break; fi
+      chunk=$(tail -c +$((t0 + 1)) "$logf" 2>/dev/null | tr -d "\000")
+      case "$chunk" in
+        *"NapCat.Core Version"* | *"WebUi User Panel Url"* | *"NapCat Shell App Loading"*)
+          verdict="ok"; break ;;
+        *"incorrect permissions on /dev/shm"* | *"Creating shared memory in /dev/shm"* | \
+        *"Missing X server"* | *"The platform failed to initialize"* | \
+        *"Worker进程退出"*"11"*)
+          verdict="bad"; break ;;
+      esac
+      n=$((n + 1))
+      sleep 0.5 &
+      wait $! 2>/dev/null
+    done
+    if [ "$verdict" = "ok" ]; then
+      HL_PID=$pid
+      return 0
+    fi
+    log "实例 $id 无头模式这一档没起来（${verdict}，参数: ${off:-无}）"
+    kill -KILL "$pid" 2>/dev/null
+    wait "$pid" 2>/dev/null
+  done
+  return 1
+}
+
 start_inst() {
   local e="$1" id rest tok np op uin QQDIR INSTHOME LOGF NAP CONF SRC EXTRA DISP
   id="${e%%|*}"; rest="${e#*|}"
@@ -888,6 +1024,21 @@ PY
   fi
 
   log "启动实例 $id（WebUI 端口 $np，WebUI token $tok，日志 $LOGF）"
+  # ---- 无头模式优先（v1.2.8）：不启 QQ 客户端，省一半以上内存、也不用 Xvfb ----
+  if napcat_headless_on; then
+    setup_crashwatch
+    if start_headless "$id" "$QQDIR" "$NAP" "$INSTHOME" "$LOGF" "$np" "$tok"; then
+      PIDS[$id]=$HL_PID
+      QDIR[$id]="$QQDIR"
+      STOP[$id]=0
+      echo "$HL_PID" > "$RUNDIR/$id.pid"
+      log "实例 $id 的 NapCat 已用无头模式跑起来（不启 QQ 客户端，不用 Xvfb）"
+      sleep 3 &
+      wait $! 2>/dev/null
+      return 0
+    fi
+    log "实例 $id 无头模式没起来，退回完整 QQ 客户端（Xvfb）模式"
+  fi
   DISP="$(pick_display)"
   XVFB_SCREEN_USED=""
   if ! start_xvfb "$id" "$DISP"; then
@@ -925,36 +1076,8 @@ PY
   QQ_OK=0
   QQ_USED="-"
 
-  # ---- 崩溃现场记录器（v1.1.22）----
-  # 真机上 NapCat 的 worker 以「退出码 11」反复退出，日志里没有任何 native 层的报错，
-  # proot 里又没有 root / debuggerd，拿不到 tombstone。这里用 LD_PRELOAD 注入一个
-  # 只负责「死前把现场写下来」的小库：信号号 / si_code / 故障地址 / pc / lr / sp /
-  # 栈顶 512B / 完整的 /proc/self/maps。LD_PRELOAD 会被 QQ 的所有子进程继承，
-  # 所以崩在 worker 里也能抓到。有了 maps，pc 减去对应段的 base 就知道崩在哪个 .so。
-  # 编译失败、源码缺失、没有 g++ 一律静默跳过 —— 它只影响诊断，绝不影响启动。
-  CRASH_DIR="/qqbot-cache/crashes"
-  mkdir -p "$CRASH_DIR" 2>/dev/null
-  # 真机上 worker 每 15 秒崩一轮，不清理会攒出几百个一百多 KB 的文件，
-  # 错误报告也会被撑爆。只留最近 4 份（够看出是不是同一个崩点）。
-  ls -1t "$CRASH_DIR"/crash-*.log 2>/dev/null | tail -n +5 | while IFS= read -r _old; do
-    rm -f "$_old" 2>/dev/null
-  done
-  _cw_src="/qqbot-opt/sandbox/crashwatch.c"
-  _cw_so="/qqbot-cache/crashwatch.so"
-  if [ -f "$_cw_src" ]; then
-    if [ ! -f "$_cw_so" ] || [ "$_cw_src" -nt "$_cw_so" ]; then
-      if command -v g++ >/dev/null 2>&1; then
-        if g++ -shared -fPIC -O2 -o "$_cw_so.tmp" "$_cw_src" -ldl 2>"$CRASH_DIR/cw-build.log"; then
-          mv -f "$_cw_so.tmp" "$_cw_so" 2>/dev/null
-          log "崩溃现场记录器就绪（$_cw_so）"
-        else
-          rm -f "$_cw_so.tmp"
-          log "警告：崩溃现场记录器编译失败，跳过（不影响启动），见 $CRASH_DIR/cw-build.log"
-        fi
-      fi
-    fi
-  fi
-  [ -f "$_cw_so" ] || _cw_so=""
+  setup_crashwatch
+
 
   for qf in "${QQ_TRIES[@]}"; do
     [ "$qf" = "-" ] && qf=""

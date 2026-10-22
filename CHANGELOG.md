@@ -11,6 +11,24 @@
 
 ---
 
+## [1.2.8] - 2026-10-22
+
+### 变更
+
+- **NapCat 改成无头模式运行，不再拉起整个 QQ 客户端**。以前每个实例要跑一整套 Electron QQ（8 个进程、810~930 MB）外加一个 Xvfb 虚拟屏；现在直接用 `qq --ozone-platform=headless napcat.mjs` 只跑 NapCat 本体。同一台机器实测 QQ 侧内存 **810~930 MB → 285 MB**（4 个进程），Xvfb 也不再需要，省下约 870 MB —— 手机上内存换页少了，聊天和 AstrBot 页面跟着顺。
+  - 想回到老的完整客户端模式：在手机 `$HOME/.qqbot/cache/` 下建一个空文件 `napcat-headless.off`，再重启服务即可，不用改代码也不用重装。
+  - 无头模式起不来（旧内核、缺依赖）时，脚本会自动退回原来的 Xvfb + 完整客户端流程，日志里会写「无头模式没起来，退回完整 QQ 客户端（Xvfb）模式」，不会卡在启动。
+  - 扫码登录不受影响：登录二维码一直是 NapCat 自己写 `cache/qrcode.png`，App 读的就是这个文件，不依赖 X11 截图。登录数据仍放在每个实例自己的 `--user-data-dir`（`/root/qqinst/<id>`）里，升级后一般不用重新扫码；若提示要扫，扫一次就好。
+
+### 修复
+
+- **无头模式必须带 `--disable-dev-shm-usage`**。proot 里 `/dev/shm` 权限位虽然是 1777，Chromium 创建共享内存时仍被拒（日志 `Creating shared memory in /dev/shm/... failed: Permission denied (13)` → `incorrect permissions on /dev/shm` → `GPU process isn't usable. Goodbye.`）。第一档参数固定带上它，改用 rootfs 里的 `/tmp`。
+- **无头模式必须把 `NAPCAT_FORCE_NODE_PROCESS` 改成 0**。老的 `=1`（上游 PR #1984，用来绕开 arm64 / proot 上 Electron UtilityProcess 的 SIGSEGV）实际是 `child_process.fork(process.execPath)` 拉一个裸 Electron，子进程继承不到父进程的 `--ozone-platform=headless`，没有 DISPLAY 就自杀 —— 表现为每 20~30 秒「Worker进程意外退出」重启一次。无头模式下改用 Electron 自己的 utilityProcess（参数随父进程继承），实测长时间稳定。
+
+### 说明
+
+- 1.2.7 → 1.2.8 可以直接覆盖安装，沙盒与账号数据都不动。
+- 无头模式只跑 NapCat 本体，**没有 QQ 客户端界面**：NapCat 面板、扫码、收发消息都照旧，但不再有「用 QQ 客户端扫码登录后能看到聊天窗口」这种东西（本来也用不到）。
 ## [1.2.7] - 2026-10-22
 
 ### 修复
