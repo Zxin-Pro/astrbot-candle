@@ -11,13 +11,13 @@
 | --- | --- |
 | 应用名 | **AstrBot烛版** |
 | 控制台标题 | **烛之控制台** |
-| 安装包 | `AstrBot-1.2.3-arm64.apk`（真机 / arm64，**26,087,165** 字节，约 25 MB）<br>`AstrBot-1.2.3-amd64.apk`（模拟器 / x86_64，**26,087,165** 字节，约 25 MB） |
+| 安装包 | `AstrBot-1.2.4-arm64.apk`（真机 / arm64，**26,095,357** 字节，约 25 MB）<br>`AstrBot-1.2.4-amd64.apk`（模拟器 / x86_64，**26,095,357** 字节，约 25 MB） |
 | 包名 | `zhuxin.astrbot`（1.2.1 及更早为 `com.termux`） |
-| 当前版本 | **v1.2.3**（versionCode `10203`） |
-| 安装包 SHA-256 | E28B036E18D679976F43D855888C41B1253C8ACE805EEB95B4CEB900227EA253（amd64）/ 7453384985C75F72C9DE6A01E5596707BCA0F19D7BC0C2D203E2FE863294CEA3（arm64） |
+| 当前版本 | **v1.2.4**（versionCode `10204`） |
+| 安装包 SHA-256 | E5CD13AA0114C785F012111657EEA21A5F2A9CC752227C3CB9832DDA529A9CD8（amd64）/ 50B1BF960B596D7E09A1470E8B73DB19EF0467F9CCFA043AFF9681AE87B93016（arm64） |
 | 签名证书 SHA-256 | `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3） |
 | 项目地址 | [github.com/Zxin-Pro/astrbot-candle](https://github.com/Zxin-Pro/astrbot-candle) |
-| 下载安装包 | 官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的 AstrBot 下载页与 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 按架构提供 `AstrBot-1.2.3-arm64.apk` / `AstrBot-1.2.3-amd64.apk`（约 25 MB，**站内直接下载，不用跳 GitHub**） |
+| 下载安装包 | 官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的 AstrBot 下载页与 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 按架构提供 `AstrBot-1.2.4-arm64.apk` / `AstrBot-1.2.4-amd64.apk`（约 25 MB，**站内直接下载，不用跳 GitHub**） |
 | 官方网站 | [烛心.xyz](https://烛心.xyz) |
 | 官方 QQ 群 | **1127997343** |
 
@@ -31,8 +31,9 @@
 - 在沙盒里自动部署 **Linux QQ 3.2.34-53644** + **NapCat v4.18.38** + **AstrBot v4.28.2**；
 - 三者**出厂即预接线**：NapCat 通过反向 WebSocket 连到 AstrBot 的 aiocqhttp 平台（`ws://127.0.0.1:6199/ws`）；
 - 用户界面是一个**本地 HTML 控制台**（WebView 加载 `file:///android_asset/qqbot/index.html`），有 **主页 / 机器人 / 日志 / 更多** 四个页签，扫码、开关服务、看日志、改端口全在界面里点。
+- 从 **1.2.4** 起：**修好 arm64 真机部署必挂的 proot 缺 loader** —— 之前打包只带 proot 本体，没带 `libexec/proot/loader` 与 `loader32`，proot 一启动就报 `proot error: execve("/system/bin/sh"): No such file or directory` + `the loader was not found`，第 1 步 `10-termux` 的 proot 自检三次全挂；现在两个 loader 随 bootstrap 一起发（`build/libexec/proot/`），`.so` 文件总长仍是 **29,392,992 字节**。**覆盖升级也能补上 loader**：`TermuxInstaller` 只在 `files/usr` 不存在时解包 `.so`，所以同一对文件又放进 `assets/qqbot-scripts.zip`（`build/opt/qqbot/libexec/proot/`），`steps/10-termux.sh` 发现 `$PREFIX/libexec/proot/loader` 缺失就从 `$PREFIX/opt/qqbot/libexec/proot/` 补装并 `chmod 755`，补不上会打警告。**清单再收两条权限**：删掉 `REQUEST_INSTALL_PACKAGES` 与 `WRITE_EXTERNAL_STORAGE`，现在只剩 8 条（`INTERNET` / `ACCESS_NETWORK_STATE` / `FOREGROUND_SERVICE` / `WAKE_LOCK` / `VIBRATE` / `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` / `RECEIVE_BOOT_COMPLETED` / `POST_NOTIFICATIONS`），`RunCommandService` 仍 `android:exported=false`；应用内更新是交给系统浏览器下载，所以不需要装包权限。**保留项**：`android:sharedUserId` 不能删（删了已装的 1.2.3 会报 `INSTALL_FAILED_UID_CHANGED`，等于强制卸载重装）；`TermuxDocumentsProvider` 与 `TermuxOpenReceiver$ContentProvider` 必须保持 `android:exported="true"`（改成 `false` 会让应用启动即崩 `SecurityException: Provider must be exported`）。
 - 从 **1.2.3** 起：**修好 bootstrap 装不上**（弹「Unable to install bootstrap」）—— 包名改成 `zhuxin.astrbot` 后，bootstrap 里 `termux-bootstrap-second-stage.sh` 的前缀没跟着改写，`dpkg` 的 admindir 仍指 `/data/data/com.termux/files/usr/var/lib/dpkg`，第二阶段必然失败、`usr/` 会被清空；现在改写 `.so` 时先把整份脚本按新前缀重写。**32 个 ELF 的程序头不再被改坏**：上一版用 lief 改 RUNPATH，它会为了塞下更长的字符串给这些文件新增 `PT_LOAD` 段（`bin/apt` 11→12 段等），模拟器能跑、真机 Android 16 的 linker 直接 `execve` 失败；现在改成**原地等长改写** —— `/data/data/<包名>/files/usr` 缩成 `/data/data/<包名>/u`、`files/home` 缩成 `/h`，由应用启动时建的符号链接（`files/u → files/usr`、`files/h → files/home`）解析，ELF 节头 / 程序头 / 偏移一个字节都不动。**清单收敛降误报**：删掉 7 条从未使用的权限（`READ_LOGS` / `DUMP` / `WRITE_SECURE_SETTINGS` / `PACKAGE_USAGE_STATS` / `MANAGE_EXTERNAL_STORAGE` / `SYSTEM_ALERT_WINDOW` / `com.android.alarm.permission.SET_ALARM`），`RunCommandService` 从导出改成不导出。
-- 从 **1.2.2** 起：**Android 包名从 `com.termux` 改为 `zhuxin.astrbot`**（桌面、设置、通知里显示的都是新包名），不再和官方 Termux 冲突，也不再共用 `sharedUserId`。因为包名变了，**装了 1.2.1 及更早版本的手机不能直接覆盖升级**：请先在旧版「更多 → 备份与恢复」导出备份，卸载旧版（会清掉旧包名下的沙盒数据），装好 1.2.2 后再导回；1.2.2 之后同签名可以继续覆盖升级。同时修复 bootstrap 尾部截断导致的 `dlopen ... invalid shdr offset/size: 29391584/1408`、改包名后第二阶段 `postinst` 失败导致 `usr/` 被删，以及 curl 编译期 CA 路径写死导致的 `curl (77)`。
+- 从 **1.2.2** 起：**Android 包名从 `com.termux` 改为 `zhuxin.astrbot`**（桌面、设置、通知里显示的都是新包名），不再和官方 Termux 冲突；`android:sharedUserId` 仍保留 `com.termux`（去掉会让已装版本报 `INSTALL_FAILED_UID_CHANGED`，等于强制卸载重装）。因为包名变了，**装了 1.2.1 及更早版本的手机不能直接覆盖升级**：请先在旧版「更多 → 备份与恢复」导出备份，卸载旧版（会清掉旧包名下的沙盒数据），装好 1.2.2 后再导回；1.2.2 之后同签名可以继续覆盖升级。同时修复 bootstrap 尾部截断导致的 `dlopen ... invalid shdr offset/size: 29391584/1408`、改包名后第二阶段 `postinst` 失败导致 `usr/` 被删，以及 curl 编译期 CA 路径写死导致的 `curl (77)`。
 - 从 **1.2.1** 起：**APK 回归精简包**（约 **25 MB**，arm64 / amd64 双架构）—— 1.2.0 把约 600 MB 沙盒镜像塞进安装包，既占空间又会被部分安全扫描误报；现在首次部署按架构从官网下载镜像（断点续传 + SHA-256 校验，失败自动回落到在线安装），沙盒、QQ 登录态和配置都保留（从 1.2.1 及更早升级到 1.2.2 需先卸载，见上）。
 - 从 **1.1.38** 起：NapCat 起来但账号还没登录时，会自动弹出扫码窗口（二维码 + 说明，登录成功后自己关掉），不用再去「日志」页翻二维码；手动入口在机器页实例的 `⋯` 里。
 - 从 **1.1.37** 起：浅色主题改「清新」方向——多色柔和渐变画布、磨砂玻璃卡片、彩色图标块，主操作是蓝紫渐变胶囊但一屏只留一颗。
@@ -47,7 +48,7 @@
   NapCat 面板与 AstrBot 控制台改由**系统默认浏览器**打开；AstrBot 冷启动的 40–60 秒里界面会显示
   「AstrBot 正在启动」；内置**《隐私政策》**（`更多 → 关于与支持 → 隐私政策`），逐条写清权限用途与数据去向。
 
-首次部署会自动从官网下载约 **600 MB** 的沙盒镜像（断点续传 + SHA-256 校验），耗时约 **20~60 分钟**（取决于网速）；1.2.2 起同签名可继续覆盖升级（**1.2.2 → 1.2.3 直接覆盖安装**，数据保留），不用重新下载镜像，但 **1.2.1 及更早版本必须先卸载再装**（卸载会清掉旧包名下的沙盒数据，请先在旧版「更多 → 备份与恢复」导出备份，装好后再导回）。之后每次打开都是秒进，机器人会自动拉起。
+首次部署会自动从官网下载约 **600 MB** 的沙盒镜像（断点续传 + SHA-256 校验），耗时约 **20~60 分钟**（取决于网速）；1.2.2 起同签名可继续覆盖升级（**1.2.3 → 1.2.4 直接覆盖安装**，数据保留），不用重新下载镜像，但 **1.2.1 及更早版本必须先卸载再装**（卸载会清掉旧包名下的沙盒数据，请先在旧版「更多 → 备份与恢复」导出备份，装好后再导回）。之后每次打开都是秒进，机器人会自动拉起。
 
 ---
 
@@ -59,7 +60,7 @@
 2. **注入脚本**：Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 是一个 **ELF 头 + 内嵌 ZIP 段 + 动态段/节头表尾部** 的混合体（ELF 头 1328 字节，内嵌 ZIP 段 29388903 字节，尾部 2761 字节，文件总长 29392992 字节）。我们用一个**自己写的 Java 工具** `RepackBootstrap` 打开这个内嵌 ZIP，把 `build/` 目录下的沙盒脚本（部署流程、启停脚本、守护循环、`profile.d` 钩子）作为新条目塞进去，再按原布局写回。
    - 内嵌 ZIP 段在原始包里是**填满的**，所以要塞进新文件就必须删掉一些用不到的条目（man/info/doc 文档、C 头文件、测试二进制等），这些被删的条目部署流程永远不会执行，安全。
 3. **换回 APK**：用 `ApkReplace` 把重新打包好的 `.so` 换回 APK 的 `lib/arm64-v8a/` 下。
-4. **改包名并重新签名**：`[3c/5]` 用 `tools/reloc_bootstrap.py` 对 `libtermux-bootstrap.so` 内嵌的用户态做**原地等长改写** —— 长路径 `/data/data/<包名>/files/usr` 缩成 `/data/data/<包名>/u`、`files/home` 缩成 `/h`，由应用启动时建的符号链接（`PrefixAlias`：`files/u → files/usr`、`files/h → files/home`）解析，替换后剩余字节用 NUL 填满，`.so` 仍是 29,392,992 字节、程序头 / 节头 / 偏移一个字节都不动（这是 `dlopen` 与真机 `execve` 都能过的前提）；`[4b/5]` 用 `out/patch_manifest.py` 重写二进制 `AndroidManifest.xml` 的字符串池（package、`com.termux.RUN_COMMAND` 权限、documents/filereceiver/files authorities）；`out/patch_smali.py` 只替换不是 `com.termux.app.` 的引用（Java 类仍在 `com.termux.app` 包）。最后用 [uber-apk-signer](https://github.com/patrickfav/uber-apk-signer) 重新签名，产出可安装的 `AstrBot-<版本号>.apk`（当前版本即 `AstrBot-1.2.3-arm64.apk` / `AstrBot-1.2.3-amd64.apk`）。
+4. **改包名并重新签名**：`[3c/5]` 用 `tools/reloc_bootstrap.py` 对 `libtermux-bootstrap.so` 内嵌的用户态做**原地等长改写** —— 长路径 `/data/data/<包名>/files/usr` 缩成 `/data/data/<包名>/u`、`files/home` 缩成 `/h`，由应用启动时建的符号链接（`PrefixAlias`：`files/u → files/usr`、`files/h → files/home`）解析，替换后剩余字节用 NUL 填满，`.so` 仍是 29,392,992 字节、程序头 / 节头 / 偏移一个字节都不动（这是 `dlopen` 与真机 `execve` 都能过的前提）；`[4b/5]` 用 `out/patch_manifest.py` 重写二进制 `AndroidManifest.xml` 的字符串池（package、`com.termux.RUN_COMMAND` 权限、documents/filereceiver/files authorities）；`out/patch_smali.py` 只替换不是 `com.termux.app.` 的引用（Java 类仍在 `com.termux.app` 包）。最后用 [uber-apk-signer](https://github.com/patrickfav/uber-apk-signer) 重新签名，产出可安装的 `AstrBot-<版本号>.apk`（当前版本即 `AstrBot-1.2.4-arm64.apk` / `AstrBot-1.2.4-amd64.apk`）。
 5. **原生控制台**：`ui/src/` 下的 Java 源码（`com.termux.qqbot.*`）编译成 dex、转成 smali、和 `ui/assets/qqbot/index.html` 一起由 apktool 打进 APK。
 
 装到手机上以后：
@@ -90,7 +91,7 @@
 1. **先卸载 1.2.1 及更早的 AstrBot烛版**。
    1.2.1 及更早的包名是 `com.termux`，1.2.2 改成了 `zhuxin.astrbot`，**不能直接覆盖安装**。卸载会清掉旧包名下的沙盒数据，请先在旧版「更多 → 备份与恢复」导出备份，装好 1.2.2（或更新版本）后再导回。
    官方 Termux / 应用商店版 / F-Droid 版与 1.2.2 起的包名不同，**不再冲突**，可以共存。
-2. 到官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的下载页（或 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest)）下载对应架构的 `AstrBot-1.2.3-<架构>.apk`（文件名后缀就是版本号与架构），传到手机，点击安装。
+2. 到官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的下载页（或 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest)）下载对应架构的 `AstrBot-1.2.4-<架构>.apk`（文件名后缀就是版本号与架构），传到手机，点击安装。
 3. 安装时系统会提示「**未知来源应用**」，需要允许安装。
    - **小米 / Redmi（HyperOS）用户**：如果被拦下、提示「应用缺少隐私政策」且没有「继续安装」，
      这是小米安装器的风险提示，不是包坏了。关掉手机管家的「安装监控 / 安全守护 / 应用防护」、
@@ -310,6 +311,7 @@
 qqbot-sandbox/
 ├─ build/                       # 要注入 bootstrap 的沙盒文件（解包后落在 Termux 的 $PREFIX 下）
 │  ├─ bin/proot-x86_64          # proot 本体
+│  ├─ libexec/proot/loader、loader32 # arm64 真机必需的 proot 用户态 loader（随 bootstrap 解包）
 │  ├─ etc/profile.d/50-qqbot-sandbox.sh
 │  └─ opt/qqbot/
 │     ├─ common.sh              # 公共函数（路径、日志、端口）
@@ -362,6 +364,6 @@ qqbot-sandbox/
 | **MINOR**（0.X.0） | 新增功能 | 1.1.0 |
 | **PATCH**（0.0.X） | 修 bug、文案、性能 | 1.0.1 |
 
-当前版本：**versionName `1.2.3`，versionCode `10203`**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本：**versionName `1.2.4`，versionCode `10204`**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 版本号的唯一来源是仓库根目录的 `VERSION` 文件（内容形如 `1.0.2`），`build-ui.ps1` 打包时自动换算成 `versionCode` 写进 APK。
