@@ -403,15 +403,14 @@ h1{
   background:var(--pill-bg);
   border:1px solid var(--line-2);
   box-shadow:var(--pill-gloss);
-  -webkit-backdrop-filter:blur(10px) saturate(160%);backdrop-filter:blur(10px) saturate(160%);
 }
 .pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:0 0 auto;box-shadow:0 0 6px currentColor}
 .pill.ok{color:var(--ok);border-color:var(--ok-line);background:var(--ok-bg)}
 .pill.bad{color:var(--bad);border-color:var(--bad-line);background:var(--bad-bg)}
 .pill.warn{color:var(--warn);border-color:var(--warn-line);background:var(--warn-bg)}
-/* 无限脉冲动画必须自带合成层：.pill / .card 上都有 backdrop-filter，
-   动画元素若与祖先同层，每帧都会让祖先的毛玻璃重新栅格化（实测占满一个核）*/
-.pill.ok::before{animation:breathe 2.4s ease-in-out infinite;will-change:opacity}
+/* 状态点不再做无限脉冲：这类常驻动画会让渲染线程一直在出帧（实测占掉一个核的 16%~25%），
+   手机发烫、沙盒里的服务跟着变慢。状态靠颜色和文字表达，不靠闪。 */
+.pill.ok::before{animation:none}
 
 main{padding:var(--sp3) var(--sp3) var(--sp2)}
 
@@ -422,8 +421,9 @@ main{padding:var(--sp3) var(--sp3) var(--sp2)}
   background:var(--card-bg);
   border:1px solid var(--line);
   box-shadow:var(--sh-1);
-  -webkit-backdrop-filter:blur(var(--glassBlur)) saturate(180%);
-  backdrop-filter:blur(var(--glassBlur)) saturate(180%);
+  /* 卡片不再做毛玻璃：一屏十几张卡各自 blur(var(--glassBlur)) 等于每帧重算十几次大区域模糊，
+     实测安卓 WebView 的渲染线程常驻 16%~25% CPU（整机只有 4 核，沙盒里跑 AstrBot/NapCat 就被拖慢）。
+     卡片底色本来就接近不透明（.88→.72），去掉模糊肉眼几乎看不出差别。 */
 }
 .card::before{
   content:"";position:absolute;left:var(--sp4);right:var(--sp4);top:0;height:1px;pointer-events:none;
@@ -437,7 +437,7 @@ main{padding:var(--sp3) var(--sp3) var(--sp2)}
 .dot.ok{background:var(--dot-ok);box-shadow:0 0 9px var(--dot-ok-glow)}
 .dot.bad{background:var(--dot-bad);box-shadow:0 0 9px var(--dot-bad-glow)}
 .dot.warn{background:var(--dot-warn);box-shadow:0 0 9px var(--dot-warn-glow)}
-.dot.ok,.dot.warn{animation:breathe 2.6s ease-in-out infinite;will-change:opacity}
+.dot.ok,.dot.warn{animation:none}
 
 /* ===== 键值行 ===== */
 .row{
@@ -1222,7 +1222,8 @@ button.locked{box-shadow:none;transform:none}
   content:"";position:absolute;inset:0;pointer-events:none;opacity:.34;
   background:radial-gradient(52% 28% at 84% 4%, rgba(91,140,255,.09), rgba(0,0,0,0) 72%),
              radial-gradient(46% 26% at 10% 94%, rgba(139,124,255,.075), rgba(0,0,0,0) 74%);
-  animation:auroraDrift 26s ease-in-out infinite alternate;
+  /* 原来这里有一层 26 秒的极光漂移动画：它铺满整屏、又位于所有毛玻璃卡片背后，
+     每帧都要重算整屏背景与各卡片的背景模糊（实测渲染线程长期 16%+）。改成静止渐变。 */
 }
 @keyframes auroraDrift{
   from{transform:translate3d(0,0,0) scale(1)}
@@ -1238,7 +1239,6 @@ h1{font-size:18.5px;font-weight:640;letter-spacing:-.025em}
 .pill{
   padding:4px 11px 4px 9px;font-size:11.5px;font-weight:520;letter-spacing:.006em;
   border-radius:var(--r-full);
-  backdrop-filter:blur(12px) saturate(150%);-webkit-backdrop-filter:blur(12px) saturate(150%);
   transition:background var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
 
@@ -2077,7 +2077,6 @@ header .sub{font-size:11.5px;margin-top:2px}
   border-radius:50%;
   background:radial-gradient(circle at center, var(--hero-glow, transparent), transparent 68%);
   pointer-events:none;
-  animation:heroDrift 16s ease-in-out infinite alternate;
 }
 @keyframes heroDrift{
   from{transform:translate3d(0,0,0) scale(1)}
@@ -2105,7 +2104,7 @@ header .sub{font-size:11.5px;margin-top:2px}
 .h3dot.warn{background:#e0b055;color:#e0b055}
 .h3dot.bad{background:#ef7c8c;color:#ef7c8c}
 .h3dot.idle{background:rgba(255,255,255,.45);color:rgba(255,255,255,.45)}
-.h3dot.ok::after{animation:h3pulse 2.8s ease-in-out infinite}
+.h3dot.ok::after{animation:none}
 @keyframes h3pulse{
   0%,100%{transform:scale(1);opacity:.30}
   50%{transform:scale(1.7);opacity:.06}
@@ -2869,8 +2868,6 @@ section.tab.on{display:flex;flex-direction:column}
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, .92),
     0 14px 34px -26px rgba(23, 38, 78, .46);
-  -webkit-backdrop-filter: blur(16px) saturate(150%);
-  backdrop-filter: blur(16px) saturate(150%);
 }
 
 /* 卡片标题：比「克制的精确」时期大一号，浅色界面上小字会显得没内容 */
@@ -2947,8 +2944,6 @@ section.tab.on{display:flex;flex-direction:column}
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, .92),
     0 14px 34px -26px rgba(23, 38, 78, .46);
-  -webkit-backdrop-filter: blur(16px) saturate(150%);
-  backdrop-filter: blur(16px) saturate(150%);
 }
 
 :root:not([data-theme="dark"]) .qk {
@@ -4212,7 +4207,7 @@ function setPreset(id){
 }
 
 function applyGlass(mode){
-  var px = (mode === "thin") ? 10 : (mode === "thick" ? 40 : 24);
+  var px = (mode === "thin") ? 8 : (mode === "thick" ? 24 : 14);
   try { document.documentElement.style.setProperty("--glassBlur", px + "px"); } catch (e) {}
   var seg = el("glassSeg");
   if (seg) {
@@ -8121,7 +8116,11 @@ function upTick(){
   var st0 = Number(ext().upStart || 0);
   if (!(st0 > 0)){ if (e2.textContent) e2.textContent = ""; return; }
   var now = Math.floor(Date.now() / 1000);
-  e2.innerHTML = "已运行 <b>" + upFmt(now - st0) + "</b>";
+  /* 原来每秒无条件重写 innerHTML：文本一秒才变一次，重写却是每秒一次布局/重绘。 */
+  var html = "已运行 <b>" + upFmt(now - st0) + "</b>";
+  if (e2._lastUp === html) return;
+  e2._lastUp = html;
+  e2.innerHTML = html;
 }
 
 function syncNotice(){
@@ -8240,7 +8239,25 @@ setInterval(function(){
   }
 }, 15000);
 
-setInterval(function(){ if (!document.hidden) refresh(); }, 4000);
+/* 轮询节流（1.2.6）：原来固定 4 秒一轮，闲着也在跑；这里按现场情况给间隔——
+   正在部署 2.5 秒（进度要跟手）、没部署完或有服务掉线 3 秒、一切正常 8 秒。
+   页面在后台时 setTimeout 被浏览器节流到分钟级，回前台由 visibilitychange 立刻补一次。 */
+var refreshTimer = 0;
+function refreshPeriod(){
+  var d = S.deployInfo;
+  if (d && d.running) return 2500;
+  if (!S.deployDone) return 3000;
+  var st = S.st;
+  if (!st) return 4000;
+  if (!st.supervisorAlive) return 3000;
+  if (st.astrbotUp === false || st.napcatUp === false) return 3000;
+  return 8000;
+}
+function refreshLoop(){
+  if (!document.hidden) refresh();
+  refreshTimer = setTimeout(refreshLoop, refreshPeriod());
+}
+refreshTimer = setTimeout(refreshLoop, 4000);
 
 /* 从后台切回前台立刻刷一次，不用干等下一轮轮询 */
 document.addEventListener("visibilitychange", function(){
