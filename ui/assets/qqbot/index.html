@@ -6317,7 +6317,7 @@ document.addEventListener("click", function(ev){
   else if (act === "alcopypass") { astrLoginPaint(); Android.copy(el("alPass").textContent); }
   else if (act === "copyrelay") {
     var _rj = null; try { _rj = astrInfo(); } catch (e) { _rj = null; }
-    var _ru = astrRelayUrl(_rj);
+    var _ru = astrRelayReg(_rj);
     if (!_ru) extToast("还没填中转站地址");
     else Android.copy(_ru);
   }
@@ -8397,10 +8397,10 @@ function astrHomePaint(){
   var m = el("mcModel"), sub = el("mcSub");
   /* 中转站地址直接摆在卡片里：用户最常问的两件事就是「现在用的什么模型」和
      「密钥是哪个站的」，以前第二件要点进弹窗才看得到。 */
-  var rl = astrRelayUrl(j);
+  var rl = astrRelayUrl(j), rls = astrRelayShow(j);
   var box = el("mcRelay"), rh = el("mcRelayHost");
   if (box) box.style.display = rl ? "" : "none";
-  if (rh) { rh.textContent = rl || ""; rh.title = rl || ""; }
+  if (rh) { rh.textContent = rls || ""; rh.title = rl || ""; }
   if (!j.hasKey){
     /* 读到模型名却读不到密钥，是 AstrBot 4.29 之后的结构变化造成的（连接信息搬去了
        provider_sources[]），不是「没配过」。以前一律说「还没配置模型」，
@@ -8435,13 +8435,35 @@ function astrRelayUrl(j){
   } catch (e) {}
   return "";
 }
+/* 卡片上只显示主机名（worldcodes.online）。完整接口地址 …/v1 对用户没有意义，
+   长度还会把「复制 / 打开」挤到第二行；真要看完整地址，点开「模型与人格」弹窗里就有。 */
+function astrRelayShow(j){
+  var b = astrRelayUrl(j);
+  var m = /^[a-z]+:\/\/([^\/?#]+)/i.exec(String(b || ""));
+  return m ? m[1].toLowerCase() : String(b || "");
+}
+/* 复制 / 打开用的是「注册链接」，不是卡片上显示的接口地址：
+   接口地址（…/v1）是给程序调用的，人点开只会看到一段 JSON；注册页带邀请码，
+   新用户从这儿注册才拿得到可用密钥。原生意把完整链接放在 astrInfo().relay 里
+   （AstrCfg.RELAY_REG），这里按同源校验后再用，避免用户换成别家中转站时
+   还把他导到我们这家来。显示那一行仍然是 {@code base}，保持原样。 */
+function astrRelayReg(j){
+  var base = astrRelayUrl(j);
+  if (!base) return "";
+  var reg = "";
+  try { if (j && j.relay) reg = String(j.relay); } catch (e) { reg = ""; }
+  function hostOf(u){
+    var m = /^[a-z]+:\/\/([^\/?#]+)/i.exec(String(u || ""));
+    return m ? m[1].toLowerCase() : "";
+  }
+  if (reg && hostOf(reg) && hostOf(reg) === hostOf(base)) return reg;
+  return base.replace(/\/+$/, "").replace(/\/v1$/i, "");
+}
 function astrRelayOpen(){
-  var _j0 = null; try { _j0 = astrInfo(); } catch (e) { _j0 = null; }
-  if (!astrRelayUrl(_j0)) { extToast("还没填中转站地址"); return; }
-  var j = null;
-  try { j = astrInfo(); } catch (e) { j = null; }
-  var b = astrRelayUrl(j).replace(/\/+$/, "").replace(/\/v1$/i, "");
-  openExternal(b || "https://worldcodes.online");
+  var j = null; try { j = astrInfo(); } catch (e) { j = null; }
+  var u = astrRelayReg(j);
+  if (!u) { extToast("还没填中转站地址"); return; }
+  openExternal(u);
 }
 
 /* ---------- 控制台登录凭据弹窗（只看第一次） ---------- */
@@ -8507,7 +8529,7 @@ function astrRefresh(){
     return;
   }
   var who = (j.personaSel === j.personaId) ? "烛心" : (j.personaSel || "默认");
-  var rl = astrRelayUrl(j);
+  var rl = astrRelayShow(j);
   s.innerHTML = "当前模型 <b>" + esc(j.model || "未设置") + "</b> · 密钥尾号 <b>"
     + esc(j.keyTail || "----") + "</b> · 人格 <b>" + esc(who) + "</b>"
     + (rl ? '<br><span class="hint">中转站 ' + esc(rl) + "</span>" : "");

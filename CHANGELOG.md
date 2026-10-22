@@ -27,6 +27,7 @@
 - **`PUT /api/v1/system-config` 的请求体格式错了**：原来包了一层 `{"config": …}`，而这个接口要的是 config 本体（`dashboard/schemas.py` 的 `ConfigContentRequest` 是 `extra="allow"` 的空模型，包一层不报错，但 `provider_id` 静默改不到），所以「保存后自动选上刚配的模型」一直没生效。现在直传本体。
 - **停服务超时也照样改配置**：老流程里 `stop-sandbox.sh` 的返回值被忽略，服务没停下来就写 `cmd_config.json`，运行中的 AstrBot 退出时会把旧配置写回、覆盖这次修改。现在停完检查 `supervisor.pid`，还活着就直接报错「服务没有停下来，这次没有改配置，请稍后再试」。
 - **OneBot 磁贴误报「未连接」**：AstrBot 冷启动 40~60 秒里 6199 还没人听，NapCat 那侧每 5 秒打一条 `ws://127.0.0.1:6199/ws ECONNREFUSED`（用户上报的错误报告 `20261022-164456-14073` 里就这 5 条，16:43:21 之后自己好了）。现在 AstrBot 还没起来时磁贴显示「AstrBot 启动中」，不再是一进来就红「未连接」。
+- **主页模型卡上的中转站「复制 / 打开」给的是接口地址**（`https://worldcodes.online/v1`）：接口地址是给程序调用的，人点开只会看到一段 JSON，新用户也不知道该去哪儿注册。现在卡片上**显示**的是主机名 `worldcodes.online`，「复制 / 打开」用的是**完整注册链接**（`https://worldcodes.online/register?invite_code=CZLT`，带邀请码）。链接由原生侧 `AstrCfg.RELAY_REG` 经 `astrInfo().relay` 提供，前端 `astrRelayReg()` 会比对主机名做同源校验 —— 换成别家中转站时不会被导到这家来，此时退化为去掉 `/v1` 的自填地址。
 - **保存完卡片要等下一轮刷新才更新**：热改完成的回调里补了一次卡片重绘。
 - **全新部署第一次启动的那条日志噪音**：`/qqbot-cache/logs/qq-bot1.log: No such file or directory`（`hl_start_one()` 在日志目录还不存在时就去 `wc -c`）。现在函数入口先 `mkdir -p`。
 
