@@ -6859,6 +6859,9 @@ function doCheckUpdate(silent, auto){
   /* 自动检查完全不碰「更多」里那块 UI：不显示「检查中…」、不锁按钮、失败也不改文案。
      用户手动点出来的那次照旧先画「正在向 GitHub 查询最新版本…」。 */
   if (!updAuto) updPaint("正在向 GitHub 查询最新版本…", "", "检查中…", true, "");
+  /* 手动「检查更新」顺带把「GitHub 最新」那一行也重置：两处查的是同一个 releases/latest，
+     用户点了按钮就该两边一起刷新，不然会出现「检查更新说 1.2.11、上面那行还写 1.2.10」。 */
+  if (!updAuto) { try { var _sd = astrData(); _sd.site = null; _sd.siteAt = 0; } catch (e) {} }
   try {
     Android.checkUpdateStart();
   } catch (e) {
@@ -8600,7 +8603,7 @@ function astrLoginClose(){
 
 function astrData(){
   var E = ext();
-  if (!E.astr) E.astr = { info:null, busy:false, site:null, siteBusy:false };
+  if (!E.astr) E.astr = { info:null, busy:false, site:null, siteAt:0, siteBusy:false };
   return E.astr;
 }
 function astrInfo(force){
@@ -8812,7 +8815,9 @@ function siteVerPaint(r){
 }
 function siteVerTick(){
   var d = astrData();
-  if (d.site) { siteVerPaint(d.site); return; }
+  /* 缓存加 30 分钟有效期：原来一旦抓到就整场会话都不再问，发版之后要重启 App 才看得到新号。
+     30 分钟足够避免每 4 秒 refresh 都去打 GitHub，又不会让这一行过期太久。 */
+  if (d.site && (Date.now() - (d.siteAt || 0) < 30 * 60 * 1000)) { siteVerPaint(d.site); return; }
   if (d.siteBusy) return;
   if (!brHas("siteVerStart")) return;
   d.siteBusy = true;
@@ -8828,6 +8833,7 @@ function siteVerTick(){
            refresh 又会 siteVerStart()，网络不通时变成每 20 秒打一次 GitHub，
            页面还永远停在「读取失败」。 */
         d.site = { ok: false, site: "", err: "timeout" };
+        d.siteAt = Date.now();
         siteVerPaint(d.site);
       }
       return;
@@ -8837,6 +8843,7 @@ function siteVerTick(){
     var r = null;
     try { r = JSON.parse(raw); } catch (e) { r = null; }
     d.site = r;
+    d.siteAt = Date.now();
     siteVerPaint(r);
   }, 800);
 }
