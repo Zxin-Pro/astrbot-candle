@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # 一键备份（功能 50，协议见 docs/接口约定-1.1.30.md 第 8 节）。
 #
 # 用法: backup.sh <all|config|plugins> <out.tar.gz>

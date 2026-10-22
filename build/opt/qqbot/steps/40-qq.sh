@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # 步骤 4：下载并安装 Linux QQ（按设备架构自动选择 amd64 / arm64）
 . "$PREFIX/opt/qqbot/common.sh"
 

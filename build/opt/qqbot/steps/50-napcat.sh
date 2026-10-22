@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # 步骤 5：安装 NapCat 并注入 Linux QQ
 . "$PREFIX/opt/qqbot/common.sh"
 

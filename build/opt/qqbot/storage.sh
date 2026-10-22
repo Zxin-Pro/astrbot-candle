@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # 存储统计 / 缓存清理（功能 54，协议见 docs/接口约定-1.1.30.md 第 7 节）。
 #
 # 用法: storage.sh stats|clean

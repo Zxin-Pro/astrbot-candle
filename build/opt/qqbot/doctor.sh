@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # 运行环境自检：只读诊断，不改任何配置。
 #
 # 为什么要有：NapCat 起不来时，用户在界面上只看到「NapCat 未安装 / 离线」，

@@ -41,6 +41,12 @@ def find_tail(d):
     return i + 22 + clen
 
 
+def read_zip(data):
+    """按 EOCD 截出 ZIP 区再打开（.so 尾部还有 ELF 节头，不能整份丢给 zipfile）。"""
+    end = find_tail(data)
+    return data, zipfile.ZipFile(io.BytesIO(data[HEAD:end])), end
+
+
 def patch_elf(data, pkg):
     """等长改写 ELF 里的前缀。返回 (新数据, 改了几处, 没敢改的残留数)。"""
     out = bytearray(data)
@@ -98,12 +104,15 @@ def patch_stage2(data, pkg):
     if len(lines) > 1:
         lines.insert(1, inject.rstrip("\n"))
     text = "\n".join(lines)
-    # 打印每个 postinst 的退出码，失败也不中断（原来的 return 会把整段判失败）
-    if "return $return_value" in text:
-        text = text.replace(
-            'log_error "Failed to run \'$package_name\' package postinst"\n\t\t\t\t\t\ttrue',
-            'log_error "Failed to run \'$package_name\' package postinst"\n\t\t\t\t\t\ttrue',
-        )
+    # 让单个包的 postinst 失败不再中断整段第二阶段：原来 log_error 之后紧跟
+    # `return $return_value`，一个包配置失败就 return 出去，TermuxInstaller 见非 0
+    # 直接把刚解压好的 usr/ 删掉，用户看到的就是「Unable to install bootstrap」。
+    # v3 早先这处 replace 的前后字符串一模一样（空操作），现在真的把它换成 true。
+    idx = text.find("Failed to run")
+    if idx >= 0:
+        j = text.find("return $return_value", idx)
+        if j >= 0:
+            text = text[:j] + "true" + text[j + len("return $return_value"):]
     return text.encode("utf8")
 
 

@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # 步骤 1：准备 Termux 侧工具（proot / tar / xz / curl）
 . "$PREFIX/opt/qqbot/common.sh"
 

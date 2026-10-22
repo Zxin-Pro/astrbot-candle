@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # 重装 AstrBot / NapCat —— 控制台「设置 → 组件重装」的两个按钮走这里。
 # 用法: reinstall.sh napcat | reinstall.sh astrbot
 #

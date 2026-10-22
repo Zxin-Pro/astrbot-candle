@@ -1,11 +1,11 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # 步骤 7：安装 Termux 侧命令
 . "$PREFIX/opt/qqbot/common.sh"
 
 mkdir -p "$PREFIX/bin"
 
 cat > "$PREFIX/bin/qqbot-start" <<'EOS'
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 . "$PREFIX/opt/qqbot/common.sh"
 mkdir -p "$QQBOT_LOGS" "$QQBOT_CACHE/logs"
 if [ -f "$QQBOT_HOME/supervisor.pid" ]; then
@@ -35,13 +35,13 @@ echo "  AstrBot 控制台   : http://127.0.0.1:$(qq_astrbot_port)  （账号 ast
 EOS
 
 cat > "$PREFIX/bin/qqbot-stop" <<'EOS'
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 . "$PREFIX/opt/qqbot/common.sh"
 exec bash "$QQBOT_OPT/stop-sandbox.sh"
 EOS
 
 cat > "$PREFIX/bin/qqbot-status" <<'EOS'
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 . "$PREFIX/opt/qqbot/common.sh"
 if [ -f "$QQBOT_HOME/supervisor.pid" ] && kill -0 "$(cat "$QQBOT_HOME/supervisor.pid")" 2>/dev/null; then
   echo "状态：运行中（PID $(cat "$QQBOT_HOME/supervisor.pid")）"
@@ -60,7 +60,7 @@ tail -n 20 "$QQBOT_CACHE/logs/astrbot.log" 2>/dev/null || echo "(暂无)"
 EOS
 
 cat > "$PREFIX/bin/qqbot-log" <<'EOS'
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 . "$PREFIX/opt/qqbot/common.sh"
 case "$1" in
   qq|napcat)
@@ -78,7 +78,7 @@ tail -n 60 -f "$F"
 EOS
 
 cat > "$PREFIX/bin/qqbot-shell" <<'EOS'
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 . "$PREFIX/opt/qqbot/common.sh"
 unset LD_PRELOAD
 export PROOT_TMP_DIR="$QQBOT_PTMP"
@@ -93,7 +93,7 @@ exec "$QQBOT_PROOT" --kill-on-exit -0 -r "$QQBOT_ROOTFS" -b /dev -b "$QQBOT_DEVD
 EOS
 
 cat > "$PREFIX/bin/qqbot-help" <<'EOS'
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 . "$PREFIX/opt/qqbot/common.sh"
 cat <<TXT
 

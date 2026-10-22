@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # qqbot-sandbox 主部署脚本（幂等，可中断续跑）
 
 . "$PREFIX/opt/qqbot/common.sh"
@@ -67,7 +67,14 @@ cleanup_pid() {
   [ "$(cat "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"
   return 0
 }
-trap cleanup_pid EXIT INT TERM HUP
+# 注意：INT/TERM 不能直接挂 cleanup_pid —— 它只清理文件就 return，bash 处理完信号会
+# 接着往下跑，结果锁被删掉、部署其实还在继续（实测：Ctrl-C 之后日志还在滚）。
+qq_deploy_abort() {
+  cleanup_pid
+  exit 130
+}
+trap cleanup_pid EXIT
+trap qq_deploy_abort INT TERM HUP
 
 if command -v termux-wake-lock >/dev/null 2>&1; then
   termux-wake-lock 2>/dev/null || true

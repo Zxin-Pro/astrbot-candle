@@ -1,7 +1,7 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # 步骤 2：下载并解压 Ubuntu 24.04 rootfs（按设备架构自动选择 amd64 / arm64）
 #
-# 1.2.0 起多一条路：APK 里带了内置离线包（bundle.tar.xz）时，直接把整棵装好的
+# 沙盒镜像（bundle.tar.xz）：1.2.0~1.2.0 的全量包会把它塞在 APK 里直接拷出来；
 # rootfs 解出来，一次到位 —— 后面 30/40/50/60 四步（apt / QQ / NapCat / AstrBot）
 # 全都已经是装好的状态，直接标成完成，全程不需要联网。
 . "$PREFIX/opt/qqbot/common.sh"
@@ -18,7 +18,7 @@ CUR=""
 [ -f "$STAMP" ] && CUR="$(cat "$STAMP" 2>/dev/null)"
 
 # ---------------------------------------------------------------------------
-# 内置离线包：先在旁边等它从 APK 里拷出来。
+# 沙盒镜像：全量包里由 APK 直接拷出来，精简包里由 qq_bundle_pull 从官网下载。
 # 拷贝是应用侧（Java）在后台做的，650 MB 大概要几十秒；部署脚本不能因为「文件还没到」
 # 就去联网下载 —— 那正好是内置版要避免的事。
 # ---------------------------------------------------------------------------
@@ -27,7 +27,7 @@ qq_bundle_ready() {
 }
 
 if [ ! -f "$QQBOT_HOME/deploy.done" ] && ! qq_bundle_ready && [ -f "$BUNDLE_PENDING" ]; then
-  qqlog "正在释放内置离线包（APK 自带的沙盒镜像，无需联网）"
+  qqlog "正在释放沙盒镜像（约 600 MB，解压需要几分钟）"
   _w=0
   while [ "$_w" -lt 600 ]; do
     qq_bundle_ready && break
@@ -38,7 +38,7 @@ if [ ! -f "$QQBOT_HOME/deploy.done" ] && ! qq_bundle_ready && [ -f "$BUNDLE_PEND
     [ $((_w % 20)) -eq 0 ] && qqlog "  等待内置包就位… ${_w}s"
   done
   if qq_bundle_ready; then
-    qqok "内置离线包已就位（$(ls -l "$BUNDLE" | awk '{print $5}') 字节）"
+    qqok "沙盒镜像已就位（$(ls -l "$BUNDLE" | awk '{print $5}') 字节）"
   else
     qqwarn "内置包没能就位，回落到联网部署"
   fi
@@ -72,7 +72,7 @@ if qq_bundle_ready; then
   if [ "$CUR" != "$QQBOT_ARCH" ]; then
     BUNDLE_USE=1
   elif [ ! -f "$ROOTFS/opt/AstrBot/main.py" ]; then
-    qqlog "检测到沙盒不完整（缺 /opt/AstrBot），改用内置离线包重装"
+    qqlog "检测到沙盒不完整（缺 /opt/AstrBot），改用沙盒镜像重装"
     BUNDLE_USE=1
   fi
 fi
@@ -89,7 +89,7 @@ if [ "$BUNDLE_USE" = "1" ]; then
 fi
 
 if [ "$BUNDLE_USE" = "1" ]; then
-  qqlog "使用内置离线包解压沙盒（不需要联网）"
+  qqlog "使用已就位的沙盒镜像解压（不需要联网）"
   qq_fsprobe "$ROOTFS"
   PRC=$?
   if [ "$PRC" = "3" ]; then

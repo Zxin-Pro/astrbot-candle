@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # 「设置 → 维护 → 修复沙盒依赖」按钮的入口：就地修好卡住的第 3 步（30-apt）。
 # 单独成一个脚本，是为了让用户不必重新部署、不必重装 APK 也能救回被 dpkg 中断挡住的部署。
 #

@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # 步骤 6：安装 AstrBot
 . "$PREFIX/opt/qqbot/common.sh"
 

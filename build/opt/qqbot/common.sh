@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # qqbot-sandbox 公共函数库
 
 QQBOT_HOME="$HOME/.qqbot"
@@ -666,6 +666,13 @@ qq_bundle_pull() {
     done
     wait "$_bp_pid"
     _bp_rc=$?
+    # curl 33 = 服务端不接受我们带来的 Range（.part 已经下完，或者官网那份镜像换了）。
+    # 不移掉 .part 的话每一轮都是 416，三次跑完直接报「没下成」，永远好不了。
+    if [ "$_bp_rc" -eq 33 ]; then
+      rm -f "$_bp_part"
+      qqwarn "续传位置无效（.part 可能已下完或镜像已更换），从头重下"
+      continue
+    fi
     _bp_size=$(stat -c %s "$_bp_part" 2>/dev/null || echo 0)
     case "$_bp_size" in ''|*[!0-9]*) _bp_size=0 ;; esac
     # 装好的镜像不可能只有几十兆：体积明显不对就当这次没成，别把半个包当好的。

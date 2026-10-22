@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # 部署完成汇总
 . "$PREFIX/opt/qqbot/common.sh"
 

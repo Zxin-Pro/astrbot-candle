@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # 步骤 3：在沙盒内安装运行时依赖
 . "$PREFIX/opt/qqbot/common.sh"
 

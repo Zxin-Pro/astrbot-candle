@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # 删除一个 NapCat 实例（QQ 号）：从 bots.json 移除，并清掉沙盒里的登录数据
 # 用法: delbot.sh <id>
 set -e

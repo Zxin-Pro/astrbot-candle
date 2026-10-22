@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # 在 proot 沙盒中启动全部服务（前台，由 qqbot-start 后台拉起）
 . "$PREFIX/opt/qqbot/common.sh"
 

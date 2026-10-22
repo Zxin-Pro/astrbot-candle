@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # 停止沙盒（Termux 侧）。GUI 的「停止」按钮、qqbot-stop 命令都走这里。
 #
 # 为什么不能直接 kill -9 proot：

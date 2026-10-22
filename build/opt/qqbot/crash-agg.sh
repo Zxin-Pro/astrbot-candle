@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # 崩溃聚合看板的数据生产脚本（功能 58，协议见 docs/接口约定-1.1.30.md 第 9 节）。
 #
 # 用法: crash-agg.sh

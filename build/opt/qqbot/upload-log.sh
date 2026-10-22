@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # 打包一次失败现场并发给作者（由用户在界面上点「上传错误日志」才会执行）。
 #
 # 为什么要有这个：真机上的失败原因往往只在用户手机里能看到，截图只能看到一部分，

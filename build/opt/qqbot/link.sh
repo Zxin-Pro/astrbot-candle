@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # 一键把 NapCat 与 AstrBot 对接（支持多实例）
 set -e
 . "$PREFIX/opt/qqbot/common.sh"

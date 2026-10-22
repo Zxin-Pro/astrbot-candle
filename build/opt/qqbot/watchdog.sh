@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/data/data/zhuxin.astrbot/files/usr/bin/bash
 # 第一层看门狗（Termux 侧）—— 保证「沙盒」本身不会悄悄消失。
 #
 # 为什么需要它：沙盒内的 run-all.sh 只能看护它自己的两个子进程。一旦 proot 本体
