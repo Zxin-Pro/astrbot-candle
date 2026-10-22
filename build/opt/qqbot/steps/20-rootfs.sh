@@ -45,16 +45,20 @@ if [ ! -f "$QQBOT_HOME/deploy.done" ] && ! qq_bundle_ready && [ -f "$BUNDLE_PEND
 fi
 
 # ---------------------------------------------------------------------------
-# 1.2.1：APK 里不再塞 600 MB 镜像，先试着从官网拉一份装好的（内容与懒人包一样）。
-# 拉不到就继续往下走在线安装，只是慢一些 —— 下载失败绝不能让部署中断。
+# 1.2.5：默认改成走官方镜像在线安装（清华 / 中科大 / 阿里），不再默认去自家服务器
+# 拉 604 MB 的整包镜像 —— 实测从站点下只有一两百 KB/s，比官方镜像慢一个数量级。
+# 想用整包镜像（离线快装）时，部署前 export QQBOT_BUNDLE=1（见 common.sh 的 QQBOT_CDN）。
 # ---------------------------------------------------------------------------
-# 别在「沙盒其实已经解压好了」的情况下再去下 600 MB：
+# 别在「沙盒其实已经解压好了」的情况下再去下整包：
 # 上一次解压成功后会立刻删掉 bundle.tar.xz，如果部署在后面的步骤里被打断
 # （用户杀进程、手机重启），重进时 deploy.done 还没有，光看 bundle 不存在
 # 就会把整份镜像从头再下一遍。rootfs 里已经躺着 /opt/AstrBot 就说明解压过了。
-if [ ! -f "$QQBOT_HOME/deploy.done" ] && ! qq_bundle_ready \
-   && [ ! -f "$ROOTFS/opt/AstrBot/main.py" ]; then
-  qq_bundle_pull "$BUNDLE" || qqwarn "云端镜像没下成，改用在线安装（慢一些，但能装完）"
+if [ "${QQBOT_BUNDLE:-0}" = "1" ] && [ ! -f "$QQBOT_HOME/deploy.done" ] \
+   && ! qq_bundle_ready && [ ! -f "$ROOTFS/opt/AstrBot/main.py" ]; then
+  qq_bundle_pull "$BUNDLE" || qqwarn "整包镜像没下成，改用官方镜像在线安装（慢一些，但能装完）"
+elif [ ! -f "$QQBOT_HOME/deploy.done" ] && ! qq_bundle_ready \
+     && [ ! -f "$ROOTFS/opt/AstrBot/main.py" ]; then
+  qqlog "走官方镜像在线安装（清华 / 中科大 / 阿里源），不需要下整包镜像"
 fi
 
 # ---------------------------------------------------------------------------

@@ -51,6 +51,8 @@ QQBOT_PYPI="$QQBOT_TUNA/pypi/simple"
 QQBOT_GH_MIRRORS="https://ghfast.top/ https://gh-proxy.com/ https://ghproxy.net/ https://github.moeyy.xyz/ https://gh.llkk.cc/ https://ghproxy.cc/ https://gh.xxooo.cf/ https://gh-proxy.net/ https://hub.gitmirror.com/"
 
 # 1.2.1：沙盒镜像（bundle-<arch>.tar.xz）放在官网 /dl/ 下，部署时直连下载。
+# 只有整包镜像模式才用得到：部署前 export QQBOT_BUNDLE=1 才去下这份 604 MB 的镜像，
+# 默认走官方镜像站在线安装（清华 / 中科大 / 阿里），不再默认下整包。
 # 换地址只要改这里，或者部署前 export QQBOT_CDN=…（任何支持 Range 的静态目录都行）。
 QQBOT_CDN="${QQBOT_CDN:-https://xn--15t839a.xyz/dl}"
 
