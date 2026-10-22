@@ -11,17 +11,17 @@
 | --- | --- |
 | 应用名 | **AstrBot烛版** |
 | 控制台标题 | **烛之控制台** |
-| 安装包 | `AstrBot-1.2.12-arm64.apk`（只发这一个包，真机 / 模拟器通用，**`26,128,125`** 字节，约 25 MB） |
+| 安装包 | `AstrBot-1.2.11-arm64.apk`（只发这一个包，真机 / 模拟器通用，**`26,128,125`** 字节，约 25 MB） |
 | 包名 | `zhuxin.astrbot`（1.2.1 及更早为 `com.termux`） |
-| 当前版本 | **v1.2.12**（versionCode `10212`） |
-| 安装包 SHA-256 | `cb561e35129d6b31f33b3802f25184c6af58807d0475db633ffa3c06cc893d66` |
+| 当前版本 | **v1.2.11**（versionCode `10211`） |
+| 安装包 SHA-256 | `331508fb4ddebbb303d74bad623973156c0441ff1ed3cf7c151e3b004ffc5de6` |
 | 签名证书 SHA-256 | `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3） |
 | 项目地址 | [github.com/Zxin-Pro/astrbot-candle](https://github.com/Zxin-Pro/astrbot-candle) |
-| 下载安装包 | [GitHub Releases](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 提供 `AstrBot-1.2.12-arm64.apk`（约 25 MB；只发一个包，模拟器也能直接装；1.2.11 起安装包只在 GitHub Releases 分发，不再走自建站点） |
+| 下载安装包 | [GitHub Releases](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 提供 `AstrBot-1.2.11-arm64.apk`（约 25 MB；只发一个包，模拟器也能直接装；1.2.11 起安装包只在 GitHub Releases 分发，不再走自建站点） |
 | 更新日志 | [CHANGELOG.md](CHANGELOG.md) · [GitHub Releases](https://github.com/Zxin-Pro/astrbot-candle/releases) |
 | 官方 QQ 群 | **1127997343** |
 
-<!-- 1.2.12 已出包：26,128,125 字节 / SHA-256 cb561e35129d6b31f33b3802f25184c6af58807d0475db633ffa3c06cc893d66（约 25 MB）。 -->
+<!-- 1.2.11 已出包：26,128,125 字节 / SHA-256 331508fb……c5de6（约 25 MB）。 -->
 
 ---
 
@@ -98,7 +98,7 @@
 1. **先卸载 1.2.1 及更早的 AstrBot烛版**。
    1.2.1 及更早的包名是 `com.termux`，1.2.2 改成了 `zhuxin.astrbot`，**不能直接覆盖安装**。卸载会清掉旧包名下的沙盒数据，请先在旧版「更多 → 备份与恢复」导出备份，装好 1.2.2（或更新版本）后再导回。
    官方 Termux / 应用商店版 / F-Droid 版与 1.2.2 起的包名不同，**不再冲突**，可以共存。
-2. 到 [GitHub Releases](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 下载 `AstrBot-1.2.12-arm64.apk`（只发一个包，模拟器也能直接装；文件名后缀就是版本号），传到手机，点击安装。
+2. 到 [GitHub Releases](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 下载 `AstrBot-1.2.11-arm64.apk`（只发一个包，模拟器也能直接装；文件名后缀就是版本号），传到手机，点击安装。
 3. 安装时系统会提示「**未知来源应用**」，需要允许安装。
    - **小米 / Redmi（HyperOS）用户**：如果被拦下、提示「应用缺少隐私政策」且没有「继续安装」，
      这是小米安装器的风险提示，不是包坏了。关掉手机管家的「安装监控 / 安全守护 / 应用防护」、
@@ -372,6 +372,6 @@ qqbot-sandbox/
 | **MINOR**（0.X.0） | 新增功能 | 1.1.0 |
 | **PATCH**（0.0.X） | 修 bug、文案、性能 | 1.0.1 |
 
-当前版本：**versionName `1.2.12`，versionCode `10212`**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本：**versionName `1.2.11`，versionCode `10211`**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 版本号的唯一来源是仓库根目录的 `VERSION` 文件（内容形如 `1.0.2`），`build-ui.ps1` 打包时自动换算成 `versionCode` 写进 APK。
