@@ -324,13 +324,13 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
    `adb forward tcp:19222 localabstract:webview_devtools_remote_<pid>` 就能用 CDP 读 DOM / 调页面函数。
    这个开关只认文件、默认关闭，发行包里不会对局域网暴露调试端口。
 
-12. **NapCat 默认跑无头模式（1.2.8 起），改 `run-napcat.sh` 时注意三点。**
-    `sandbox/run-napcat.sh` 里 `napcat_headless_on()` 读 `/qqbot-cache/napcat-headless.off`（宿主 `$HOME/.qqbot/cache/napcat-headless.off`），
-    没有这个文件就走 `start_headless()`：`qq --no-sandbox --ozone-platform=headless napcat.mjs`。
-    ① 第一档参数必须带 `--disable-dev-shm-usage`（proot 里 Chromium 用不了 `/dev/shm`，会 `GPU process isn't usable` 直接退出）；
-    ② 环境里必须把 `NAPCAT_FORCE_NODE_PROCESS` 改成 `0`（`=1` 的 fork 路径拉的是裸 Electron，拿不到 headless 参数、没有 DISPLAY 就自杀）；
-    ③ 起不来要能自动退回 Xvfb 全流程 —— 现在就是靠 `start_headless` 返回非 0 让 `start_inst` 继续走老路径，别把这条回退删掉。
-    改完可以用 `adb push` 直接替换设备上的 `files/usr/opt/qqbot/sandbox/run-napcat.sh` 快速验证，不必先出包。
+12. **NapCat 模式按架构分档（1.2.9 起），改 `run-napcat.sh` 时注意四点。**
+    入口是 `napcat_headless_on()`：`/qqbot-cache/napcat-headless.on` 强制开、`napcat-headless.off` 强制关，都没有时按 `napcat_arch()` 判断 —— **arm64 返回 1（走完整客户端 + Xvfb，1.2.7 的老路线），x86_64 返回 0（走无头）**。
+    ① 架构判定**不能用 `uname -m`**：x86_64 模拟器（MuMu）把内核 uname 伪装成 aarch64，必须用 `start-sandbox.sh` 传进 proot 的 `QQBOT_ARCH`（`common.sh` 的 `qq_detect_arch()` 读 `getprop ro.product.cpu.abi`）。
+    ② 无头两档都保留：`util`（`NAPCAT_FORCE_NODE_PROCESS=0`，Electron utilityProcess，最省但 arm64 真机必崩）与 `fork`（`=1` + Xvfb，能绕开崩溃但内存 1.05 GB）。用户覆盖开关是 `$HOME/.qqbot/cache/napcat-mode.txt`（`util` / `fork` / `gui`）。
+    ③ 第一档参数必须带 `--disable-dev-shm-usage`（proot 里 Chromium 用不了 `/dev/shm`，会 `GPU process isn't usable` 直接退出）。
+    ④ 就绪判据是 `hl_wait_ready()`：**端口在听 + 进程活着 + 之后 6 秒无崩溃日志**，别退回「日志出现 `NapCat.Core Version` 就算成功」—— 真机上那行打完约 2 秒 worker 才 SIGSEGV，会误判成启动成功、实际每 20 秒重启一轮（1.2.8 的事故）。起不来要能自动退回 Xvfb 全流程，别把 `start_inst` 里那条回退删掉。
+    改完可以用 `adb push` 直接替换设备上的 `files/usr/opt/qqbot/sandbox/run-napcat.sh` 快速验证，不必先出包；验证前先 `bash -n`（proot 里跑，PATH 要手工 export）。
 
 ---
 

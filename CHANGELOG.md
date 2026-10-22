@@ -11,6 +11,25 @@
 
 ---
 
+## [1.2.9] - 2026-10-22
+
+### 修复
+
+- **arm64 真机上 NapCat 反复崩溃重启（1.2.8 引入的回归，阻断级）**。1.2.8 把无头模式默认给了所有架构，但真机 arm64 上 NapCat 的 native 插件在 Electron utilityProcess 里一加载就 SIGSEGV：错误报告 `20261022-142708-19079`（Redmi / Android 16 / arm64）里 worker 每 2 秒崩一次、`Worker进程退出，退出码: 11`，崩溃 pc 落在 `napi2native.linux.arm`，NapCat 20 秒一轮重启，AstrBot 一条消息也收不到。现在**真机 arm64 默认回到完整客户端（Xvfb）模式**，也就是 1.2.7 那条成熟路线；无头模式只在 x86_64（模拟器）上默认开启。
+  - 真机想试无头：在手机 `~/.qqbot/cache/` 下建空文件 `napcat-headless.on`；想强制关掉：`napcat-headless.off`（1.2.8 已有）。改完重启服务生效，不用重装。
+  - fork 档（`NAPCAT_FORCE_NODE_PROCESS=1` + Xvfb）确实能绕开那个崩溃，但 fork 出来的是第二个完整 Electron：x86_64 上实测 10 个进程 **1.05 GB**，比「完整客户端 + Xvfb」的 0.9 GB 还高，对真机没有收益，所以没有让真机默认用它。
+- **架构判定错**：原来用 `uname -m` 判断，但 x86_64 模拟器（MuMu）会把内核 uname 伪装成 aarch64（`/system/bin/uname -a` 返回 "aarch64 Toybox"，而 `ro.product.cpu.abi` 是 x86_64），一判错整条分支就走反。现在改用 `start-sandbox.sh` 传进 proot 的 `QQBOT_ARCH`（由 `common.sh` 的 `qq_detect_arch()` 读 `getprop ro.product.cpu.abi` 得出）。
+- **无头模式「起来了」的判据太松**：原来只要日志里出现 `NapCat.Core Version` 就判成功，而真机上那行打出来约 2 秒后 worker 才崩溃，脚本以为好了、实际每 15~20 秒重启一轮。现在要求三件事同时成立才算就绪：WebUI 端口真的在监听、进程还活着、之后 6 秒内日志里没有 `Worker进程退出` / `主进程退出` / `GPU process isn't usable`。
+
+### 新增
+
+- **手动指定 worker 模式的开关** `$HOME/.qqbot/cache/napcat-mode.txt`：写 `util` / `fork` / `gui` 三选一，重启服务生效。上次真正跑通的那一档会记到 `napcat-mode.ok`，下次启动优先试它，不用每次把注定失败的档重试一遍。
+
+### 说明
+
+- 1.2.7 → 1.2.8 → 1.2.9 都能直接覆盖安装，沙盒与账号数据都不动。
+- 真机回到完整客户端后内存回到 1.2.7 的水平（约 900 MB，外加 12 MB 的 Xvfb）；模拟器上仍是 285 MB 的无头模式。
+
 ## [1.2.8] - 2026-10-22
 
 ### 变更

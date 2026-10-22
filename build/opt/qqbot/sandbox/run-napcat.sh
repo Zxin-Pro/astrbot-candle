@@ -748,102 +748,267 @@ setup_crashwatch() {
   CW_SO="$_cw_so"
 }
 
-# ---------- 无头模式（v1.2.8）----------
+# ---------- 无头模式（v1.2.8 / v1.2.9）----------
 # NapCat 官方支持「不启 QQ 客户端界面」：napcat.mjs 直接跑在 QQ 自带的 Electron 里
 # （Electron 在 --ozone-platform=headless 下可以当纯 node 用）。参考项目 astrbot-pc 在
 # Windows 上就是这么跑的（services.py 里 node.exe napcat.mjs，压根不启 QQ.exe）。
 #
 # 为什么值得切：完整 LinuxQQ 是 Electron 应用，实测 8 个进程占 810~930 MB，还要再起一个
 # Xvfb + mesa 软件渲染 —— 那套「1x1x8 必挂 / 16 位配不出 EGL / GPU 崩三次直接 Goodbye」
-# 的坑全是它带来的。无头模式实测 4 个进程共 285 MB、不需要 Xvfb、启动也快。
+# 的坑全是它带来的。无头模式只跑 NapCat 本体，实测 4 个进程 285 MB。
 #
-# 代价：登录态和 QQ 客户端不共用，切过来的实例要重新扫一次码（扫完就一直在）。
-# 回退：删掉下面的开关文件、或往里写任意内容，实例重新拉起就回到完整客户端模式。
-#       Termux 侧路径：~/.qqbot/cache/napcat-headless.off
-napcat_headless_on() {
-  [ ! -f /qqbot-cache/napcat-headless.off ]
+# worker 有两种进程模型，由 NapCat 自己的 NAPCAT_FORCE_NODE_PROCESS 决定：
+#   util（=0）：Electron 的 utilityProcess。不需要 X，最省，x86_64 上稳。
+#               但真机 arm64 上必崩：1.2.8 的错误报告（20261022-142708-19079）里 worker
+#               每 2 秒 SIGSEGV 一次，pc 落在 napi2native.linux.arm，
+#               "Worker进程退出，退出码: 11" —— 正是上游 PR #1984 要绕的那个问题。
+#   fork（=1）：child_process.fork(process.execPath)。子进程同样是完整的 Electron，
+#               拿不到父进程的 --ozone-platform=headless（父进程参数不会传下去），
+#               必须有 DISPLAY，所以得为它起一个 Xvfb（12 MB）。
+#
+# v1.2.9 的结论（1.2.8 真机崩溃之后重新量的）：
+#   · x86_64 模拟器：util 档 4 个进程 285 MB，最省，默认用它；
+#   · arm64 真机：util 档必崩；fork 档虽然不崩，但 fork 出来的是第二个完整 Electron，
+#     x86_64 上实测 10 个进程 1.05 GB，比「完整客户端 + Xvfb」的 0.9 GB 还高 —— 对真机没收益。
+#     所以真机默认回到 1.2.7 那条成熟路线（完整客户端 + Xvfb），无头只给模拟器用。
+#   · 想在任何机器上试无头：写 /qqbot-cache/napcat-headless.on（Termux 侧
+#     ~/.qqbot/cache/napcat-headless.on），出问题删掉这个文件即可，不用重装。
+#
+# 手写覆盖：/qqbot-cache/napcat-mode.txt 里写 util / fork / gui
+#           （Termux 侧 ~/.qqbot/cache/napcat-mode.txt），改完重启服务生效。
+MODE_OK_FILE=/qqbot-cache/napcat-mode.ok
+HL_MODE=""
+HL_DISP=""
+HL_WHY=""
+
+# 无头模式开关（1.2.9 起默认值按架构区分）。
+#   强制关：/qqbot-cache/napcat-headless.off（Termux 侧 ~/.qqbot/cache/napcat-headless.off）
+#   强制开：/qqbot-cache/napcat-headless.on
+# 为什么 arm64 默认关：1.2.8 的真机崩溃报告（20261022-142708-19079，Redmi / Android 16 /
+# arm64）里，无头模式走 Electron utilityProcess 时 NapCat 的 native 插件
+# napi2native.linux.arm 必然 SIGSEGV（si_code=1，退出码 11），20 秒一轮重启，AstrBot 收不到
+# 任何消息；换成 fork 档能绕开那个崩溃，但 fork 出来的是第二个完整 Electron，实测内存比
+# 「完整客户端 + Xvfb」还高（x86_64 上 1.05 GB vs 0.9 GB），对真机没有意义。
+# 所以在真机上保留 1.2.7 那条成熟路线，无头只用于 x86_64 模拟器；真机想试可以写
+# napcat-headless.on 强制打开（出问题时删掉这个文件即可，不用重装）。
+# 本机架构 amd64 / arm64。**不能用 uname 判断**：MuMu 这类 x86_64 模拟器会把内核 uname
+# 伪装成 aarch64（common.sh 的 qq_detect_arch 里有同样的说明），start-sandbox.sh 已经把真实
+# 架构通过环境变量 QQBOT_ARCH 传进来了，优先用它。
+napcat_arch() {
+  case "${QQBOT_ARCH:-}" in
+    amd64|arm64) printf '%s' "$QQBOT_ARCH"; return 0 ;;
+  esac
+  case "$(uname -m 2>/dev/null)" in
+    x86_64|amd64) printf 'amd64' ;;
+    *) printf 'arm64' ;;
+  esac
 }
 
-# 起一个无头 NapCat；成功时把 pid 交给全局 HL_PID 并返回 0，全部档次失败返回 1。
-# 调用前 QE / CW_SO / CRASH_DIR 必须已经准备好（QE 在 start_inst 里已按默认补过
-# NAPCAT_FORCE_NODE_PROCESS=1 —— 无头模式同样是纯 Node 子进程，这个开关照样需要）。
-start_headless() {
-  local id="$1" qqdir="$2" nap="$3" insthome="$4" logf="$5" np="$6" tok="$7"
-  local tries off pid n chunk t0 verdict
+napcat_headless_on() {
+  [ -f /qqbot-cache/napcat-headless.on ] && return 0
+  [ -f /qqbot-cache/napcat-headless.off ] && return 1
+  [ "$(napcat_arch)" = "arm64" ] && return 1
+  return 0
+}
 
-  # Chromium 多进程要用的共享内存。start-sandbox.sh 已经把宿主侧的
-  # $QQBOT_DEVDIR/shm（chmod 1777）绑到了 /dev/shm；这里再兜一次权限。
-  # 万一还是不可写（老版本启动器没绑），第二档用 --disable-dev-shm-usage 让它走 /tmp。
-  # 不处理就是实测症状：Creating shared memory in /dev/shm/... failed +
-  # FATAL ... incorrect permissions on /dev/shm
-  mkdir -p /dev/shm 2>/dev/null
-  chmod 1777 /dev/shm 2>/dev/null
+# 手动指定 worker 模式；文件不存在 / 内容不认识时输出空（= 自动）
+napcat_mode_override() {
+  local f=/qqbot-cache/napcat-mode.txt v=""
+  [ -s "$f" ] || return 0
+  v=$(head -n 1 "$f" 2>/dev/null | tr -d '\r' | tr 'A-Z' 'a-z')
+  v="${v%% *}"
+  case "$v" in util|fork|gui) printf '%s' "$v" ;; esac
+  return 0
+}
 
-  # worker 进程模型：无头模式下不能用 NAPCAT_FORCE_NODE_PROCESS=1。
-  # 那个开关本意是绕开 Electron UtilityProcess 在 arm64/proot 上的 SIGSEGV（上游 PR #1984），
-  # 但它的实现是 child_process.fork(process.execPath) —— 子进程是一个裸 Electron 进程，
-  # 拿不到 --ozone-platform=headless（父进程参数不会传下去），于是：
-  #   Missing X server or $DISPLAY / The platform failed to initialize. Exiting.
-  #   [Fork] Worker进程意外退出 (2/3)，正在尝试重新拉起...
-  # 实测就是这样无限重启。改成 0 走 Electron 自己的 utilityProcess，子进程由浏览器进程
-  # 按同样的参数拉起，不需要 X。若用户自己在 qq-env.txt 里写了这个开关，就尊重用户的。
-  HLE=()
-  local _e
-  for _e in "${QE[@]}"; do
-    case "$_e" in
+# 上次跑通的那一档：自动模式下优先用它，避免每次重启都把注定失败的档重试一遍
+napcat_mode_saved() {
+  local v=""
+  [ -s "$MODE_OK_FILE" ] || return 0
+  v=$(head -n 1 "$MODE_OK_FILE" 2>/dev/null | tr -d '\r ')
+  case "$v" in util|fork) printf '%s' "$v" ;; esac
+  return 0
+}
+
+napcat_mode_save() {
+  case "${1:-}" in
+    util|fork) printf '%s\n' "$1" > "$MODE_OK_FILE" 2>/dev/null || true ;;
+  esac
+  return 0
+}
+
+# 端口是否有人在听（/proc/net/tcp 的本地地址是 16 进制、大写）
+port_listen() {
+  local port="${1:-}" hex
+  case "$port" in ''|*[!0-9]*) return 1 ;; esac
+  hex=$(printf '%04X' "$port" 2>/dev/null) || return 1
+  grep -q ":$hex " /proc/net/tcp 2>/dev/null && return 0
+  grep -q ":$hex " /proc/net/tcp6 2>/dev/null && return 0
+  return 1
+}
+
+# 等一个刚拉起的无头 NapCat 真正就绪。0=好；失败时原因写在 $HL_WHY。
+# 判据不能只看日志里的 "NapCat.Core Version"：真机实测那一行打出来约 2 秒后 worker 才
+# SIGSEGV，按它会误判成功 —— 1.2.8 就是这样每 15 秒重启一轮、用户完全连不上。
+# 这里要求三件事同时成立：WebUI 端口真的在听、进程还活着、之后 6 秒内日志里没有 worker 退出。
+hl_wait_ready() {
+  local pid="$1" logf="$2" off="$3" port="$4" i=0 chunk
+  while [ "$i" -lt 160 ]; do
+    if ! kill -0 "$pid" 2>/dev/null; then HL_WHY="died"; return 1; fi
+    chunk=$(tail -c +$((off + 1)) "$logf" 2>/dev/null | tr -d "\000")
+    case "$chunk" in
+      *"Worker进程退出"* | *"主进程退出"* | *"GPU process isn't usable"* | \
+      *"The platform failed to initialize"* | *"incorrect permissions on /dev/shm"*)
+        HL_WHY="crash"; return 1 ;;
+    esac
+    if port_listen "$port"; then
+      sleep 6 &
+      wait $! 2>/dev/null
+      if ! kill -0 "$pid" 2>/dev/null; then HL_WHY="died-after-ready"; return 1; fi
+      chunk=$(tail -c +$((off + 1)) "$logf" 2>/dev/null | tr -d "\000")
+      case "$chunk" in
+        *"Worker进程退出"* | *"主进程退出"*) HL_WHY="crash-after-ready"; return 1 ;;
+      esac
+      return 0
+    fi
+    sleep 0.5 &
+    wait $! 2>/dev/null
+    i=$((i + 1))
+  done
+  HL_WHY="timeout"
+  return 1
+}
+
+# 起一档无头 NapCat：$8=mode（util|fork），$9=Chromium 附加参数。
+# 成功时 HL_PID 有效并返回 0；失败返回 1。
+hl_start_one() {
+  local id="$1" qqdir="$2" nap="$3" insthome="$4" logf="$5" np="$6" tok="$7" mode="$8" extra="${9:-}"
+  local t0 pid disp="" envs=() e
+  t0=$(wc -c < "$logf" 2>/dev/null | tr -d " \n")
+  [ -n "$t0" ] || t0=0
+
+  # worker 进程模型：util 强制 0，fork 强制 1；用户在 qq-env.txt 里写过的就尊重用户
+  for e in "${QE[@]}"; do
+    case "$e" in
       NAPCAT_FORCE_NODE_PROCESS=*)
-        if [ -n "${_qe_mode:-}" ]; then HLE=( "${HLE[@]}" "$_e" );
-        else HLE=( "${HLE[@]}" "NAPCAT_FORCE_NODE_PROCESS=0" ); fi ;;
-      *) HLE=( "${HLE[@]}" "$_e" ) ;;
+        if [ -n "${_qe_mode:-}" ]; then envs=( "${envs[@]}" "$e" )
+        elif [ "$mode" = "fork" ]; then envs=( "${envs[@]}" "NAPCAT_FORCE_NODE_PROCESS=1" )
+        else envs=( "${envs[@]}" "NAPCAT_FORCE_NODE_PROCESS=0" ); fi ;;
+      *) envs=( "${envs[@]}" "$e" ) ;;
     esac
   done
-  log "实例 $id 无头模式的 worker 走 Electron utilityProcess（NAPCAT_FORCE_NODE_PROCESS=0）"
 
-  # 第一档就带 --disable-dev-shm-usage：实测 proot 里 Chromium 建共享内存时对 /dev/shm
-  # 会报 EACCES（bash 自己 touch 却能写，是 Chromium 的 create+link 路径问题），
-  # 它一失败就是 FATAL: incorrect permissions on /dev/shm + GPU 连崩三次 Goodbye。
-  # 用 /tmp 就没这个坑（/tmp 在 rootfs 里，容量跟 /data 一样）。
-  tries=( "--disable-dev-shm-usage" "" )
-  for off in "${tries[@]}"; do
-    log "实例 $id 尝试无头模式（附加参数: ${off:-无}）"
-    t0=$(wc -c < "$logf" 2>/dev/null | tr -d " \n")
-    [ -n "$t0" ] || t0=0
-    # 必须 cd 到 napcat 目录再起：napcat.mjs 用相对路径找 ../major.node 与 config/
+  if [ "$mode" = "fork" ]; then
+    # fork 出来的子进程是完整 Electron，必须有 DISPLAY。给它一个 Xvfb（约 12 MB）。
+    disp=$(pick_display)
+    XVFB_SCREEN_USED=""
+    if ! start_xvfb "$id" "$disp"; then
+      HL_WHY="xvfb"
+      log "实例 $id 无头 fork 模式要给子进程一个 Xvfb，但 Xvfb 起不来（详见上面的 xvfb 日志）"
+      return 1
+    fi
+    disp="${XVFB_DISP:-$disp}"
+    log "实例 $id 无头 fork 模式：Xvfb 已就绪（DISPLAY=:$disp），worker 走纯 Node fork"
+  fi
+
+  log "实例 $id 尝试无头模式[$mode]（附加参数: ${extra:-无}）"
+  # 必须 cd 到 napcat 目录再起：napcat.mjs 用相对路径找 ../major.node 与 config/
+  if [ "$mode" = "fork" ]; then
     (
       cd "$nap" || exit 1
-      exec env "${HLE[@]}" LD_PRELOAD="$CW_SO" \
+      exec env "${envs[@]}" DISPLAY=":$disp" LD_PRELOAD="$CW_SO" \
         QQBOT_CRASH_DIR="$CRASH_DIR" QQBOT_CRASH_TAG="$id" \
         HOME="$insthome" \
         NAPCAT_WEBUI_SECRET_KEY="$tok" \
         NAPCAT_WEBUI_JWT_SECRET_KEY="${tok}_jwt" \
         NAPCAT_WEBUI_PREFERRED_PORT="$np" \
-        "$qqdir/qq" --no-sandbox --ozone-platform=headless $EXTRA $off napcat.mjs
+        "$qqdir/qq" --no-sandbox --ozone-platform=headless $EXTRA $extra napcat.mjs
     ) >> "$logf" 2>&1 &
-    pid=$!
-    n=0
-    verdict=""
-    while [ "$n" -lt 100 ]; do
-      if ! kill -0 "$pid" 2>/dev/null; then verdict="died"; break; fi
-      chunk=$(tail -c +$((t0 + 1)) "$logf" 2>/dev/null | tr -d "\000")
-      case "$chunk" in
-        *"NapCat.Core Version"* | *"WebUi User Panel Url"* | *"NapCat Shell App Loading"*)
-          verdict="ok"; break ;;
-        *"incorrect permissions on /dev/shm"* | *"Creating shared memory in /dev/shm"* | \
-        *"Missing X server"* | *"The platform failed to initialize"* | \
-        *"Worker进程退出"*"11"*)
-          verdict="bad"; break ;;
-      esac
-      n=$((n + 1))
-      sleep 0.5 &
-      wait $! 2>/dev/null
-    done
-    if [ "$verdict" = "ok" ]; then
-      HL_PID=$pid
-      return 0
+  else
+    (
+      cd "$nap" || exit 1
+      exec env "${envs[@]}" LD_PRELOAD="$CW_SO" \
+        QQBOT_CRASH_DIR="$CRASH_DIR" QQBOT_CRASH_TAG="$id" \
+        HOME="$insthome" \
+        NAPCAT_WEBUI_SECRET_KEY="$tok" \
+        NAPCAT_WEBUI_JWT_SECRET_KEY="${tok}_jwt" \
+        NAPCAT_WEBUI_PREFERRED_PORT="$np" \
+        "$qqdir/qq" --no-sandbox --ozone-platform=headless $EXTRA $extra napcat.mjs
+    ) >> "$logf" 2>&1 &
+  fi
+  pid=$!
+
+  if hl_wait_ready "$pid" "$logf" "$t0" "$np"; then
+    HL_PID=$pid
+    HL_MODE="$mode"
+    HL_DISP="$disp"
+    return 0
+  fi
+  log "实例 $id 无头模式[$mode]这一档没起来（$HL_WHY，参数: ${extra:-无}）"
+  kill -KILL "$pid" 2>/dev/null
+  wait "$pid" 2>/dev/null
+  # 为这一档起的 Xvfb 收掉：外层要么换档（会重新 pick_display），要么退回完整客户端
+  if [ -n "$disp" ] && [ -n "${XPIDS[$id]:-}" ]; then
+    kill -TERM "${XPIDS[$id]}" 2>/dev/null
+    unset "XPIDS[$id]"
+    rm -f "/tmp/.X$disp-lock" "/tmp/.X11-unix/X$disp" 2>/dev/null || true
+  fi
+  return 1
+}
+
+# 起一个无头 NapCat；成功时把 pid 交给全局 HL_PID 并返回 0，所有档都失败返回 1。
+# 调用前 QE / CW_SO / CRASH_DIR 必须已经准备好（QE 在 start_inst 里已按默认补过
+# NAPCAT_FORCE_NODE_PROCESS=1）。
+start_headless() {
+  local id="$1" qqdir="$2" nap="$3" insthome="$4" logf="$5" np="$6" tok="$7"
+  local arch ov cached cand cands=() rest=() c off tries
+
+  # Chromium 多进程要用的共享内存。start-sandbox.sh 已经把宿主侧的
+  # $QQBOT_DEVDIR/shm（chmod 1777）绑到了 /dev/shm；这里再兜一次权限。
+  mkdir -p /dev/shm 2>/dev/null
+  chmod 1777 /dev/shm 2>/dev/null
+
+  arch=$(napcat_arch)
+  ov=$(napcat_mode_override)
+  if [ "$ov" = "gui" ]; then
+    log "实例 $id 由 napcat-mode.txt 指定为完整客户端模式（不用无头）"
+    return 1
+  fi
+
+  if [ -n "$ov" ]; then
+    cands=( "$ov" )
+  elif [ "$arch" = "aarch64" ] || [ "$arch" = "arm64" ]; then
+    # 真机 arm64：utilityProcess 里跑 QQ 的 native 插件必崩（napi2native SIGSEGV，退出码 11）
+    cands=( fork util )
+  else
+    cands=( util fork )
+  fi
+
+  # 上次成功的那一档提到最前面（只有自动模式才参考）
+  if [ -z "$ov" ]; then
+    cached=$(napcat_mode_saved)
+    if [ -n "$cached" ]; then
+      rest=()
+      for c in "${cands[@]}"; do [ "$c" = "$cached" ] || rest=( "${rest[@]}" "$c" ); done
+      cands=( "$cached" "${rest[@]}" )
+      log "实例 $id 上次跑通的是无头模式[$cached]，先试它"
     fi
-    log "实例 $id 无头模式这一档没起来（${verdict}，参数: ${off:-无}）"
-    kill -KILL "$pid" 2>/dev/null
-    wait "$pid" 2>/dev/null
+  fi
+
+  for cand in "${cands[@]}"; do
+    # 第一档就带 --disable-dev-shm-usage：实测 proot 里 Chromium 建共享内存时对 /dev/shm
+    # 会报 EACCES（bash 自己 touch 却能写，是 Chromium 的 create+link 路径问题），
+    # 它一失败就是 FATAL: incorrect permissions on /dev/shm + GPU 连崩三次 Goodbye。
+    # 用 /tmp 就没这个坑（/tmp 在 rootfs 里，容量跟 /data 一样）。
+    tries=( "--disable-dev-shm-usage" "" )
+    for off in "${tries[@]}"; do
+      if hl_start_one "$id" "$qqdir" "$nap" "$insthome" "$logf" "$np" "$tok" "$cand" "$off"; then
+        [ -z "$ov" ] && napcat_mode_save "$cand"
+        return 0
+      fi
+      # 环境本身有问题（Xvfb 起不来 / 主进程直接死）就不用再换参数试了
+      case "$HL_WHY" in xvfb|died) break ;; esac
+    done
   done
   return 1
 }
@@ -1032,12 +1197,14 @@ PY
       QDIR[$id]="$QQDIR"
       STOP[$id]=0
       echo "$HL_PID" > "$RUNDIR/$id.pid"
-      log "实例 $id 的 NapCat 已用无头模式跑起来（不启 QQ 客户端，不用 Xvfb）"
+      log "实例 $id 的 NapCat 已用无头模式跑起来（worker=$HL_MODE${HL_DISP:+，Xvfb DISPLAY=:$HL_DISP}）"
       sleep 3 &
       wait $! 2>/dev/null
       return 0
     fi
     log "实例 $id 无头模式没起来，退回完整 QQ 客户端（Xvfb）模式"
+  elif [ "$(napcat_arch)" = "arm64" ]; then
+    log "实例 $id 走完整客户端模式：arm64 真机的无头模式会让 NapCat native 插件 SIGSEGV（1.2.8 崩溃报告已确认）；想试验可建 $HOME/.qqbot/cache/napcat-headless.on"
   fi
   DISP="$(pick_display)"
   XVFB_SCREEN_USED=""
