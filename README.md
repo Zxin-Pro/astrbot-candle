@@ -11,17 +11,15 @@
 | --- | --- |
 | 应用名 | **AstrBot烛版** |
 | 控制台标题 | **烛之控制台** |
-| 安装包 | `AstrBot-1.2.11-arm64.apk`（只发这一个包，真机 / 模拟器通用，**`26,128,125`** 字节，约 25 MB） |
+| 安装包 | `AstrBot-1.2.10-arm64.apk`（只发这一个包，真机 / 模拟器通用，**26,111,741** 字节，约 25 MB） |
 | 包名 | `zhuxin.astrbot`（1.2.1 及更早为 `com.termux`） |
-| 当前版本 | **v1.2.11**（versionCode `10211`） |
-| 安装包 SHA-256 | `331508fb4ddebbb303d74bad623973156c0441ff1ed3cf7c151e3b004ffc5de6` |
+| 当前版本 | **v1.2.10**（versionCode `10210`） |
+| 安装包 SHA-256 | 636EC6D751A88B261E80E0B78A0012CB57D994057A06B6E5642BADE9E38D5AEE |
 | 签名证书 SHA-256 | `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3） |
 | 项目地址 | [github.com/Zxin-Pro/astrbot-candle](https://github.com/Zxin-Pro/astrbot-candle) |
-| 下载安装包 | [GitHub Releases](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 提供 `AstrBot-1.2.11-arm64.apk`（约 25 MB；只发一个包，模拟器也能直接装；1.2.11 起安装包只在 GitHub Releases 分发，不再走自建站点） |
-| 更新日志 | [CHANGELOG.md](CHANGELOG.md) · [GitHub Releases](https://github.com/Zxin-Pro/astrbot-candle/releases) |
+| 下载安装包 | 官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的 AstrBot 下载页与 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 提供 `AstrBot-1.2.10-arm64.apk`（约 25 MB；只发一个包，模拟器也能直接装，**站内直接下载，不用跳 GitHub**） |
+| 官方网站 | [烛心.xyz](https://烛心.xyz) |
 | 官方 QQ 群 | **1127997343** |
-
-<!-- 1.2.11 已出包：26,128,125 字节 / SHA-256 331508fb……c5de6（约 25 MB）。 -->
 
 ---
 
@@ -34,14 +32,13 @@
 - 三者**出厂即预接线**：NapCat 通过反向 WebSocket 连到 AstrBot 的 aiocqhttp 平台（`ws://127.0.0.1:6199/ws`）；
 - 用户界面是一个**本地 HTML 控制台**（WebView 加载 `file:///android_asset/qqbot/index.html`），有 **主页 / 机器人 / 日志 / 更多** 四个页签，扫码、开关服务、看日志、改端口全在界面里点。
 - 从 **1.2.10** 起：**模型配置终于读得对了，改参数也不用再重启沙盒**。AstrBot v4.29 启动时会把 `cmd_config.json` 里的 provider 拆成 `provider[]` + `provider_sources[]`（密钥 / API 地址搬到后者），App 原来只翻 `provider[]`，于是「配过模型、第二次打开又显示没配置」；现在按 AstrBot 运行时的合并顺序读，并优先显示默认对话模型指向的那条。保存模型 / 人格改成走 AstrBot 的 HTTP 接口**热生效**（`provider-sources` → `providers` → `personas` → `system-config` 四步），实测一秒内卡片就变、机器人不中断，只有接口够不着时才回落到停沙盒改文件的旧流程。另外：主页模型卡显示中转站主机名 `worldcodes.online`（「复制 / 打开」给的是带邀请码的注册地址 `https://worldcodes.online/register?invite_code=CZLT`）、第一次点「控制台」弹账号密码卡可复制、NapCat 直达链接自带 token、登录 QQ 后自动回填 QQ 号、AstrBot 冷启动时 OneBot 磁贴显示「启动中」不再误报未连接。
-- 从 **1.2.11** 起：**上报地址与版本入口全部搬到 GitHub** —— 错误日志上报改走私有仓库 `Zxin-Pro/astrbot-errlogs`（日志仍先整份脱敏，只是收件地址不再是自建站点，自有域名停用后照样能收）；「关于与支持」与「检查更新」里指向自建站点的入口统一换成本仓库 [GitHub 仓库](https://github.com/Zxin-Pro/astrbot-candle) 与 [GitHub Releases](https://github.com/Zxin-Pro/astrbot-candle/releases)，版本号只认仓库里的 `VERSION` 与 Releases 标签；通知栏的「关闭进程」现在会**彻底结束应用进程**，守护服务（`QqbotGuardService`）不再被系统按前台服务规则重建。
 - 从 **1.2.9** 起：**修好真机上 NapCat 反复崩溃** —— 1.2.8 把无头模式默认开在了所有机型上，但真机 arm64 上 NapCat 的 native 插件在 Electron utilityProcess 里一加载就 SIGSEGV（`退出码: 11`，pc 落在 `napi2native.linux.arm`），20 秒一轮重启、AstrBot 收不到任何消息。现在**真机默认回到完整客户端（Xvfb）模式**，无头模式（285 MB）只留给 x86_64 模拟器；架构判定改用 App 传进 proot 的 `QQBOT_ARCH`（x86_64 模拟器会把 `uname` 伪装成 aarch64），「无头起来了」的判据也从「日志出现 NapCat.Core Version」改成「端口在听 + 进程活着 + 6 秒无崩溃」。想手动指定：`$HOME/.qqbot/cache/napcat-mode.txt` 写 `util` / `fork` / `gui`。
 - 从 **1.2.8** 起：**NapCat 改无头模式运行** —— 不再为每个实例拉起整套 Electron QQ 客户端（8 个进程、810~930 MB）和 Xvfb 虚拟屏，改为 `qq --ozone-platform=headless napcat.mjs` 只跑 NapCat 本体，实测 QQ 侧内存降到 **285 MB**（4 个进程），省下约 870 MB；扫码、面板、收发消息都不变，起不来会自动退回老的 Xvfb 流程，也能用 `$HOME/.qqbot/cache/napcat-headless.off` 手动回退。（1.2.9 起无头模式只对 x86_64 模拟器默认生效，真机默认走完整客户端，原因见上一条。）
 - 从 **1.2.5** 起：**首次部署改回官方镜像源** —— 默认不再从自己站点下 604 MB 整包镜像，改成「下载 Ubuntu base（约 30 MB）→ apt 从清华 / 中科大 / 阿里镜像站装依赖」的在线流程，耗时通常 10~30 分钟。整包镜像没有删，改成手动开启：部署前 `export QQBOT_BUNDLE=1` 才会去 `QQBOT_CDN` 下 `bundle-<arch>.tar.xz`（离线 / 内网 / 镜像站不可用时用）。这一版**只发一个包**：arm64 与 amd64 两个包逐条比对 724 个条目，只有 `assets/qqbot-scripts.zip` 的时间戳不同、内容完全相同，架构由运行时按设备 ABI 选镜像，所以合并成 `AstrBot-1.2.5-arm64.apk` 一个包。
 - 从 **1.2.4** 起：**修好 arm64 真机部署必挂的 proot 缺 loader** —— 之前打包只带 proot 本体，没带 `libexec/proot/loader` 与 `loader32`，proot 一启动就报 `proot error: execve("/system/bin/sh"): No such file or directory` + `the loader was not found`，第 1 步 `10-termux` 的 proot 自检三次全挂；现在两个 loader 随 bootstrap 一起发（`build/libexec/proot/`），`.so` 文件总长仍是 **29,392,992 字节**。**覆盖升级也能补上 loader**：`TermuxInstaller` 只在 `files/usr` 不存在时解包 `.so`，所以同一对文件又放进 `assets/qqbot-scripts.zip`（`build/opt/qqbot/libexec/proot/`），`steps/10-termux.sh` 发现 `$PREFIX/libexec/proot/loader` 缺失就从 `$PREFIX/opt/qqbot/libexec/proot/` 补装并 `chmod 755`，补不上会打警告。**清单再收两条权限**：删掉 `REQUEST_INSTALL_PACKAGES` 与 `WRITE_EXTERNAL_STORAGE`，现在只剩 8 条（`INTERNET` / `ACCESS_NETWORK_STATE` / `FOREGROUND_SERVICE` / `WAKE_LOCK` / `VIBRATE` / `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` / `RECEIVE_BOOT_COMPLETED` / `POST_NOTIFICATIONS`），`RunCommandService` 仍 `android:exported=false`；应用内更新是交给系统浏览器下载，所以不需要装包权限。**保留项**：`android:sharedUserId` 不能删（删了已装的 1.2.3 会报 `INSTALL_FAILED_UID_CHANGED`，等于强制卸载重装）；`TermuxDocumentsProvider` 与 `TermuxOpenReceiver$ContentProvider` 必须保持 `android:exported="true"`（改成 `false` 会让应用启动即崩 `SecurityException: Provider must be exported`）。
 - 从 **1.2.3** 起：**修好 bootstrap 装不上**（弹「Unable to install bootstrap」）—— 包名改成 `zhuxin.astrbot` 后，bootstrap 里 `termux-bootstrap-second-stage.sh` 的前缀没跟着改写，`dpkg` 的 admindir 仍指 `/data/data/com.termux/files/usr/var/lib/dpkg`，第二阶段必然失败、`usr/` 会被清空；现在改写 `.so` 时先把整份脚本按新前缀重写。**32 个 ELF 的程序头不再被改坏**：上一版用 lief 改 RUNPATH，它会为了塞下更长的字符串给这些文件新增 `PT_LOAD` 段（`bin/apt` 11→12 段等），模拟器能跑、真机 Android 16 的 linker 直接 `execve` 失败；现在改成**原地等长改写** —— `/data/data/<包名>/files/usr` 缩成 `/data/data/<包名>/u`、`files/home` 缩成 `/h`，由应用启动时建的符号链接（`files/u → files/usr`、`files/h → files/home`）解析，ELF 节头 / 程序头 / 偏移一个字节都不动。**清单收敛降误报**：删掉 7 条从未使用的权限（`READ_LOGS` / `DUMP` / `WRITE_SECURE_SETTINGS` / `PACKAGE_USAGE_STATS` / `MANAGE_EXTERNAL_STORAGE` / `SYSTEM_ALERT_WINDOW` / `com.android.alarm.permission.SET_ALARM`），`RunCommandService` 从导出改成不导出。
 - 从 **1.2.2** 起：**Android 包名从 `com.termux` 改为 `zhuxin.astrbot`**（桌面、设置、通知里显示的都是新包名），不再和官方 Termux 冲突；`android:sharedUserId` 仍保留 `com.termux`（去掉会让已装版本报 `INSTALL_FAILED_UID_CHANGED`，等于强制卸载重装）。因为包名变了，**装了 1.2.1 及更早版本的手机不能直接覆盖升级**：请先在旧版「更多 → 备份与恢复」导出备份，卸载旧版（会清掉旧包名下的沙盒数据），装好 1.2.2 后再导回；1.2.2 之后同签名可以继续覆盖升级。同时修复 bootstrap 尾部截断导致的 `dlopen ... invalid shdr offset/size: 29391584/1408`、改包名后第二阶段 `postinst` 失败导致 `usr/` 被删，以及 curl 编译期 CA 路径写死导致的 `curl (77)`。
-- 从 **1.2.1** 起：**APK 回归精简包**（约 **25 MB**，arm64 / amd64 双架构）—— 1.2.0 把约 600 MB 沙盒镜像塞进安装包，既占空间又会被部分安全扫描误报；当时首次部署按架构从项目自建站点下载镜像（断点续传 + SHA-256 校验，失败自动回落到在线安装；1.2.5 起改回官方镜像在线安装），沙盒、QQ 登录态和配置都保留（从 1.2.1 及更早升级到 1.2.2 需先卸载，见上）。
+- 从 **1.2.1** 起：**APK 回归精简包**（约 **25 MB**，arm64 / amd64 双架构）—— 1.2.0 把约 600 MB 沙盒镜像塞进安装包，既占空间又会被部分安全扫描误报；当时首次部署按架构从官网下载镜像（断点续传 + SHA-256 校验，失败自动回落到在线安装；1.2.5 起改回官方镜像在线安装），沙盒、QQ 登录态和配置都保留（从 1.2.1 及更早升级到 1.2.2 需先卸载，见上）。
 - 从 **1.1.38** 起：NapCat 起来但账号还没登录时，会自动弹出扫码窗口（二维码 + 说明，登录成功后自己关掉），不用再去「日志」页翻二维码；手动入口在机器页实例的 `⋯` 里。
 - 从 **1.1.37** 起：浅色主题改「清新」方向——多色柔和渐变画布、磨砂玻璃卡片、彩色图标块，主操作是蓝紫渐变胶囊但一屏只留一颗。
 - 从 **1.1.36** 起：浅色主题重做——画布压暗、卡片纯白、hero 改品牌深蓝，四个常用动作合成一条，实例块去掉盒中盒。
@@ -67,7 +64,7 @@
 2. **注入脚本**：Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 是一个 **ELF 头 + 内嵌 ZIP 段 + 动态段/节头表尾部** 的混合体（ELF 头 1328 字节，内嵌 ZIP 段 29388903 字节，尾部 2761 字节，文件总长 29392992 字节）。我们用一个**自己写的 Java 工具** `RepackBootstrap` 打开这个内嵌 ZIP，把 `build/` 目录下的沙盒脚本（部署流程、启停脚本、守护循环、`profile.d` 钩子）作为新条目塞进去，再按原布局写回。
    - 内嵌 ZIP 段在原始包里是**填满的**，所以要塞进新文件就必须删掉一些用不到的条目（man/info/doc 文档、C 头文件、测试二进制等），这些被删的条目部署流程永远不会执行，安全。
 3. **换回 APK**：用 `ApkReplace` 把重新打包好的 `.so` 换回 APK 的 `lib/arm64-v8a/` 下。
-4. **改包名并重新签名**：`[3c/5]` 用 `tools/reloc_bootstrap.py` 对 `libtermux-bootstrap.so` 内嵌的用户态做**原地等长改写** —— 长路径 `/data/data/<包名>/files/usr` 缩成 `/data/data/<包名>/u`、`files/home` 缩成 `/h`，由应用启动时建的符号链接（`PrefixAlias`：`files/u → files/usr`、`files/h → files/home`）解析，替换后剩余字节用 NUL 填满，`.so` 仍是 29,392,992 字节、程序头 / 节头 / 偏移一个字节都不动（这是 `dlopen` 与真机 `execve` 都能过的前提）；`[4b/5]` 用 `out/patch_manifest.py` 重写二进制 `AndroidManifest.xml` 的字符串池（package、`com.termux.RUN_COMMAND` 权限、documents/filereceiver/files authorities）；`out/patch_smali.py` 只替换不是 `com.termux.app.` 的引用（Java 类仍在 `com.termux.app` 包）。最后用 [uber-apk-signer](https://github.com/patrickfav/uber-apk-signer) 重新签名，产出可安装的 `AstrBot-<版本号>.apk`（当前版本即 `AstrBot-1.2.11-arm64.apk`，只发这一个包）。
+4. **改包名并重新签名**：`[3c/5]` 用 `tools/reloc_bootstrap.py` 对 `libtermux-bootstrap.so` 内嵌的用户态做**原地等长改写** —— 长路径 `/data/data/<包名>/files/usr` 缩成 `/data/data/<包名>/u`、`files/home` 缩成 `/h`，由应用启动时建的符号链接（`PrefixAlias`：`files/u → files/usr`、`files/h → files/home`）解析，替换后剩余字节用 NUL 填满，`.so` 仍是 29,392,992 字节、程序头 / 节头 / 偏移一个字节都不动（这是 `dlopen` 与真机 `execve` 都能过的前提）；`[4b/5]` 用 `out/patch_manifest.py` 重写二进制 `AndroidManifest.xml` 的字符串池（package、`com.termux.RUN_COMMAND` 权限、documents/filereceiver/files authorities）；`out/patch_smali.py` 只替换不是 `com.termux.app.` 的引用（Java 类仍在 `com.termux.app` 包）。最后用 [uber-apk-signer](https://github.com/patrickfav/uber-apk-signer) 重新签名，产出可安装的 `AstrBot-<版本号>.apk`（当前版本即 `AstrBot-1.2.5-arm64.apk`，只发这一个包）。
 5. **原生控制台**：`ui/src/` 下的 Java 源码（`com.termux.qqbot.*`）编译成 dex、转成 smali、和 `ui/assets/qqbot/index.html` 一起由 apktool 打进 APK。
 
 装到手机上以后：
@@ -98,7 +95,7 @@
 1. **先卸载 1.2.1 及更早的 AstrBot烛版**。
    1.2.1 及更早的包名是 `com.termux`，1.2.2 改成了 `zhuxin.astrbot`，**不能直接覆盖安装**。卸载会清掉旧包名下的沙盒数据，请先在旧版「更多 → 备份与恢复」导出备份，装好 1.2.2（或更新版本）后再导回。
    官方 Termux / 应用商店版 / F-Droid 版与 1.2.2 起的包名不同，**不再冲突**，可以共存。
-2. 到 [GitHub Releases](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 下载 `AstrBot-1.2.11-arm64.apk`（只发一个包，模拟器也能直接装；文件名后缀就是版本号），传到手机，点击安装。
+2. 到官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的下载页（或 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest)）下载 `AstrBot-1.2.9-arm64.apk`（只发一个包，模拟器也能直接装；文件名后缀就是版本号），传到手机，点击安装。
 3. 安装时系统会提示「**未知来源应用**」，需要允许安装。
    - **小米 / Redmi（HyperOS）用户**：如果被拦下、提示「应用缺少隐私政策」且没有「继续安装」，
      这是小米安装器的风险提示，不是包坏了。关掉手机管家的「安装监控 / 安全守护 / 应用防护」、
@@ -179,10 +176,10 @@
 
 ### 4. 更多
 
-- **关于与支持**：版本信息、GitHub 仓库入口、官方群。
+- **关于与支持**：版本信息、官方网站、官方群。
 - **外观**：控制台的外观选项。
 - **模型与人格**：中转站密钥、模型名、人格提示词在应用内直接配好，保存时自动停沙盒 → 写配置 → 重新拉起，不用进 AstrBot 控制台（见《使用说明》第十三节）。
-- **检查更新**：官方版本号改从 [GitHub Releases](https://github.com/Zxin-Pro/astrbot-candle/releases) 读取（1.2.11 起不再访问自建站点），两个来源互不阻塞。
+- **检查更新**：GitHub 连不上时会同时显示**官网最新版本号**，两个来源互不阻塞。
 - **终端**：进入沙盒终端的入口（给想自己敲命令的高级用户）。
 
 ### 设置（右上角齿轮）
@@ -292,8 +289,7 @@
 - 本软件是一个**本地运行环境管理器**：它只在你的手机本地建一个 Linux 沙盒，并在里面安装 **NapCat** 与 **AstrBot** 两个第三方开源项目。这两个项目由各自的作者独立开发与维护，**本软件不对它们的功能、稳定性与后续更新作任何保证**。
 - 本软件**不是腾讯官方产品**，与腾讯公司及 QQ 团队**没有任何关联**，也未获得其授权或认可。
 - 使用第三方客户端登录**可能违反平台服务条款**，存在**账号被限制或封禁的风险**，请自行评估并承担后果。
-- 本软件**默认不联网上报任何数据**：QQ 登录凭据、聊天记录、配置与日志**全部只保存在本机**，随时可以自行删除。
-- **只有你主动点「上传错误日志」时**，才会把一份打码后的诊断报告（部署日志、崩溃堆栈、版本与机型信息）提交到作者的 GitHub 私有仓库 `Zxin-Pro/astrbot-errlogs`；报告不采集合模型密钥、面板密码与聊天记录。匿名统计与崩溃聚合上报自 1.2.11 起默认关闭。
+- 本软件**不收集、不上传任何数据**：QQ 登录凭据、聊天记录、配置与日志**全部只保存在本机**，随时可以自行删除。
 - 本软件按「**现状**」提供，不附带任何明示或暗示的担保。
 - **请勿用于任何违法违规用途。**
 
@@ -372,6 +368,6 @@ qqbot-sandbox/
 | **MINOR**（0.X.0） | 新增功能 | 1.1.0 |
 | **PATCH**（0.0.X） | 修 bug、文案、性能 | 1.0.1 |
 
-当前版本：**versionName `1.2.11`，versionCode `10211`**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本：**versionName `1.2.9`，versionCode `10209`**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 版本号的唯一来源是仓库根目录的 `VERSION` 文件（内容形如 `1.0.2`），`build-ui.ps1` 打包时自动换算成 `versionCode` 写进 APK。

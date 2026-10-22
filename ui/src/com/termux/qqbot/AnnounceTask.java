@@ -8,7 +8,7 @@ import java.io.File;
 /**
  * 功能 56「应用内公告」的原生侧。
  *
- * 一次 GET：<已停用的自建站点>/api/announce?ver=<versionName>（2026-10 起不再发，见 ENABLED）
+ * 一次 GET：https://xn--15t839a.xyz/api/announce?ver=<versionName>
  *   - 带 X-Qqbot-Atom: 1（服务端缺这个头 403）与 If-None-Match: <上次的 ETag>；
  *   - 5 秒超时（AtomNet.READ_TIMEOUT_GET_MS），失败静默；
  *   - 304 → 内容没变，只把 ts 更新成现在，items 原样保留；
@@ -24,19 +24,6 @@ import java.io.File;
  * d8 处理匿名内部类会崩：本文件无内部类、无 lambda。
  */
 public class AnnounceTask implements Runnable {
-
-    /**
-     * 总开关（2026-10 写死 false）。
-     *
-     * 自建站点服务端随 VPS 一起停了，现在没有免密钥能收/发公告的地方；GitHub 那边只有
-     * 私有仓库 Zxin-Pro/astrbot-errlogs，进去要 token，不能塞进 APK。公告界面本身
-     * 已经不调用了，留着这个类只为将来有服务端时改回 true 就能复活：
-     * 下面的抓取/缓存/ETag 逻辑一行没删。
-     *
-     * 关着的时候 ann() / refreshStart() / run() 都在入口返回「空公告」，不建线程、
-     * 不解析 DNS、不碰状态文件。
-     */
-    private static final boolean ENABLED = false;
 
     /** 缓存：$QQBOT_HOME/state/ann.json（etag / items / ts / lastErr）。 */
     static final String FILE = "ann.json";
@@ -64,7 +51,6 @@ public class AnnounceTask implements Runnable {
      * 字段对齐前端：items[].{id,title,body,level,minVer,until}；until 是 epoch 秒或 0。
      */
     static String ann(File filesDir, String ver) {
-        if (!ENABLED) return emptyAnn();
         try {
             JSONObject st = load(filesDir);
             long now = StateIO.now();
@@ -91,34 +77,8 @@ public class AnnounceTask implements Runnable {
         }
     }
 
-    /**
-     * 「空公告」：关掉上报后 ann() / refreshStart() 统一返回这一份。
-     * 键和顺序照抄 ann() 里 st == null 那条路径，items 是空数组，前端拿到当「没公告」，
-     * 不会因为缺字段而报错；stale=true 表示「没刷新过」。
-     */
-    static String emptyAnn() {
-        try {
-            JSONObject o = new JSONObject();
-            o.put("ok", true);
-            o.put("warm", false);
-            o.put("cached", false);
-            o.put("stale", true);
-            o.put("ts", 0L);
-            o.put("items", new JSONArray());
-            o.put("ver", 0);
-            o.put("minVer", "");
-            o.put("lastErr", "");
-            return o.toString();
-        } catch (Throwable t) {
-            // JSONObject 理论上不会抛；兜底给一份字面量，形状与上面逐字节一致
-            return "{\"ok\":true,\"warm\":false,\"cached\":false,\"stale\":true,"
-                    + "\"ts\":0,\"items\":[],\"ver\":0,\"minVer\":\"\",\"lastErr\":\"\"}";
-        }
-    }
-
     /** 强制刷新（用户点了「重新检查」）：只起线程，立刻返回。 */
     static String refreshStart(File filesDir, String ver) {
-        if (!ENABLED) return emptyAnn();
         try {
             spawn(filesDir, ver);
             JSONObject o = new JSONObject();
@@ -143,7 +103,6 @@ public class AnnounceTask implements Runnable {
 
     @Override
     public void run() {
-        if (!ENABLED) return;
         if (filesDir == null) return;
         synchronized (AnnounceTask.class) {
             if (busy) return;

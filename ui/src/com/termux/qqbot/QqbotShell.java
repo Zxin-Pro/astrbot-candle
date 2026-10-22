@@ -166,16 +166,6 @@ public class QqbotShell {
      * 「先查 pid 再拉起」不加锁会两边都查到没运行、各拉一份容器（正是要避免的双开）。
      */
     public static synchronized boolean startSandbox(File filesDir, StringBuilder note) {
-        return startSandbox(filesDir, note, false);
-    }
-
-    /**
-     * userStart=true 只有「用户自己点了启动」的入口才传（磁贴 / 小组件 / 通知栏「重启」）：
-     * start-sandbox.sh 见到 --user-start 才会解除「紧急下线」标记。看门狗、网络自愈、
-     * 守护自检这些自动路径必须传 false —— 否则用户刚按「关闭进程」，下一轮自动重启
-     * 就把标记抹掉，「关了又自己活过来」的老问题会原样复现（v1.2.11）。
-     */
-    public static synchronized boolean startSandbox(File filesDir, StringBuilder note, boolean userStart) {
         if (!bootstrapReady(filesDir)) { if (note != null) note.append("Termux 环境未就绪"); return false; }
         File qq = qqbotDir(filesDir);
         File pid = new File(qq, "supervisor.pid");
@@ -186,8 +176,7 @@ public class QqbotShell {
         // setsid 脱离进程组：run 返回后会 destroy()，而 destroyProcess 是按进程组发
         // SIGTERM 的，不脱离就会把刚拉起来的沙盒一起带走。
         run(filesDir, "mkdir -p " + qh + "/logs " + qh + "/cache/logs; "
-                + "nohup setsid bash " + usrDir(filesDir).getAbsolutePath() + "/opt/qqbot/start-sandbox.sh"
-                + (userStart ? " --user-start" : "") + " >> "
+                + "nohup setsid bash " + usrDir(filesDir).getAbsolutePath() + "/opt/qqbot/start-sandbox.sh >> "
                 + qh + "/logs/supervisor.log 2>&1 < /dev/null & "
                 + "sleep 3; echo ok", 30);
         boolean ok = pidAlive(pid, "proot");

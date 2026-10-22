@@ -16,27 +16,13 @@ public class BootSync implements Runnable {
 
     public void run() {
         try {
-            // 覆盖安装后 $PREFIX 里还是旧脚本，先同步再谈别的。
-            // 但脚本同步完不能无条件重启容器：state/offline 还在说明用户主动「关闭进程 /
-            // 紧急下线」过，重启就是把沙盒又拉起来。同步本身是纯文件操作，照做无妨；
-            // 标记只由用户显式「启动」清除（SandboxStart / start-sandbox.sh），这里不碰。
-            boolean synced = act.syncScripts();
-            // 判断放在同步之后：同步这一两秒里用户完全可能刚按了「关闭进程」。
-            if (synced && !closedByUser()) act.restartServicesIfRunning();
+            // 覆盖安装后 $PREFIX 里还是旧脚本，先同步再谈别的
+            if (act.syncScripts()) act.restartServicesIfRunning();
         } catch (Throwable ignored) {
         }
         try {
             act.maybeAutoDeploy();
         } catch (Throwable ignored) {
-        }
-    }
-
-    /** state/offline 还在 = 用户主动关过，任何自动拉起都要跳过。 */
-    private boolean closedByUser() {
-        try {
-            return StateIO.file(act.filesDirPub(), "offline").isFile();
-        } catch (Throwable ignored) {
-            return false;
         }
     }
 }

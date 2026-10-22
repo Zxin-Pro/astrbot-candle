@@ -8,10 +8,7 @@
 # 而部署步骤是无脑重跑的，于是用户点一百次「继续部署」都卡在第 3 步，永远出不来。
 #
 # 幂等、不联网也能安全执行。可以被 30-apt.sh 调用，也可以单独跑（App 的「设置 → 维护 → 修复沙盒依赖」）。
-# 退出码有含义（1.2.11 起）：dpkg 数据库确实恢复可用才 exit 0，修不好 exit 1。
-# 调用方 fix-sandbox.sh 靠它区分「修好了」和「没修好」——历史上的无条件 exit 0
-# 让它对着一份读不了 status 的 dpkg 库报「修复完成」，用户点几次都是同一面墙。
-# 30-apt.sh 里是 `|| true` 调用，所以这里改严也不会把部署卡死。
+# 永远 exit 0：调用方要的是「尽力修好」，不该因为修不好就把整个部署中断掉。
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -176,9 +173,7 @@ if [ "$_j" != "0" ]; then
   say "挪完 journal=$(qq_journal) 条"
 fi
 
-# 11) 健康判定 —— 同时决定退出码
-#     只判「数据库能不能读」：dpkg-query 读不到包列表就说明 status 已经不可用，
-#     这不是「还有几个包没配完」那种可以放过的问题，上层必须知道。
+# 11) 健康判定
 if dpkg-query -W -f='${Package}\n' >/dev/null 2>&1; then
   if qq_dirty; then
     say "注意：仍有个别包没配置完，下面这次安装可能会失败。有问题的包是："
@@ -186,14 +181,8 @@ if dpkg-query -W -f='${Package}\n' >/dev/null 2>&1; then
   else
     say "dpkg 状态正常"
   fi
-  say "自愈完成（开始前 journal=$_before 条，现在 $(qq_journal) 条）"
-  exit 0
+else
+  say "警告：dpkg 数据库仍不可用，继续尝试"
 fi
-
-say "E: dpkg 数据库仍不可用（dpkg-query 执行失败），这次没能修好"
-if [ ! -s /var/lib/dpkg/status ]; then
-  say "E: /var/lib/dpkg/status 不存在或为空，dpkg 已经读不到包状态了"
-fi
-say "E: 开始前 journal=$_before 条，现在 $(qq_journal) 条"
-say "E: 这个根文件系统需要重建：App 设置 → 重置部署标记 → 重新部署；仍然不行就卸载重装（安装时选内部存储）"
-exit 1
+say "自愈完成（开始前 journal=$_before 条，现在 $(qq_journal) 条）"
+exit 0

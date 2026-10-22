@@ -7,27 +7,21 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Locale;
-import java.util.TimeZone;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * 读 GitHub 上的最新版本号（Zxin-Pro/astrbot-candle 的 releases/latest）。
+ * 读官网的版本号（xn--15t839a.xyz 的 /data/astrbot.json）。
  *
- * 为什么单独做一个：这个请求走网络、国内直连 api.github.com 常常要十几秒，不能让
- * WebView 的桥线程同步等，所以照 CheckUpdate 的老样子起一条后台线程写结果、前端
- * poll() 轮询，页面全程不卡。
- * 返回的 JSON 固定为 {ok, updated, site, apk}：
- *   site    = tag_name 去掉前缀 v/V，例如 1.1.34；
- *   apk     = assets 里名字以 .apk 结尾且带 arm64 的资产文件名；
- *   updated = published_at（2026-10-22T05:36:16Z）按 GMT+8 转成 YYYY-MM-DD HH:mm:ss。
- * 失败给 {ok:false, err:"..."}。
+ * 为什么单独做一个：GitHub 的 release 在国内经常连不上，而官网的 JSON 是站点构建时
+ * 生成的静态文件，带 UA 就能拿到，比 api.github.com 稳得多。
+ * JSON 里下载页首卡的标题形如「AstrBot烛版 1.1.34（最新版）」，从中取版本号即可。
  * d8 处理匿名内部类会崩，本文件不出现匿名类。
  */
 public final class SiteVer {
 
-    static final String URL = "https://api.github.com/repos/Zxin-Pro/astrbot-candle/releases/latest";
+    static final String URL = "https://xn--15t839a.xyz/data/astrbot.json";
+    private static final Pattern VER = Pattern.compile("(\\d+(?:\\.\\d+){1,3})");
 
     private static volatile String result = "";
     private static volatile boolean running = false;
@@ -50,75 +44,6 @@ public final class SiteVer {
         running = false;
     }
 
-    /** 取一个字符串字段：Android 的 JSONObject.NULL 会被 optString 变成 "null"，这里统一当空串。 */
-    static String txt(JSONObject o, String key) {
-        String s = o.optString(key, "");
-        if (s == null || "null".equals(s)) return "";
-        return s.trim();
-    }
-
-    /** 2026-10-22T05:36:16Z → 2026-10-22 13:36:16（GMT+8）；解析不了就退化成 YYYY-MM-DD。 */
-    static String when(String iso) {
-        String s = (iso == null) ? "" : iso.trim();
-        if (s.length() == 0) return "";
-        try {
-            SimpleDateFormat in = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
-            in.setTimeZone(TimeZone.getTimeZone("UTC"));
-            Date d = in.parse(s);
-            SimpleDateFormat out = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US);
-            out.setTimeZone(TimeZone.getTimeZone("GMT+8"));
-            return out.format(d);
-        } catch (Throwable t) {
-            if (s.length() >= 10) return s.substring(0, 10);
-            return s;
-        }
-    }
-
-    /** GitHub releases/latest 的 JSON → {ok, updated, site, apk}；解析不动就给 {ok:false, err}。 */
-    static String build(String body) {
-        JSONObject out = new JSONObject();
-        try {
-            JSONObject root = new JSONObject(body);
-
-            String ver = txt(root, "tag_name");
-            if (ver.length() > 0 && (ver.charAt(0) == 'v' || ver.charAt(0) == 'V')) ver = ver.substring(1);
-            if (ver.length() == 0) {
-                out.put("ok", false);
-                out.put("err", "GitHub 的 release 里没有版本号（tag_name 为空）");
-                return out.toString();
-            }
-
-            String apk = "";
-            JSONArray assets = root.optJSONArray("assets");
-            if (assets != null) {
-                for (int i = 0; i < assets.length(); i++) {
-                    JSONObject a = assets.optJSONObject(i);
-                    if (a == null) continue;
-                    String an = txt(a, "name");
-                    if (an.length() == 0) continue;
-                    String low = an.toLowerCase(Locale.US);
-                    if (!low.endsWith(".apk")) continue;
-                    if (low.indexOf("arm64") < 0) continue;
-                    apk = an;
-                    break;
-                }
-            }
-
-            out.put("ok", true);
-            out.put("updated", when(txt(root, "published_at")));
-            out.put("site", ver);
-            out.put("apk", apk);
-            return out.toString();
-        } catch (Throwable t) {
-            JSONObject bad = new JSONObject();
-            try {
-                bad.put("ok", false);
-                bad.put("err", "解析 GitHub 返回失败：" + String.valueOf(t));
-            } catch (Throwable ignored) {}
-            return bad.toString();
-        }
-    }
-
     static String fetch() {
         JSONObject out = new JSONObject();
         HttpURLConnection c = null;
@@ -128,12 +53,11 @@ public final class SiteVer {
             c.setConnectTimeout(12000);
             c.setReadTimeout(20000);
             c.setInstanceFollowRedirects(true);
-            c.setRequestProperty("User-Agent", "AstrBotCandle");
-            c.setRequestProperty("Accept", "application/vnd.github+json");
-            int code = c.getResponseCode();
-            if (code != 200) {
+            c.setRequestProperty("User-Agent", "Mozilla/5.0 (AstrBotCandle)");
+            c.setRequestProperty("Accept", "application/json");
+            if (c.getResponseCode() != 200) {
                 out.put("ok", false);
-                out.put("err", "GitHub 返回 " + code);
+                out.put("err", "官网返回 " + c.getResponseCode());
                 return out.toString();
             }
             in = c.getInputStream();
@@ -141,11 +65,49 @@ public final class SiteVer {
             byte[] buf = new byte[8192];
             int n;
             while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
-            return build(new String(bo.toByteArray(), "UTF-8"));
+            String body = new String(bo.toByteArray(), "UTF-8");
+            JSONObject root = new JSONObject(body);
+            out.put("ok", true);
+            out.put("updated", root.optString("updated", ""));
+            String ver = "";
+            String apk = "";
+            JSONArray tabs = root.optJSONArray("tabs");
+            if (tabs != null) {
+                for (int i = 0; i < tabs.length() && ver.length() == 0; i++) {
+                    JSONObject tab = tabs.optJSONObject(i);
+                    if (tab == null) continue;
+                    JSONArray cards = tab.optJSONArray("cards");
+                    if (cards == null) continue;
+                    for (int j = 0; j < cards.length(); j++) {
+                        JSONObject card = cards.optJSONObject(j);
+                        if (card == null) continue;
+                        String title = card.optString("title", "");
+                        Matcher m = VER.matcher(title);
+                        if (m.find() && title.indexOf("烛版") >= 0) {
+                            ver = m.group(1);
+                            String desc = card.optString("desc", "");
+                            int q = desc.indexOf("AstrBot-");
+                            if (q >= 0) {
+                                int e = desc.indexOf(".apk", q);
+                                if (e > q) apk = desc.substring(q, e + 4);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            if (ver.length() == 0) {
+                out.put("ok", false);
+                out.put("err", "官网页面里没找到版本号");
+                return out.toString();
+            }
+            out.put("site", ver);
+            out.put("apk", apk);
+            return out.toString();
         } catch (Throwable t) {
             try {
                 out.put("ok", false);
-                out.put("err", "连不上 GitHub：" + String.valueOf(t));
+                out.put("err", "连不上官网：" + String.valueOf(t));
             } catch (Throwable ignored) {}
             return out.toString();
         } finally {

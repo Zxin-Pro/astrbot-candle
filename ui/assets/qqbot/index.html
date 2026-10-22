@@ -811,7 +811,7 @@ input::placeholder{color:var(--ph)}
 input[type=number]{-webkit-appearance:none;appearance:none;margin:0}
 input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 
-/* ===== 链接行（GitHub 项目主页 / 交流群） ===== */
+/* ===== 链接行（官网 / 交流群） ===== */
 .lkrow{
   display:flex;align-items:center;gap:var(--sp3);
   padding:11px 0;border-bottom:1px solid var(--line);
@@ -3563,10 +3563,10 @@ section.tab.on{display:flex;flex-direction:column}
       <h2>关于与支持</h2>
       <div class="lkrow">
         <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.6"/><path d="M3.4 12h17.2"/><path d="M12 3.4c2.3 2.4 3.5 5.4 3.5 8.6S14.3 18.2 12 20.6c-2.3-2.4-3.5-5.4-3.5-8.6S9.7 5.8 12 3.4z"/></svg></span>
-        <div class="lkbd"><div class="lkt">GitHub 仓库</div><div class="lkv">Zxin-Pro/astrbot-candle</div></div>
+        <div class="lkbd"><div class="lkt">官方网站</div><div class="lkv">烛心.xyz</div></div>
         <div class="lkbtns">
-          <button class="small" data-act="copyurl" data-arg="https://github.com/Zxin-Pro/astrbot-candle">复制</button>
-          <button class="small primary" data-act="openurl" data-arg="https://github.com/Zxin-Pro/astrbot-candle">打开</button>
+          <button class="small" data-act="copyurl" data-arg="https://xn--15t839a.xyz">复制</button>
+          <button class="small primary" data-act="openurl" data-arg="https://xn--15t839a.xyz">打开</button>
         </div>
       </div>
       <div class="lkrow">
@@ -3579,7 +3579,7 @@ section.tab.on{display:flex;flex-direction:column}
       </div>
       <div class="lkrow">
         <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 12a8.4 8.4 0 1 1-2.6-6"/><path d="M20.4 3.6V9.3h-5.7"/></svg></span>
-        <div class="lkbd"><div class="lkt">检查更新</div><div class="lkv" id="updText">点右边按钮看看有没有新版本</div><div class="lkv" id="siteVer">GitHub 最新：读取中…</div></div>
+        <div class="lkbd"><div class="lkt">检查更新</div><div class="lkv" id="updText">点右边按钮看看有没有新版本</div><div class="lkv" id="siteVer">官网版本：读取中…</div></div>
         <div class="lkbtns">
           <button class="small primary" data-act="checkupdate" id="updBtn">检查更新</button>
         </div>
@@ -3637,33 +3637,20 @@ section.tab.on{display:flex;flex-direction:column}
 
     <!-- 功能 9：紧急下线。App / 通知栏 / 小组件 / 磁贴四处最终都落到这一张确认卡上：
          先把面板叫到前台弹确认，点了「确认下线」才真跑 Android.emergencyStop()
-         （写 state/offline + stop-sandbox.sh）。只停进程，登录态、配置、AstrBot data 一律不动。
-         v1.2.11：下线标记留在 filesDir/offline 时，磁贴 / 小组件的「启动」不能直接拉起沙盒 ——
-         start-sandbox.sh 第 148 行会 rm 掉标记，等于把「关闭进程」白点一次。所以下线状态
-         先弹下面那张「确认启动」卡（resumeAsk / resumeDo），用户明确点了才启动。 -->
+         （写 state/offline + stop-sandbox.sh）。只停进程，登录态、配置、AstrBot data 一律不动。 -->
     <div class="card" id="stopCard">
       <h2><span class="dot" id="d-stop"></span>紧急下线</h2>
-      <div class="hint" style="margin-top:0">停掉沙盒里 NapCat 与 AstrBot 的进程，收起常驻通知，并结束整个应用进程。登录状态、配置、AstrBot 数据都保留；下次打开应用不会自动拉起沙盒，要回到这张卡点启动。</div>
+      <div class="hint" style="margin-top:0">把 NapCat 与 AstrBot 的进程停掉，端口立刻不可访问；登录状态、配置、AstrBot 数据都保留，下次照常启动。</div>
       <div class="hint" id="stopState">当前：沙盒运行中</div>
       <div class="btns" style="margin-top:10px">
-        <button class="danger" data-act="askstop" id="btnAskStop" style="flex:1">紧急下线</button>
-        <button class="small primary" data-act="askresume" id="btnAskResume" style="display:none;flex:1">启动服务</button>
+        <button class="danger" data-act="askstop" style="flex:1">紧急下线</button>
       </div>
       <div id="stopConfirm" style="display:none;margin-top:12px;padding:12px 14px;border-radius:12px;background:rgba(234,88,12,.10);border:1px solid rgba(234,88,12,.30)">
         <div style="font-weight:600">确定要下线吗？</div>
-        <div class="hint" style="margin-top:4px">下线后 NapCat 与 AstrBot 立即停止，常驻通知收起，整个应用进程也结束；看门狗不会自动拉起，下次打开应用也不会自动启动，要回这张卡点启动。登录态不会被清除。</div>
+        <div class="hint" style="margin-top:4px">下线后 NapCat 与 AstrBot 立即停止，看门狗不会自动拉起，需要你手动启动。登录态不会被清除。</div>
         <div class="btns" style="margin-top:10px">
           <button class="danger" data-act="stopnow" style="flex:1">确认下线</button>
           <button class="small" data-act="stopcancel" style="flex:1">取消</button>
-        </div>
-      </div>
-      <!-- 下线状态下磁贴 / 小组件点了「启动」时弹这张卡（v1.2.11）：不静默删 offline 标记。 -->
-      <div id="resumeConfirm" style="display:none;margin-top:12px;padding:12px 14px;border-radius:12px;background:rgba(37,99,235,.10);border:1px solid rgba(37,99,235,.30)">
-        <div style="font-weight:600">沙盒还是下线状态，要启动吗？</div>
-        <div class="hint" style="margin-top:4px">上次点「关闭进程 / 紧急下线」留下的标记还在，所以不会自己拉起来。点确认启动会清掉标记并启动沙盒，登录状态与配置都保留。</div>
-        <div class="btns" style="margin-top:10px">
-          <button class="small primary" data-act="startnow" style="flex:1">确认启动</button>
-          <button class="small" data-act="startcancel" style="flex:1">取消</button>
         </div>
       </div>
     </div>
@@ -3675,11 +3662,10 @@ section.tab.on{display:flex;flex-direction:column}
       <div class="btns" style="margin-top:10px">
         <button class="small" data-act="battery" style="flex:1">申请电池优化白名单</button>
       </div>
-      <!-- 通知权限不是「关掉通知」：它是让常驻通知上那三个快捷按钮（重启 / 扫码 / 关闭进程）
-           出现的开关。其中「关闭进程」会停掉沙盒、收掉通知，并结束整个应用进程 ——
-            之后不会自动拉起，下次打开应用要在这张卡点启动。 -->
+      <!-- 通知权限不是「关掉通知」：常驻通知上有「重启 / 扫码 / 关闭进程」，
+           权限被拒时那条通知根本不出现，后台就只能进应用里手动停。 -->
       <div class="btns" style="margin-top:8px" id="notiRow">
-        <button class="small primary" data-act="notiask" id="notiBtn" style="flex:1">开启通知权限（「关闭进程」按钮要用）</button>
+        <button class="small primary" data-act="notiask" id="notiBtn" style="flex:1">开启通知栏权限（「关闭进程」要用）</button>
       </div>
       <div class="hint" id="notiNote" style="margin-top:6px"></div>
       <div class="hint" id="guardNote">—</div>
@@ -3980,7 +3966,7 @@ section.tab.on{display:flex;flex-direction:column}
       <ul><li>本软件不面向 14 周岁以下儿童，若你未满 14 周岁请在监护人陪同下使用。</li></ul>
       <p><b>七、联系我们</b></p>
       <ul>
-        <li>GitHub 仓库：https://github.com/Zxin-Pro/astrbot-candle</li>
+        <li>官方网站：https://xn--15t839a.xyz</li>
         <li>官方交流群：1127997343（问题反馈与数据删除申请）</li>
       </ul>
       <p>本政策自 2026-10-22 起生效（上一版 2026-10-19）。若内容有变更，我们会在软件内更新本页面并注明日期。</p>
@@ -4471,7 +4457,7 @@ function pill(txt, cls){ return '<span class="pill ' + (cls || "") + '">' + esc(
    纯只读：reload（立即刷新日志）/ slim（精简模式）/ rmcard（收起日志框）——
      文件读不到就显示空，不会破坏任何东西。
    与沙盒无关的信息类：checkupdate / dlupdate / updnotes（检查更新）、
-     copyurl / openurl（GitHub 项目主页）、openqq（加群）、copydisc / dlgagree（免责声明）、
+     copyurl / openurl（官网）、openqq（加群）、copydisc / dlgagree（免责声明）、
      privacy / privacyclose / copydiscp（隐私政策）。
    系统级开关：guardset（常驻守护 / 息屏保持，部署期间正需要）、battery（电池白名单）、
      terminal（打开终端，排障要用）。 */
@@ -4507,11 +4493,6 @@ var NO_LOCK_ACTS = [
   "lantoggle",
   /* 功能 9：紧急下线是「出事时」用的入口，部署没完成也得能点（沙盒可能正是起不来才要停） */
   "askstop", "stopnow", "stopcancel",
-  /* v1.2.11：下线标记还在时的「确认启动 / 取消」。它跟 askstop 是同一张卡的两半，
-     部署没完成也可能停在「已下线」，所以同样不置灰。 */
-  "startnow", "startcancel",
-  /* v1.2.11：下线后首页 / 下线卡上的「启动服务」入口（只是弹同一张确认卡） */
-  "askresume",
   /* v1.2.10：控制台凭据弹窗与中转站链接纯粹是「看信息 / 复制」，
      部署没完成时也该能开（用户常常正是想在装之前先把密钥准备好）。 */
   "algo", "alclose", "alcopyuser", "alcopypass", "copyrelay", "openrelay"
@@ -5324,11 +5305,6 @@ function paintHero(st, installed){
   if (!installed){
     k = "idle"; t = "还没部署";
     sub = "第一次使用，先点「开始部署」，装好大约 8 分钟";
-  } else if (st.offline){
-    /* v1.2.11：用户按过「关闭进程 / 紧急下线」，这个标记就是「别再自己起来」的意思。
-       这时候绝不能说「正在启动」——那会让人以为等 40 秒就好，其实谁都不会拉它。 */
-    k = "bad"; t = "已关闭";
-    sub = "已按「关闭进程」关掉，后台不会自动拉起；要恢复请到「更多 → 紧急下线」点「启动服务」";
   } else if (!botCount(st)){
     /* 实例全删了：组件可能还在跑，端口也还通，但一条 QQ 都收发不了。
        不说「一切正常」——那句话会让用户以为能用了。 */
@@ -5497,7 +5473,7 @@ function renderGuard(st){
     if (nn) nn.textContent = "通知栏权限没开：那条常驻通知不会出现，也就没有「关闭进程」，后台只能进应用里手动停。";
   } else {
     if (nr) nr.style.display = "none";
-    if (nn) nn.textContent = "通知栏权限已开：常驻通知上的「关闭进程」会停掉沙盒、收掉通知并结束应用进程，之后要在这张卡点启动。";
+    if (nn) nn.textContent = "通知栏权限已开：常驻通知上的「关闭进程」可以一键停掉后台。";
   }
   /* 首屏也提醒一次：没这条权限就没有「关闭进程」，最容易踩。 */
   var chip = el("notiChip");
@@ -5662,7 +5638,7 @@ function paintErrAsk(etxt, d){
 }
 function doUploadLog(){
   if (UPLOADING) return;
-  if (typeof Android === "undefined" || !Android.uploadLog) { Android.toast("这个安装包不支持上传，请到 GitHub 装最新版（Releases 页）"); return; }
+  if (typeof Android === "undefined" || !Android.uploadLog) { Android.toast("这个安装包不支持上传，请到官网装最新版"); return; }
   UPLOADING = true;
   var box = el("errAsk"), b = el("btnUploadLog");
   var tx = box ? box.querySelector(".asktx") : null;
@@ -5695,7 +5671,7 @@ function skipErrAsk(){
 function doUploadLogs(){
   if (UPLOADING) { Android.toast("正在上传，请稍候"); return; }
   if (typeof Android === "undefined" || !Android.uploadLog) {
-    Android.toast("这个安装包不支持上传，请到 GitHub 装最新版（Releases 页）"); return;
+    Android.toast("这个安装包不支持上传，请到官网装最新版"); return;
   }
   UPLOADING = true;
   var b = el("btnUploadLogs"), out = el("cmdOut");
@@ -6407,9 +6383,6 @@ document.addEventListener("click", function(ev){
   else if (act === "askstop") stopAsk(true);
   else if (act === "stopnow") stopDo();
   else if (act === "stopcancel") stopAsk(false);
-  else if (act === "startnow") resumeDo();
-  else if (act === "startcancel") resumeAsk(false);
-  else if (act === "askresume") resumeAsk(true);
   else if (act === "askrestart") restartAsk(true);
   else if (act === "restartnow") restartDo();
   else if (act === "restartcancel") restartAsk(false);
@@ -6745,7 +6718,7 @@ function autoPorts(){
   setTimeout(refresh, 600);
 }
 
-/* ---------- 免责声明 / 隐私政策 / 项目主页 / 交流群 / 下载代理 ---------- */
+/* ---------- 免责声明 / 隐私政策 / 官网 / 交流群 / 下载代理 ---------- */
 function discText(){
   var b = document.querySelector("#dlgDisclaimer .dbody");
   if (!b) return "";
@@ -8107,19 +8080,12 @@ function refreshRestartCard(st){
 /* ===================== 紧急下线（功能 9） =====================
    三处入口（App 按钮 / 通知栏「下线」/ 小组件「停止」/ 磁贴）都先走 stopAsk()，
    只有点「确认下线」才调 Android.emergencyStop()。原生侧确认后会写 state/offline，
-   看门狗看到这个标记就不再自动拉起。
-   v1.2.11：这个标记还在时，磁贴 / 小组件的「启动」不能直接 action("start") ——
-   start-sandbox.sh 第 148 行会 rm 掉它，等于用户点一次「关闭进程」被磁贴白撤一次。
-   现在改走 resumeAsk() / resumeDo()：先弹确认启动卡，用户点了才 emergencyResume()。 */
+   看门狗看到这个标记就不再自动拉起，用户手动启动时 start-sandbox.sh 会删掉它。 */
 function stopAsk(on){
   try { ext().stopAsk = !!on; } catch (e0) {}
   var box = el("stopConfirm");
   if (box) box.style.display = on ? "block" : "none";
   if (on){
-    /* 下线确认和启动确认是互斥的两件事，同时亮着用户根本分不清点的是哪个 */
-    var rb0 = el("resumeConfirm");
-    if (rb0) rb0.style.display = "none";
-    try { ext().resumeAsk = false; } catch (e1) {}
     /* 每次刷界面都可能把这块重画，画完要再把确认框露出来，否则用户点开两秒后就自己收起了 */
     try { var c = el("stopCard"); if (c && c.scrollIntoView) c.scrollIntoView({block:"center"}); } catch (e) {}
   }
@@ -8145,56 +8111,12 @@ window.askStop = function(){
   try { showTab("more"); } catch (e) {}
   stopAsk(true);
 };
-/* 下线状态下的「启动」确认（v1.2.11）：复用下线卡的位置，只是换成蓝色那块。
-   state/offline 还留在 filesDir 时，磁贴 / 小组件点「启动」只弹这张卡，不删标记。 */
-function resumeAsk(on){
-  try { ext().resumeAsk = !!on; } catch (e0) {}
-  var box = el("resumeConfirm");
-  if (box) box.style.display = on ? "block" : "none";
-  if (on){
-    /* 下线确认框不要和启动确认框同时开着，否则用户分不清自己在确认哪件事 */
-    stopAsk(false);
-    try { var c = el("stopCard"); if (c && c.scrollIntoView) c.scrollIntoView({block:"center"}); } catch (e) {}
-  }
-}
-/* 用户点了「确认启动」：走 emergencyResume() 而不是 action("start")。
-   理由：关闭进程把守护前台服务也一起结束了，只跑 start-sandbox.sh 能拉起沙盒，
-   但守护不会回来（面板里看得到进程、通知栏没有常驻通知、掉线不会自愈）。
-   emergencyResume 先删 offline 标记，再 applyEx 拉起守护、kick 踢一轮重启，一次做完。
-   例外见下面：守护开关被人关掉时 kick 是空操作，那种情况补一次显式启动。 */
-function resumeDo(){
-  resumeAsk(false);
-  var st = null;
-  try { st = normJson(Android.state()); } catch (e0) { st = null; }
-  var res = null;
-  try { res = Android.emergencyResume(); } catch (e) { res = null; }
-  var o = normJson(res);
-  if (!o || o.ok === false){
-    extToast(o && o.err ? String(o.err) : "启动失败：原生没有响应，请稍后重试");
-    return;
-  }
-  /* 守护开关是关着的时候，emergencyResume 只删标记、applyEx 只是停服、kick 直接 return，
-     沙盒不会被任何人拉起来 —— 用户点「确认启动」却什么都没发生，比不确认还糟。
-     这种情形补一次显式启动；守护开着时不能补，会和 kick(ACTION_RESTART) 抢着起两份。 */
-  if (st && st.guardOn === false){
-    try { Android.action("start"); } catch (e3) {}
-  }
-  extToast("已确认启动：正在拉起沙盒，通常需要 20–40 秒");
-  setTimeout(function(){ try { refreshAll(); } catch (e2) {} }, 1500);
-}
-/* 小组件 / 磁贴带来的「启动」在下线状态下统一打到这里 */
-window.askResume = function(){
-  try { showTab("more"); } catch (e) {}
-  resumeAsk(true);
-};
 /* 小组件 / 磁贴的「启动 · 停止」按钮统一调这个（原生 AskToggle 会重试三次）：
    入口拿不准当前状态（小组件的 PendingIntent 是渲染时定死的），所以由页面读一次
-   真实状态 —— 下线标记在就弹确认启动，在跑就弹紧急下线确认，没跑才直接拉起沙盒。 */
+   真实状态 —— 在跑就弹紧急下线确认，没跑就直接拉起沙盒。 */
 window.askToggle = function(){
   var st = null;
   try { st = normJson(Android.state()); } catch (e0) { st = null; }
-  /* 先判下线：上次点过「关闭进程」的人，最不希望磁贴一点就把沙盒又拉回来 */
-  if (st && st.offline){ window.askResume(); return; }
   if (st && st.supervisorAlive){ window.askStop(); return; }
   var r = "";
   try { r = Android.action("start"); } catch (e1) { r = ""; }
@@ -8361,26 +8283,10 @@ function refreshExtras(st){
         var alive = !!(st && (st.supervisorAlive || st.napcatUp || st.astrbotUp));
         if (st && st.offline) sst.textContent = "当前：已下线（看门狗已暂停自动拉起）";
         else sst.textContent = alive ? "当前：沙盒运行中" : "当前：未运行";
-        /* v1.2.11：下线状态下这张卡要给出「启动服务」，否则重启应用后没有任何入口能恢复 */
-        var askB = el("btnAskStop"), rsmB = el("btnAskResume");
-        if (askB && rsmB){
-          var isOff = !!(st && st.offline);
-          askB.style.display = isOff ? "none" : "block";
-          rsmB.style.display = isOff ? "block" : "none";
-        }
       }
     }
     /* 确认框开着的时候，界面重画不能把它弄丢 */
     if (E.stopAsk){ var sb = el("stopConfirm"); if (sb && sb.style.display !== "block") sb.style.display = "block"; }
-    /* 启动确认卡同理；offline 标记一旦不在了（在别处启动成功 / 磁贴已确认过），
-       这张卡就没有存在意义，别让用户对着一个已经过时的确认框发呆 */
-    if (E.resumeAsk){
-      var rb = el("resumeConfirm");
-      if (st && !st.offline){
-        try { ext().resumeAsk = false; } catch (e11) {}
-        if (rb) rb.style.display = "none";
-      } else if (rb && rb.style.display !== "block") rb.style.display = "block";
-    }
   } catch (e10) {}
 }
 
@@ -8771,7 +8677,7 @@ function qqAutoFill(){
   try { renderHomeBots(); } catch (e) {}
 }
 
-/* ---- GitHub 版本号 ---- */
+/* ---- 官网版本号 ---- */
 function siteVerNum(s){
   var a = String(s || "").replace(/^v/i, "").split(".");
   var o = [];
@@ -8786,27 +8692,14 @@ function siteVerCmp(a, b){
 function siteVerPaint(r){
   var e2 = el("siteVer");
   if (!e2) return;
-  if (!r || !r.ok) {
-    /* 失败原因不能再丢：后端 SiteVer 给的 err 是「连不上 GitHub：<异常>」「GitHub 返回 403」
-       「GitHub 的 release 里没有版本号（tag_name 为空）」这类唯一现场，只写死「读取失败」
-       等于把排障线索删掉。这里沿用 textContent（不是 innerHTML），原因串里的 < > & 只会
-       当文字显示，不需要再过 esc()，也就不用担心二次转义。 */
-    var why = "";
-    try { why = String((r && r.err) || "").replace(/\s+/g, " ").trim(); } catch (e) { why = ""; }
-    /* 前端自己造的超时代号是英文，翻成中文再显示，整行保持一致的中文文案。 */
-    if (why === "timeout") why = "请求超时";
-    /* 截到 60 字以内（含省略号），避免一长串异常栈把这一行撑成两行。 */
-    if (why.length > 60) why = why.substring(0, 59) + "…";
-    e2.textContent = "GitHub 版本：读取失败" + (why ? "（" + why + "）" : "");
-    return;
-  }
+  if (!r || !r.ok) { e2.textContent = "官网版本：读取失败"; return; }
   /* 当前版本从 state() 取（appVersion），桥上没有 Android.appVer()。
      取不到版本号时不下「有新版本 / 已是最新」的结论，免得误报。 */
   var cur = "";
   try { if (S.st && S.st.appVersion) cur = String(S.st.appVersion); } catch (e) { cur = ""; }
   if (!cur) { try { cur = String(Android.appVer() || ""); } catch (e) { cur = ""; } }
   var cmp = cur ? siteVerCmp(r.site, cur) : 0;
-  e2.innerHTML = "GitHub 最新 <b>" + esc(r.site) + "</b>"
+  e2.innerHTML = "官网最新 <b>" + esc(r.site) + "</b>"
     + (r.updated ? "（" + esc(r.updated) + "）" : "")
     + (cur ? (cmp > 0 ? " · <b>有新版本</b>" : " · 已是最新") : "");
 }

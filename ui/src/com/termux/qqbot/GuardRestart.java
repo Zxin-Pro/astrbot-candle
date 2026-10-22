@@ -20,20 +20,13 @@ public class GuardRestart implements Runnable {
     public void run() {
         try {
             File filesDir = svc.getFilesDir();
-            // 用户按过「关闭进程 / 紧急下线」时 state/offline 还在：这时点通知栏「重启」
-            // 也不该把沙盒拉起来（与 NetRecover / QqbotGuardTask 同口径）。
-            if (StateIO.file(filesDir, "offline").isFile()) {
-                note("已关闭，不重启");
-                return;
-            }
             note("正在重启沙盒…");
             File stop = new File(QqbotShell.usrDir(filesDir), "opt/qqbot/stop-sandbox.sh");
             if (stop.isFile()) {
                 QqbotShell.run(filesDir, "bash " + stop.getAbsolutePath(), 180);
             }
             StringBuilder n = new StringBuilder();
-            // 通知栏上的「重启」是用户点的，算显式启动
-            boolean ok = QqbotShell.startSandbox(filesDir, n, true);
+            boolean ok = QqbotShell.startSandbox(filesDir, n);
             File pid = new File(QqbotShell.qqbotDir(filesDir), "supervisor.pid");
             boolean alive = QqbotShell.pidAlive(pid, "proot");
             if (ok || alive) QqbotShell.startWatchdog(filesDir, n);

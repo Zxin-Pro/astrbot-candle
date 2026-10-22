@@ -9,14 +9,6 @@ import java.net.URL;
 /**
  * 唯一负责往外发 HTTP 的类（v1.1.30 的三个出口：崩溃上报 / 匿名统计 / 公告）。
  *
- * 2026-10 自建站点停用：站点与 VPS 已下线（首页 530、全端口连接超时），三个出口的
- * 服务端都不存在了。处理方式：CrashUploadTask / StatsUploadTask / AnnounceTask
- * 各自写死 ENABLED = false，匿名上报不再默认发送，默认一个字节都不出本机
- * （UploadState 的 crashOn / statsOn 也一直是默认关）。BASE 不再指向那个死域名，
- * 改成 api.github.com 只为让残留下来的调用点不去敲一个「必然超时 8 秒」的地址；
- * GitHub 侧没有免密钥的收件接口，真需要详细日志时走 upload-log.sh 提交到
- * 私有仓库 Zxin-Pro/astrbot-errlogs（要用户自己的 token，不进 APK）。
- *
  * 为什么单开一个类：全应用只有这里能建 socket，审计「到底有哪些数据出了本机」时
  * grep 调用点就够了。别处（CrashUploadTask / StatsUploadTask / AnnounceTask / 桥方法）
  * 一律只组 JSON 或只读结果，不碰网络。
@@ -27,11 +19,9 @@ import java.net.URL;
  * 桌面 JVM 能原样编译验证（本地假服务器走的就是这条路）。
  *
  * 协议约定（服务端缺 X-Qqbot-Atom 头一律 403）：
- *   POST <BASE>/api/crash   /   <BASE>/api/stats
+ *   POST https://xn--15t839a.xyz/api/crash   /   /api/stats
  *        Content-Type: application/json; charset=utf-8
- *   GET  <BASE>/api/announce?ver=1.1.30   （可带 If-None-Match，304 = 没变）
- *   注意：这三条路由只存在于已停用的自建站点服务端，保留在注释里是为了读懂旧协议，
- *   现在没有任何服务的这一侧在监听，调用方一律被 ENABLED = false 短路。
+ *   GET  https://xn--15t839a.xyz/api/announce?ver=1.1.30   （可带 If-None-Match，304 = 没变）
  *   两个口都带 X-Qqbot-Atom: 1；连接超时 5000ms；读超时 POST 8000ms / GET 5000ms；
  *   不跟随重定向；失败不重试（重试由上层决定下次什么时候再来）。
  *
@@ -40,13 +30,10 @@ import java.net.URL;
 final class AtomNet {
 
     /**
-     * 上报域名。原先指向自建站点（punycode 直写 ASCII，少一层编码问题），2026-10 站点停用，
-     * 指向它只会换来一次 8 秒超时，所以改指 api.github.com：不是新的上报接收端，
-     * 只是「别再敲死域名」。GitHub 那边没有免密钥收件口，POST 过去会被 4xx 拒掉，
-     * 这是预期结果——真正的详细日志走 upload-log.sh 提到 Zxin-Pro/astrbot-errlogs。
+     * 上报域名。punycode 直接写 ASCII（源码是 UTF-8，但域名一律不写中文，少一层编码问题）。
      * 故意留成非 final：本地假服务器验证时改成本机地址，验完必须改回这一行。
      */
-    static volatile String BASE = "https://api.github.com";
+    static volatile String BASE = "https://xn--15t839a.xyz";
 
     /** 两个上报口（POST）。 */
     static final String PATH_CRASH = "/api/crash";

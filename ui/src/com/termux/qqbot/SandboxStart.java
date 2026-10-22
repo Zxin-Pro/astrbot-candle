@@ -37,8 +37,7 @@ public class SandboxStart implements Runnable {
         boolean ok = false;
         StringBuilder note = new StringBuilder();
         try {
-            // 磁贴 / 小组件是用户亲手点的「启动」：传 true，让 start-sandbox.sh 解除下线标记
-            ok = QqbotShell.startSandbox(filesDir, note, true);
+            ok = QqbotShell.startSandbox(filesDir, note);
         } catch (Throwable t) {
             ok = false;
             note.append(t.toString());

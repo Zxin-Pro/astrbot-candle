@@ -2,17 +2,6 @@
 # 在 proot 沙盒中启动全部服务（前台，由 qqbot-start 后台拉起）
 . "$PREFIX/opt/qqbot/common.sh"
 
-# 「用户显式启动」才解除紧急下线（v1.2.11）。只有界面「启动」/ 磁贴 / qqbot-start
-# 这类人主动点的入口会传 --user-start（或 QQBOT_USER_START=1）。
-# 为什么必须区分：以前这里无条件 rm -f 下线标记，而看门狗自己重启沙盒、守护自检、
-# 取消下线后再保存配置，走的都是本脚本 —— 用户刚按「关闭进程」，看门狗下一轮判活失败
-# 就把沙盒拉起来，顺手把 offline 抹掉，之后所有「已关闭就别自动拉起」的判断全部失效。
-USER_START=0
-case "${QQBOT_USER_START:-}" in 1|yes|true|on) USER_START=1 ;; esac
-for _a in "$@"; do
-  case "$_a" in --user-start) USER_START=1 ;; esac
-done
-
 # 手动启动等于解除「停止」状态：watchdog.sh 看到这个标记就会重新开始守护。
 # 必须放在下面那个「已在运行就退出」的判断之前，否则运行中再点一次启动不会解除。
 rm -f "$QQBOT_CACHE/svc/watchdog.off" 2>/dev/null
@@ -156,13 +145,7 @@ fi
 # 紧急下线标记：走到这里说明前面所有检查都过了、沙盒确实要起来了，所以现在才算
 # 「启动成功」并解除标记（协议第 4 节，原生 emergencyResume 也看这个文件）。
 # 必须放在 exec 之前 —— exec 之后进程映像就被 proot 替换，再也回不到这一行。
-# 只有「用户显式启动」（$USER_START=1）才清；自动重启不清，见文件头的说明。
-if [ "$USER_START" = "1" ]; then
-  rm -f "$QQBOT_STATE/offline" 2>/dev/null
-  echo "[start] 用户显式启动，已解除紧急下线标记"
-else
-  echo "[start] 自动启动（非用户点击），保留紧急下线标记"
-fi
+rm -f "$QQBOT_STATE/offline" 2>/dev/null
 # -b "$QQBOT_STATE:/qqbot-state"：把原生层写的状态目录（风控 risk.json / risk-<id>.flag、
 # 降载 degrade、下线 offline）暴露给沙盒，run-napcat.sh 才能读到风控暂停标记。
 # 没绑上也不会崩：沙盒里的 [ -f /qqbot-state/... ] 判断自然为假，行为退回到「不启用」。

@@ -82,7 +82,4 @@ ui/*.java
 # 内置离线包的架构/体积标记：由 build-apk.ps1 -Arch 每次重建时写入，不入库
 build/opt/qqbot/BUNDLE_ARCH
 build/opt/qqbot/BUNDLE_SIZE
-# 构建期生成物：VERSION 由 build-apk.ps1 写盘再删，令牌文件绝不入库
-build/opt/qqbot/VERSION
-build/opt/qqbot/errdump-token.txt
 tools/__pycache__/
