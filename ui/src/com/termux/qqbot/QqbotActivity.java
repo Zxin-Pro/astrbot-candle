@@ -180,6 +180,12 @@ public class QqbotActivity extends Activity {
             }
         } catch (Throwable ignored) {
         }
+        // WebView 远程调试：只在 .qqbot/.webdebug 存在时打开（adb 里 touch 一下就开，删掉就关）。
+        // 平时默认关闭，避免发行包里长期暴露页面给任何连着 USB 调试的机器；
+        // 排查界面问题（元素坐标、点击落点、JS 异常）时没有它基本只能靠截图猜。
+        try {
+            if (new File(qqbotDir(), ".webdebug").isFile()) WebView.setWebContentsDebuggingEnabled(true);
+        } catch (Throwable ignored) {}
         web = new WebView(this);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);

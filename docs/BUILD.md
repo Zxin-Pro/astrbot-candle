@@ -318,6 +318,12 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
     `TermuxOpenReceiver$ContentProvider` 必须保持 `android:exported="true"`：改成 `false` 会让应用启动即崩
     `SecurityException: Provider must be exported`。3c3 只能删权限，不能碰这三处。
 
+11. **查界面问题可以用 `.webdebug` 开放 WebView 远程调试。**
+   在设备的 `/data/data/zhuxin.astrbot/files/home/.qqbot/.webdebug` 放一个空文件再启动 App，
+   `QqbotActivity` 会调用 `WebView.setWebContentsDebuggingEnabled(true)`；之后
+   `adb forward tcp:19222 localabstract:webview_devtools_remote_<pid>` 就能用 CDP 读 DOM / 调页面函数。
+   这个开关只认文件、默认关闭，发行包里不会对局域网暴露调试端口。
+
 ---
 
 ## 八、发布到站点

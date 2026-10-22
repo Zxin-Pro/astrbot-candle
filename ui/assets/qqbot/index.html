@@ -832,8 +832,9 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .dlgmask{
   position:fixed;inset:0;z-index:60;display:none;
   align-items:center;justify-content:center;padding:var(--sp4);
-  background:var(--mask-bg);
-  -webkit-backdrop-filter:blur(12px) saturate(140%);backdrop-filter:blur(12px) saturate(140%);
+  /* 遮罩不做 backdrop-filter：一张全屏模糊在低端机 / 模拟器上每帧都要重新合成，
+     和 1.2.6 去掉卡片毛玻璃是同一件事；底色略加深一点补回层次感。 */
+  background:rgba(15,23,42,.46);
   animation:fadeIn .2s var(--ease);
 }
 .dlgmask.on{display:flex}
@@ -3143,9 +3144,7 @@ section.tab.on{display:flex;flex-direction:column}
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: radial-gradient(120% 80% at 50% 0%, rgba(37, 99, 235, .28), transparent 62%), rgba(6, 9, 16, .93);
-  -webkit-backdrop-filter: blur(14px) saturate(130%);
-  backdrop-filter: blur(14px) saturate(130%);
+  background: radial-gradient(120% 80% at 50% 0%, rgba(37, 99, 235, .28), transparent 62%), rgba(6, 9, 16, .96);
   animation: depovIn .28s cubic-bezier(.22, .61, .36, 1) both;
 }
 #depov.on { display: flex; }
@@ -6657,7 +6656,19 @@ function privText(){
   if (!b) return "";
   return String(b.textContent).replace(/[ \t]+/g, " ").replace(/\n\s*\n\s*\n+/g, "\n\n").trim();
 }
-function showDisclaimer(){ var d = el("dlgDisclaimer"); if (d) d.classList.add("on"); }
+function showDisclaimer(){
+  var d = el("dlgDisclaimer"); if (d) d.classList.add("on");
+  /* 声明窗要独占：万一扫码窗已经弹出来了（自动弹的），先把它收掉，别让两个遮罩叠着 */
+  try {
+    var q = el("dlgQr");
+    if (q && q.classList.contains("on")) {
+      q.classList.remove("on");
+      var st = qrState();
+      if (st.timer) { clearInterval(st.timer); st.timer = 0; }
+      st.open = false;
+    }
+  } catch (e) {}
+}
 function hideDisclaimer(){
   var d = el("dlgDisclaimer"); if (d) d.classList.remove("on");
   /* 自动更新弹窗要是被免责声明挡着，用户点完「同意」这里补上 */
@@ -8279,13 +8290,16 @@ loadHiddenCards();
 clearFixedCardHidden();
 applyCards();
 loadProxy();
+/* 首次启动弹免责声明；同意后写入标记，以后不再弹。
+   必须排在 refresh() 之前：refresh 里会跑 qrAutoCheck（没登录就自动弹扫码窗），
+   而扫码窗在 DOM 里排在声明窗后面、同 z-index，会整个盖住声明窗 —— 用户看到的是扫码窗，
+   点「我已阅读并同意」全部落在扫码窗上，声明永远关不掉（1.2.6 在 MuMu 上实测）。 */
+try { if (String(Android.disclaimerSeen()) !== "1") showDisclaimer(); } catch (e) {}
 refresh();
 /* 今日概览要读沙盒里的统计文件，晚一拍再取，别跟首屏抢带宽 */
 setTimeout(function(){ refreshToday(); todayStart(); }, 300);
 /* 启动 1.5 秒后静默查一次更新，发现新版本会弹应用内弹窗（同版本点过「以后再说」就不再弹） */
 maybeAutoCheck();
-/* 首次启动弹免责声明；同意后写入标记，以后不再弹 */
-try { if (String(Android.disclaimerSeen()) !== "1") showDisclaimer(); } catch (e) {}
 /* v4 首屏折叠初始态 */
 try { applyHomeFold(); } catch (e) {}
 try { noticeInit(); } catch (e) {}

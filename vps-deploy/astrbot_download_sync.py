@@ -122,19 +122,20 @@ def pick_apk(rel):
        仍是目标大小、digest 为空，但下载是 404。拿它去镜像只会把站内好文件冲掉。
        另外 /releases/latest 不返回这类残骸，一旦它被跳过，下一个候选就是 amd64 包，
        所以还要限制架构。
-    3. **只认 arm64**：站内下载卡片写的是「仅 arm64-v8a」，把 x86_64 的包装进去，
-       真机装上会报 INSTALL_FAILED_NO_MATCHING_ABIS，而且日志上看不出任何异常。
+    3. **名字里带 arm64 的优先**：1.2.5 起只发一个通用包（真机与 x86_64 模拟器同一份），
+       文件名仍按架构命名；万一哪一版只传了别的架构名，退一步也要能挑到完整包（评分 3 分），
+       否则站内会一直停在旧版本。更新包（-update.apk）永远不参与，它是给老用户覆盖用的瘦包。
     """
     best, best_score = None, -1
     for a in (rel.get("assets") or []):
         if str(a.get("state") or "uploaded") != "uploaded":
             continue
         name = str(a.get("name", "")).lower()
-        if not name.endswith(".apk") or "arm64" not in name:
+        if not name.endswith(".apk"):
             continue
         if "-update" in name:
             continue            # 更新包是给老用户覆盖安装的瘦包，不能当主下载（第一次装它会联网下 1 GB）
-        score = 4
+        score = 4 if "arm64" in name else 3
         if score > best_score:
             best, best_score = a, score
     return best
@@ -687,7 +688,7 @@ def build(latest, all_rels, extra=None, mirror=None):
                     "安卓安装包 · %s%s" % (apk_size, (" · " + pub) if pub else "") + NL +
                     "安装包约 25 MB，只含程序本身；首次启动会从官方镜像站（清华 / 中科大 / 阿里）"
                     "在线安装运行环境，视网速通常 10~30 分钟，只需要安装一次。" + NL +
-                    "安卓 8.0 及以上 · 仅 arm64-v8a（现在绝大多数手机）" + NL +
+                    "安卓 8.0 及以上 · 真机与 x86_64 模拟器通用（1.2.5 起只发这一个包）" + NL +
                     "包名 zhuxin.astrbot（1.2.2 起改名，和官方 Termux 不再冲突、可以共存）" + NL +
                     (("从 1.2.1 及更早版本升级：包名变了没法覆盖安装，要先卸载旧版"
                       "（卸载会清掉旧沙盒，请先在旧版「更多 → 备份与恢复」里导出备份）" + NL)
