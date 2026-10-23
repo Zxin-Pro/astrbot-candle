@@ -20,6 +20,9 @@ GitHub Releases 走：发了新版本，下载直链、版本号、体积、SHA-
 下载按钮直接指向本站文件，用户点一下就开始下载，不用被甩去 GitHub —— 国内直连
 GitHub 经常打不开，加速镜像也时好时坏。顺便在 downloads/index.html 生成一个列表页。
 
+电脑版（烛之控制台 / astrbot-pc）跟手机版并排放在同一张下载页上：版本、单文件 exe、
+目录版与离线包都从它的 GitHub Releases 自动跟，页面底部只留一条仓库链接。
+
 不碰 JS / CSS / HTML：assets/astrbot.<hash>.js 顶部注释写明了这个 JSON 结构就是
 唯一的消费契约，所以只改内容，不用去改 HTML 里的 ?v= 缓存指纹。
 
@@ -73,6 +76,13 @@ PUBLIC_BASE = "https://xn--15t839a.xyz"      # 复制「下载直链」时用的
 KEEP_VERSIONS = 4                            # 站内最多留几个版本（每个约 24 MB）
 APK_TPL = "AstrBot-%s.apk"                   # 站内文件名
 
+# ---- 电脑版（烛之控制台 · AstrBotPC）也挂在这一页，跟手机版并排 ----
+PC_REPO = "Zxin-Pro/astrbot-pc"
+PC_REPO_URL = "https://github.com/" + PC_REPO
+PC_GH_API = "https://api.github.com/repos/" + PC_REPO + "/releases/latest"
+PC_KEEP = 1          # 电脑版三个产物合计约 310 MB，站内只留最新一版
+PC_ASSET_KINDS = ("single", "zip", "offline")
+
 RELEASES_PAGE = "https://github.com/" + REPO + "/releases"
 MIRROR_PREFIX = "https://ghfast.top/"
 # 服务器自己抓安装包时的加速镜像：直连 GitHub 的安装包地址会 302 跳到
@@ -122,20 +132,19 @@ def pick_apk(rel):
        仍是目标大小、digest 为空，但下载是 404。拿它去镜像只会把站内好文件冲掉。
        另外 /releases/latest 不返回这类残骸，一旦它被跳过，下一个候选就是 amd64 包，
        所以还要限制架构。
-    3. **名字里带 arm64 的优先**：1.2.5 起只发一个通用包（真机与 x86_64 模拟器同一份），
-       文件名仍按架构命名；万一哪一版只传了别的架构名，退一步也要能挑到完整包（评分 3 分），
-       否则站内会一直停在旧版本。更新包（-update.apk）永远不参与，它是给老用户覆盖用的瘦包。
+    3. **只认 arm64**：站内下载卡片写的是「仅 arm64-v8a」，把 x86_64 的包装进去，
+       真机装上会报 INSTALL_FAILED_NO_MATCHING_ABIS，而且日志上看不出任何异常。
     """
     best, best_score = None, -1
     for a in (rel.get("assets") or []):
         if str(a.get("state") or "uploaded") != "uploaded":
             continue
         name = str(a.get("name", "")).lower()
-        if not name.endswith(".apk"):
+        if not name.endswith(".apk") or "arm64" not in name:
             continue
         if "-update" in name:
             continue            # 更新包是给老用户覆盖安装的瘦包，不能当主下载（第一次装它会联网下 1 GB）
-        score = 4 if "arm64" in name else 3
+        score = 4
         if score > best_score:
             best, best_score = a, score
     return best
@@ -298,6 +307,102 @@ def _prune_downloads(kept, quiet=False):
         print("[astrbot-dl] 清理旧安装包失败（不影响这次同步）：%s" % e, file=sys.stderr)
 
 
+def pick_pc_assets(rel):
+    """从 PC 版 release 里挑出三个产物：单文件 exe / 目录版 zip / 离线完整包。"""
+    out = {}
+    for a in rel.get("assets") or []:
+        n = str(a.get("name") or "")
+        if n.endswith("-win64-single.exe"):
+            out["single"] = a
+        elif n.endswith("-win64-offline.zip"):
+            out["offline"] = a
+        elif n.endswith("-win64.zip"):
+            out["zip"] = a
+    return out
+
+
+def _prune_pc(kept, quiet=False):
+    """清掉站内不再需要的旧电脑版产物。只动本脚本自己下的那些 AstrBotPC-*。"""
+    try:
+        for fn in sorted(os.listdir(DL_DIR)):
+            if fn.startswith("AstrBotPC-") and fn not in kept:
+                os.remove(os.path.join(DL_DIR, fn))
+                if not quiet:
+                    print("[astrbot-dl] 清掉站内旧电脑版文件：%s" % fn)
+    except Exception as e:
+        print("[astrbot-dl] 清理旧电脑版文件失败（不影响这次同步）：%s" % e, file=sys.stderr)
+
+
+def mirror_pc(rel, quiet=False):
+    """把电脑版三个产物存一份到站内。
+
+    跟手机版一个道理：下载按钮只指本站，用户点一下就开始下，不用被甩去 GitHub。
+    返回 {ver, tag, date, files:{single|zip|offline: {name,url,size,sha,bytes}}}，
+    其中的 url 一律是站内相对地址。
+    """
+    out = {"ver": "", "tag": "", "date": "", "files": {}}
+    if not rel:
+        return out
+    tag = str(rel.get("tag_name") or "")
+    ver = tag
+    if ver.lower().startswith("pc-"):
+        ver = ver[3:]
+    ver = ver.lstrip("vV")
+    out["ver"], out["tag"] = ver, tag
+    out["date"] = (rel.get("published_at") or "")[:10]
+    if not ver or "/" in ver:
+        return out
+    try:
+        os.makedirs(DL_DIR, exist_ok=True)
+    except Exception as e:
+        print("[astrbot-dl] 建不了 %s，电脑版这次不做站内下载：%s" % (DL_DIR, e), file=sys.stderr)
+        return out
+    assets = pick_pc_assets(rel)
+    kept = []
+    for kind in PC_ASSET_KINDS:
+        a = assets.get(kind)
+        if not a:
+            continue
+        name = str(a.get("name") or "")
+        if not name or "/" in name:
+            continue
+        dest = os.path.join(DL_DIR, name)
+        want = int(a.get("size") or 0)
+        dg = str(a.get("digest") or "")
+        sha_want = dg.split(":", 1)[1] if dg.startswith("sha256:") else ""
+        have = os.path.getsize(dest) if os.path.isfile(dest) else -1
+        fresh = bool(want) and have == want
+        if fresh and sha_want:
+            try:
+                if sha256_file(dest) != sha_want:
+                    fresh = False    # 字节数一样但内容换过，得重下
+            except Exception:
+                fresh = False
+        if fresh:
+            got = have
+        else:
+            try:
+                if not quiet:
+                    print("[astrbot-dl] 电脑版存一份到站内：%s（%s）"
+                          % (name, human_size(want) if want else "大小未知"))
+                got = _fetch_apk(a["browser_download_url"], dest, want, sha_want)
+            except Exception as e:
+                print("[astrbot-dl] 电脑版 %s 存站内失败：%s" % (name, e), file=sys.stderr)
+                if not os.path.isfile(dest):
+                    continue        # 一点没下到，这一项就不出现在页面上
+                got = os.path.getsize(dest)
+        kept.append(name)
+        out["files"][kind] = {
+            "name": name,
+            "url": DL_URL + "/" + name,
+            "bytes": got,
+            "size": human_size(got),
+            "sha": sha256_file(dest),
+        }
+    _prune_pc(kept, quiet)
+    return out
+
+
 DL_PAGE_TPL = """<!doctype html>
 <html lang="zh-CN" data-theme="dark">
 <head>
@@ -307,9 +412,9 @@ DL_PAGE_TPL = """<!doctype html>
 <meta name="theme-color" content="#111725">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕯️</text></svg>">
 <title>AstrBot烛版 · 下载</title>
-<meta name="description" content="AstrBot烛版 APK 站内直接下载，不用跳 GitHub。手机上一键跑起 AstrBot + NapCat。">
+<meta name="description" content="AstrBot烛版 手机版与电脑版都在本站直接下载，不用跳 GitHub。手机上一键跑起 AstrBot + NapCat，电脑上用烛之控制台管它。">
 <meta property="og:title" content="AstrBot烛版 · 下载">
-<meta property="og:description" content="手机上一键跑起 AstrBot + NapCat · 站内直下">
+<meta property="og:description" content="手机版 + 电脑版 · 站内直下">
 <meta property="og:type" content="website">
 <style>
 /* 取色自站点 assets/theme.css 的 :root，跟站点同一套鎏金深空配色 */
@@ -373,6 +478,8 @@ transition:transform .16s ease,filter .16s ease,box-shadow .16s ease}
 .btn:active{transform:translateY(1px) scale(.995)}
 .hint{margin:11px 0 0;color:var(--tx-3);font-size:12.5px;text-align:center}
 
+.btn svg,.btn-sm svg{flex:none}
+
 /* ---------- SHA-256 + 复制 ---------- */
 .sha{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px;
 margin:16px 0 0;padding:10px 12px;border-radius:13px;border:1px solid var(--line);background:rgba(0,0,0,.3)}
@@ -420,6 +527,37 @@ transition:filter .16s ease}
 .card .sha code{font-size:11.5px}
 .card .copy{padding:5px 11px;font-size:12px}
 
+/* ---------- 电脑版：跟手机版并排，窄屏上下排 ---------- */
+.duo{display:grid;gap:14px}
+@media (min-width:780px){.duo{grid-template-columns:1fr 1fr;align-items:start}}
+.hero--pc{border-color:rgba(96,165,250,.30);
+background:linear-gradient(180deg,rgba(59,130,246,.115),rgba(59,130,246,.02) 46%),var(--card)}
+.hero--pc:before{background:linear-gradient(90deg,transparent,rgba(147,197,253,.66),transparent)}
+.ribbon--pc{color:#07162c;background:linear-gradient(135deg,#dbeafe,#60a5fa)}
+.ribbon--pc:before{background:#07162c}
+.hero--pc .hero-ver{background:linear-gradient(180deg,#eff5ff,#93c5fd 58%,#60a5fa);
+-webkit-background-clip:text;background-clip:text}
+.hero--pc .hero-file{color:#c2cbd9}
+.btn--pc{color:#fff;background:linear-gradient(135deg,#2563EB,#1d4ed8);
+box-shadow:0 12px 28px -14px rgba(37,99,235,.85)}
+.btn--pc:hover{filter:brightness(1.09);box-shadow:0 15px 34px -14px rgba(37,99,235,.95)}
+.btn--pc svg{flex:0 0 auto}
+.alt{margin:10px 0 0;display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.alt a{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;
+border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--tx-2);
+text-decoration:none;font-size:12.5px;transition:border-color .16s,color .16s}
+.alt a:hover{border-color:rgba(96,165,250,.55);color:#cbdcf7}
+.repo{margin:13px 0 0;padding-top:12px;border-top:1px solid var(--line);
+display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:12.5px;color:var(--tx-3)}
+.repo svg{flex:0 0 auto;opacity:.75}
+.repo a{color:#a9c9f5;text-decoration:none;font-family:var(--mono);font-size:12px;
+border-bottom:1px solid rgba(147,197,253,.35);padding-bottom:1px}
+.repo a:hover{color:#dbeafe;border-bottom-color:#dbeafe}
+@media (min-width:780px){
+.duo .hero-ver{font-size:clamp(28px,3.2vw,40px)}
+.duo .hero{padding:18px 16px 16px}
+}
+
 /* ---------- 页脚 ---------- */
 .back{display:inline-flex;align-items:center;gap:7px;margin:30px 0 0;padding:9px 16px;
 border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.03);
@@ -441,14 +579,17 @@ body{padding-left:12px;padding-right:12px}
 <body><div class="wrap">
 <header class="hd">
 <h1>AstrBot<b>烛版</b> · 下载</h1>
-<p class="sub">手机上一键跑起 AstrBot + NapCat —— 就在这儿下，不用跳 GitHub。</p>
-<p class="stat">站内共 __COUNT__ 个版本 · 页面每天跟着 GitHub Releases 自动更新</p>
+<p class="sub">手机上一键跑起 AstrBot + NapCat，电脑上用烛之控制台管着它 —— 都在本站直下，不用跳 GitHub。</p>
+<p class="stat">站内手机版 __COUNT__ 个版本__PCVER__ · 页面每天跟着 GitHub Releases 自动更新</p>
 </header>
+<div class="duo">
 __HERO__
+__PC__
+</div>
 __REST__
 <a class="back" href="/#/astrbot">← 回到 AstrBot烛版 页面</a>
 <footer>
-APK 全部由本站直接提供，点击即下。装完可以先核对上面的 SHA-256；安装时如提示风险，选择「仍要安装」即可。<br>
+安装包全部由本站直接提供，点击即下。装完可以先核对上面的 SHA-256；安卓安装时如提示风险，选择「仍要安装」即可。<br>
 站内最多保留最近 __KEEP__ 个版本，更早的版本见 <a href="__RELEASES__" rel="noopener">GitHub Releases</a>。
 </footer>
 </div>
@@ -558,7 +699,7 @@ def _dl_hero(it):
         '</section>'
         % (_esc(_dl_vlabel(it)), _esc(it.get("name")), _esc(it.get("size") or "体积未知"),
            _esc(it.get("date") or "日期未知"), _esc(it.get("url")), _dl_sha(it))
-    )
+    ).replace("&#11015;&#65039;", DL_ICON)
 
 
 def _dl_card(it):
@@ -574,10 +715,74 @@ def _dl_card(it):
         '</article>'
         % (_esc(_dl_vlabel(it)), _esc(it.get("date") or "日期未知"), _esc(it.get("name")),
            _esc(it.get("size") or "体积未知"), _esc(it.get("url")), _dl_sha(it))
+    ).replace("&#11015;&#65039;", DL_ICON)
+
+
+DL_ICON = ('<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+           'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+           '<path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>')
+PC_ICON = ('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+           'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+           '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>')
+LINK_ICON = ('<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+             'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+             '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>'
+             '<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>')
+
+
+def _pc_block(pc):
+    """电脑版那一半：版本 + 主下载（单文件 exe）+ 另外两种形式 + SHA-256 + 仓库链接。
+
+    没有新手教程——想细看就去仓库，页面上只留一条链接。
+    """
+    files = (pc or {}).get("files") or {}
+    single = files.get("single") or {}
+    ver = str((pc or {}).get("ver") or "")
+    if not single:
+        return (
+            '<section class="hero hero--pc" id="pc">'
+            '<span class="ribbon ribbon--pc">电脑版</span>'
+            '<h2 class="hero-ver">%s</h2>'
+            '<p class="hero-file">%s</p>'
+            '<p class="hint">站内这一版还没同步过来，先看仓库里的。</p>'
+            '<a class="btn btn--pc" href="%s" rel="noopener">%s 去 GitHub 下载</a>'
+            '<p class="repo">%s源码与更新记录 <a href="%s" rel="noopener">github.com/%s</a></p>'
+            '</section>'
+            % ("v" + ver if ver else "电脑版", _esc("Windows 10 / 11 · x64"),
+               _esc(PC_REPO_URL + "/releases"), PC_ICON,
+               LINK_ICON, _esc(PC_REPO_URL), _esc(PC_REPO))
+        )
+    links = []
+    for kind, label in (("zip", "目录版 zip"), ("offline", "离线完整包")):
+        f = files.get(kind)
+        if f:
+            links.append('<a href="%s" download>%s · %s</a>'
+                         % (_esc(f.get("url")), _esc(label), _esc(f.get("size") or "")))
+    alt = ('<p class="alt">%s</p>' % "".join(links)) if links else ""
+    return (
+        '<section class="hero hero--pc" id="pc">'
+        '<span class="ribbon ribbon--pc">电脑版</span>'
+        '<h2 class="hero-ver">%s</h2>'
+        '<p class="hero-file">%s</p>'
+        '<ul class="facts">'
+        '<li><span>大小</span><b>%s</b></li>'
+        '<li><span>发布</span><b>%s</b></li>'
+        '<li><span>平台</span><b>Windows 10 / 11 · x64</b></li>'
+        '</ul>'
+        '<a class="btn btn--pc" href="%s" download>%s 下载电脑版（单文件 exe）</a>'
+        '%s'
+        '%s'
+        '<p class="repo">%s源码与更新记录 <a href="%s" rel="noopener">github.com/%s</a></p>'
+        '</section>'
+        % (_esc("v" + ver if ver else "电脑版"), _esc(single.get("name")),
+           _esc(single.get("size") or "体积未知"), _esc((pc or {}).get("date") or "日期未知"),
+           _esc(single.get("url")), PC_ICON, alt,
+           _dl_sha({"sha": single.get("sha")}),
+           LINK_ICON, _esc(PC_REPO_URL), _esc(PC_REPO))
     )
 
 
-def write_download_index(items, quiet=False):
+def write_download_index(items, pc=None, quiet=False):
     """在 downloads/ 里放一个列表页：最新版一张大卡片，其余版本排在下面的网格里。
 
     版本少也不塌：只有 1 个版本时「历史版本」整段不渲染，页面上就一张大卡片。
@@ -591,10 +796,13 @@ def write_download_index(items, quiet=False):
     if rest:
         blocks.append('<h2 class="sec">历史版本</h2>')
         blocks.append('<div class="list">%s</div>' % "".join(_dl_card(it) for it in rest))
+    pcver = ("v" + str(pc.get("ver"))) if (pc and pc.get("ver")) else ""
     page = (DL_PAGE_TPL
             .replace("__HERO__", _dl_hero(hero))
+            .replace("__PC__", _pc_block(pc))
             .replace("__REST__", chr(10).join(blocks))
             .replace("__COUNT__", str(len(ordered)))
+            .replace("__PCVER__", (" · 电脑版 " + pcver) if pcver else "")
             .replace("__KEEP__", str(KEEP_VERSIONS))
             .replace("__RELEASES__", RELEASES_PAGE))
     p = os.path.join(DL_DIR, "index.html")
@@ -652,7 +860,7 @@ def validate(doc):
     return True, ""
 
 
-def build(latest, all_rels, extra=None, mirror=None):
+def build(latest, all_rels, extra=None, mirror=None, pc=None):
     mirror = mirror or {}
     tag = latest.get("tag_name") or "v0.0.0"
     ver = tag.lstrip("vV")
@@ -698,6 +906,17 @@ def build(latest, all_rels, extra=None, mirror=None):
             "link": dl,
         },
     ]
+    _pc_single = (((pc or {}).get("files") or {}).get("single") or {})
+    if _pc_single:
+        d_cards.insert(1, {
+            "icon": "🖥️",
+            "title": "AstrBot PC 端 %s（电脑版）" % (pc.get("ver") or ""),
+            "desc": ("文件名 %s（Windows 10 / 11 · %s · %s）——给电脑用的那一版："
+                     "装在 Windows 上，用界面部署和管 AstrBot。点这张卡直接下载单文件版，就在本站。"
+                     % (_pc_single.get("name"), _pc_single.get("size") or "体积未知",
+                        pc.get("date") or "")),
+            "link": _pc_single.get("url") or PC_REPO_URL,
+        })
     if local:
         # 可复制卡：把直链给出去，方便发群里、发给别人
         d_cards.append({
@@ -976,7 +1195,24 @@ def main():
                       % (len(mirror), ", ".join(sorted(mirror.keys(), reverse=True))))
             else:
                 print("[astrbot-dl] 站内没存到安装包，下载按钮暂时指向 GitHub", file=sys.stderr)
-        doc = build(latest, all_rels, extra, mirror)
+        pc = {}
+        try:
+            pc_rel = http_json(PC_GH_API)
+            if dry:
+                pc = {"ver": str(pc_rel.get("tag_name") or "").replace("pc-v", ""),
+                      "tag": str(pc_rel.get("tag_name") or ""),
+                      "date": (pc_rel.get("published_at") or "")[:10], "files": {}}
+                print("[astrbot-dl] --dry-run：跳过把电脑版产物存到站内", file=sys.stderr)
+            else:
+                pc = mirror_pc(pc_rel, quiet=quiet)
+                if pc.get("files"):
+                    print("[astrbot-dl] 电脑版站内已备好：%s（%s）"
+                          % ("v" + pc.get("ver", ""), ", ".join(sorted(pc["files"]))))
+                else:
+                    print("[astrbot-dl] 电脑版没存到站内，这一块先指向 GitHub", file=sys.stderr)
+        except Exception as e:
+            print("[astrbot-dl] 电脑版 release 拉取失败（这一块先指向 GitHub）：%s" % e, file=sys.stderr)
+        doc = build(latest, all_rels, extra, mirror, pc)
     except Exception as e:
         print("[astrbot-dl] 连不上 GitHub：%s" % e, file=sys.stderr)
         doc = load_fallback()
@@ -1014,7 +1250,7 @@ def main():
         print("[astrbot-dl] 写入方式：%s" % how)
         print("[astrbot-dl] 内容版本：%s（线上最新 %s）" % (doc.get("title", ""), ver or "未知"))
     try:
-        write_download_index(mirror, quiet=quiet)
+        write_download_index(mirror, pc=pc, quiet=quiet)
     except Exception as e:
         # 列表页只是顺手生成的，写不出来不该让整个同步算失败（下载卡片本身还好好的）
         print("[astrbot-dl] 站内下载列表页没生成：%s" % e, file=sys.stderr)
