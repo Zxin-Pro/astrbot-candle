@@ -213,9 +213,35 @@ public class QqbotActivity extends Activity {
         // 最外层防掉线：常驻前台服务。没有它，应用一退到后台就会被系统当缓存进程
         // 冻结甚至杀掉，沙盒里的 NapCat/AstrBot 会「进程还在但完全没有反应」。
         // 用户关掉守护开关时 apply() 会自动跳过启动。
+        // 但 state/offline 还在时不能拉：那说明用户刚按过通知栏「关闭进程」或界面上的
+        // 「紧急下线」，这次打开只是想把界面翻出来看一眼。服务一旦被拉起，
+        // QqbotGuardTask 的 60 秒自检马上就会把沙盒重新启动，「彻底关掉」就白按了。
+        // 标记只由用户显式「启动」时清除（SandboxStart / start-sandbox.sh），这里绝不能删。
+        //
+        // 但通知栏「关闭进程」是另一回事：它只是「现在别在后台呆着」，用户重开应用就该照常跑起来
+        // （原话：「关闭之后 再进软件不需要再点什么启动 他自己启动」）。那种关闭会留下
+        // state/closed 便条，这里见到就先把它和 offline 标记一起清掉，下面的守护与应用内自启动
+        // 就会正常把沙盒拉起来，用户不用再点「启动服务」。
+        // 唯一的小缝：如果用户在这 1~2 秒内立刻重开，stop-sandbox.sh 可能还在收尾，会把刚起来的
+        // 沙盒再掐一次 —— 看门狗 40 秒内会重新拉起，不用手点。
         try {
-            QqbotGuardService.apply(this);
+            File killNote = StateIO.file(getFilesDir(), "closed");
+            if (killNote.isFile()) {
+                StateIO.delete(killNote);
+                StateIO.delete(StateIO.file(getFilesDir(), "offline"));
+            }
         } catch (Throwable ignored) {
+        }
+        boolean closedByUser = false;
+        try {
+            closedByUser = StateIO.file(getFilesDir(), "offline").isFile();
+        } catch (Throwable ignored) {
+        }
+        if (!closedByUser) {
+            try {
+                QqbotGuardService.apply(this);
+            } catch (Throwable ignored) {
+            }
         }
         // v1.1.30：崩溃 / 匿名统计的真实上报（冷启动链路）。
         // 两个开关都关着时这里只读一次 prefs 就返回：不写计数、不解析 DNS、一个字节都不发；
@@ -744,6 +770,10 @@ public class QqbotActivity extends Activity {
     public void maybeAutoDeploy() {
         try {
             if (!new File(usrDir(), "bin/bash").isFile()) return;
+            // 用户刚用「关闭进程 / 紧急下线」关过（state/offline 还在）：本次打开只显示界面，
+            // 既不续跑部署也不拉起沙盒。少了这一句，「关闭进程」之后一开 App，沙盒就又被
+            // startServices() 拉回来了。标记只由用户显式「启动」清除，这里不碰它。
+            if (StateIO.file(getFilesDir(), "offline").isFile()) return;
             if (!deployDoneFile().isFile()) {
                 // 部署要跑起来之前，先让内置离线包在后台就位（没有内置包的 APK 这里是空操作）。
                 // 不放在部署脚本里做：脚本在 Termux 里跑，读不到 APK 的 assets。
@@ -1594,16 +1624,15 @@ public class QqbotActivity extends Activity {
         return true;
     }
 
-    public String qr(String wantId) {
+    /** 找某个实例的登录二维码文件：返回 null 表示没有可用的图。 */
+    private File qrFind(String wantId) {
         try {
             JSONObject bots = new JSONObject(readBots());
-            JSONArray arr = bots.optJSONArray("bots");
             String active = bots.optString("active", "");
             if (wantId == null || wantId.length() == 0) wantId = active;
             // WebView 里传进来的 id 不可信：直接拼进 /opt/qqbot-inst/<id>/QQ 会被
             // "../.." 穿越到任意目录读文件（再 base64 回页面）。这里按白名单挡掉。
-            if (!safeBotId(wantId)) return "{\"ok\":false}";
-            String foundId = wantId;
+            if (!safeBotId(wantId)) return null;
             // 与 run-napcat.sh 的 QQ 目录选择保持一致：实例一旦建好自己的
             // /opt/qqbot-inst/<id>/QQ 副本就一直用它；没有副本的实例里，只有
             // 「当前实例」才占用 /opt/QQ。
@@ -1618,12 +1647,26 @@ public class QqbotActivity extends Activity {
             } else if (wantId.equals(active) || active.length() == 0) {
                 found = primary;
             }
+            // 二维码是几百 KB 的 PNG；超过 4 MB 只可能是文件坏了或是被替换的别的东西，
+            // 不能直接按 length() 分配数组（大文件会把 JavaBridge 线程 OOM 掉）。
+            if (found == null || !found.isFile() || found.length() <= 0
+                    || found.length() > 4L * 1024 * 1024) return null;
+            return found;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    public String qr(String wantId) {
+        try {
+            JSONObject bots = new JSONObject(readBots());
+            String active = bots.optString("active", "");
+            String foundId = (wantId == null || wantId.length() == 0) ? active : wantId;
+            File found = qrFind(foundId);
             JSONObject o = new JSONObject();
             o.put("id", foundId);
             o.put("active", active);
-            // 二维码是几百 KB 的 PNG；超过 4 MB 只可能是文件坏了或是被替换的别的东西，
-            // 不能直接按 length() 分配数组（大文件会把 JavaBridge 线程 OOM 掉）。
-            if (found == null || !found.isFile() || found.length() <= 0 || found.length() > 4L * 1024 * 1024) {
+            if (found == null) {
                 o.put("ok", false);
                 return o.toString();
             }
@@ -1637,6 +1680,102 @@ public class QqbotActivity extends Activity {
             return o.toString();
         } catch (Throwable t) {
             return "{\"ok\":false}";
+        }
+    }
+
+    // 把二维码图片交给系统的分享面板（能发到微信 / QQ，或者发到另一台手机去扫）。
+    // 不用 FileProvider：本包自带的 TermuxOpenReceiver$ContentProvider 已经把 files
+    // 目录按 content://<包名>.files/<绝对路径> 暴露出来（openFile 会校验路径必须以
+    // /data/data/<包名>/files 开头），配上 FLAG_GRANT_READ_URI_PERMISSION 就能把读权限
+    // 单独授给接收方 —— 不必新增清单 provider，也不必申请存储权限。
+    /**
+     * Termux 自带的 content provider 默认不对外：openFile() 会先查
+     * ~/.termux/termux.properties 里的 allow-external-apps，不是 true 就报
+     * 「requires `allow-external-apps` property to be set to `true`」。
+     * 分享二维码走的就是这条通道，所以先确保这一行在。用户已经写过这一项
+     * （哪怕写的是 false）就原样保留，不覆盖。
+     */
+    private void ensureExternalAppsAllowed() {
+        try {
+            File dir = new File(homeDir(), ".termux");
+            if (!dir.isDirectory() && !dir.mkdirs()) return;
+            File f = new File(dir, "termux.properties");
+            String cur = "";
+            if (f.isFile()) {
+                // 不是我们认识的配置文件（异常大）就别碰
+                if (f.length() > 64L * 1024) return;
+                RandomAccessFile raf = new RandomAccessFile(f, "r");
+                byte[] buf = new byte[(int) raf.length()];
+                raf.readFully(buf);
+                raf.close();
+                cur = new String(buf, "UTF-8");
+                if (cur.indexOf("allow-external-apps") >= 0) return;
+            }
+            String add = (cur.length() == 0 || cur.endsWith("\n")) ? "" : "\n";
+            writeFile(f, cur + add + "allow-external-apps=true\n");
+        } catch (Throwable ignored) {
+        }
+    }
+
+    public String qrShare(String wantId) {
+        try {
+            ensureExternalAppsAllowed();
+            JSONObject bots = new JSONObject(readBots());
+            String active = bots.optString("active", "");
+            String foundId = (wantId == null || wantId.length() == 0) ? active : wantId;
+            File f = qrFind(foundId);
+            JSONObject o = new JSONObject();
+            if (f == null) {
+                o.put("ok", false);
+                o.put("err", "还没有二维码可以分享，等二维码出来再试");
+                return o.toString();
+            }
+            // 路径必须写成 /data/data/<包名>/files/...：TermuxOpenReceiver$ContentProvider
+            // 的 openFile() 是按这个前缀校验的，而 getFilesDir() 在多用户设备上返回的是
+            // /data/user/0/<包名>/files（同一个目录的另一个写法）——直接用它会被判成
+            // 「Invalid path」。(/data/data 在老系统上是实体目录，在新系统上是指向
+            // /data/user/0 的符号链接，两种写法指向同一份文件。)
+            String filesBase = "/data/data/" + getPackageName() + "/files";
+            String absPath = filesBase + f.getAbsolutePath().substring(getFilesDir().getAbsolutePath().length());
+            Uri uri = Uri.parse("content://" + getPackageName() + ".files" + absPath);
+            Intent send = new Intent(Intent.ACTION_SEND);
+            send.setType("image/png");
+            send.putExtra(Intent.EXTRA_STREAM, uri);
+            send.putExtra(Intent.EXTRA_SUBJECT, "QQ 登录二维码");
+            send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            // 除了本包自己的「接收分享」页，一个能收图片的 App 都没有时，系统会直接把
+            // 自己的接收页弹出来（模拟器上实测），看起来像是「点了变成别的东西」。
+            // 所以先数一遍候选人：没有外部 App 就老实说没有，别硬弹。
+            java.util.List<android.content.pm.ResolveInfo> cands =
+                    getPackageManager().queryIntentActivities(send, 0);
+            int others = 0;
+            for (int i = 0; cands != null && i < cands.size(); i++) {
+                android.content.pm.ResolveInfo ri = cands.get(i);
+                if (ri == null || ri.activityInfo == null) continue;
+                if (getPackageName().equals(ri.activityInfo.packageName)) continue;
+                others++;
+            }
+            if (others == 0) {
+                o.put("ok", false);
+                o.put("err", "这台手机没有能接收图片的应用（微信 / QQ 之类），先装一个再分享");
+                return o.toString();
+            }
+            Intent chooser = Intent.createChooser(send, "分享二维码图片");
+            // 也不要把自己的接收页混进候选里：它只会把二维码再存一份到 files 目录
+            chooser.putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, new android.content.ComponentName[]{
+                    new android.content.ComponentName(getPackageName(),
+                            "com.termux.filepicker.TermuxFileReceiverActivity")});
+            chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(chooser);
+            o.put("ok", true);
+            return o.toString();
+        } catch (Throwable t) {
+            JSONObject o = new JSONObject();
+            try {
+                o.put("ok", false);
+                o.put("err", "分享失败：" + t);
+            } catch (Throwable ignored) { }
+            return o.toString();
         }
     }
 

@@ -878,6 +878,15 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
   border-color:rgba(91,140,255,.30);
   color:var(--acc-ink);
 }
+/* 二维码分享（v1.2.13）：三个按钮挤一行时每个只剩三分之一宽，「刷新二维码」
+   会被折成两行；分享独占一行放在最上面，主次依旧清楚（系统分享面板在手机上是
+   很常见的动作，值得给一个完整宽度的按钮）。 */
+#dlgQr .dfoot{flex-wrap:wrap}
+#dlgQr .dfoot button[data-act="qrshare"]{flex:1 0 100%;order:-1}
+:root[data-theme="dark"] #dlgQr .dfoot button[data-act="qrshare"]{
+  background:rgba(91,140,255,.10);
+  border-color:rgba(91,140,255,.26);
+}
 
 /* ===== 扫码登录弹窗里的二维码 ===== */
 .qrwrap{display:flex;align-items:center;justify-content:center;padding:4px 0 10px;min-height:120px}
@@ -977,27 +986,6 @@ button.locked{box-shadow:none;transform:none}
 .bootbar.crash .bi{color:var(--crash)}
 .bootbar .rbx{flex:0 0 auto;display:flex;gap:6px}
 
-/* --- 新手引导：进度 + 五步清单 --- */
-.obhead{display:flex;align-items:baseline;gap:8px}
-.obhead b{font-size:13px;font-weight:600;letter-spacing:-.01em}
-.obhead .obpct{margin-left:auto;font-size:11.5px;color:var(--txt-3);font-variant-numeric:tabular-nums}
-.obsteps{margin-top:8px}
-.obstep{
-  display:flex;align-items:flex-start;gap:9px;padding:7px 0;
-  border-bottom:1px dashed var(--line);font-size:12.5px;line-height:1.5;color:var(--txt-2);
-}
-.obstep:last-child{border-bottom:none}
-.obmk{
-  flex:0 0 auto;width:17px;height:17px;margin-top:1px;border-radius:50%;
-  display:grid;place-items:center;
-  border:1.6px solid var(--line-3);background:var(--surface);color:transparent;
-}
-.obmk svg{width:11px;height:11px;display:block}
-.obstep.done .obmk{border-color:var(--ok);background:var(--ok);color:#fff}
-.obstep.done .obtx{color:var(--txt-3);text-decoration:line-through;text-decoration-color:var(--line-3)}
-.obtx{flex:1;min-width:0}
-.obtx em{font-style:normal;display:block;font-size:11px;color:var(--txt-3);margin-top:2px}
-.obact{flex:0 0 auto;margin-left:auto}
 
 /* --- 实例卡片：头像 / 昵称 / 在线时长 / 最近掉线 --- */
 .inst{
@@ -1298,11 +1286,6 @@ main{padding:14px 13px 8px}
 .tile .tp{font-size:10.5px;color:var(--txt-3);margin-top:3px;font-family:var(--mono);letter-spacing:-.01em;opacity:.85}
 .tile .tp:empty{margin-top:0;padding:0;height:0}
 
-/* ---------- 新手引导：去掉虚线碎片，改成安静的分隔 ---------- */
-.obstep{padding:9px 0;border-bottom:1px solid var(--line);font-size:12.5px}
-.obstep:last-child{border-bottom:none}
-.obmk{width:18px;height:18px;border-width:1.5px}
-.obstep.done .obtx{text-decoration:none;color:var(--txt-3)}
 
 /* ---------- 按钮 ---------- */
 button{font-weight:560;letter-spacing:.006em;border-radius:var(--r-sm)}
@@ -1849,12 +1832,6 @@ pre{
   font-size:11.5px;line-height:1.6;
 }
 
-/* 新手引导：对勾降成中性 */
-/* 完成的步骤应当「安静」而不是被高亮 —— 已经做完的事不需要注意力 */
-.obmk{border-color:var(--line);background:transparent;color:var(--txt-3)}
-.obstep.done .obmk{border-color:var(--line-2);background:transparent;color:var(--txt-3);opacity:.8}
-.obstep.done .obtx{color:var(--txt-2)}
-.obstep{border-bottom:1px solid var(--line)}
 
 /* 分段 / 页签 */
 .tab.on{color:var(--txt);background:rgba(255,255,255,.07);border-color:var(--line-2)}
@@ -3283,17 +3260,6 @@ section.tab.on{display:flex;flex-direction:column}
   </div>
 
   <section class="tab on" id="tab-home">
-    <!-- 新手引导（功能 18）：五步全部按真实状态判定，不满足绝不打勾。
-         进度条标题里的 3/5 就是已完成步数；点「稍后再说」写 localStorage.qqbot_onboard_done，
-         以后不再出现（清应用数据可重来）。 -->
-    <div class="card" id="onboardCard" style="display:none" aria-label="新手引导">
-      <div class="obhead"><b>新手引导</b><span class="obpct" id="obCount">0/5</span></div>
-      <div class="bar" style="margin-top:8px"><i id="obBar"></i></div>
-      <div class="obsteps" id="obSteps"></div>
-      <div class="btns" style="margin-top:10px">
-        <button class="small" data-act="oblater" style="flex:1">稍后再说</button>
-      </div>
-    </div>
 
 <!-- 首屏 hero（v4）：一屏只回答「现在正常吗」。
          五个组件状态收进下面的「状态详情」，今日数字直接躺在 verdict 下面，
@@ -3637,20 +3603,33 @@ section.tab.on{display:flex;flex-direction:column}
 
     <!-- 功能 9：紧急下线。App / 通知栏 / 小组件 / 磁贴四处最终都落到这一张确认卡上：
          先把面板叫到前台弹确认，点了「确认下线」才真跑 Android.emergencyStop()
-         （写 state/offline + stop-sandbox.sh）。只停进程，登录态、配置、AstrBot data 一律不动。 -->
+         （写 state/offline + stop-sandbox.sh）。只停进程，登录态、配置、AstrBot data 一律不动。
+         「关闭进程」走的是同一条链路（GuardKillTask）：停沙盒 → 收起常驻通知 → 结束整个应用
+         进程，之后不会再自动拉起；下次打开应用保持「已关闭」，要恢复必须回到这张卡点启动。 -->
     <div class="card" id="stopCard">
       <h2><span class="dot" id="d-stop"></span>紧急下线</h2>
-      <div class="hint" style="margin-top:0">把 NapCat 与 AstrBot 的进程停掉，端口立刻不可访问；登录状态、配置、AstrBot 数据都保留，下次照常启动。</div>
+      <div class="hint" style="margin-top:0">停掉沙盒里 NapCat 与 AstrBot 的进程，收起常驻通知，并结束整个应用进程。登录状态、配置、AstrBot 数据都保留；下次打开应用不会自动拉起沙盒，要回到这张卡点启动。</div>
       <div class="hint" id="stopState">当前：沙盒运行中</div>
       <div class="btns" style="margin-top:10px">
-        <button class="danger" data-act="askstop" style="flex:1">紧急下线</button>
+        <button class="danger" data-act="askstop" id="btnAskStop" style="flex:1">紧急下线</button>
+        <button class="small primary" data-act="askresume" id="btnAskResume" style="display:none;flex:1">启动服务</button>
       </div>
       <div id="stopConfirm" style="display:none;margin-top:12px;padding:12px 14px;border-radius:12px;background:rgba(234,88,12,.10);border:1px solid rgba(234,88,12,.30)">
         <div style="font-weight:600">确定要下线吗？</div>
-        <div class="hint" style="margin-top:4px">下线后 NapCat 与 AstrBot 立即停止，看门狗不会自动拉起，需要你手动启动。登录态不会被清除。</div>
+        <div class="hint" style="margin-top:4px">下线后 NapCat 与 AstrBot 立即停止，常驻通知收起，整个应用进程也结束；看门狗不会自动拉起，下次打开应用也不会自动启动，要回这张卡点启动。登录态不会被清除。</div>
         <div class="btns" style="margin-top:10px">
           <button class="danger" data-act="stopnow" style="flex:1">确认下线</button>
           <button class="small" data-act="stopcancel" style="flex:1">取消</button>
+        </div>
+      </div>
+      <!-- 下线状态下磁贴 / 小组件点了「启动」时弹这张卡：不静默删 offline 标记，
+           否则用户刚按的「关闭进程」会被一次磁贴误触抵消掉。 -->
+      <div id="resumeConfirm" style="display:none;margin-top:12px;padding:12px 14px;border-radius:12px;background:rgba(37,99,235,.10);border:1px solid rgba(37,99,235,.30)">
+        <div style="font-weight:600">沙盒还是下线状态，要启动吗？</div>
+        <div class="hint" style="margin-top:4px">上次点「关闭进程 / 紧急下线」留下的标记还在，所以不会自己拉起来。点确认启动会清掉标记并启动沙盒，登录状态与配置都保留。</div>
+        <div class="btns" style="margin-top:10px">
+          <button class="small primary" data-act="startnow" style="flex:1">确认启动</button>
+          <button class="small" data-act="startcancel" style="flex:1">取消</button>
         </div>
       </div>
     </div>
@@ -3662,10 +3641,10 @@ section.tab.on{display:flex;flex-direction:column}
       <div class="btns" style="margin-top:10px">
         <button class="small" data-act="battery" style="flex:1">申请电池优化白名单</button>
       </div>
-      <!-- 通知权限不是「关掉通知」：常驻通知上有「重启 / 扫码 / 关闭进程」，
-           权限被拒时那条通知根本不出现，后台就只能进应用里手动停。 -->
+      <!-- 通知权限不是「关掉通知」：它是让常驻通知上那三个快捷按钮（重启 / 扫码 / 关闭进程）
+           出现的开关。没这条权限，通知栏上就没有「关闭进程」，后台只能进应用里手动停。 -->
       <div class="btns" style="margin-top:8px" id="notiRow">
-        <button class="small primary" data-act="notiask" id="notiBtn" style="flex:1">开启通知栏权限（「关闭进程」要用）</button>
+        <button class="small primary" data-act="notiask" id="notiBtn" style="flex:1">开启通知权限（「关闭进程」按钮要用）</button>
       </div>
       <div class="hint" id="notiNote" style="margin-top:6px"></div>
       <div class="hint" id="guardNote">—</div>
@@ -3891,7 +3870,7 @@ section.tab.on{display:flex;flex-direction:column}
       <div class="row"><span class="k">Ubuntu</span><span class="v mono">24.04.5</span></div>
       <div class="row"><span class="k">Linux QQ</span><span class="v mono">3.2.34-53644</span></div>
       <div class="row"><span class="k">NapCat</span><span class="v mono">v4.18.38</span></div>
-      <div class="row"><span class="k">AstrBot</span><span class="v mono">v4.28.2</span></div>
+      <div class="row"><span class="k">AstrBot</span><span class="v mono" id="v-astrbotver">—</span></div>
       <div class="row"><span class="k">PREFIX</span><span class="v mono" id="v-prefix">-</span></div>
     </div>
     <div class="pagefoot">
@@ -4030,6 +4009,7 @@ section.tab.on{display:flex;flex-direction:column}
       </ul>
     </div>
     <div class="dfoot">
+      <button class="small" data-act="qrshare">分享二维码图片</button>
       <button class="small" data-act="qrreload">刷新二维码</button>
       <button class="small quiet" style="flex:1" data-act="qrclose">稍后再说</button>
     </div>
@@ -4480,11 +4460,11 @@ var NO_LOCK_ACTS = [
   /* 风控横幅说的是账号侧的事（要验证 / 被踢下线），跟「容器装没装好」无关：
      哪怕部署还没完成，也不能把「我知道了」「去处理」置灰 —— 那正是要处理的时刻。 */
   "riskack", "riskgo", "riskpanel",
-  /* v1.1.30 的信息类面板：新手引导、实例卡、崩溃看板、存储占用、备份、匿名统计。
+  /* v1.1.30 的信息类面板：实例卡、崩溃看板、存储占用、备份、匿名统计。
      它们的共同点是「读状态 / 给出解释」，这时候正是最该让用户看见。
      按钮背后的桥没实现时函数自己会兜住并提示，不需要靠置灰来表示「暂时不可用」——
      置灰只会让用户以为是自己点错了。备份 / 清理这类真会动文件的操作，原生侧自己会拒绝。 */
-  "oblater", "obtest", "instopen", "crashopen",
+  "instopen", "crashopen",
   "bkstart", "bkexport", "bkrestoreask", "bkcancel", "bkrestore",
   "stgclean", "stgrefresh", "crashclear",
   "statstoggle", "statsok", "statscancel", "statsreset",
@@ -4493,9 +4473,15 @@ var NO_LOCK_ACTS = [
   "lantoggle",
   /* 功能 9：紧急下线是「出事时」用的入口，部署没完成也得能点（沙盒可能正是起不来才要停） */
   "askstop", "stopnow", "stopcancel",
+  /* 下线标记还在时的「确认启动 / 取消」：同一张卡的两半，同样不该被置灰 */
+  "startnow", "startcancel",
+  /* 下线后首页 / 下线卡上的「启动服务」入口（只是弹同一张确认卡） */
+  "askresume",
   /* v1.2.10：控制台凭据弹窗与中转站链接纯粹是「看信息 / 复制」，
      部署没完成时也该能开（用户常常正是想在装之前先把密钥准备好）。 */
-  "algo", "alclose", "alcopyuser", "alcopypass", "copyrelay", "openrelay"
+  "algo", "alclose", "alcopyuser", "alcopypass", "copyrelay", "openrelay",
+  /* 二维码分享也只是把已有的图片交给系统面板，部署没完成时同样不该置灰 */
+  "qrshare"
 ];
 
 /* 这个 act 在未部署时要不要拦 */
@@ -4720,6 +4706,7 @@ function refreshAll(){
   if (ab) ab.setAttribute("data-arg", "http://127.0.0.1:" + (st.astrbotPort || 6185));
   var _qa = el("qkAstr"); if (_qa) _qa.setAttribute("data-arg", "http://127.0.0.1:" + (st.astrbotPort || 6185));
   el("v-prefix").textContent = st.prefix || "-";
+  try { paintEnvVers(); } catch (e0v) {}
   var av = el("v-appver");
   if (av) av.textContent = st.appVersion || "-";
   /* 没部署完时沙盒里连容器都还没有：这五块磁贴一律说「未安装」并配中性灰，
@@ -4822,7 +4809,7 @@ function refreshAll(){
   paintBoot(st);
   paintReinstall();
   autoLink();
-  /* v1.1.30 的新面板（公告 / 新手引导 / 实例卡 / 备份 / 存储 / 崩溃 / 统计）。
+  /* v1.1.30 的新面板（实例卡 / 备份 / 存储 / 崩溃 / 统计）。
      每个内部都有自己的节流与 try/catch：桥方法还没实现时只是空态，
      绝不会把上面这些渲染一起带翻 —— 它们在 refresh() 的护栏里，这里再包一层更稳。 */
   try { refreshExtras(st); } catch (e) {}
@@ -5305,11 +5292,24 @@ function paintHero(st, installed){
   if (!installed){
     k = "idle"; t = "还没部署";
     sub = "第一次使用，先点「开始部署」，装好大约 8 分钟";
+  } else if (st.offline){
+    /* 走到这里只剩「紧急下线」这一种：用户自己在界面上把后台停了，标记就是
+       「别再自己起来」的意思。通知栏的「关闭进程」不落这个分支 —— 它会写一张
+       state/closed 便条，下次进应用时由 QqbotActivity 清掉标记、照常自动启动。
+       这时候也绝不能说「正在启动」——那会让人以为等 40 秒就好，其实谁都不会拉它。 */
+    k = "bad"; t = "已下线";
+    sub = "已按「紧急下线」停掉后台，不会自己拉起；要恢复点下面的「启动服务」";
   } else if (!botCount(st)){
     /* 实例全删了：组件可能还在跑，端口也还通，但一条 QQ 都收发不了。
        不说「一切正常」——那句话会让用户以为能用了。 */
     k = "warn"; t = "还没有实例";
     sub = "到「机器人」页新增一个实例，填 QQ 号和 Token 后会自动登录";
+  } else if (napUp && astrUp && obUp){
+    /* 全绿优先于「启动中」：BOOT 窗口有 120 秒，以前它会把已经全绿的真实状态盖住，
+       用户盯着「正在启动」两分钟，以为卡死了。服务真的都在线就直接说「一切正常」，
+       启动窗口只用来解释「还没起来」。 */
+    k = "ok"; t = "一切正常";
+    sub = "NapCat 与 AstrBot 都在线，消息通道已接通";
   } else if (bootPending()){
     /* 应用刚打开、容器还在起：这一刻 supervisorAlive 还是 false，
        按字面会报「服务已停止」，但用户其实只是在等冷启动。 */
@@ -5321,9 +5321,6 @@ function paintHero(st, installed){
   } else if (napOff && astrOff){
     k = "warn"; t = "组件都已关闭";
     sub = "在「更多工具」的组件开关里重新打开";
-  } else if (napUp && astrUp && obUp){
-    k = "ok"; t = "一切正常";
-    sub = "NapCat 与 AstrBot 都在线，消息通道已接通";
   } else if (napUp && astrUp){
     k = "warn"; t = "通道连接中";
     sub = "两端都起来了，QQ 消息通道还在建立";
@@ -5473,7 +5470,7 @@ function renderGuard(st){
     if (nn) nn.textContent = "通知栏权限没开：那条常驻通知不会出现，也就没有「关闭进程」，后台只能进应用里手动停。";
   } else {
     if (nr) nr.style.display = "none";
-    if (nn) nn.textContent = "通知栏权限已开：常驻通知上的「关闭进程」可以一键停掉后台。";
+    if (nn) nn.textContent = "通知栏权限已开：常驻通知上的「关闭进程」会停掉沙盒、收掉通知并结束应用进程，之后要在这张卡点启动。";
   }
   /* 首屏也提醒一次：没这条权限就没有「关闭进程」，最容易踩。 */
   var chip = el("notiChip");
@@ -6164,6 +6161,17 @@ function qrClose(silent){
   if (!silent) { /* 手动关闭不提示，安静收掉 */ }
 }
 
+/* 分享二维码图片（v1.2.13）：把 qrcode.png 交给系统的分享面板，可以发到微信 / QQ，
+   也可以发到另一台手机去扫。原生侧用本包自带的 content provider 临时授权，
+   不申请存储权限、也不落新文件（二维码本来就是 NapCat 生成的）。 */
+function qrShareImg(){
+  if (!brHas("qrShare")) { extToast("这个版本还不支持分享二维码"); return; }
+  var stt = qrState();
+  var r = null;
+  try { r = JSON.parse(Android.qrShare(stt.id || "")); } catch (e) { r = null; }
+  if (!r || !r.ok) extToast((r && r.err) || "还没有二维码可以分享");
+}
+
 function qrTick(){
   var stt = qrState();
   if (!stt.open) return;
@@ -6326,6 +6334,7 @@ document.addEventListener("click", function(ev){
   else if (act === "qrrefresh") { loadQr(); Android.toast("已刷新二维码"); }
   else if (act === "showqr") { qrOpen(arg || "", false); }
   else if (act === "qrreload") { qrReload(); extToast("已刷新二维码"); }
+  else if (act === "qrshare") qrShareImg();
   else if (act === "qrclose") { qrClose(false); }
     else if (act === "depovoff") { depovHide(); }
   else if (act === "astrconfig") astrOpen();
@@ -6344,21 +6353,7 @@ document.addEventListener("click", function(ev){
   else if (act === "riskack") riskAck();
   else if (act === "riskgo") riskGo();
   else if (act === "riskpanel") riskPanel();
-  /* ---------- v1.1.30：公告 / 引导 / 实例卡 / 备份 / 存储 / 崩溃 / 统计 ---------- */
-  else if (act === "oblater") {
-    lsSet(ONB_KEY, "1");
-    var obc = el("onboardCard");
-    if (obc) obc.style.display = "none";
-    extToast("已收起新手引导，随时可以在「更多」里回看步骤");
-  }
-  else if (act === "obtest") {
-    /* 「我已发送」：服务端消息计数是最准的判据，但 AstrBot 的消息计数要等它自己落盘，
-       用户刚发完可能还没统计进去。手动确认留一条本地记录，别让人卡在这一步。 */
-    lsSet(ONB_TEST_KEY, "1");
-    ext().onb.msgs = true;
-    try { refreshOnboard(S.st); } catch (e) {}
-    extToast("已记下，继续下一步");
-  }
+  /* ---------- v1.1.30：实例卡 / 备份 / 存储 / 崩溃 / 统计 ---------- */
   else if (act === "instopen") openInst(arg);
   else if (act === "crashopen") {
     showTab("more");
@@ -6383,6 +6378,9 @@ document.addEventListener("click", function(ev){
   else if (act === "askstop") stopAsk(true);
   else if (act === "stopnow") stopDo();
   else if (act === "stopcancel") stopAsk(false);
+  else if (act === "startnow") resumeDo();
+  else if (act === "startcancel") resumeAsk(false);
+  else if (act === "askresume") resumeAsk(true);
   else if (act === "askrestart") restartAsk(true);
   else if (act === "restartnow") restartDo();
   else if (act === "restartcancel") restartAsk(false);
@@ -7189,15 +7187,12 @@ function todayStart(){
    每个候选调用都同时认契约名与旧别名，原生按任一名字实现都能立刻用上。
    ================================================================== */
 
-var ONB_KEY = "qqbot_onboard_done";      /* 用户点了「稍后再说」/ 五步走完 */
-var ONB_TEST_KEY = "qqbot_onboard_test"; /* 第 4 步手动点过「我已发送」 */
 var STATS_ACK_KEY = "qqbot_stats_ack";   /* 看过匿名统计说明并同意 */
 
 var EXT = null;
 
 function ext(){
   if (!EXT) EXT = {
-    onb:  { qrSeen: false, bootOk: false, msgs: false, qrTries: 0, qrAt: 0, bootAt: 0, msgAt: 0 },
     inst: { at: 0, map: {}, av: {} },
     bk:   { at: 0, meta: null, running: "", timer: 0, pickAt: 0 },
     stg:  { at: 0, busy: false, data: null },
@@ -7276,74 +7271,6 @@ function tabOn(t){
   return !!(s && s.classList && s.classList.contains("on"));
 }
 
-/* ===================== 功能 18：五步新手引导 ===================== */
-var OB_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
-
-function onbSteps(st){
-  var E = ext();
-  st = st || {};
-  var installed = !!(st.deployDone || st.installed);
-  var napcatUp = !!st.napcatUp;
-  var scan = napcatUp || !!E.onb.qrSeen;           /* qrcode.png 存在 或 NapCat 已在线 */
-  var test = !!E.onb.msgs || lsGet(ONB_TEST_KEY, "") === "1";
-  var guard = !!st.guardOn || !!E.onb.bootOk;      /* 守护开着 或 开机自启成功过 */
-  return [
-    { t: "装好", d: "自动部署完成，沙盒里已经有容器", done: installed },
-    { t: "扫码登录", d: "在日志页扫码登录这个 QQ 号", done: scan },
-    { t: "拉进群", d: "把机器人拉进一个群，再 @ 它试试", done: napcatUp },
-    { t: "发一条测试消息", d: "任何一条消息被 AstrBot 收到就算过", done: test, act: true },
-    { t: "开启保活", d: "常驻后台守护 / 开机自启，息屏也不掉线", done: guard }
-  ];
-}
-
-function refreshOnboard(st){
-  var E = ext(), card = el("onboardCard");
-  if (!card) return;
-  if (lsGet(ONB_KEY, "") === "1") { card.style.display = "none"; return; }
-  var now = Date.now();
-
-  /* 保活：bootInfo() 很便宜，但没必要每 4 秒问一次，2 分钟一次足够 */
-  if (!E.onb.bootOk && brHas("bootInfo") && (!E.onb.bootAt || now - E.onb.bootAt > 120000)){
-    E.onb.bootAt = now;
-    var b = brCall(["bootInfo"]);
-    if (b && b.ok !== false && (Number(b.lastBoot || 0) > 0 || Number(b.lastStart || 0) > 0)) E.onb.bootOk = true;
-  }
-  /* 扫码：只在 NapCat 还没起来、且还没判定成功时问；至少隔 60 秒，最多试 20 次。
-     问 20 次就不再问 —— qr() 会把整张 PNG 转 base64 过桥，反复问纯属浪费。 */
-  if (!E.onb.qrSeen && !(st && st.napcatUp) && brHas("qr") && E.onb.qrTries < 20 &&
-      (!E.onb.qrAt || now - E.onb.qrAt > 60000)){
-    E.onb.qrAt = now;
-    E.onb.qrTries++;
-    var q = null;
-    try { q = normJson(Android.qr("")); } catch (e) { q = null; }
-    if (q && q.ok !== false && q.data) E.onb.qrSeen = true;
-  }
-
-  var steps = onbSteps(st), done = 0, i;
-  for (i = 0; i < steps.length; i++) if (steps[i].done) done++;
-
-  var h = [];
-  for (i = 0; i < steps.length; i++){
-    var s = steps[i];
-    h.push('<div class="obstep' + (s.done ? " done" : "") + '">'
-      + '<span class="obmk" aria-hidden="true">' + OB_CHECK + '</span>'
-      + '<span class="obtx">' + (i + 1) + ". " + esc(s.t)
-      + (s.done ? "" : '<em>' + esc(s.d) + '</em>') + '</span>'
-      + (s.act && !s.done ? '<button class="small obact" data-act="obtest">我已发送</button>' : '')
-      + '</div>');
-  }
-  setHtml(el("obSteps"), h.join(""));
-  var c = el("obCount");
-  if (c) c.textContent = done + "/5";
-  var bar = el("obBar");
-  if (bar) bar.style.width = Math.round(done / 5 * 100) + "%";
-  card.style.display = "";
-
-  /* 五步全绿：记下来，以后不再出现（状态抖一下也不会又弹出来） */
-  if (done >= 5){ lsSet(ONB_KEY, "1"); card.style.display = "none"; }
-}
-
-/* 引导进度：首页顶部那条提示（refreshExtras 里每轮重算） */
 
 /* ===================== 功能 17：实例卡片 ===================== */
 var INST_CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>';
@@ -8051,6 +7978,9 @@ function restartDo(){
     return;
   }
   E.restartUntil = Date.now() + 45000;
+  /* 重启就是重新冷启动一次：BOOT 的「启动中」窗口要跟着重来一遍，
+     否则上一次已经 readyAt 了，这 45 秒里只剩「服务已停止」这种难看的字。 */
+  try { BOOT.at = Date.now(); BOOT.readyAt = 0; BOOT.toastDone = false; BOOT.closed = false; } catch (eB) {}
   extToast("正在重启服务，约 45 秒后恢复");
   /* 立刻把状态行改成「重启中」，别等下一轮 refresh 才变 —— 用户点了就得有反馈 */
   var st = el("restartState");
@@ -8086,6 +8016,10 @@ function stopAsk(on){
   var box = el("stopConfirm");
   if (box) box.style.display = on ? "block" : "none";
   if (on){
+    /* 下线确认和启动确认是互斥的两件事，同时亮着用户根本分不清点的是哪个 */
+    var rb0 = el("resumeConfirm");
+    if (rb0) rb0.style.display = "none";
+    try { ext().resumeAsk = false; } catch (e1) {}
     /* 每次刷界面都可能把这块重画，画完要再把确认框露出来，否则用户点开两秒后就自己收起了 */
     try { var c = el("stopCard"); if (c && c.scrollIntoView) c.scrollIntoView({block:"center"}); } catch (e) {}
   }
@@ -8111,12 +8045,54 @@ window.askStop = function(){
   try { showTab("more"); } catch (e) {}
   stopAsk(true);
 };
+/* 下线状态下的「启动」确认：复用下线卡的位置，只是换成蓝色那块。
+   offline 标记还留在 filesDir 时，磁贴 / 小组件点「启动」只弹这张卡，不删标记。 */
+function resumeAsk(on){
+  try { ext().resumeAsk = !!on; } catch (e0) {}
+  var box = el("resumeConfirm");
+  if (box) box.style.display = on ? "block" : "none";
+  if (on){
+    stopAsk(false);   /* 两个确认框不能同时开着 */
+    try { var c = el("stopCard"); if (c && c.scrollIntoView) c.scrollIntoView({block:"center"}); } catch (e) {}
+  }
+}
+/* 用户点了「确认启动」：走 emergencyResume() 而不是 action("start")。
+   理由：「关闭进程」把守护前台服务一起结束了，只跑 start-sandbox.sh 能拉起沙盒，
+   但守护不会回来（面板看得到进程、通知栏没有常驻通知、掉线不会自愈）。
+   emergencyResume 先删 offline 标记，再 applyEx 拉起守护、kick 踢一轮重启，一次做完。 */
+function resumeDo(){
+  resumeAsk(false);
+  var st = null;
+  try { st = normJson(Android.state()); } catch (e0) { st = null; }
+  var res = null;
+  try { res = Android.emergencyResume(); } catch (e) { res = null; }
+  var o = normJson(res);
+  if (!o || o.ok === false){
+    extToast(o && o.err ? String(o.err) : "启动失败：原生没有响应，请稍后重试");
+    return;
+  }
+  /* 守护开关被人关掉时 emergencyResume 只删标记、kick 是空操作，沙盒不会被拉起，
+     用户点了「确认启动」却什么都没发生 —— 这种情形补一次显式启动。守护开着时不能补，
+     否则会和 kick(ACTION_RESTART) 抢着起两份。 */
+  if (st && st.guardOn === false){
+    try { Android.action("start"); } catch (e3) {}
+  }
+  extToast("已确认启动：正在拉起沙盒，通常需要 20–40 秒");
+  setTimeout(function(){ try { refreshAll(); } catch (e2) {} }, 1500);
+}
+/* 小组件 / 磁贴带来的「启动」在下线状态下统一打到这里 */
+window.askResume = function(){
+  try { showTab("more"); } catch (e) {}
+  resumeAsk(true);
+};
 /* 小组件 / 磁贴的「启动 · 停止」按钮统一调这个（原生 AskToggle 会重试三次）：
    入口拿不准当前状态（小组件的 PendingIntent 是渲染时定死的），所以由页面读一次
-   真实状态 —— 在跑就弹紧急下线确认，没跑就直接拉起沙盒。 */
+   真实状态 —— 下线标记在就弹确认启动，在跑就弹紧急下线确认，没跑才直接拉起沙盒。 */
 window.askToggle = function(){
   var st = null;
   try { st = normJson(Android.state()); } catch (e0) { st = null; }
+  /* 先判下线：上次点过「关闭进程」的人，最不希望磁贴一点就把沙盒又拉回来 */
+  if (st && st.offline){ window.askResume(); return; }
   if (st && st.supervisorAlive){ window.askStop(); return; }
   var r = "";
   try { r = Android.action("start"); } catch (e1) { r = ""; }
@@ -8136,6 +8112,22 @@ function diagFold(){
 /* v4：崩溃 / 省电 / 启动中 原来各是一条彩色条，同时出现时像通知栏堆叠。
    这里把三条搬进同一张卡，只留细分隔线，颜色退到图标上。 */
 var NOTICE_IDS = ["crashBar", "riskBar", "powBar", "bootBar"];
+/* 关于页的 AstrBot 版本：以前写死 v4.28.2，用户重装/升级 AstrBot 之后界面永远显示旧值。
+   现在读沙盒里 astrbot/__init__.py 的 __version__；读不到就留「—」，绝不编一个数字。
+   版本只会在重装 / 升级时变，5 分钟缓存一次就够，不必每 4 秒过桥。 */
+var ENV_V = { at: 0, astrbot: "" };
+function paintEnvVers(){
+  var e2 = el("v-astrbotver");
+  if (!e2) return;
+  if (!ENV_V.at || Date.now() - ENV_V.at > 300000){
+    ENV_V.at = Date.now();
+    try {
+      var r = (brHas("envVers") ? normJson(Android.envVers()) : null);
+      if (r && r.ok !== false && r.astrbot) ENV_V.astrbot = String(r.astrbot);
+    } catch (e) {}
+  }
+  if (ENV_V.astrbot) e2.textContent = "v" + ENV_V.astrbot.replace(/^v/i, "");
+}
 /* 落款里的版本号：从桥上取，取不到就留着「—」 */
 function paintFoot(){
   var v = "";
@@ -8222,17 +8214,11 @@ function syncNotice(){
 }
 
 function refreshExtras(st){
+  /* E 必须在这里取一次：refreshExtras 自己也读写 E（省电条节流、下线卡按钮、确认框状态），
+     少这一行时整段会抛 "E is not defined"，被外面的 try/catch 吞掉 ——
+     表现就是「下线后卡片一直写『沙盒运行中』、也没有『启动服务』按钮」。 */
   var E = ext(), now = Date.now();
-  /* 发测试消息这一步：60 秒问一次 todayStats 就够，不必每 4 秒过桥 */
-  if (!E.onb.msgs && (!E.onb.msgAt || now - E.onb.msgAt > 60000)){
-    E.onb.msgAt = now;
-    try {
-      var t = brHas("todayStats") ? normJson(Android.todayStats()) : null;
-      if (t && t.ok !== false && Number(t.msgs || 0) > 0) E.onb.msgs = true;
-    } catch (e) {}
-  }
-  try { refreshOnboard(st); } catch (e2) {}
-  try { refreshInst(false); } catch (e3) {}
+  try { refreshInst(false); } catch (e2) {}
   try { refreshBk(false); } catch (e5) {}
   /* 存储 / 崩溃 / 统计：不在对应页签时不主动扫盘，省电也省桥调用 */
   if (tabOn("more")){
@@ -8283,10 +8269,26 @@ function refreshExtras(st){
         var alive = !!(st && (st.supervisorAlive || st.napcatUp || st.astrbotUp));
         if (st && st.offline) sst.textContent = "当前：已下线（看门狗已暂停自动拉起）";
         else sst.textContent = alive ? "当前：沙盒运行中" : "当前：未运行";
+        /* 下线状态下这张卡要给出「启动服务」，否则重启应用后没有任何入口能恢复 */
+        var askB = el("btnAskStop"), rsmB = el("btnAskResume");
+        if (askB && rsmB){
+          var isOff = !!(st && st.offline);
+          askB.style.display = isOff ? "none" : "block";
+          rsmB.style.display = isOff ? "block" : "none";
+        }
       }
     }
     /* 确认框开着的时候，界面重画不能把它弄丢 */
     if (E.stopAsk){ var sb = el("stopConfirm"); if (sb && sb.style.display !== "block") sb.style.display = "block"; }
+    /* 启动确认卡同理；offline 标记一旦不在了（在别处启动成功 / 磁贴已确认过），
+       这张卡就没有存在意义，别让用户对着一个已经过时的确认框发呆 */
+    if (E.resumeAsk){
+      var rb = el("resumeConfirm");
+      if (st && !st.offline){
+        try { ext().resumeAsk = false; } catch (e11) {}
+        if (rb) rb.style.display = "none";
+      } else if (rb && rb.style.display !== "block") rb.style.display = "block";
+    }
   } catch (e10) {}
 }
 

@@ -40,7 +40,7 @@ public class QqbotGuardService extends Service {
     public static final String ACTION_RESTART = "com.termux.app.GUARD_RESTART";
     public static final String ACTION_RESTART_LEGACY = "com.termux.qqbot.ACTION_RESTART";
     public static final String ACTION_WAKE = "com.termux.app.GUARD_WAKE";
-    /** 通知栏「下线」（折叠菜单里的第 4 个）：等价于 emergencyStop，但要自己写 offline 标记。 */
+    /** 「下线」（通知栏 / 小组件 / 磁贴都走它）：等价于 emergencyStop，但要自己写 offline 标记。 */
     public static final String ACTION_STOP = "com.termux.app.GUARD_STOP";
     /** 通知栏「关闭进程」：停沙盒 + 收掉守护服务自己，一键把后台关干净。 */
     public static final String ACTION_KILL = "com.termux.app.GUARD_KILL";
@@ -70,6 +70,9 @@ public class QqbotGuardService extends Service {
             else c.startService(i);
             return true;
         } catch (Throwable t) {
+            // API 31+ 在后台起前台服务会抛 ForegroundServiceStartNotAllowedException。
+            // 原来这里静默返回 false，Activity / apply 拿不到任何线索，永远补不了日志。
+            android.util.Log.e("QqbotGuard", "startForegroundService failed: " + t, t);
             return false;
         }
     }
@@ -91,9 +94,17 @@ public class QqbotGuardService extends Service {
         return new File(new File(new File(c.getFilesDir(), "home"), ".qqbot"), "wake.off");
     }
 
-    /** 按当前开关状态决定起还是停，启动/保存设置后都调它。 */
+    /**
+     * 按当前开关状态决定起还是停，启动/保存设置后都调它。
+     * 签名保持 void（调用点太多），但启动请求失败必须留下 Log.w：
+     * start() 吞掉 API 31+ 的后台启动异常后，Activity 的 try/catch 根本抓不到，
+     * 只剩这条日志能解释「守护明明开了却没在跑」。
+     */
     public static void apply(Context c) {
-        applyEx(c);
+        if (!applyEx(c)) {
+            android.util.Log.w("QqbotGuard", "apply: 守护服务启动请求未发出，后台守护不会运行"
+                    + "（API 31+ 后台启动限制 / 电池优化？）");
+        }
     }
 
     /**
@@ -105,6 +116,16 @@ public class QqbotGuardService extends Service {
         if (offFlag(c).isFile()) {
             stop(c);
             return true; // 用户自己关了守护，不算失败，不必重试
+        }
+        // 用户按过通知栏的「关闭进程」（或紧急下线）会留下 state/offline 标记：
+        // 这时开机广播、覆盖安装、打开 App 都不该把守护悄悄拉回来（v1.2.11）。
+        try {
+            if (StateIO.file(c.getFilesDir(), "offline").isFile()) {
+                android.util.Log.i("QqbotGuard", "state/offline exists: user closed it, skip apply");
+                return true;
+            }
+        } catch (Throwable t) {
+            android.util.Log.e("QqbotGuard", "read offline flag failed", t);
         }
         return start(c);
     }
@@ -293,9 +314,10 @@ public class QqbotGuardService extends Service {
                由页面的 Android.emergencyStop() 执行。 */
             askStopConfirm();
         } else if (ACTION_KILL.equals(a)) {
-            /* 通知栏「关闭进程」：用户的诉求是「别管我了」，所以不再弹二次确认，
-               直接停沙盒并把本服务收掉。EmergencyStop 会先写 offline 标记，
-               心跳/网络自愈/watchdog 见到它都不会再拉起。 */
+            /* 通知栏「关闭进程」：用户的诉求是「别管我了」，所以不再弹二次确认。
+               GuardKillTask 会先写 offline 标记（心跳/网络自愈/watchdog 见到它都不再
+               拉起），停沙盒、收起本服务，最后 killProcess 把整个应用进程结束掉。
+               5 秒兜底见 KillWatchdog：stop-sandbox.sh 卡住也不会让按钮看起来没反应。 */
             try {
                 Thread th = new Thread(new GuardKillTask(this), "qqbot-kill");
                 th.setDaemon(true);
@@ -310,10 +332,14 @@ public class QqbotGuardService extends Service {
                真实状态决定「弹下线确认」还是「启动沙盒」。 */
             askToggle(getApplicationContext());
             QqbotWidgetProvider.refreshAsync(this);
-            return START_STICKY;
+            return START_NOT_STICKY; // 与下面的约定一致：进程被杀后不要重建
         }
-        // 被系统回收后自动重来；就算重来时沙盒好好的，任务循环也只是一直空转。
-        return START_STICKY;
+        // 这里绝对不能返回 START_STICKY：进程被杀后系统会把服务重新拉起来，
+        // onStartCommand 立刻 return、onCreate 又 startForeground，刚被「关闭进程」
+        // 关掉的软件过几秒就自己回来了 —— 这就是「关不干净」的根源。
+        // 改成 START_NOT_STICKY：进程被杀后不要重建；沙盒由开机广播
+        // （QqbotBootReceiver）或用户打开 App（QqbotActivity.onCreate → apply）时重新拉起。
+        return START_NOT_STICKY;
     }
 
     public void onDestroy() {

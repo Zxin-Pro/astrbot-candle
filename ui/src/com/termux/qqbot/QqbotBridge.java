@@ -149,6 +149,50 @@ public class QqbotBridge {
             return "";
         }
     }
+    /**
+     * 沙盒里 AstrBot 自身的版本（「更多 → 关于与支持」那一行）。
+     * 以前界面写死 v4.28.2，用户重装/升级 AstrBot 之后永远显示旧值。
+     * 真值只在 <home>/ubuntu/opt/AstrBot/astrbot/__init__.py 的 __version__ 里，
+     * 读不到就回空串，让前端显示「—」，绝不编一个数字。
+     */
+    @JavascriptInterface
+    public String envVers() {
+        try {
+            JSONObject o = new JSONObject();
+            File f = new File(QqbotShell.homeDir(act.filesDirPub()), "ubuntu/opt/AstrBot/astrbot/__init__.py");
+            String v = "";
+            if (f.isFile()) {
+                String t = AstrCfg.readText(f);
+                int i = t.indexOf("__version__");
+                if (i >= 0) {
+                    int eq = t.indexOf('=', i);
+                    if (eq > 0) {
+                        // 取等号后第一个引号串：__version__ = "4.29.1"
+                        int a = -1;
+                        int b = -1;
+                        for (int k = eq + 1; k < t.length(); k++) {
+                            char c = t.charAt(k);
+                            if (c == '"' || c == '\'') { a = k + 1; break; }
+                            if (c == '\n') break;
+                        }
+                        if (a > 0) {
+                            for (int k = a; k < t.length(); k++) {
+                                char c = t.charAt(k);
+                                if (c == '"' || c == '\'' || c == '\n') { b = k; break; }
+                            }
+                        }
+                        if (a > 0 && b > a) v = t.substring(a, b).trim();
+                    }
+                }
+            }
+            o.put("ok", true);
+            o.put("astrbot", v);
+            return o.toString();
+        } catch (Throwable t) {
+            return failJson("读版本失败：" + t);
+        }
+    }
+
 
     @JavascriptInterface
     public String deployInfo() {
@@ -397,6 +441,12 @@ public class QqbotBridge {
         return act.qr(id);
     }
 
+    // 把某个实例的登录二维码图片用系统分享面板发出去（发到微信 / QQ / 另一台手机去扫）
+    @JavascriptInterface
+    public String qrShare(String id) {
+        return act.qrShare(id);
+    }
+
     // 开关某个实例的容器（只翻转 enable；沙盒里的守护进程 5 秒内会启停它）
     @JavascriptInterface
     public String toggleBot(String id) {
@@ -487,7 +537,8 @@ public class QqbotBridge {
             if (act.pidAlive(pid)) return "服务已经在跑了";
             // setsid 脱离应用 shell 的进程组（runShell 结束时会按进程组 destroy 该 shell），
             // pid 由 start-sandbox.sh 自己写
-            act.runShell("mkdir -p " + qh + "/logs; nohup setsid bash " + prefix + "/opt/qqbot/start-sandbox.sh > "
+            // --user-start：这是界面上的「启动」，要解除「紧急下线」标记
+            act.runShell("mkdir -p " + qh + "/logs; nohup setsid bash " + prefix + "/opt/qqbot/start-sandbox.sh --user-start > "
                     + qh + "/logs/supervisor.log 2>&1 < /dev/null & sleep 3; echo ok", 30);
             if (act.pidAlive(pid)) return "服务已启动";
             // 失败时把 supervisor.log 的最后一行带出去，别只回一句 start failed
@@ -503,7 +554,7 @@ public class QqbotBridge {
         }
         if ("restart".equals(what)) {
             runBg("bash " + prefix + "/opt/qqbot/stop-sandbox.sh; mkdir -p " + qh + "/logs; "
-                    + "nohup setsid bash " + prefix + "/opt/qqbot/start-sandbox.sh > " + qh
+                    + "nohup setsid bash " + prefix + "/opt/qqbot/start-sandbox.sh --user-start > " + qh
                     + "/logs/supervisor.log 2>&1 < /dev/null & sleep 4; echo ok",
                     "服务已重启", "重启服务失败", 240);
             return "restarting";
@@ -567,7 +618,7 @@ public class QqbotBridge {
             // 丢到后台线程，立刻返回一句话。随后再走一遍 stop + start，确保配置一定生效。
             runBg("bash " + prefix + "/opt/qqbot/link.sh >/dev/null 2>&1; "
                     + "bash " + prefix + "/opt/qqbot/stop-sandbox.sh; mkdir -p " + qh + "/logs; "
-                    + "nohup setsid bash " + prefix + "/opt/qqbot/start-sandbox.sh > " + qh
+                    + "nohup setsid bash " + prefix + "/opt/qqbot/start-sandbox.sh --user-start > " + qh
                     + "/logs/supervisor.log 2>&1 < /dev/null & sleep 4; echo ok",
                     "已对接并重启服务", "对接并重启失败", 300);
             return "已提交对接，正在重启服务…";
@@ -974,15 +1025,25 @@ public class QqbotBridge {
      * 紧急下线：先写 state/offline（守护循环与网络自愈看到它就不再拉起沙盒），
      * 再丢后台线程跑 stop-sandbox.sh（脚本要等 proot 自己退，同步跑会把 JS 线程卡死）。
      * 只停进程，绝不删配置/登录数据/AstrBot data。
+     *
+     * 写标记失败绝不能回 ok:true —— 前端拿到 ok 就会提示「已下线」，而守护下一轮自检
+     * 照样把沙盒拉起来。返回 ok 之前必须确认标记真的落盘。
      */
     @JavascriptInterface
     public String emergencyStop() {
         try {
             File filesDir = act.filesDirPub();
             // 标记必须最先落盘：哪怕下面的脚本不存在，也不能让守护把沙盒重新拉起来
-            StateIO.writeStamp(StateIO.file(filesDir, "offline"));
+            File off = StateIO.file(filesDir, "offline");
+            if (!StateIO.writeStamp(off) || !off.isFile()) {
+                android.util.Log.e("QqbotStop", "写 offline 标记失败：" + off.getAbsolutePath());
+                return failJson("写 offline 标记失败，守护可能还会拉起沙盒");
+            }
             File stop = new File(new File(filesDir, "usr"), "opt/qqbot/stop-sandbox.sh");
-            if (!stop.isFile()) return failJson("缺少 stop-sandbox.sh，请先完成部署");
+            if (!stop.isFile()) {
+                android.util.Log.e("QqbotStop", "缺少 stop-sandbox.sh：" + stop.getAbsolutePath());
+                return failJson("缺少 stop-sandbox.sh，请先完成部署");
+            }
             Thread th = new Thread(new EmergencyStop(filesDir), "qqbot-emergency-stop");
             th.setDaemon(true);
             th.start();
@@ -992,14 +1053,27 @@ public class QqbotBridge {
         }
     }
 
-    /** 恢复：删 offline 标记，按守护开关拉起服务，并立刻踢一轮自检。 */
+    /**
+     * 恢复：删 offline 标记，按守护开关拉起服务，并立刻踢一轮自检。
+     * 删标记和拉起守护的结果都要反映到返回值里，不再无论成败都回 ok:true。
+     * apply() 是 void（调用点太多），这里改用同实现的 applyEx() 拿启动请求的真实结果。
+     */
     @JavascriptInterface
     public String emergencyResume() {
         try {
             File filesDir = act.filesDirPub();
-            StateIO.delete(StateIO.file(filesDir, "offline"));
-            QqbotGuardService.apply(act);
-            // 守护开着就立刻跑一次重启，不用等下一个 60 秒自检周期
+            File off = StateIO.file(filesDir, "offline");
+            StateIO.delete(off);
+            if (off.isFile()) {
+                android.util.Log.e("QqbotStop", "删除 offline 标记失败：" + off.getAbsolutePath());
+                return failJson("删除 offline 标记失败，守护仍不会拉起沙盒");
+            }
+            // 用户自己关掉守护时 applyEx 也回 true（只是停服，不算失败）
+            if (!QqbotGuardService.applyEx(act)) {
+                android.util.Log.e("QqbotStop", "恢复失败：守护服务启动请求未发出");
+                return failJson("守护服务未启动（系统可能限制了后台启动），沙盒不会自动拉起，请打开面板重试");
+            }
+            // 守护开着就立刻跑一次重启，不用等下一个 60 秒自检周期（尽力而为，失败无返回值）
             QqbotGuardService.kick(act);
             return "{\"ok\":true}";
         } catch (Throwable t) {

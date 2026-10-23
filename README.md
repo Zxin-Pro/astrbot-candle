@@ -11,13 +11,13 @@
 | --- | --- |
 | 应用名 | **AstrBot烛版** |
 | 控制台标题 | **烛之控制台** |
-| 安装包 | `AstrBot-1.2.10-arm64.apk`（只发这一个包，真机 / 模拟器通用，**26,111,741** 字节，约 25 MB） |
+| 安装包 | `AstrBot-1.2.13-arm64.apk`（只发这一个包，真机 / 模拟器通用，`26,119,933`，约 25 MB） |
 | 包名 | `zhuxin.astrbot`（1.2.1 及更早为 `com.termux`） |
-| 当前版本 | **v1.2.10**（versionCode `10210`） |
-| 安装包 SHA-256 | 636EC6D751A88B261E80E0B78A0012CB57D994057A06B6E5642BADE9E38D5AEE |
+| 当前版本 | **v1.2.13**（versionCode `10213`） |
+| 安装包 SHA-256 | `5CF9DF92FC2C6AC02EFF846FD49B2B4B4C5F3EF6576D320484DAB17E56F90F45` |
 | 签名证书 SHA-256 | `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3） |
 | 项目地址 | [github.com/Zxin-Pro/astrbot-candle](https://github.com/Zxin-Pro/astrbot-candle) |
-| 下载安装包 | 官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的 AstrBot 下载页与 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 提供 `AstrBot-1.2.10-arm64.apk`（约 25 MB；只发一个包，模拟器也能直接装，**站内直接下载，不用跳 GitHub**） |
+| 下载安装包 | 官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的 AstrBot 下载页与 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 提供 `AstrBot-1.2.13-arm64.apk`（约 25 MB；只发一个包，模拟器也能直接装，**站内直接下载，不用跳 GitHub**） |
 | 官方网站 | [烛心.xyz](https://烛心.xyz) |
 | 官方 QQ 群 | **1127997343** |
 
@@ -31,6 +31,7 @@
 - 在沙盒里自动部署 **Linux QQ 3.2.34-53644** + **NapCat v4.18.38** + **AstrBot v4.28.2**；
 - 三者**出厂即预接线**：NapCat 通过反向 WebSocket 连到 AstrBot 的 aiocqhttp 平台（`ws://127.0.0.1:6199/ws`）；
 - 用户界面是一个**本地 HTML 控制台**（WebView 加载 `file:///android_asset/qqbot/index.html`），有 **主页 / 机器人 / 日志 / 更多** 四个页签，扫码、开关服务、看日志、改端口全在界面里点。
+- 从 **1.2.13** 起：**关于页读真实版本、关闭进程真关但下次打开自动恢复、重装后不再卡「正在启动」、新手引导整套移除**。「更多 → 关于」里的 AstrBot 版本不再写死 `v4.28.2`：桥方法 `envVers()` 直接读 `<home>/ubuntu/opt/AstrBot/astrbot/__init__.py` 的 `__version__`（5 分钟缓存），沙盒里现在是 **4.29.1**，读不到显示 `—`、绝不编一个数字。通知栏「关闭进程」改成真的关掉应用：写 `state/offline` → 脱离进程跑 `stop-sandbox.sh` → 收常驻通知 → `killProcess`（带 5 秒兜底的 `KillWatchdog`），同时留一张 `state/closed` 便条，**下次进应用时 `QqbotActivity.onCreate` 把便条和 offline 标记一起清掉、沙盒照常自动启动**，不用再点「启动服务」；界面上自己点的「紧急下线」不写这张便条，仍然是「别再自己起来」，要用卡片上的「启动服务」恢复。修好**重装后主页一直写「正在启动」**：`paintHero()` 里「全绿」（NapCat / AstrBot / OneBot 都在线）判定提到 `bootPending()` 的 120 秒开机窗口**前面**，全绿优先，「重启服务」也会重置窗口。**移除新手引导**：首页「第 N/5 步」引导卡与「发一条测试消息」整套删掉，`onboard` 相关 HTML / CSS / JS 清干净；顺手补回 `refreshExtras()` 开头被连带删掉的 `var E = ext(), now = Date.now();`（缺这行时函数每次抛 `E is not defined` 又被外层 try/catch 吞掉，表现为下线后卡片永远写「沙盒运行中」、也不出现「启动服务」按钮）。
 - 从 **1.2.10** 起：**模型配置终于读得对了，改参数也不用再重启沙盒**。AstrBot v4.29 启动时会把 `cmd_config.json` 里的 provider 拆成 `provider[]` + `provider_sources[]`（密钥 / API 地址搬到后者），App 原来只翻 `provider[]`，于是「配过模型、第二次打开又显示没配置」；现在按 AstrBot 运行时的合并顺序读，并优先显示默认对话模型指向的那条。保存模型 / 人格改成走 AstrBot 的 HTTP 接口**热生效**（`provider-sources` → `providers` → `personas` → `system-config` 四步），实测一秒内卡片就变、机器人不中断，只有接口够不着时才回落到停沙盒改文件的旧流程。另外：主页模型卡显示中转站主机名 `worldcodes.online`（「复制 / 打开」给的是带邀请码的注册地址 `https://worldcodes.online/register?invite_code=CZLT`）、第一次点「控制台」弹账号密码卡可复制、NapCat 直达链接自带 token、登录 QQ 后自动回填 QQ 号、AstrBot 冷启动时 OneBot 磁贴显示「启动中」不再误报未连接。
 - 从 **1.2.9** 起：**修好真机上 NapCat 反复崩溃** —— 1.2.8 把无头模式默认开在了所有机型上，但真机 arm64 上 NapCat 的 native 插件在 Electron utilityProcess 里一加载就 SIGSEGV（`退出码: 11`，pc 落在 `napi2native.linux.arm`），20 秒一轮重启、AstrBot 收不到任何消息。现在**真机默认回到完整客户端（Xvfb）模式**，无头模式（285 MB）只留给 x86_64 模拟器；架构判定改用 App 传进 proot 的 `QQBOT_ARCH`（x86_64 模拟器会把 `uname` 伪装成 aarch64），「无头起来了」的判据也从「日志出现 NapCat.Core Version」改成「端口在听 + 进程活着 + 6 秒无崩溃」。想手动指定：`$HOME/.qqbot/cache/napcat-mode.txt` 写 `util` / `fork` / `gui`。
 - 从 **1.2.8** 起：**NapCat 改无头模式运行** —— 不再为每个实例拉起整套 Electron QQ 客户端（8 个进程、810~930 MB）和 Xvfb 虚拟屏，改为 `qq --ozone-platform=headless napcat.mjs` 只跑 NapCat 本体，实测 QQ 侧内存降到 **285 MB**（4 个进程），省下约 870 MB；扫码、面板、收发消息都不变，起不来会自动退回老的 Xvfb 流程，也能用 `$HOME/.qqbot/cache/napcat-headless.off` 手动回退。（1.2.9 起无头模式只对 x86_64 模拟器默认生效，真机默认走完整客户端，原因见上一条。）
@@ -95,7 +96,7 @@
 1. **先卸载 1.2.1 及更早的 AstrBot烛版**。
    1.2.1 及更早的包名是 `com.termux`，1.2.2 改成了 `zhuxin.astrbot`，**不能直接覆盖安装**。卸载会清掉旧包名下的沙盒数据，请先在旧版「更多 → 备份与恢复」导出备份，装好 1.2.2（或更新版本）后再导回。
    官方 Termux / 应用商店版 / F-Droid 版与 1.2.2 起的包名不同，**不再冲突**，可以共存。
-2. 到官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的下载页（或 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest)）下载 `AstrBot-1.2.9-arm64.apk`（只发一个包，模拟器也能直接装；文件名后缀就是版本号），传到手机，点击安装。
+2. 到官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的下载页（或 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest)）下载 `AstrBot-1.2.13-arm64.apk`（只发一个包，模拟器也能直接装；文件名后缀就是版本号），传到手机，点击安装。
 3. 安装时系统会提示「**未知来源应用**」，需要允许安装。
    - **小米 / Redmi（HyperOS）用户**：如果被拦下、提示「应用缺少隐私政策」且没有「继续安装」，
      这是小米安装器的风险提示，不是包坏了。关掉手机管家的「安装监控 / 安全守护 / 应用防护」、
@@ -368,6 +369,6 @@ qqbot-sandbox/
 | **MINOR**（0.X.0） | 新增功能 | 1.1.0 |
 | **PATCH**（0.0.X） | 修 bug、文案、性能 | 1.0.1 |
 
-当前版本：**versionName `1.2.9`，versionCode `10209`**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本：**versionName `1.2.13`，versionCode `10213`**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 版本号的唯一来源是仓库根目录的 `VERSION` 文件（内容形如 `1.0.2`），`build-ui.ps1` 打包时自动换算成 `versionCode` 写进 APK。

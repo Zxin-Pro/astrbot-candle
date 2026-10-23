@@ -13,6 +13,10 @@ import android.content.Intent;
  * ②API 31+ 起前台服务有「后台启动限制」，BOOT_COMPLETED 本身在豁免名单里，
  * 但个别 ROM 的「快启动」广播和覆盖安装广播会抛 ForegroundServiceStartNotAllowedException，
  * 抛了就隔 1.2 秒补试一次（仍在开机豁免窗口内），再失败就安静放弃，等用户打开应用。
+ *
+ * v1.2.11：先看 state/offline 标记。用户按过通知栏「关闭进程」或界面上的「紧急下线」
+ * 就会留下它，那是明确的「别再自己起来」——本次开机 / 覆盖安装只记一条日志，不拉起守护。
+ * 标记在这里绝不能删：只有用户显式「启动」时才由 SandboxStart / start-sandbox.sh 清掉。
  */
 public class QqbotBootReceiver extends BroadcastReceiver {
 
@@ -28,6 +32,17 @@ public class QqbotBootReceiver extends BroadcastReceiver {
                 BootState.noteBoot(c.getFilesDir());
             } catch (Throwable ignored) {
             }
+        }
+        // 用户主动关闭过（state/offline 还在）：本次开机 / 覆盖安装不拉起守护服务，
+        // 也不删标记，只留一条日志方便排障。否则「关闭进程」之后一重启又被拉起来。
+        boolean closedByUser = false;
+        try {
+            closedByUser = StateIO.file(c.getFilesDir(), "offline").isFile();
+        } catch (Throwable ignored) {
+        }
+        if (closedByUser) {
+            android.util.Log.i("QqbotBoot", "state/offline 存在：用户已主动关闭，本次开机不拉起守护");
+            return;
         }
         boolean ok;
         try {
