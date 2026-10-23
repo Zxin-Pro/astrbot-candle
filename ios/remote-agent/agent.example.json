@@ -1,0 +1,22 @@
+{
+  "name": "",
+  "root": "",
+  "token": "",
+  "napcatPort": 6099,
+  "astrPort": 6185,
+  "logDir": "",
+  "stateDir": "",
+  "netType": "",
+  "astrbotDir": "",
+  "commands": {
+    "svc:napcat:on": "systemctl start astrbot-napcat",
+    "svc:napcat:off": "systemctl stop astrbot-napcat",
+    "svc:astrbot:on": "systemctl start astrbot",
+    "svc:astrbot:off": "systemctl stop astrbot",
+    "guard:on": "systemctl start qqbot-guard",
+    "guard:off": "systemctl stop qqbot-guard",
+    "linkbg": "bash /root/.qqbot/scripts/link.sh >> /root/.qqbot/logs/link.log 2>&1",
+    "relink": "bash /root/.qqbot/scripts/link.sh >> /root/.qqbot/logs/link.log 2>&1",
+    "restart": "systemctl restart astrbot"
+  }
+}

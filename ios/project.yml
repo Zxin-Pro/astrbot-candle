@@ -1,0 +1,103 @@
+# XcodeGen 工程描述（Mac 上的可选生成方式）
+#
+# 用法（在仓库根目录执行）：
+#   brew install xcodegen
+#   cd ios && xcodegen generate
+# 生成 ios/AstrBotIOS.xcodeproj 后直接 open 即可。
+#
+# 说明：本仓库的主力生成器是 ios/tools/gen_xcodeproj.py（纯 Python，无需 xcodegen），
+# 两者产出的工程结构一致。若两边出现分歧，以 gen_xcodeproj.py 为准。
+#
+# web 与 shared 必须用 folder reference（type: folder）挂进来：
+# LoopbackServer.swift 用 Bundle.main.resourceURL + "web" 取 H5 资源，
+# ConsoleView.swift 用 resourceURL + "shared/AndroidShim.js" 取本地桥脚本，
+# 这两处都要求资源在 App bundle 里以「目录」形式存在，按文件平铺进 bundle 根会 404。
+
+name: AstrBotIOS
+
+options:
+  bundleIdPrefix: com.astrbot
+  # 与 SwiftUI 代码的真实下限对齐：NavigationStack 与
+  # ToolbarItem(placement: .topBarLeading/.topBarTrailing) 都是 iOS 16 API。
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+  groupSortPosition: top
+  xcodeVersion: "14.0"
+
+settings:
+  base:
+    ALWAYS_SEARCH_USER_PATHS: NO
+    CLANG_CXX_LANGUAGE_STANDARD: gnu++17
+    CLANG_ENABLE_MODULES: YES
+    CLANG_ENABLE_OBJC_ARC: YES
+    CLANG_ENABLE_OBJC_WEAK: YES
+    COPY_PHASE_STRIP: NO
+    ENABLE_STRICT_OBJC_MSGSEND: YES
+    GCC_C_LANGUAGE_STANDARD: gnu17
+    GCC_NO_COMMON_BLOCKS: YES
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    MTL_FAST_MATH: YES
+    SDKROOT: iphoneos
+    SWIFT_STRICT_CONCURRENCY: minimal
+    SWIFT_VERSION: "5.0"
+  configs:
+    Debug:
+      DEBUG_INFORMATION_FORMAT: dwarf
+      ENABLE_TESTABILITY: YES
+      ONLY_ACTIVE_ARCH: YES
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+      SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+    Release:
+      DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+      ENABLE_NS_ASSERTIONS: NO
+      SWIFT_COMPILATION_MODE: wholemodule
+      SWIFT_OPTIMIZATION_LEVEL: "-O"
+      VALIDATE_PRODUCT: YES
+
+targets:
+  AstrBotIOS:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      # 源码目录：App/Bridge/Net/UI/Resources 五个子目录由 XcodeGen 自动分组。
+      # web 与 Info.plist 在这里排除，稍后单独处理（见下两条）。
+      - path: AstrBotIOS
+        excludes:
+          - "Resources/web"
+          - "Resources/Info.plist"
+      # H5 前端：整目录作为 folder reference 拷进 bundle 的 web/ 子目录。
+      - path: AstrBotIOS/Resources/web
+        type: folder
+        buildPhase: resources
+      # 本地桥脚本：位于 ios/shared（工程的上一级），同样整目录挂为 folder reference。
+      - path: shared
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: AstrBotIOS/Resources/Info.plist
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/Frameworks"
+        PRODUCT_BUNDLE_IDENTIFIER: com.astrbot.ios
+        PRODUCT_NAME: "$(TARGET_NAME)"
+        SWIFT_EMIT_LOC_STRINGS: YES
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+
+schemes:
+  AstrBotIOS:
+    build:
+      targets:
+        AstrBotIOS: all
+    run:
+      config: Debug
+    archive:
+      config: Release

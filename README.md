@@ -330,6 +330,11 @@ qqbot-sandbox/
 ├─ ui/
 │  ├─ src/com/termux/qqbot/     # 原生控制台 Java 源码（Activity / Bridge / Task / Client）
 │  └─ assets/qqbot/index.html   # 控制台前端（WebView 加载 file:///android_asset/qqbot/index.html）
+├─ ios/                         # iOS 版（远程控制台，实验，见 ios/README.md）
+│  ├─ AstrBotIOS/               # SwiftUI 外壳：WKWebView + 回环 HTTP + 90 个桥方法的分派表
+│  ├─ shared/AndroidShim.js     # 把 window.Android.xxx() 变成同步 XHR 的垫片
+│  ├─ remote-agent/             # 装在宿主上的 Python 代理（把沙盒能力暴露成 HTTP）
+│  └─ tools/                    # 工程生成、网页同步、无头浏览器验收脚本
 ├─ tools/                       # 自写 Java 工具与 bootstrap 扩展文件
 │  ├─ RepackBootstrap.java      # 往内嵌 ZIP 段注入 / 删除条目
 │  ├─ ApkReplace.java           # 替换 APK 内某个条目
@@ -356,6 +361,39 @@ qqbot-sandbox/
 
 想从源码自己构建一个 APK，请看 [**docs/BUILD.md**](docs/BUILD.md) —— 里面写了需要准备哪些工具、两个脚本的执行顺序，以及 bootstrap 注入的偏移数学。
 构建时默认出约 25 MB 的精简包 `AstrBot-<版本>-<架构>.apk`（不含沙盒镜像）；只有加 `-Bundle` 才把镜像塞进安装包，产出约 600 MB 的全量包。`-Update` 已废弃：默认包本来就是瘦包，不再另出 `-update.apk`。
+
+---
+
+## iOS 版（远程控制台 · 实验）
+
+仓库里还有一份 **iOS 版**，在 [`ios/`](ios/) 目录，它和 Android 版的定位不一样，先看清楚再决定要不要用：
+
+**iOS 不允许 App 在手机上 fork/exec 进程，后台也没法长跑一个 Linux 沙盒** —— 所以「把 AstrBot 装进 iPhone」在系统层面就走不通，proot、Ubuntu 镜像、常驻守护这一整套在 iOS 上不成立。iOS 版因此做成了 **远程控制台**：
+
+- **界面还是同一个**：把 Android 版那个 `ui/assets/qqbot/index.html` **原样**塞进 App，一行不改。页面上 200 多处 `Android.xxx()` 同步取值，靠一个注入的垫片（[`ios/shared/AndroidShim.js`](ios/shared/AndroidShim.js)）翻译成 **同步 XHR**，打到 App 内的回环 HTTP 服务（`127.0.0.1:17870`，只绑回环）。
+- **本机负责设备能力**：通知授权、剪贴板、相册选背景图、头像下载、外链与 QQ 群跳转、统计/崩溃看板这些在手机本地实现。
+- **服务器负责沙盒能力**：在真跑着 AstrBot 的那台机器上装一个纯标准库的 Python 代理（[`ios/remote-agent/`](ios/remote-agent/)，`astrbot_bridge_agent.py`），App 通过它读写状态、开关服务、看日志、执行部署命令。同一个局域网直连，跨网络走 SSH 隧道。
+
+| 能力 | Android 版 | iOS 版 |
+| --- | --- | --- |
+| 在本机跑 AstrBot | 有（proot 沙盒） | 没有（系统不允许） |
+| 控制台界面 | `file:///android_asset/qqbot/index.html` | 同一个文件，由回环 HTTP 提供 |
+| 桥调用 | `addJavascriptInterface` | 同步 XHR → `POST /__bridge` |
+| 头像 / 背景图 | `file://` 直读 | 走回环 `/__img/`（WKWebView 拦 `file://`）+ `data:` URL |
+| 选图 | `ACTION_GET_CONTENT` | PHPicker |
+| 省电白名单横幅 | 会弹 | 恒不弹（iOS 没有这个概念） |
+| 更换图标 / 内置终端 | 有 | 不挂这两个方法，页面自动降级 |
+
+构建（需要 macOS + Xcode 14 以上，最低 iOS 16.0）：
+
+```bash
+python3 ios/tools/sync_web.py        # 把 ui/assets/qqbot 与 shared 同步进 App 资源
+python3 ios/tools/gen_appicon.py     # 生成 1024 应用图标
+python3 ios/tools/gen_xcodeproj.py   # 生成 ios/AstrBotIOS.xcodeproj
+open ios/AstrBotIOS.xcodeproj        # 选个 Team 就能跑模拟器
+```
+
+⚠️ **这份 iOS 代码还没有在真机或 Mac 上编译过。** 本仓库的开发环境是 Windows，没有 Xcode，所以 Swift 层只做了静态一致性检查（[`ios/tools/check_bridge.py`](ios/tools/check_bridge.py) 9 项全过）和网页层的无头浏览器验收（[`ios/tools/boot_check.py`](ios/tools/boot_check.py) 15 条断言全过，截图在 [`ios/tools/shots/`](ios/tools/shots/)），第一次 `xcodebuild` 大概率还要修几个编译错。详见 [`ios/README.md`](ios/README.md) 与 [`ios/PROJECT.md`](ios/PROJECT.md)。
 
 ---
 

@@ -83,3 +83,13 @@ ui/*.java
 build/opt/qqbot/BUNDLE_ARCH
 build/opt/qqbot/BUNDLE_SIZE
 tools/__pycache__/
+
+# ---------------------------------------------------------------------
+# 五、iOS 版：由 ios/tools 生成的产物，构建前重新生成，避免和源码漂移
+#     （.xcodeproj 里的 Sources 列表是生成出来的，手工增删 .swift 后必须重跑
+#     python ios/tools/gen_xcodeproj.py；资源副本同理，CI 每次都会重建）
+# ---------------------------------------------------------------------
+ios/AstrBotIOS.xcodeproj/
+ios/AstrBotIOS/Resources/web/
+ios/AstrBotIOS/Resources/shared/
+ios/AstrBotIOS/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
