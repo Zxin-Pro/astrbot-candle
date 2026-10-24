@@ -904,7 +904,17 @@ public class QqbotBridge {
     /** 用密钥拉中转站的模型列表。 */
     @JavascriptInterface
     public void astrModelsStart(String base, String key) {
-        AstrModels.start(base, key);
+        /*
+         * 密钥框是密码型输入，真实密钥从不回填（只显示尾号），所以用户点「获取列表」时
+         * 那个框绝大多数时候是空的。空串不能直接丢给中转站 —— 没有 Authorization 头，
+         * 对方一律回 401，界面就报「密钥不对或没填」，可他早就保存过了。
+         * 空串一律回落到配置文件里那把（与「留空表示不修改」的提示保持一致）。
+         */
+        String k = (key == null) ? "" : key.trim();
+        if (k.length() == 0) {
+            try { k = AstrCfg.storedKey(act.filesDirPub()); } catch (Throwable ignored) { k = ""; }
+        }
+        AstrModels.start(base, k);
     }
 
     @JavascriptInterface

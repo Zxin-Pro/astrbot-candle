@@ -272,7 +272,7 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 | 1.2.10（上一版） | `versionName` / 派生 `versionCode` | `1.2.10` / `10210` |
 | 1.2.9 | `versionName` / 派生 `versionCode` | `1.2.9` / `10209` |
 
-本轮 1.3.0 只发一个安装包：`AstrBot-1.3.0-arm64.apk`，`26,148,605`，SHA-256 是 `4CFE9DEF…（完整值见上）`；签名证书 SHA-256 仍是 `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3）。
+本轮 1.3.0 只发一个安装包：`AstrBot-1.3.0-arm64.apk`，`26,148,605`，SHA-256 是 `9EFB2740…（完整值见上）`；签名证书 SHA-256 仍是 `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3）。
 
 规则：`versionCode = MAJOR*10000 + MINOR*100 + PATCH`。
 

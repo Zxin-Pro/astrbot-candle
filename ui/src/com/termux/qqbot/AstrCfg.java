@@ -254,6 +254,34 @@ public final class AstrCfg {
         return null;
     }
 
+    /**
+     * 只取「当前生效的密钥」。
+     *
+     * 为什么要单独一个方法：界面上密钥框是密码型输入，真实密钥从不回填（只显示尾号），
+     * 所以用户点「获取列表」时那个框通常是空的。以前这里直接把空串传给中转站，
+     * 请求就不带 Authorization 头，中转站回 401，用户看到「密钥不对或没填」——
+     * 可他明明早就保存过密钥（每次保存只改模型名也会把这条路径走一遍）。
+     * 现在空串一律回落到配置文件里那把，行为跟「留空表示不修改」的提示一致。
+     */
+    public static String storedKey(File filesDir) {
+        try {
+            File f = cfgFile(filesDir);
+            if (!f.isFile()) return "";
+            JSONObject root = new JSONObject(readText(f));
+            JSONObject p = pickProvider(root);
+            if (p == null) return "";
+            String key = "";
+            String srcId = p.optString("provider_source_id", "");
+            JSONObject src = (srcId.length() == 0) ? null : findSource(root, srcId);
+            if (src != null) key = firstKey(src);
+            String pFlatKey = firstKey(p);
+            if (pFlatKey.length() > 0) key = pFlatKey;
+            return (key == null) ? "" : key.trim();
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
     /** key 在新结构里是数组（支持多把轮询），老结构也可能是字符串。 */
     private static String firstKey(JSONObject o) {
         JSONArray ks = o.optJSONArray("key");
