@@ -59,10 +59,21 @@ echo $$ > "$QQBOT_HOME/deploy.pid"
 # 上一轮留下的失败原因不能带到这一轮：否则部署正在顺利跑，界面上还挂着一条红色的旧报错。
 rm -f "$QQBOT_HOME/deploy.error" 2>/dev/null || true
 
+# 1.3.1：部署要下的四个大件互不依赖，先在后台并行预取（详见 common.sh 里的说明）。
+# 预取只影响「下载」：某一件没下到，步骤会照旧自己下，部署不会因此失败。
+# 带内置镜像的包（$QQBOT_OPT/BUNDLE_ARCH 存在）本来就不需要下载任何东西，别去预取：
+# 那会白耗几百 MB 流量，还跟解压抢 IO。
+if qq_pf_on && [ ! -f "$QQBOT_OPT/BUNDLE_ARCH" ] && [ ! -f "$QQBOT_HOME/.bundle-pending" ]; then
+  qq_prefetch_start
+fi
+
 # 正常退出（含失败与 Ctrl-C）时抹掉自己的 pid 文件与锁，否则界面上「部署进行中」会一直挂着，
 # 而它靠的就是这个文件。被 SIGKILL 时 trap 不会触发，所以上面的「陈旧锁」兜底也得留着。
 cleanup_pid() {
-  [ "$(cat "$QQBOT_HOME/deploy.pid" 2>/dev/null)" = "$$" ] && rm -f "$QQBOT_HOME/deploy.pid"
+  # 部署结束（成功或失败）不能把预取与并行的步骤留在后台：它们还在下载/安装，白耗流量与电。
+  qq_prefetch_stop
+  [ -n "${PAR60:-}" ] && kill "$PAR60" 2>/dev/null
+  [ "$(cat "$QQBOT_HOME/deploy.pid" 2>/dev/null)" = "$" ] && rm -f "$QQBOT_HOME/deploy.pid"
   # 只删自己持有的锁：万一锁已被别人（陈旧锁修复路径）接管，别把新持有者的锁删掉。
   [ "$(cat "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"
   return 0
@@ -121,12 +132,46 @@ TRIES=3
 # 系统回收进程而中断一次。以前一失败就整体停下，用户只能自己反复点「继续部署」，
 # 而每点一次都会撞同一道闸门（dpkg 半配置），看起来就像「第 3 步永远装不上」。
 # 现在失败一次会自动自愈 + 重试，重试成功的话用户根本不会看到那条报错。
+# ---------------------------------------------------------------------------
+# 1.3.1：60-astrbot 与 40-qq / 50-napcat 并行
+#
+# 60-astrbot 只依赖 30-apt 装好的 python3（解压源码 → 建 venv → pip 装依赖），
+# 与 QQ 的 deb 解包、NapCat 注入完全不共用文件，所以可以提前到 40-qq 开始时并行跑，
+# 把它那一段 pip 安装（MuMu 实测约 40 秒，真机更久）藏进 QQ/NapCat 的安装时间里。
+# 内存不够就不并行：两条 proot 同时解包/装包，4 GB 手机上容易把系统逼到 OOM，
+# 反而更慢（还会留下半配置的 dpkg 状态）。QQBOT_PARALLEL_60=0 可强制串行。
+qq_par60_on() {
+  case "${QQBOT_PARALLEL_60:-1}" in 0|off|no|false) return 1 ;; esac
+  _p60ma="$(awk '/^MemAvailable:/{print int($2/1024); exit}' /proc/meminfo 2>/dev/null)"
+  [ -n "$_p60ma" ] || return 1
+  [ "$_p60ma" -ge "${QQBOT_PAR60_MIN_MB:-1200}" ]
+}
+
 run_steps() {
   FAILED=""
+  PAR60=""
   for s in $STEPS; do
+    # 走到 40-qq 时顺手把 60-astrbot 放到后台（见 qq_par60_on 上面那段说明）
+    if [ "$s" = "40-qq" ] && [ -z "$PAR60" ] && [ ! -f "$QQBOT_STEPS/60-astrbot" ] && qq_par60_on; then
+      qqlog "并行：60-astrbot 提前到后台跑（与 40-qq / 50-napcat 同时进行）"
+      bash "$QQBOT_OPT/steps/60-astrbot.sh" > "$QQBOT_LOGS/60-astrbot.par.log" 2>&1 &
+      PAR60=$!
+    fi
     if [ -f "$QQBOT_STEPS/$s" ]; then
       qqok "跳过已完成步骤 $s"
       continue
+    fi
+    # 轮到 60-astrbot 时，先收并行那一份的结果，成功就直接算完成、不再跑第二遍
+    if [ "$s" = "60-astrbot" ] && [ -n "$PAR60" ]; then
+      qqlog "等待并行运行的 60-astrbot 收尾"
+      if wait "$PAR60"; then
+        : > "$QQBOT_STEPS/$s"
+        qqok "步骤 $s 完成（并行）"
+        PAR60=""
+        continue
+      fi
+      qqerr "并行运行的 60-astrbot 失败，改为串行重试（日志 $QQBOT_LOGS/60-astrbot.par.log）"
+      PAR60=""
     fi
     _n=0
     while : ; do

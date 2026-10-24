@@ -12,6 +12,11 @@ if [ "$NV" != "$QQBOT_NAPCAT_VER" ]; then
 fi
 
 NC="$QQBOT_CACHE/NapCat.Shell.zip"
+# 1.3.1：先取后台预取好的那一份（键里带版本号，版本不一致时自然取不到、走正常下载）
+_PF_NC="$(qq_pf_key napcat "$NV" NapCat.Shell.zip)"
+if [ ! -s "$NC" ]; then
+  qq_pf_wait "$_PF_NC" 120 && qq_pf_take "$_PF_NC" "$NC" || true
+fi
 if [ ! -s "$NC" ]; then
   if [ -s "$QQBOT_HOME/payload/NapCat.Shell.zip" ]; then
     qqlog "使用安装包内置的 NapCat 离线包"

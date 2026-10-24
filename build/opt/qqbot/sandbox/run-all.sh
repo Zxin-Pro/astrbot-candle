@@ -143,6 +143,16 @@ reap() {
   else
     echo "[supervisor] $name 退出：rc=$rc"
   fi
+  # AstrBot「一起来就退」（rc=1）时，真正的原因（ImportError、端口占用、配置坏了）
+  # 只在 astrbot.log 里；这份 supervisor.log 才是错误报告默认收集的日志。
+  # 所以异常退出时把它末尾抄进来 —— 前 3 次抄，避免死循环时把日志撑爆。
+  if [ "$name" = "AstrBot" ] && [ "$rc" -ne 0 ]; then
+    _adump=$(( ${_adump:-0} + 1 ))
+    if [ "$_adump" -le 3 ]; then
+      echo "[supervisor] AstrBot 异常退出，抄送 astrbot.log 末尾 30 行（第 $_adump 次）："
+      tail -n 30 /qqbot-cache/logs/astrbot.log 2>/dev/null | sed -e 's/\x1b\[[0-9;]*m//g' -e 's/^/[astrbot.log] /'
+    fi
+  fi
 }
 
 # 收到 TERM（qqbot-stop / 停止容器）时先把两个服务收干净再退，
@@ -221,6 +231,19 @@ while true; do
     AB_STARTED=0; AB_DOWN=0; AB_PROBE=0
   elif [ -z "$AB" ] || ! kill -0 "$AB" 2>/dev/null; then
     if [ -n "$AB" ]; then echo "[supervisor] AstrBot 已退出，重新拉起"; reap "$AB" AstrBot; fi
+    # 退避：连续「起来不到 20 秒就退」时把重启间隔拉开，最慢 60 秒一次。
+    # 否则坏掉的 AstrBot 会 3 秒一次地重启，既耗电又刷日志，用户还只看到一堆重复行。
+    if [ -n "${AB_STARTED:-}" ] && [ "$AB_STARTED" -gt 0 ] && [ $((NOW - AB_STARTED)) -lt 20 ]; then
+      AB_FAST=$(( ${AB_FAST:-0} + 1 ))
+    else
+      AB_FAST=0
+    fi
+    if [ "${AB_FAST:-0}" -ge 3 ]; then
+      _bo=$(( AB_FAST > 12 ? 60 : AB_FAST * 5 ))
+      echo "[supervisor] AstrBot 连续快速退出 ${AB_FAST} 次，等待 ${_bo} 秒再试"
+      sleep "$_bo"
+      NOW=$(date +%s)
+    fi
     bash /qqbot-opt/sandbox/run-astrbot.sh &
     AB=$!
     AB_STARTED=$NOW

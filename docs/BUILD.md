@@ -106,14 +106,19 @@ powershell -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch arm64
 powershell -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch amd64
 ```
 
-> `-Arch amd64|arm64` 现在默认出**精简包**（约 25 MB）：不含 `assets/qqbot-bundle.tar.xz`。
-> 1.2.5 起首次部署默认走官方镜像在线安装（Ubuntu base + apt），不再默认调 `qq_bundle_pull()`；
-> 只有部署前 `export QQBOT_BUNDLE=1` 才会从 `QQBOT_CDN` 拉 `bundle-<arch>.tar.xz`（见第四节）。
+> `-Arch amd64|arm64` 现在默认出**全量包**（约 600 MB）：里面带着 `assets/qqbot-bundle.tar.xz`。
+> 手机端第一次部署就是把这份镜像解压进 `/data`（2~5 分钟，不用联网），在线 apt 流程只在镜像缺失时才走
+> （`export QQBOT_BUNDLE=1` 是「从 `QQBOT_CDN` 下镜像」的开关，APK 自带镜像时不需要它，见第四节）。
+>
+> **发版规矩（2026-10-24 起）：每版只出一个全量包。** 带 `-Arch` 构建时默认就把 `out\bundle-<arch>.tar.xz` 塞进 APK（约 600 MB），产物是 `AstrBot-<ver>-<arch>.apk`；手机端第一次部署就是把这份镜像解压出来，全程不需要联网。
+>
+> `-Update` 保留作热修逃生门（打 25 MB 瘦包、写入 0 字节 `assets/qqbot-update-pkg` 标记、文件名带 `-update`，不会覆盖全量包），正常发版不用它。
+
+
 > `-Arch` 参数仍存在，但两个架构的包内容相同（724 个条目里只有 `assets/qqbot-scripts.zip` 的时间戳不同），发布只发 arm64 一个。
-> 需要**全量包**（镜像打进 APK、可离线安装）时加 `-Bundle`：`build-apk.ps1 -Arch arm64 -Bundle`
+> 镜像打进 APK 现在是默认行为，不需要再加 `-Bundle`（`-Bundle` 仍可写，等价）。
 > → `AstrBot-<版本>-arm64.apk`（约 600 MB）；`-Arch amd64 -Bundle` → `AstrBot-<版本>-amd64.apk`（约 630 MB）。
-> `-Update` 已废弃：参数只为兼容旧命令行保留，不再产出 `AstrBot-<版本>-<架构>-update.apk`，
-> 也不再写 `assets/qqbot-update-pkg` 标记 —— 更新包概念已取消。
+> `-Update` 只是热修逃生门：打 25 MB 瘦包、写 `assets/qqbot-update-pkg` 标记、文件名带 `-update`，正常发版不用。
 
 这一步分五小步（对应脚本日志里的 `[1/5]`～`[5/5]`）：
 
@@ -162,11 +167,11 @@ powershell -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch amd64
 `build-apk.ps1` 最后会自动把 `out\signed\termux-qqbot-aligned-debugSigned.apk` 复制到仓库根目录，
 命名为 `AstrBot-<版本>-<架构>.apk`（`VERSION` 文件的内容就是版本号），这个文件就是发布用的安装包。
 
-精简包与 `-Bundle` 全量包同名，后构建的会覆盖先构建的；发布前确认根目录里放的是约 25 MB 的精简包。
+只出全量包以后，根目录里的 `AstrBot-<版本>-<架构>.apk` 就是约 600 MB 的全量包；只有跑 `-Update` 才会多出一个 `-update.apk`。
 `-Arch` 仍存在（arm64 / amd64 都能构建），但两个包内容相同（724 个条目里只有 `assets/qqbot-scripts.zip` 的时间戳不同）；1.2.5 起发布只发 arm64 一个，模拟器也直接装这个包。
 
 > **发布只发一个精简包**：只上传 `AstrBot-<版本>-arm64.apk` 到 GitHub Release；模拟器也直接装这个包（内容与真机包相同）。
-> 全量包不再作为 Release 资产，更新包与 `AstrBot-<版本>-<架构>-update.apk` 已取消。
+> 全量包就是唯一的 Release 资产。
 > 沙盒镜像单独传到 VPS 的 `/dl/` 目录（见第四节），不随版本发布。
 
 > **两个脚本必须串行执行**：`build-ui.ps1` 会**写出** `out\termux-ui-unsigned.apk`，`build-apk.ps1` 会**读取并覆盖**它，
@@ -268,11 +273,12 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 | 版本 | 字段 | 值 |
 | --- | --- | --- |
-| **1.3.0（当前）** | `versionName` / 派生 `versionCode` | `1.3.0` / `10300` |
-| 1.2.10（上一版） | `versionName` / 派生 `versionCode` | `1.2.10` / `10210` |
+| **1.3.1（当前）** | `versionName` / 派生 `versionCode` | `1.3.1` / `10301` |
+| 1.3.0 | `versionName` / 派生 `versionCode` | `1.3.0` / `10300` |
+| 1.2.10 | `versionName` / 派生 `versionCode` | `1.2.10` / `10210` |
 | 1.2.9 | `versionName` / 派生 `versionCode` | `1.2.9` / `10209` |
 
-本轮 1.3.0 只发一个安装包：`AstrBot-1.3.0-arm64.apk`，`26,148,605`，SHA-256 是 `6B7AD78A…（完整值见上）`；签名证书 SHA-256 仍是 `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3）。
+1.3.1 起每版只有一个安装包：`AstrBot-1.3.1-arm64.apk`，`609,341,253`（约 581 MB，镜像在 APK 里），SHA-256 `2AB0B7794DF9C4C5188527F8E15B536694A8AF706AB781448E96F85EFD70B70A`；签名证书 SHA-256 仍是 `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3）。
 
 规则：`versionCode = MAJOR*10000 + MINOR*100 + PATCH`。
 
@@ -364,7 +370,7 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 `zhuxin-astrbot-dl.service`（oneshot）+ `zhuxin-astrbot-dl.timer`（每日）跑 `/data/www/zhuxin-site/scripts/astrbot_download_sync.py`，
 把安装包镜像到 `/data/www/zhuxin-site/downloads/`（最多留 4 个版本），再改写 `data/astrbot.json`。本仓库的 `vps-deploy/astrbot_download_sync.py` 只是源文件。
 
-1.2.5 起 Release 只放一个精简包（`AstrBot-<版本>-arm64.apk`，约 25 MB），模拟器也直接装这个包；全量包与更新包都不再上传；
+1.3.1 起 Release 只放一个全量包（`AstrBot-<版本>-arm64.apk`，约 600 MB，镜像在里面，断网也能装完）；
 沙盒镜像按第四节单独传到 VPS 的 `/dl/`，不随 GitHub Release 走。
 
 注意事项：

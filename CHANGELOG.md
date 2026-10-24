@@ -11,6 +11,30 @@
 
 ---
 
+## [1.3.1] - 2026-10-24
+
+### 新增
+
+- **只做全量包：安装包里直接带一份装好的运行环境，第一次部署就是把镜像解压出来**。APK 里塞 `assets/qqbot-bundle.tar.xz`（约 583 MB，解压后就是整棵 rootfs），App 启动后先把它拷到 `~/.qqbot/`，第 2 步（20-rootfs）检测到 `bundle.tar.xz` + `.bundle-ok` 就整棵解出来，然后按镜像里的 `.qqbot-bundle` 清单把 30-apt / 40-qq / 50-napcat / 60-astrbot 四步标记为已完成 —— **全程不需要联网**，原来那套「在线 apt 装 178 MB 依赖 + 下 QQ/NapCat/AstrBot」只在镜像缺失时才会走。带镜像的包不再启动后台预取（没东西可下，别白耗流量）。
+
+### 变更
+
+- **首次部署改成「边装边下」：几个大件走后台预取，跑到那一步不再等下载**。以前是纯串行：apt 装完 178 MB 依赖才开始下 179 MB 的 QQ deb，接着下 35 MB 的 NapCat、11 MB 的 AstrBot，而 apt 有相当一部分时间花在 dpkg 解包 / 配置上，那段时间网络完全闲着。现在部署一开始就起一条后台连接，先把这几件拉到 `~/.qqbot/cache/prefetch/`，步骤轮到自己时 `mv` 一下就到手（同一文件系统，瞬时）。预取按「文件名@版本」存、步骤用自己解析出的版本号取件，版本对不上就照旧自己下 —— 不会出现「旧包被当成本次版本用」的静默钉版本。
+- **60-astrbot（AstrBot 依赖安装）提前到 40-qq 开始时并行跑**：它只依赖 30-apt 装好的 python3，与 QQ 的 deb 解包、NapCat 注入不共用文件，把它那段 pip 安装（实测约 40 秒，真机更久）藏进 QQ / NapCat 的安装时间里。内存不足（`MemAvailable` < 1200 MB）时自动退回串行；`QQBOT_PARALLEL_60=0` 可强制串行，`QQBOT_PREFETCH=0` 可关掉预取（对照测速用）。
+
+### 修复
+
+- **错误报告里没有 AstrBot 自己的日志**：报告只收 deploy.log 与 supervisor.log，而 AstrBot 的 stdout/stderr 全在 `~/.qqbot/cache/logs/astrbot.log` 里。结果是「AstrBot 起来就退（rc=1）」这类报告只有一行退出码，看不到 traceback。现在报告里加了两节：`astrbot.log` 末尾 200 行，以及在沙盒里跑的 venv 自检（python 版本、`import astrbot`、`main.py` 语法），并顺手把它末尾抄进 supervisor.log（异常退出时抄前 3 次）。
+- **AstrBot 坏掉时会 3 秒一次地无限重启**：连续「起来不到 20 秒就退」时按次数退避（15 秒起、最多 60 秒一次），不再刷屏耗电。
+
+### 说明
+
+- MuMu（4 核 / 3.9 GB，同一张网）全新部署实测：1.3.0 全程 **396 秒**（10-termux 5 s / 20-rootfs 8 s / 30-apt 169 s / 40-qq 78 s / 50-napcat 55 s / 60-astrbot 76 s / 65-link 2 s）。
+- 1.3.1 同一台机器全新部署：全程 **237 秒**（10-termux 5 s / 20-rootfs 8→18 s / 30-apt 18→192 s 共 174 s / 40-qq 192→210 s 共 18 s / 50-napcat 210→221 s 共 11 s 
+
+- 预取日志（`~/.qqbot/logs/prefetch.log`）：QQ deb 179 MB 用 60 秒（3 MB/s）、之后 NapCat 35 MB / AstrBot 源码 6.4 MB / 控制台 5.1 MB 三件并行 64 秒全部到位，整体 129 秒下完 226 MB —— 全部落在 30-apt 的 174 秒里，所以 40-qq、50-napcat 只剩解包安装的时间。
+- 现在的瓶颈是 30-apt 本身（174 秒占全程 73%）：apt 默认单连接、没有流水线，且这一步要装 fonts-noto-cjk（61 MB）等 178 MB 依赖。再往下压需要改 apt 的并发（`Acquire::http::Pipeline-Depth`），在有用户代理的手机上可能直接失败，本轮**没有动**。
+
 ## [1.3.0] - 2026-10-24
 
 ### 新增

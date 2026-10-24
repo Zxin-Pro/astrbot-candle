@@ -11,13 +11,14 @@
 | --- | --- |
 | 应用名 | **AstrBot烛版** |
 | 控制台标题 | **烛之控制台** |
-| 安装包 | `AstrBot-1.3.0-arm64.apk`（只发这一个包，真机 / 模拟器通用，`26,148,605`，约 25 MB） |
+| 安装包 | `AstrBot-1.3.1-arm64.apk`（`609,341,253`，约 581 MB；**自带装好的运行环境镜像，第一次部署就是解压它，全程不用联网**） |
+
 | 包名 | `zhuxin.astrbot`（1.2.1 及更早为 `com.termux`） |
-| 当前版本 | **v1.3.0**（versionCode `10300`） |
-| 安装包 SHA-256 | `6B7AD78A52CFE8044A7A32DAC819EF0A89233B90D474FAF84268F61CF77F81E7` |
+| 当前版本 | **v1.3.1**（versionCode `10301`） |
+| 安装包 SHA-256 | `2AB0B7794DF9C4C5188527F8E15B536694A8AF706AB781448E96F85EFD70B70A` |
 | 签名证书 SHA-256 | `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3） |
 | 项目地址 | [github.com/Zxin-Pro/astrbot-candle](https://github.com/Zxin-Pro/astrbot-candle) |
-| 下载安装包 | 官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的 AstrBot 下载页与 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 提供 `AstrBot-1.3.0-arm64.apk`（约 25 MB；只发一个包，模拟器也能直接装，**站内直接下载，不用跳 GitHub**） |
+| 下载安装包 | 官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的 AstrBot 下载页与 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 提供 `AstrBot-1.3.1-arm64.apk`（约 581 MB，**站内直接下载，不用跳 GitHub**） |
 | 官方网站 | [烛心.xyz](https://烛心.xyz) |
 | 官方 QQ 群 | **1127997343** |
 
@@ -361,7 +362,7 @@ qqbot-sandbox/
 > 目录 `_research/`（上游 Termux APK、uber-apk-signer）、`_sdk/`（android.jar、apktool.jar、d8）、`_apkwork/`（apktool 工作区）、`out/`（构建产物）都不入库，见 [.gitignore](.gitignore)。
 
 想从源码自己构建一个 APK，请看 [**docs/BUILD.md**](docs/BUILD.md) —— 里面写了需要准备哪些工具、两个脚本的执行顺序，以及 bootstrap 注入的偏移数学。
-构建时默认出约 25 MB 的精简包 `AstrBot-<版本>-<架构>.apk`（不含沙盒镜像）；只有加 `-Bundle` 才把镜像塞进安装包，产出约 600 MB 的全量包。`-Update` 已废弃：默认包本来就是瘦包，不再另出 `-update.apk`。
+构建时默认就把 `out\bundle-<架构>.tar.xz` 打进安装包，产出约 600 MB 的全量包 `AstrBot-<版本>-<架构>.apk`（现在只发这一种）；`-Update` 只是热修逃生门，打出来的是 25 MB 瘦包、文件名带 `-update`，不会覆盖全量包。
 
 ---
 

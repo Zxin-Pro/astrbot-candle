@@ -58,7 +58,11 @@ if [ "${QQBOT_BUNDLE:-0}" = "1" ] && [ ! -f "$QQBOT_HOME/deploy.done" ] \
   qq_bundle_pull "$BUNDLE" || qqwarn "整包镜像没下成，改用官方镜像在线安装（慢一些，但能装完）"
 elif [ ! -f "$QQBOT_HOME/deploy.done" ] && ! qq_bundle_ready \
      && [ ! -f "$ROOTFS/opt/AstrBot/main.py" ]; then
-  qqlog "走官方镜像在线安装（清华 / 中科大 / 阿里源），不需要下整包镜像"
+  if [ -f "$QQBOT_OPT/BUNDLE_ARCH" ]; then
+    qqlog "这个安装包自带运行环境镜像，等它落盘后直接解压（不需要联网）"
+  else
+    qqlog "走官方镜像在线安装（清华 / 中科大 / 阿里源），不需要下整包镜像"
+  fi
 fi
 
 # ---------------------------------------------------------------------------

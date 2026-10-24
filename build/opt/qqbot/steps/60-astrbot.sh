@@ -19,6 +19,16 @@ if [ -s "$QQBOT_CACHE/astrbot-ver" ] && [ "$(cat "$QQBOT_CACHE/astrbot-ver" 2>/d
   rm -f "$SRC" "$DASH" 2>/dev/null
 fi
 
+# 1.3.1：两个包都在后台预取过了，先按版本取件；取不到再自己下（控制台前端常比源码慢一倍）
+_PF_SRC="$(qq_pf_key astrbot "$AV" AstrBot-src.tar.gz)"
+_PF_DASH="$(qq_pf_key astrbot "$AV" AstrBot-dashboard.zip)"
+if [ ! -s "$SRC" ]; then
+  qq_pf_wait "$_PF_SRC" 150 && qq_pf_take "$_PF_SRC" "$SRC" || true
+fi
+if [ ! -s "$DASH" ]; then
+  qq_pf_wait "$_PF_DASH" 150 && qq_pf_take "$_PF_DASH" "$DASH" || true
+fi
+
 if [ ! -s "$SRC" ]; then
   qqlog "下载 AstrBot $AV 源码（约 4 MB）"
   if ! qq_gh_dl "$SRC" "https://github.com/AstrBotDevs/AstrBot/archive/refs/tags/$AV.tar.gz"; then

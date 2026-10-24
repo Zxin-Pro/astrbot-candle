@@ -6942,7 +6942,7 @@ function refreshDeploy(){
         ? "部署卡在沙盒依赖安装（第 3 步）。直接点「继续部署」就行 —— 它会先自动修好上次中断留下的半配置状态再接着装；要是连试三次都没过，再点「修复沙盒依赖」手动清一次。"
         : "部署中断于第 " + (d.doneCount + 1) + " 步，点下面按钮继续（已完成 " + d.doneCount + "/" + d.total + " 步）。");
   }
-  else el("deployHint").textContent = "首次使用会自动部署一次：从官方镜像（清华 / 中科大 / 阿里）在线安装运行环境，视网速通常 10~30 分钟，请保持应用在前台。";
+  else el("deployHint").textContent = "首次使用会自动部署一次：把安装包里自带的运行环境镜像直接解压到手机里（全程不需要联网），视手机性能通常 2~5 分钟，请保持应用在前台。";
   el("btnDeploy").textContent = d.done ? "重新部署" : (d.running ? "部署进行中…" : (d.doneCount > 0 ? "继续部署" : "开始部署"));
   el("btnDeploy").disabled = !!d.running;
   el("btnStopDeploy").style.display = d.running ? "" : "none";
@@ -6968,7 +6968,7 @@ function refreshDeploy(){
    真机上「卡在第 6 步」就是这种 —— 用户在没输出的那几分钟里以为死机，强杀之后永远装不完。
    这里的耗时是按红米那种中端机估的，宁可写宽一点，别让人以为超出预期就是出错。 */
 var SLOW_STEP = {
-  "20-rootfs": "下载 Ubuntu 基础系统并解压，1~3 分钟",
+  "20-rootfs": "解压内置的运行环境镜像，2~5 分钟",
   "30-apt": "装几十个包，2~6 分钟",
   "40-qq": "下载约 200MB，5~20 分钟",
   "60-astrbot": "装 Python 依赖，5~20 分钟（最慢的一步，没输出是正常的）",

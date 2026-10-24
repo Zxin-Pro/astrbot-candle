@@ -572,7 +572,9 @@ qq_dl() {
     return 1
   fi
   # 有些镜像对失败请求会返回 200 + 一个 HTML 错误页，小文件靠体积挡不住，这里再看文件头。
-  case "$(head -c 15 "$_o.part" 2>/dev/null)" in
+  # tr -d '\0' 是给二进制包去的：命令替换里带 NUL 会让 bash 每次打一行
+  # "warning: command substitution: ignored null byte in input"，日志里很吵。
+  case "$(head -c 15 "$_o.part" 2>/dev/null | tr -d '\0')" in
     '<!DOCTYPE html>'|'<html>'|'<HTML>')
       qqwarn "下载到的是网页而不是文件，丢弃"
       rm -f "$_o.part"
@@ -620,6 +622,163 @@ qq_gh_dl() {
   done
   _list="$_list $_url"
   qq_dl_mirror "$_o" $_list
+}
+
+# ---------------------------------------------------------------------------
+# 1.3.1：部署预取 —— 把后面几步要下的安装包放到后台先下
+#
+# 部署里四块网络开销彼此独立：apt 装 178 MB 依赖、QQ deb 179 MB、NapCat 35 MB、
+# AstrBot 11 MB。原先是「apt 装完才去下 QQ」，而 apt 有大半时间花在 dpkg 解包与配置上
+# （那段时间网络完全闲着）；GitHub 那几个包走的镜像又很慢（实测 0.3~0.7 MB/s），
+# 串行排队等于把这几分钟白白串起来（MuMu 实测整轮 396 秒）。
+# 预取就是在部署一开始用一条后台连接先把这些包拉下来，步骤轮到自己时 mv 一下就到手。
+#
+# 为什么按「名字@版本」取件、而不是直接写正式缓存路径：正式路径不带版本号
+# （NapCat.Shell.zip / AstrBot-src.tar.gz），预取解析到的版本若与步骤解析到的不同，
+# 后者就会把旧包当新包用 —— 静默钉死版本，事后极难查。步骤拿自己解析出的版本号
+# 来取件，取不到就照旧自己下，最坏只是白下了一份、行为与 1.3.0 完全一致。
+# ---------------------------------------------------------------------------
+QQBOT_PF_DIR="$QQBOT_CACHE/prefetch"
+QQBOT_PF_PIDFILE="$QQBOT_HOME/prefetch.pid"
+QQBOT_PF_LOG="$QQBOT_LOGS/prefetch.log"
+
+# 预取开关：默认开。只有对照测速时才会用 QQBOT_PREFETCH=0 关掉。
+qq_pf_on() {
+  case "${QQBOT_PREFETCH:-1}" in 0|off|no|false) return 1 ;; esac
+  return 0
+}
+
+# 取件键：标签@版本@文件名。版本未知时用 x 占位。
+qq_pf_key() { printf '%s@%s@%s' "${1:-x}" "${2:-x}" "$3"; }
+
+qq_pf_alive() {
+  [ -s "$QQBOT_PF_PIDFILE" ] || return 1
+  _pfa="$(cat "$QQBOT_PF_PIDFILE" 2>/dev/null)"
+  [ -n "$_pfa" ] || return 1
+  kill -0 "$_pfa" 2>/dev/null
+}
+
+# 等某件被预取好；预取进程已经退出还等不到，就立刻返回 1（交给调用方自己下）。
+qq_pf_wait() {
+  _pfw="$1"
+  _pfmax="${2:-150}"
+  _pfi=0
+  while [ "$_pfi" -lt "$_pfmax" ]; do
+    [ -s "$QQBOT_PF_DIR/$_pfw" ] && return 0
+    qq_pf_alive || return 1
+    sleep 1
+    _pfi=$((_pfi + 1))
+  done
+  return 1
+}
+
+# 把预取好的文件搬到正式路径（同一个文件系统里 mv，瞬时完成）。
+qq_pf_take() {
+  [ -s "$QQBOT_PF_DIR/$1" ] || return 1
+  mkdir -p "$(dirname "$2")" 2>/dev/null || true
+  mv -f "$QQBOT_PF_DIR/$1" "$2" 2>/dev/null || return 1
+  qqok "使用预取好的 $(basename "$2")（后台已下完，不用再等）"
+  return 0
+}
+
+# 下载一件：<mirror|gh> <键> <体积下限> <url...>
+qq_pf_item() {
+  _pi_mode="$1"; _pi_key="$2"; _pi_min="$3"; shift 3
+  _pi_out="$QQBOT_PF_DIR/$_pi_key"
+  [ -s "$_pi_out" ] && { echo "[prefetch $(date +%H:%M:%S)] 已有 $_pi_key，跳过"; return 0; }
+  # 临时文件名按「键」区分：三件 GitHub 包是并行下的，共用一个 .get 会互相覆盖
+  _pi_tmp="$QQBOT_PF_DIR/.get.$_pi_key"
+  rm -f "$_pi_tmp" "$_pi_tmp.part" 2>/dev/null || true
+  echo "[prefetch $(date +%H:%M:%S)] 开始下载 $_pi_key"
+  _pi_ok=0
+  if [ "$_pi_mode" = "gh" ]; then
+    QQBOT_DL_MIN="$_pi_min" qq_gh_dl "$_pi_tmp" "$1" && _pi_ok=1
+  else
+    QQBOT_DL_MIN="$_pi_min" qq_dl_mirror "$_pi_tmp" "$@" && _pi_ok=1
+  fi
+  if [ "$_pi_ok" = "1" ] && mv -f "$_pi_tmp" "$_pi_out" 2>/dev/null; then
+    echo "[prefetch $(date +%H:%M:%S)] $_pi_key 就绪（$(du -h "$_pi_out" 2>/dev/null | cut -f1)）"
+    return 0
+  fi
+  rm -f "$_pi_tmp" "$_pi_tmp.part" 2>/dev/null || true
+  echo "[prefetch $(date +%H:%M:%S)] $_pi_key 下载失败，交给步骤自己重试"
+  return 1
+}
+
+qq_pf_worker() {
+  mkdir -p "$QQBOT_PF_DIR" "$QQBOT_LOGS" 2>/dev/null || true
+  rm -f "$QQBOT_PF_DIR"/.get "$QQBOT_PF_DIR"/.get.* "$QQBOT_PF_DIR"/.get.*.part 2>/dev/null || true
+  echo "[prefetch $(date +%H:%M:%S)] 预取启动（日志 $QQBOT_PF_LOG）"
+
+  # 1) QQ deb：179 MB、URL 与版本都写死在 common.sh 里，最没风险也最占时间
+  _pk="$(qq_pf_key deb "$QQBOT_QQ_VER" "$QQBOT_QQ_DEB_NAME")"
+  if [ -s "$QQBOT_CACHE/$QQBOT_QQ_DEB_NAME" ]; then
+    echo "[prefetch $(date +%H:%M:%S)] QQ deb 已在缓存里，跳过"
+  else
+    qq_pf_item mirror "$_pk" $((150 * 1024 * 1024)) "$QQBOT_QQ_DEB_BASE/$QQBOT_QQ_DEB_NAME"
+  fi
+
+  # 2) NapCat + AstrBot 源码 + 控制台前端：这三件走 GitHub / 镜像，单连接只有
+  #    0.1~0.7 MB/s（是服务器侧限速，不是本机带宽），串着下要两分钟。三件彼此无关，
+  #    并行下、谁先好谁先落地。版本与步骤同源解析（qq_latest_ver 带 24 小时缓存），
+  #    所以步骤里再查一次拿到的是同一个值，取件键才对得上。
+  _pnv="$(qq_latest_ver napcat 2>/dev/null)"
+  [ -n "$_pnv" ] || _pnv="$QQBOT_NAPCAT_VER"
+  _pav="$(qq_latest_ver astrbot 2>/dev/null)"
+  [ -n "$_pav" ] || _pav="$QQBOT_ASTRBOT_VER"
+
+  _pf_bg() {
+    qq_pf_item gh "$1" "$2" "$3"
+  }
+
+  if [ -s "$QQBOT_CACHE/NapCat.Shell.zip" ] || [ -s "$QQBOT_HOME/payload/NapCat.Shell.zip" ]; then
+    echo "[prefetch $(date +%H:%M:%S)] NapCat 已有现成包，跳过"
+  else
+    _pf_bg "$(qq_pf_key napcat "$_pnv" NapCat.Shell.zip)" $((20 * 1024 * 1024)) \
+      "https://github.com/NapNeko/NapCatQQ/releases/download/$_pnv/NapCat.Shell.zip" &
+  fi
+  if [ -s "$QQBOT_CACHE/AstrBot-src.tar.gz" ]; then
+    echo "[prefetch $(date +%H:%M:%S)] AstrBot 源码已有，跳过"
+  else
+    _pf_bg "$(qq_pf_key astrbot "$_pav" AstrBot-src.tar.gz)" $((1 * 1024 * 1024)) \
+      "https://github.com/AstrBotDevs/AstrBot/archive/refs/tags/$_pav.tar.gz" &
+  fi
+  if [ -s "$QQBOT_CACHE/AstrBot-dashboard.zip" ]; then
+    echo "[prefetch $(date +%H:%M:%S)] AstrBot 控制台已有，跳过"
+  else
+    _pf_bg "$(qq_pf_key astrbot "$_pav" AstrBot-dashboard.zip)" $((1 * 1024 * 1024)) \
+      "https://github.com/AstrBotDevs/AstrBot/releases/download/$_pav/AstrBot-$_pav-dashboard.zip" &
+  fi
+  wait
+
+  echo "[prefetch $(date +%H:%M:%S)] 预取结束"
+}
+
+qq_prefetch_start() {
+  qq_pf_on || return 0
+  if qq_pf_alive; then
+    qqlog "预取已在后台运行（pid $(cat "$QQBOT_PF_PIDFILE" 2>/dev/null)）"
+    return 0
+  fi
+  command -v curl >/dev/null 2>&1 || { qqwarn "没有 curl，跳过预取"; return 0; }
+  mkdir -p "$QQBOT_PF_DIR" "$QQBOT_LOGS" 2>/dev/null || true
+  ( qq_pf_worker ) >> "$QQBOT_PF_LOG" 2>&1 &
+  echo $! > "$QQBOT_PF_PIDFILE"
+  qqlog "已在后台预取安装包（pid $(cat "$QQBOT_PF_PIDFILE" 2>/dev/null)，日志 $QQBOT_PF_LOG）"
+}
+
+qq_prefetch_stop() {
+  [ -s "$QQBOT_PF_PIDFILE" ] || return 0
+  _pa="$(cat "$QQBOT_PF_PIDFILE" 2>/dev/null)"
+  rm -f "$QQBOT_PF_PIDFILE" 2>/dev/null || true
+  [ -n "$_pa" ] || return 0
+  kill -0 "$_pa" 2>/dev/null || return 0
+  # 先把它的 curl 子进程收掉，再收它自己，免得部署结束后还有下载在跑
+  command -v pkill >/dev/null 2>&1 && pkill -P "$_pa" 2>/dev/null
+  kill -TERM "$_pa" 2>/dev/null || true
+  sleep 0.2
+  kill -KILL "$_pa" 2>/dev/null || true
+  return 0
 }
 
 # ---------------------------------------------------------------------------

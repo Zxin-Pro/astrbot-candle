@@ -60,6 +60,21 @@ have() { command -v "$1" >/dev/null 2>&1; }
   echo "----- 服务日志尾部 60 行 (supervisor.log) -----"
   tail -n 60 "$QQBOT_HOME/logs/supervisor.log" 2>/dev/null || echo "(无)"
   echo
+  # AstrBot 自己的 stdout/stderr 全在这份日志里（sandbox/run-astrbot.sh 最后一行
+  # 用 >> 重定向）。它的「一起就退」几乎全是 Python 异常，只有这里能看到 traceback；
+  # 以前报告只收 supervisor.log，那边只有一行 "AstrBot 退出：rc=1"，等于没有线索。
+  echo "----- AstrBot 日志尾部 200 行 (astrbot.log) -----"
+  tail -n 200 "$QQBOT_CACHE/logs/astrbot.log" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' || echo "(无)"
+  echo
+  echo "----- AstrBot 自检（在沙盒里跑）-----"
+  # 直接拿 venv 里的 python 探一遍：能 import 就说明依赖是好的，问题在别处；
+  # 报 ImportError 就把缺的模块名打出来，一眼定位。
+  if [ -x "$QQBOT_ROOTFS/opt/AstrBot/.venv/bin/python" ]; then
+    qq_proot "cd /opt/AstrBot 2>/dev/null || exit 0; ./.venv/bin/python -V 2>&1; echo '--- import astrbot ---'; ./.venv/bin/python -c 'import astrbot' 2>&1 | tail -n 12; echo '--- main.py 语法/导包 ---'; ./.venv/bin/python -c 'import ast,sys; ast.parse(open(\"main.py\",encoding=\"utf-8\").read()); print(\"main.py 语法 ok\")' 2>&1 | tail -n 6" 2>&1 | sed 's/\x1b\[[0-9;]*m//g'
+  else
+    echo "venv 不存在或不可执行：$QQBOT_ROOTFS/opt/AstrBot/.venv/bin/python"
+  fi
+  echo
   echo "----- bots.json（token 已打码）-----"
   sed -E "s/(\"token\"[[:space:]]*:[[:space:]]*\")[^\"]*/\1***/g" "$QQBOT_HOME/bots.json" 2>/dev/null || echo "(无)"
   echo

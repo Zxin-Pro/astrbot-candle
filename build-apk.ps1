@@ -4,11 +4,14 @@
 #
 # Usage:
 #   build-apk.ps1                 -> online-deploy APK (downloads at first run)
-#   build-apk.ps1 -Arch amd64     -> slim APK for x86_64 (image pulled from the site on first run)
-#   build-apk.ps1 -Arch arm64     -> slim APK for arm64  (image pulled from the site on first run)
-#   build-apk.ps1 -Arch arm64 -Bundle -> fat APK carrying the 580 MB sandbox image (offline)
+#   build-apk.ps1 -Arch amd64     -> FULL APK for x86_64 (image inside, offline deploy)
+#   build-apk.ps1 -Arch arm64     -> FULL APK for arm64  (image inside, offline deploy)
+#                                       This is the only kind of package we ship now: the image is
+#                                       unpacked on the phone, so a fresh install never touches the network.
+#   build-apk.ps1 -Arch arm64 -Update -> UPDATE APK (no image, marks itself; kept for the odd hotfix)
 param([string]$Arch = "", [switch]$Bundle, [switch]$Update)
 $ErrorActionPreference = "Stop"
+if ($Bundle -and $Update) { throw "-Bundle and -Update are mutually exclusive: the full package is for a fresh install, the update package carries no image" }
 
 $ROOT = $PSScriptRoot
 if (-not $ROOT) { $ROOT = (Get-Location).Path }
@@ -128,7 +131,8 @@ $rootVer = (Get-Content (Join-Path $ROOT "VERSION") -Raw).Trim()
 Write-Host ("     version file: {0}" -f $rootVer)
 
 Write-Host "[3/5] pack deploy scripts asset"
-# 上一轮 -Arch 构建可能把架构标记留在 build/ 里，先清掉，免得瘦包/普通包带着旧标记出厂。
+# A previous -Arch build may have left BUNDLE_ARCH / BUNDLE_SIZE in build\ , which would
+# make a slim package ship a stale arch marker. Both files are re-created below when needed.
 Remove-Item -Force (Join-Path $BUILD "opt\qqbot\BUNDLE_ARCH") -ErrorAction SilentlyContinue
 Remove-Item -Force (Join-Path $BUILD "opt\qqbot\BUNDLE_SIZE") -ErrorAction SilentlyContinue
 $SCRIPTSZIP = Join-Path $OUT "qqbot-scripts.zip"
@@ -159,7 +163,7 @@ Write-Host ("     {0} files -> {1} ({2} bytes)" -f $sfiles.Count, $SCRIPTSZIP, (
 $ARCHF = Join-Path $BUILD "opt\qqbot\BUNDLE_ARCH"
 $BUNDLE_PAYLOAD = ""
 if ($Arch -ne "" -and $Arch -ne "amd64" -and $Arch -ne "arm64") { throw "-Arch must be amd64 or arm64" }
-if ($Arch -ne "" -and $Bundle) {
+if ($Arch -ne "" -and -not $Update) {
   $BUNDLE_PAYLOAD = Join-Path $OUT ("bundle-" + $Arch + ".tar.xz")
   if (-not (Test-Path $BUNDLE_PAYLOAD)) { throw ("bundle payload not found: " + $BUNDLE_PAYLOAD) }
   [System.IO.File]::WriteAllText($ARCHF, $Arch + "`n")
@@ -193,9 +197,21 @@ Write-Host ("     -> {0} ({1} bytes)" -f $SO_RELOC, (Get-Item $SO_RELOC).Length)
 
 # 4) swap the .so inside the APK and add the scripts asset
 Write-Host "[4/5] replace bootstrap + add scripts asset"
+# 3b2) update-package marker
+# The slim APK carries no sandbox image, so a brand-new install would have to download
+# everything at first run. This zero-byte asset lets the app tell the two apart
+# (QqbotActivity.isUpdatePackage) and say so in the UI instead of silently starting a
+# full online deploy.
+$UPDPKG = ""
+if ($Update) {
+  $UPDPKG = Join-Path $OUT "qqbot-update-pkg"
+  if (-not (Test-Path $UPDPKG)) { [System.IO.File]::WriteAllText($UPDPKG, "") }
+  Write-Host "     update package: marker asset assets/qqbot-update-pkg"
+}
 Remove-Item -Force $UNSIGNED -ErrorAction SilentlyContinue
 $REPL = @("lib/arm64-v8a/libtermux-bootstrap.so=$SO_RELOC", "assets/qqbot-scripts.zip=$SCRIPTSZIP")
 if ($BUNDLE_PAYLOAD -ne "") { $REPL += ("assets/qqbot-bundle.tar.xz=" + $BUNDLE_PAYLOAD) }
+if ($UPDPKG -ne "") { $REPL += ("assets/qqbot-update-pkg=" + $UPDPKG) }
 & $JAVA -Xmx4g -cp $TOOLS ApkReplace2 $APK_SRC $UNSIGNED @REPL
 if ($LASTEXITCODE -ne 0) { throw "ApkReplace2 failed" }
 
@@ -228,6 +244,8 @@ if (Test-Path $SIGNED) {
   # would silently eat the other architecture's APK.
   $SUF = ""
   if ($Arch -ne "") { $SUF = "-" + $Arch }
+  # -Update builds must never overwrite the full package of the same version.
+  if ($Update) { $SUF = $SUF + "-update" }
   $REL = Join-Path $ROOT ("AstrBot-{0}{1}.apk" -f $VER, $SUF)
   if (Test-Path $REL) { Remove-Item -Force $REL }
   Copy-Item -Force $SIGNED $REL
