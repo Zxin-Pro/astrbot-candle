@@ -883,9 +883,17 @@ def build(latest, all_rels, extra=None, mirror=None, pc=None):
         _vnum = (0, 0, 0)
     now = time.strftime("%Y-%m-%d %H:%M:%S")
 
-    # 1.2.5 起默认走官方镜像站在线安装（清华 / 中科大 / 阿里），不再默认去下 604 MB 整包镜像。
+    # 1.2.5~1.3.0 默认走官方镜像站在线安装（清华 / 中科大 / 阿里），不再默认去下 604 MB 整包镜像。
     # 站里的 /dl 还留着整包，只有部署前 export QQBOT_BUNDLE=1 才会用到。
     bundle_here = os.path.exists(os.path.join(SITE, "dl", "bundle-arm64.tar.xz"))
+
+    # 1.3.1 起只发全量包（约 600 MB，里面自带装好的运行环境镜像）。卡片文案必须跟着包的实际大小走，
+    # 否则会出现「581.1 MB 的包」下面写「安装包约 25 MB，只含程序本身」这种自相矛盾的说明。
+    try:
+        _apk_bytes = int((apk or {}).get("size") or 0)
+    except Exception:
+        _apk_bytes = 0
+    _full_pkg = _apk_bytes >= 300 * 1024 * 1024
 
     d_cards = [
         {
@@ -894,8 +902,11 @@ def build(latest, all_rels, extra=None, mirror=None, pc=None):
             # 文件名放第一行：卡片里的说明会被样式截断，把「下载下来叫什么」摆在最前面才不会看不到。
             "desc": "文件名 AstrBot-%s.apk（下载下来就是这个名字）" % ver + NL +
                     "安卓安装包 · %s%s" % (apk_size, (" · " + pub) if pub else "") + NL +
-                    "安装包约 25 MB，只含程序本身；首次启动会从官方镜像站（清华 / 中科大 / 阿里）"
-                    "在线安装运行环境，视网速通常 10~30 分钟，只需要安装一次。" + NL +
+                    (("安装包自带已经装好的运行环境镜像，第一次部署就是把镜像解压到手机里"
+                      "（视手机性能 2~5 分钟，全程不需要联网）。" + NL)
+                     if _full_pkg else
+                     ("安装包约 25 MB，只含程序本身；首次启动会从官方镜像站（清华 / 中科大 / 阿里）"
+                      "在线安装运行环境，视网速通常 10~30 分钟，只需要安装一次。" + NL)) +
                     "安卓 8.0 及以上 · 真机与 x86_64 模拟器通用（1.2.5 起只发这一个包）" + NL +
                     "包名 zhuxin.astrbot（1.2.2 起改名，和官方 Termux 不再冲突、可以共存）" + NL +
                     (("从 1.2.1 及更早版本升级：包名变了没法覆盖安装，要先卸载旧版"
