@@ -57,6 +57,10 @@ public class QqbotActivity extends Activity {
        由页面读一次 Android.state() 自己决定弹确认还是直接拉起。 */
     private volatile boolean pendingToggle = false;
 
+    /* 桌面头像图标只在本次 Activity 生命周期里刷一次：onResume 会因为切后台、
+       键盘弹出之类的原因反复触发，每次都去读头像 + 问系统要 pinned 列表纯属浪费。 */
+    private boolean iconRefreshTried = false;
+
     public File filesDirPub() { return getFilesDir(); }
     public File usrDir() { return new File(getFilesDir(), "usr"); }
     public File homeDir() { return new File(getFilesDir(), "home"); }
@@ -325,6 +329,40 @@ public class QqbotActivity extends Activity {
         if (web != null) applyPendingTab(web);
         if (web != null) applyPendingStop(web);
         if (web != null) applyPendingToggle(web);
+    }
+
+    /**
+     * 每次回到前台顺手把桌面上的头像快捷方式刷新一下（登录换号之后桌面图标要跟着换脸）。
+     * 只做一次，且丢后台线程：读头像文件、ShortcutManager.getPinnedShortcuts() 都是阻塞调用，
+     * 放主线程会在冷启动时掉帧。整段包在 try/catch(Throwable) 里 —— 图标是装饰，
+     * 任何失败都不允许影响主流程。
+     */
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (iconRefreshTried) return;
+        iconRefreshTried = true;
+        try {
+            new Thread(new IconRefreshTask(this)).start();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 刷桌面头像图标的线程体；构造时用的 Activity 只用来取系统服务，不长期持有。 */
+    private static final class IconRefreshTask implements Runnable {
+        private final QqbotActivity act;
+
+        IconRefreshTask(QqbotActivity act) {
+            this.act = act;
+        }
+
+        public void run() {
+            try {
+                AstrIconShortcut.refresh(act);
+            } catch (Throwable ignored) {
+                // 系统不支持 / 用户没钉过 / 被限流：全都静默
+            }
+        }
     }
 
     /**

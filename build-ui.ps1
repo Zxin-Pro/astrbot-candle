@@ -61,7 +61,9 @@ $SRC = @(Get-ChildItem "$ROOT\ui\src" -Recurse -Filter *.java | ForEach-Object {
 Write-Host "javac: $($SRC.Count) sources"
 Remove-Item "$ROOT\ui\classes" -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path "$ROOT\ui\classes" | Out-Null
-& "$JDK\javac.exe" -encoding UTF-8 -source 11 -target 11 -g -nowarn -cp $JAR -d "$ROOT\ui\classes" $SRC 2>$null
+# Do NOT add 2>$null here: it swallows javac's real errors (a missing-symbol
+# error once showed up as a bare JAVAC FAIL line and looked like an env bug).
+& "$JDK\javac.exe" -encoding UTF-8 -source 11 -target 11 -g -nowarn -cp $JAR -d "$ROOT\ui\classes" $SRC
 Write-Host "javac rc=$LASTEXITCODE"
 if ($LASTEXITCODE -ne 0) { Write-Host 'JAVAC FAIL'; exit 1 }
 
@@ -134,6 +136,7 @@ $drop = @(
   'android.permission.SYSTEM_ALERT_WINDOW',
   'com.android.alarm.permission.SET_ALARM',
   'android.permission.REQUEST_INSTALL_PACKAGES',
+  'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
   'android.permission.WRITE_EXTERNAL_STORAGE'
 )
 $xml3 = Get-Content $mf -Raw -Encoding UTF8
@@ -168,6 +171,22 @@ if ($xml3 -ne $orig3) {
   Write-Host ("manifest: trimmed {0} dangerous entries, RunCommandService unexported" -f $removed)
 } else {
   Write-Host 'manifest: nothing to trim (already clean)'
+}
+# 3c4) AV heuristics round 2 (1.3.0): the quick-settings tile and the desktop widget are both
+#      exported components this app never needs (we drive everything from the WebView), and VIBRATE is
+#      referenced by nothing in the sources. Scanner engines score 'resident + auto-start + extra
+#      exported components' as the a.gray.devicemaster family, so drop the two components and the
+#      unused permission. Idempotent: each replace simply finds nothing on the second run.
+$xml4 = Get-Content $mf -Raw -Encoding UTF8
+$orig4 = $xml4
+$xml4 = [regex]::Replace($xml4, '\s*<uses-permission android:name="android\.permission\.VIBRATE"\s*/>', '')
+$xml4 = [regex]::Replace($xml4, '(?s)\s*<receiver android:name="com\.termux\.app\.QqbotWidgetProvider".*?</receiver>', '')
+$xml4 = [regex]::Replace($xml4, '(?s)\s*<service android:name="com\.termux\.app\.QqbotTileService".*?</service>', '')
+if ($xml4 -ne $orig4) {
+  [System.IO.File]::WriteAllText($mf, $xml4, (New-Object System.Text.UTF8Encoding($false)))
+  Write-Host 'manifest: dropped widget receiver, tile service, VIBRATE'
+} else {
+  Write-Host 'manifest: widget/tile already dropped'
 }
 Remove-Item "$ROOT\_apkwork\smali_classes30" -Recurse -Force -ErrorAction SilentlyContinue
 Copy-Item "$ROOT\ui\smali" "$ROOT\_apkwork\smali_classes30" -Recurse -Force -ErrorAction Stop
@@ -239,22 +258,11 @@ if (Test-Path $andRes) {
   Write-Host '[res] ui\assets\android-res missing, skip'
 }
 $snippet = "$ROOT\ui\assets\android\widget-manifest.xml"
-if ((Test-Path $snippet) -and (Test-Path $mf)) {
-  $mfNow = Get-Content $mf -Raw -Encoding UTF8
-  if ($mfNow -match 'QqbotWidgetProvider') {
-    Write-Host '[res] manifest already has widget receiver, skip'
-  } else {
-    $snip = (Get-Content $snippet -Raw -Encoding UTF8) -replace '(?s)^\s*<!--.*?-->\s*', ''
-    $snip = $snip.TrimEnd() + "`r`n"
-    $idx = $mfNow.LastIndexOf('</application>')
-    if ($idx -lt 0) { Write-Host '[res] </application> not found, manifest not patched'; exit 1 }
-    $mfOut = $mfNow.Substring(0, $idx) + $snip + '    ' + $mfNow.Substring($idx)
-    [System.IO.File]::WriteAllText($mf, $mfOut, (New-Object System.Text.UTF8Encoding($false)))
-    Write-Host '[res] manifest: added widget receiver + tile service'
-  }
-} else {
-  Write-Host '[res] widget-manifest.xml missing, skip'
-}
+# 1.3.0: the widget + quick-settings tile are disabled on purpose. Both are `exported` components
+# that no screen in this app uses, and scanner engines score extra exported components + widgets as
+# the a.gray.devicemaster family (user kept hitting the Xiaomi/Tencent warning). Keep the snippet file
+# around: re-enabling is one line (drop this block and let 3e run again).
+Write-Host '[res] widget receiver + QS tile disabled on purpose (AV heuristics), snippet skipped'
 
 # 4) apktool b
 New-Item -ItemType Directory -Force -Path "$ROOT\out" | Out-Null

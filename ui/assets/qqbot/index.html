@@ -1834,7 +1834,13 @@ pre{
 
 
 /* 分段 / 页签 */
-.tab.on{color:var(--txt);background:rgba(255,255,255,.07);border-color:var(--line-2)}
+/* 注意：这条原来写成 .tab.on，而 .tab 同时是「页面 section」的类名（见上方 .tab{display:none}），
+   于是整块首页内容区被垫了一层 rgba(255,255,255,.07)、圆角 0 的直角底板 ——
+   暗色主题下卡片之间的空白处就能看到一个大方框（用户原话「这个背景有个方框好难看」）。
+   现在只作用于分段按钮，section 用 section.tab 另行排版。 */
+.seg > .tab.on,button.tab.on{color:var(--txt);background:rgba(255,255,255,.07);border-color:var(--line-2)}
+/* 兜底：内容区永远不带底色，避免任何后来新增的 .tab 规则再垫一块板 */
+section.tab,section.tab.on{background:transparent;border:0}
 
 /* ---------- 十一、可访问性：键盘焦点要看得见 ---------- */
 button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
@@ -3211,6 +3217,1554 @@ section.tab.on{display:flex;flex-direction:column}
 }
 .depov-off:active { background: rgba(255, 255, 255, .10); }
 .depov-hint { margin-top: 12px; font-size: 11px; color: rgba(238, 242, 249, .38); }
+/* ============================================================================
+   v7 · Liquid Glass —— 追加层（整段贴到本样式段末尾
+   （不要用 <link> 引，外链样式会排在现有样式段之前）；
+   之前，导致被 v5/v6 两层旧规则反压）
+
+   这一层解决什么
+   --------------
+   1. 主题不是"换几组颜色"，而是一套材质：玻璃 = 一层很薄的高光膜。
+      所以每块面都是「半透明填充 + 1px 渐变描边（上亮下暗）+ 顶部 specular
+      高光线 + 底部 1px 内阴影（做厚度）+ 一道极淡外阴影」五件套，颜色全部
+      由 --accent / --glass-alpha 这类运行时变量算出来，前端改一个变量，
+      整页的玻璃会一起变，不用再写第二套配色。
+   2. 浅色 / 暗色共用同一组组件规则：选择器统一写成 :root[data-theme] xxx
+      （权重与 v5/v6 的 :root:not([data-theme="dark"]) 相同，但源码更靠后，
+      所以一次性压过那两层的硬编码颜色），差异只留在两个令牌块里。
+   3. 观感按 iOS 26 的 Liquid Glass 走：22/28px 圆角、胶囊控件、600 字重
+      + -.01em 紧字距、cubic-bezier(.22,.9,.3,1) 的入场。
+
+   性能取舍（为什么卡片没有毛玻璃）
+   ------------------------------
+   这台机器是 4 核安卓，历史上"每张卡都 backdrop-filter"把应用进程顶到
+   21%~27%（一屏十几张卡 × 每帧重算大区域模糊）。所以这一层只允许三类
+   元素真的开 backdrop-filter：
+       header（一条横带）、nav（一颗胶囊）、.dlgmask / #depov（临时遮罩）
+   卡片一律不 blur —— 玻璃感换成本更低的四件事：半透明渐变底、1px 渐变
+   描边、1px 内高光、顶部 specular 线。没有 blur 时"折射"靠的是描边的明暗
+   对比，静态层一次栅格化就够了，滚动时不再有逐帧模糊。
+   另外全层没有常驻 animation：入场/悬停之外不动，背景极光改成静止渐变。
+
+   兼容：不用 CSS 原生嵌套、不用分层 at-rule、不用 color-mix()、不引入外部样式表。
+   老 WebView 不认的写法一个都没有；--glass-alpha 只以 rgba() 的第 4 个
+   参数形式出现，且不参与 calc()。
+   ============================================================================ */
+
+/* -----------------------------------------------------------------------------
+   0. 运行时契约：前端只改下面这几个变量（写在 document.documentElement 的
+      内联 style 上，优先级高于这里的默认值）
+   -------------------------------------------------------------------------- */
+:root{
+  /* 强调色：浅色默认 iOS 蓝，暗色在令牌块里换更亮的 #4DA3FF */
+  --accent:#0A84FF;
+  --accent-2:#5E5CE6;
+
+  /* 玻璃不透明度 0.30 ~ 0.95（滑块直接写数值） */
+  --glass-alpha:.62;
+
+  /* 模糊半径 0px ~ 28px。默认跟随旧变量 --glassBlur（v3 的薄/中/厚三档
+     仍然写这个旧名），新滑块写 --glass-blur 时它自己会盖住这里。 */
+  --glass-blur:var(--glassBlur, 20px);
+
+  /* 画布底色 / 渐变，用户可换成任意 background 值 */
+  --bg-tint:linear-gradient(180deg,rgba(255,255,255,.72) 0%,rgba(233,237,245,.42) 52%,rgba(246,248,252,.78) 100%);
+
+  /* iOS 节奏刻度 */
+  --ios-card:22px;
+  --ios-dlg:28px;
+  --ios-ease:cubic-bezier(.22,.9,.3,1);
+  --ios-ease-pop:cubic-bezier(.34,1.32,.5,1);
+  --ios-dur:.32s;
+  --ios-dur-fast:.16s;
+}
+
+/* -----------------------------------------------------------------------------
+   1. 令牌 · 浅色
+      正文 #0A1020 对画布 #F2F4F9 约 16:1；次级 #525A69 约 6.3:1；
+      三级 #666E7C 约 4.7:1，都在 4.5:1 之上。刻意不用 #6B7280（白底只有
+      4.4:1，卡面再叠一点灰就不达标）。
+   -------------------------------------------------------------------------- */
+:root:not([data-theme="dark"]){
+  color-scheme:light;
+
+  /* ---- 画布 ---- */
+  --bg:#F2F4F9;
+  /* --bg-tint 是"没有背景图/预设时"的画布底，直接给 #bgLayer 当背景图；
+     veil 只做一层很淡的顶部提亮，太实会把用户选的背景色调盖成纯白 */
+  --bg-tint:linear-gradient(180deg,#F8FAFD 0%,#EEF2F9 56%,#F5F7FC 100%);
+  --bg-veil:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.02) 46%,rgba(246,248,252,.08));
+  --bg-glow-1:none;
+  --bg-glow-2:none;
+  --bg-sheen:linear-gradient(180deg,rgba(255,255,255,.62),rgba(255,255,255,0) 26%);
+  --bg-aurora-o:.13;
+  --bgimg-veil:linear-gradient(180deg,rgba(255,255,255,.40),rgba(246,248,252,.52));
+  --bgimg-glow-1:none;
+  --bgimg-glow-2:none;
+
+  /* ---- 文字 ---- */
+  --txt:#0A1020;
+  --txt-2:#525A69;
+  --txt-3:#666E7C;
+  --h1:#060B16;
+  --h2:#0B1120;
+  --v:#101828;
+  --tv:#151D2C;
+  --prn:#0A1020;
+  --dsum:#3F4653;
+  --hint-b:#0A6BE0;
+  --slow:#525A69;
+  --ph:#747C8B;
+  --hasimg-txt:#141C2A;
+  --hasimg-txt-2:#4E5666;
+  --hasimg-ts:0 1px 2px rgba(255,255,255,.72);
+
+  /* ---- 发丝线 / 面 ---- */
+  --line:rgba(9,17,33,.10);
+  --line-2:rgba(9,17,33,.14);
+  --line-3:rgba(9,17,33,.20);
+  --surface:rgba(9,17,33,.035);
+  --surface-2:rgba(9,17,33,.06);
+  --press:rgba(9,17,33,.055);
+
+  /* ---- 玻璃层（这一层的主料） ---- */
+  --glass-alpha:.62;
+  --glass-blur:var(--glassBlur, 20px);
+  --glass-stroke:rgba(9,17,33,.085);
+  --glass-stroke-top:rgba(255,255,255,.92);
+  --glass-stroke-bot:rgba(9,17,33,.06);
+  --glass-stroke-grad:linear-gradient(180deg,var(--glass-stroke-top),var(--glass-stroke) 46%,var(--glass-stroke-bot));
+  --glass-specular:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.95),rgba(255,255,255,0));
+  --glass-sheen:linear-gradient(180deg,rgba(255,255,255,.42),rgba(255,255,255,0) 46%);
+  --glass-in:inset 0 1px 0 rgba(255,255,255,.80),inset 0 -1px 0 rgba(9,17,33,.045);
+  --glass-shadow:0 1px 2px rgba(9,17,33,.04),0 14px 30px -22px rgba(9,17,33,.45);
+  --glass-hair:rgba(9,17,33,.075);
+
+  /* ---- 卡片面：透明度只由 --glass-alpha 决定 ---- */
+  --card-a:rgba(255,255,255,var(--glass-alpha));
+  --card-b:rgba(249,251,255,var(--glass-alpha));
+  --card-bg:linear-gradient(180deg,var(--card-a),var(--card-b));
+  --card-gloss:var(--glass-specular);
+  --card-solid:linear-gradient(180deg,#FFFFFF,#F4F7FC);
+  --sh-1:var(--glass-in),var(--glass-shadow);
+
+  /* ---- 强调色 ---- */
+  --accent-ink:#0A6BE0;
+  --acc-ink:var(--accent-ink);
+  --acc-txt:var(--accent-ink);
+  --acc-line:rgba(9,17,33,.12);
+  --acc-line-2:rgba(9,17,33,.10);
+  --acc-bg:linear-gradient(180deg,rgba(255,255,255,.84),rgba(255,255,255,.88)),linear-gradient(var(--accent),var(--accent));
+  --acc-bg-2:linear-gradient(180deg,rgba(255,255,255,.88),rgba(255,255,255,.92)),linear-gradient(var(--accent),var(--accent));
+  --tag-on-txt:var(--accent-ink);
+  --on-accent:#FFFFFF;
+
+  /* 主按钮：accent 渐变 + 一道自上而下的黑纱。黑纱不是为了好看，是为了
+     让白字在 #0A84FF 上从 3.6:1 抬到 5.3:1（顶端 .20 / 底端 .34）。 */
+  --pri-scrim:linear-gradient(180deg,rgba(0,0,0,.20),rgba(0,0,0,.34));
+  --pri-bg:var(--pri-scrim),linear-gradient(160deg,var(--accent),var(--accent-2));
+  --pri-line:rgba(255,255,255,.26);
+  --pri-sh:inset 0 1px 0 rgba(255,255,255,.24),0 10px 22px -14px rgba(9,17,33,.55);
+  --focus-outline:var(--accent);
+  --focus-line:var(--accent);
+  --focus-ring:rgba(10,132,255,.16);
+
+  /* ---- 顶栏 / 底栏（唯二长期开 blur 的元素） ---- */
+  /* 顶栏/底栏/弹窗的底色都由「地板层 + 玻璃层」两层叠出来：
+     地板层保证任何 --glass-alpha 下文字都有底，玻璃层直接吃用户滑块，
+     两层 alpha 叠加后约等于原来的固定值（.62 滑块 ≈ .70 视觉）。
+     这样拖动透明度滑块时，三类 blur 面会跟卡片一起变，不会只有卡片在动。 */
+  --hdr-tint:linear-gradient(180deg,rgba(255,255,255,var(--glass-alpha)),rgba(250,251,255,var(--glass-alpha)));
+  --hdr-floor:linear-gradient(180deg,rgba(255,255,255,.24),rgba(248,250,255,.18));
+  --hdr-bg:linear-gradient(180deg,rgba(255,255,255,.34),rgba(255,255,255,0) 92%),var(--hdr-tint),var(--hdr-floor);
+  --hdr-sh:inset 0 1px 0 rgba(255,255,255,.92),0 1px 0 rgba(9,17,33,.05);
+  --nav-tint:linear-gradient(180deg,rgba(255,255,255,var(--glass-alpha)),rgba(247,249,253,var(--glass-alpha)));
+  --nav-floor:linear-gradient(180deg,rgba(255,255,255,.36),rgba(244,247,253,.30));
+  --nav-bg:var(--nav-tint),var(--nav-floor);
+  --nav-sheen:linear-gradient(180deg,rgba(255,255,255,.30),rgba(255,255,255,0) 58%);
+  --nav-sh:inset 0 1px 0 rgba(255,255,255,.95),0 16px 36px -22px rgba(9,17,33,.50);
+  --nav-knob:#FFFFFF;
+  --nav-on-txt:var(--txt);
+  --nav-on-line:transparent;
+  --nav-on-bg:linear-gradient(180deg,rgba(255,255,255,.72),rgba(255,255,255,.80)),linear-gradient(var(--accent),var(--accent));
+  --nav-on-sh:inset 0 1px 0 rgba(255,255,255,.70);
+  --hdr-solid:linear-gradient(180deg,#FBFCFE,#F4F6FB);
+  --nav-solid:linear-gradient(180deg,#FBFCFE,#F4F7FC);
+
+  /* ---- 品牌块 ---- */
+  --mark-bg:linear-gradient(180deg,rgba(0,0,0,.10),rgba(0,0,0,.22)),linear-gradient(160deg,var(--accent),var(--accent-2));
+  --mark-sh:inset 0 1px 0 rgba(255,255,255,.38),0 8px 18px -10px rgba(9,17,33,.60);
+
+  /* ---- 胶囊 / 按钮 / 分段 ---- */
+  --pill-bg:linear-gradient(180deg,rgba(255,255,255,.86),rgba(247,249,252,.80));
+  --pill-txt:#3C4351;
+  --pill-gloss:inset 0 1px 0 rgba(255,255,255,.92);
+  --pill-solid:#FFFFFF;
+  --btn-bg:linear-gradient(180deg,rgba(255,255,255,.92),rgba(247,249,253,.88));
+  --btn-solid:linear-gradient(180deg,#FFFFFF,#F3F6FB);
+  --btn-sh:inset 0 1px 0 rgba(255,255,255,.95),0 1px 2px rgba(9,17,33,.05);
+  --btn2-bg:linear-gradient(180deg,rgba(255,255,255,.90),rgba(248,250,254,.86));
+  --btn2-line:var(--acc-line);
+  --btn2-txt:var(--accent-ink);
+  --okbtn-bg:linear-gradient(180deg,rgba(16,185,129,.16),rgba(16,185,129,.07));
+  --okbtn-line:rgba(5,150,105,.28);
+  --okbtn-txt:#046C4E;
+  --dngbtn-bg:linear-gradient(180deg,rgba(239,68,68,.13),rgba(239,68,68,.06));
+  --dngbtn-line:rgba(220,38,38,.26);
+  --dngbtn-txt:#B42318;
+  --seg-bg:rgba(9,17,33,.055);
+  --seg-line:rgba(9,17,33,.06);
+  --seg-txt:var(--txt-2);
+  --seg-on-txt:#FFFFFF;
+  --seg-on-bg:var(--pri-scrim),linear-gradient(160deg,var(--accent),var(--accent-2));
+  --seg-on-sh:inset 0 1px 0 rgba(255,255,255,.22);
+  --tgl-bg:rgba(9,17,33,.12);
+  --tgl-line:rgba(9,17,33,.06);
+  --tgl-sh:none;
+  --tgl-knob:#FFFFFF;
+  --tgl-off-knob:linear-gradient(180deg,#FFFFFF,#E6EAF1);
+  --tgl-knob-sh:0 2px 5px rgba(9,17,33,.22),0 0 0 .5px rgba(9,17,33,.05);
+  --tgl-on-bg:linear-gradient(160deg,var(--accent),var(--accent-2));
+  --tgl-on-line:transparent;
+  --tgl-on-sh:inset 0 1px 2px rgba(0,0,0,.16);
+  --tgl-on-knob:#FFFFFF;
+  --sw-on-line:var(--accent);
+  --sw-on-glow:none;
+
+  /* ---- 表单 ---- */
+  --input-bg:rgba(9,17,33,.045);
+  --input-line:rgba(9,17,33,.10);
+  --input-sh:inset 0 1px 2px rgba(9,17,33,.04);
+
+  /* ---- 卡片内的小面 ---- */
+  --tile-bg:linear-gradient(180deg,rgba(9,17,33,.035),rgba(9,17,33,.015));
+  --bot-bg:linear-gradient(180deg,rgba(9,17,33,.032),rgba(9,17,33,.012));
+  --bot-sh:inset 0 1px 0 rgba(255,255,255,.80);
+  --bot-active-line:var(--acc-line);
+  --bot-active-sh:inset 0 1px 0 rgba(255,255,255,.85),0 8px 20px -16px rgba(9,17,33,.4);
+  --rebox-bg:rgba(9,17,33,.03);
+  --boot-bg:rgba(255,255,255,.66);
+  --boot-sh:inset 0 1px 0 rgba(255,255,255,.88);
+
+  /* ---- 进度 / 状态 ---- */
+  --bar-bg:rgba(9,17,33,.07);
+  --bar-sh:none;
+  --bar-fill:linear-gradient(90deg,var(--accent),var(--accent-2));
+  --bar-glow:none;
+  --dot:rgba(9,17,33,.34);
+  --dot-halo:rgba(9,17,33,.06);
+
+  /* ---- 终端 ---- */
+  --term-bg:linear-gradient(180deg,rgba(9,17,33,.045),rgba(9,17,33,.025));
+  --term-bg-2:rgba(9,17,33,.035);
+  --term-gloss:inset 0 1px 0 rgba(255,255,255,.70);
+  --pre-solid:#FBFCFE;
+  --tok-bg:rgba(9,17,33,.035);
+  --tok-sh:inset 0 1px 2px rgba(9,17,33,.04);
+  --code:#A23A0B;
+
+  /* ---- 弹窗 ---- */
+  --mask-bg:rgba(9,13,22,.34);
+  --dlg-tint:linear-gradient(180deg,rgba(255,255,255,var(--glass-alpha)),rgba(248,250,254,var(--glass-alpha)));
+  --dlg-floor:linear-gradient(180deg,rgba(255,255,255,.74),rgba(246,249,255,.68));
+  --dlg-bg:var(--dlg-tint),var(--dlg-floor);
+  --dlg-solid:linear-gradient(180deg,#FFFFFF,#F5F8FD);
+  --dlg-sh:0 1px 2px rgba(9,17,33,.06),0 30px 60px -30px rgba(9,17,33,.45);
+  --dlg-body:var(--txt-2);
+  --dlg-strong:var(--txt);
+  --qr-bg:#FFFFFF;
+
+  /* ---- hero 面板：强调色极淡底 + 深色字 ---- */
+  --hero-veil:linear-gradient(180deg,rgba(255,255,255,.90),rgba(244,248,255,.86));
+  --hero-stroke:linear-gradient(180deg,rgba(255,255,255,.96),rgba(9,17,33,.10));
+  --hero-txt:#0A1020;
+  --hero-txt-2:#525A69;
+  --hero-line:rgba(9,17,33,.10);
+  --hero-link:var(--accent-ink);
+  --hero-chip:rgba(9,17,33,.04);
+  --hero-dot-idle:rgba(9,17,33,.28);
+}
+
+/* -----------------------------------------------------------------------------
+   2. 令牌 · 暗色
+      正文 #F2F4F8 对 #05070C 约 17:1；次级 #A7AFBD 约 8.7:1；三级 #9CA3AF
+      约 7.6:1。强调色提亮到 #4DA3FF（iOS 夜间蓝），但主按钮仍然压黑纱，
+      否则白字只有 2.6:1。
+   -------------------------------------------------------------------------- */
+:root[data-theme="dark"]{
+  color-scheme:dark;
+
+  /* ---- 画布 ---- */
+  --bg:#05070C;
+  --bg-tint:linear-gradient(180deg,#0B1019 0%,#080A10 56%,#05070C 100%);
+  --bg-veil:linear-gradient(180deg,rgba(0,0,0,.05),rgba(0,0,0,.12) 56%,rgba(0,0,0,.06));
+  --bg-glow-1:none;
+  --bg-glow-2:none;
+  --bg-sheen:linear-gradient(180deg,rgba(122,150,255,.10),rgba(255,255,255,0) 30%);
+  --bg-aurora-o:.46;
+  --bgimg-veil:linear-gradient(180deg,rgba(0,0,0,.46),rgba(0,0,0,.58));
+  --bgimg-glow-1:none;
+  --bgimg-glow-2:none;
+  --bg-tint:linear-gradient(180deg,rgba(11,15,25,.52) 0%,rgba(5,7,12,.72) 58%,rgba(8,11,19,.82) 100%);
+
+  /* ---- 文字 ---- */
+  --txt:#F2F4F8;
+  --txt-2:#A7AFBD;
+  --txt-3:#9CA3AF;
+  --h1:#FAFBFF;
+  --h2:#E8EDF6;
+  --v:#E9EEF7;
+  --tv:#D6DDEB;
+  --prn:#E3E9F4;
+  --dsum:#A9B4C8;
+  --hint-b:#8FB6FF;
+  --slow:#8E9AB0;
+  --ph:#6B7280;
+  --hasimg-txt:#E7ECF5;
+  --hasimg-txt-2:#A8B2C4;
+  --hasimg-ts:0 1px 3px rgba(0,0,0,.80);
+
+  /* ---- 发丝线 / 面 ---- */
+  --line:rgba(255,255,255,.09);
+  --line-2:rgba(255,255,255,.13);
+  --line-3:rgba(255,255,255,.19);
+  --surface:rgba(255,255,255,.05);
+  --surface-2:rgba(255,255,255,.085);
+  --press:rgba(255,255,255,.07);
+
+  /* ---- 玻璃层 ---- */
+  --glass-stroke:rgba(255,255,255,.10);
+  --glass-stroke-top:rgba(255,255,255,.24);
+  --glass-stroke-bot:rgba(0,0,0,.38);
+  --glass-stroke-grad:linear-gradient(180deg,var(--glass-stroke-top),var(--glass-stroke) 46%,var(--glass-stroke-bot));
+  --glass-specular:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.30),rgba(255,255,255,0));
+  --glass-sheen:linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,0) 44%);
+  --glass-in:inset 0 1px 0 rgba(255,255,255,.14),inset 0 -1px 0 rgba(0,0,0,.28);
+  --glass-shadow:0 1px 2px rgba(0,0,0,.40),0 16px 34px -22px rgba(0,0,0,.75);
+  --glass-hair:rgba(255,255,255,.08);
+
+  /* ---- 卡片面 ---- */
+  --card-a:rgba(30,34,44,var(--glass-alpha));
+  --card-b:rgba(18,21,29,var(--glass-alpha));
+  --card-bg:linear-gradient(180deg,var(--card-a),var(--card-b));
+  --card-gloss:var(--glass-specular);
+  --card-solid:linear-gradient(180deg,#181C25,#0E1118);
+  --sh-1:var(--glass-in),var(--glass-shadow);
+
+  /* ---- 强调色 ---- */
+  --accent:#4DA3FF;
+  --accent-2:#7D7AFF;
+  --accent-ink:#4DA3FF;
+  --acc-ink:var(--accent-ink);
+  --acc-txt:var(--accent);
+  --acc-line:rgba(255,255,255,.16);
+  --acc-line-2:rgba(255,255,255,.13);
+  --acc-bg:linear-gradient(180deg,rgba(10,14,20,.80),rgba(10,14,20,.86)),linear-gradient(var(--accent),var(--accent));
+  --acc-bg-2:linear-gradient(180deg,rgba(10,14,20,.84),rgba(10,14,20,.89)),linear-gradient(var(--accent),var(--accent));
+  --tag-on-txt:var(--accent-ink);
+  --on-accent:#FFFFFF;
+
+  --pri-scrim:linear-gradient(180deg,rgba(0,0,0,.26),rgba(0,0,0,.40));
+  --pri-bg:var(--pri-scrim),linear-gradient(160deg,var(--accent),var(--accent-2));
+  --pri-line:rgba(255,255,255,.20);
+  --pri-sh:inset 0 1px 0 rgba(255,255,255,.20),0 12px 26px -16px rgba(0,0,0,.90);
+  --focus-outline:var(--accent);
+  --focus-line:var(--accent);
+  --focus-ring:rgba(77,163,255,.18);
+
+  /* ---- 顶栏 / 底栏 ---- */
+  --hdr-tint:linear-gradient(180deg,rgba(22,26,36,var(--glass-alpha)),rgba(12,15,22,var(--glass-alpha)));
+  --hdr-floor:linear-gradient(180deg,rgba(12,15,22,.32),rgba(8,11,17,.26));
+  --hdr-bg:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,0) 92%),var(--hdr-tint),var(--hdr-floor);
+  --hdr-sh:inset 0 1px 0 rgba(255,255,255,.10),0 1px 0 rgba(0,0,0,.45);
+  --nav-tint:linear-gradient(180deg,rgba(20,24,33,var(--glass-alpha)),rgba(10,13,20,var(--glass-alpha)));
+  --nav-floor:linear-gradient(180deg,rgba(8,11,17,.36),rgba(6,9,14,.30));
+  --nav-bg:var(--nav-tint),var(--nav-floor);
+  --nav-sheen:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,0) 58%);
+  --nav-sh:inset 0 1px 0 rgba(255,255,255,.12),0 18px 38px -20px rgba(0,0,0,.90);
+  --nav-knob:#0A0D14;
+  --nav-on-txt:#FFFFFF;
+  --nav-on-line:transparent;
+  --nav-on-bg:linear-gradient(180deg,rgba(12,16,24,.66),rgba(12,16,24,.74)),linear-gradient(var(--accent),var(--accent));
+  --nav-on-sh:inset 0 1px 0 rgba(255,255,255,.16);
+  --hdr-solid:linear-gradient(180deg,rgba(14,17,24,.97),rgba(10,12,18,.94));
+  --nav-solid:linear-gradient(180deg,rgba(14,16,24,.98),rgba(9,11,17,.97));
+
+  /* ---- 品牌块 ---- */
+  --mark-bg:linear-gradient(180deg,rgba(0,0,0,.10),rgba(0,0,0,.26)),linear-gradient(160deg,var(--accent),var(--accent-2));
+  --mark-sh:inset 0 1px 0 rgba(255,255,255,.34),0 10px 22px -12px rgba(0,0,0,.90);
+
+  /* ---- 胶囊 / 按钮 / 分段 ---- */
+  --pill-bg:linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.05));
+  --pill-txt:#C7CEDB;
+  --pill-gloss:inset 0 1px 0 rgba(255,255,255,.10);
+  --pill-solid:rgba(32,36,48,.95);
+  --btn-bg:linear-gradient(180deg,rgba(255,255,255,.095),rgba(255,255,255,.045));
+  --btn-solid:linear-gradient(180deg,#2C3242,#1C202C);
+  --btn-sh:inset 0 1px 0 rgba(255,255,255,.12),0 1px 2px rgba(0,0,0,.35);
+  --btn2-bg:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.045));
+  --btn2-line:rgba(255,255,255,.14);
+  --btn2-txt:var(--accent);
+  --okbtn-bg:linear-gradient(180deg,rgba(52,211,153,.20),rgba(16,120,80,.24));
+  --okbtn-line:rgba(52,211,153,.30);
+  --okbtn-txt:#BDF7DB;
+  --dngbtn-bg:linear-gradient(180deg,rgba(255,90,110,.20),rgba(140,24,40,.26));
+  --dngbtn-line:rgba(255,110,130,.30);
+  --dngbtn-txt:#FFD9DE;
+  --seg-bg:rgba(255,255,255,.06);
+  --seg-line:rgba(255,255,255,.07);
+  --seg-txt:var(--txt-2);
+  --seg-on-txt:#FFFFFF;
+  --seg-on-bg:var(--pri-scrim),linear-gradient(160deg,var(--accent),var(--accent-2));
+  --seg-on-sh:inset 0 1px 0 rgba(255,255,255,.18);
+  --tgl-bg:rgba(255,255,255,.13);
+  --tgl-line:rgba(255,255,255,.04);
+  --tgl-sh:none;
+  --tgl-knob:#FFFFFF;
+  --tgl-off-knob:linear-gradient(180deg,#F1F4F9,#C6CBD6);
+  --tgl-knob-sh:0 2px 6px rgba(0,0,0,.55),0 0 0 .5px rgba(0,0,0,.30);
+  --tgl-on-bg:linear-gradient(160deg,var(--accent),var(--accent-2));
+  --tgl-on-line:transparent;
+  --tgl-on-sh:inset 0 1px 2px rgba(0,0,0,.24);
+  --tgl-on-knob:#FFFFFF;
+  --sw-on-line:var(--accent);
+  --sw-on-glow:none;
+
+  /* ---- 表单 ---- */
+  --input-bg:rgba(255,255,255,.055);
+  --input-line:rgba(255,255,255,.12);
+  --input-sh:inset 0 1px 2px rgba(0,0,0,.28);
+
+  /* ---- 卡片内的小面 ---- */
+  --tile-bg:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));
+  --bot-bg:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.018));
+  --bot-sh:inset 0 1px 0 rgba(255,255,255,.075);
+  --bot-active-line:rgba(255,255,255,.16);
+  --bot-active-sh:inset 0 1px 0 rgba(255,255,255,.12),0 10px 26px -18px rgba(0,0,0,.8);
+  --rebox-bg:rgba(255,255,255,.04);
+  --boot-bg:rgba(255,255,255,.05);
+  --boot-sh:inset 0 1px 0 rgba(255,255,255,.07);
+
+  /* ---- 进度 / 状态 ---- */
+  --bar-bg:rgba(255,255,255,.10);
+  --bar-sh:none;
+  --bar-fill:linear-gradient(90deg,var(--accent),var(--accent-2));
+  --bar-glow:none;
+  --dot:rgba(255,255,255,.34);
+  --dot-halo:rgba(255,255,255,.05);
+
+  /* ---- 终端 ---- */
+  --term-bg:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.025));
+  --term-bg-2:rgba(255,255,255,.035);
+  --term-gloss:inset 0 1px 0 rgba(255,255,255,.06);
+  --pre-solid:rgba(8,10,16,.92);
+  --tok-bg:rgba(255,255,255,.045);
+  --tok-sh:inset 0 1px 2px rgba(0,0,0,.30);
+  --code:#FFD479;
+
+  /* ---- 弹窗 ---- */
+  --mask-bg:rgba(2,4,8,.58);
+  --dlg-tint:linear-gradient(180deg,rgba(30,34,44,var(--glass-alpha)),rgba(18,21,29,var(--glass-alpha)));
+  --dlg-floor:linear-gradient(180deg,rgba(28,32,42,.74),rgba(16,19,27,.70));
+  --dlg-bg:var(--dlg-tint),var(--dlg-floor);
+  --dlg-solid:linear-gradient(180deg,#1A1E28,#11141C);
+  --dlg-sh:0 2px 10px rgba(0,0,0,.45),0 34px 70px -34px rgba(0,0,0,.95);
+  --dlg-body:var(--txt-2);
+  --dlg-strong:var(--txt);
+  --qr-bg:#FFFFFF;
+
+  /* ---- hero 面板：暗色下是一块"沉下去"的深色玻璃 ---- */
+  --hero-veil:linear-gradient(180deg,rgba(13,17,24,.80),rgba(8,10,16,.87));
+  --hero-stroke:linear-gradient(180deg,rgba(255,255,255,.26),rgba(255,255,255,.06));
+  --hero-txt:#FFFFFF;
+  --hero-txt-2:rgba(255,255,255,.66);
+  --hero-line:rgba(255,255,255,.12);
+  --hero-link:#9EC5FF;
+  --hero-chip:rgba(255,255,255,.06);
+  --hero-dot-idle:rgba(255,255,255,.42);
+}
+
+/* 自定义背景图：卡片要更实一点，否则照片纹理直接穿过正文 */
+:root:not([data-theme="dark"]) body.hasimg{
+  --card-a:rgba(255,255,255,.90);
+  --card-b:rgba(248,251,255,.86);
+  --bgimg-veil:linear-gradient(180deg,rgba(255,255,255,.42),rgba(244,247,252,.54));
+}
+:root[data-theme="dark"] body.hasimg{
+  --card-a:rgba(26,29,38,.90);
+  --card-b:rgba(16,19,26,.88);
+}
+
+/* -----------------------------------------------------------------------------
+   3. 画布：底色 + 一层静止的强调色极光
+      极光用 ::after 叠在 veil 之上，颜色直接取 --accent，靠整层的 opacity
+      压到"看得见但不抢字"。这里没有动画（旧版 26s 的 auroraDrift 已删）。
+   -------------------------------------------------------------------------- */
+:root[data-theme] body{
+  background:var(--bg);
+  color:var(--txt);
+  padding-bottom:calc(104px + env(safe-area-inset-bottom));
+}
+
+:root[data-theme] #bgLayer{
+  background-color:var(--bg);
+  background-image:var(--bg-tint);
+}
+
+:root[data-theme] #bgMask{
+  background:var(--bg-veil);
+}
+
+:root[data-theme] body.hasimg #bgMask{
+  background:var(--bgimg-veil);
+}
+
+:root[data-theme] #bgMask::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:var(--bg-sheen);
+}
+
+:root[data-theme] #bgMask::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  opacity:var(--bg-aurora-o,.13);
+  animation:none;
+  background:
+    radial-gradient(58% 32% at 86% 0%,var(--acc-soft,rgba(10,132,255,.30)),rgba(0,0,0,0) 72%),
+    radial-gradient(52% 30% at 6% 96%,var(--acc-soft-2,rgba(94,92,230,.26)),rgba(0,0,0,0) 74%),
+    radial-gradient(80% 46% at 50% -16%,var(--acc-soft,rgba(10,132,255,.30)),rgba(0,0,0,0) 68%);
+}
+
+/* -----------------------------------------------------------------------------
+   4. 卡片材质（全层最核心的一条）
+      background 三层：sheen（填充内的顶光）→ 半透明填充 → 渐变描边。
+      描边层用 border-box 并在下面透出来一点，就是 iOS 那种"边缘在折射"的
+      观感；底部再用 inset 0 -1px 压一道暗边，面就有了厚度。
+      注意：这里没有 backdrop-filter，滚动时不产生逐帧模糊。
+   -------------------------------------------------------------------------- */
+:root[data-theme] .card{
+  position:relative;
+  border:1px solid transparent;
+  border-radius:var(--ios-card);
+  background:
+    var(--glass-sheen) padding-box,
+    var(--card-bg) padding-box,
+    var(--glass-stroke-grad) border-box;
+  box-shadow:var(--glass-in),var(--glass-shadow);
+}
+
+/* 卡片顶部那条 specular：只在中间 2/3 出现，两端渐隐，像一层膜的反光边 */
+:root[data-theme] .card::before{
+  content:"";
+  position:absolute;
+  left:18px;
+  right:18px;
+  top:0;
+  height:1px;
+  pointer-events:none;
+  background:var(--glass-specular);
+  opacity:.55;
+}
+
+/* 卡片标题：iOS 的分组标题是"小、紧、低对比"，识别靠位置而不是靠字号 */
+:root[data-theme] .card h2{
+  position:relative;
+  padding-left:10px;
+  font-size:13px;
+  font-weight:600;
+  letter-spacing:-.01em;
+  color:var(--txt-2);
+  margin-bottom:12px;
+}
+
+:root[data-theme] .card h2::before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:50%;
+  width:3px;
+  height:13px;
+  margin-top:-6.5px;
+  border-radius:3px;
+  background:var(--accent);
+  opacity:.85;
+}
+
+/* .quick 是首页那组快捷动作，材质跟卡片同源，只是没有标题 */
+:root[data-theme] .quick{
+  border:1px solid transparent;
+  border-radius:var(--ios-card);
+  background:
+    var(--glass-sheen) padding-box,
+    var(--card-bg) padding-box,
+    var(--glass-stroke-grad) border-box;
+  box-shadow:var(--glass-in),var(--glass-shadow);
+  overflow:hidden;
+}
+
+/* 实例块 / 复选盒：卡片里的小面，退一档，只用发丝线和极淡底 */
+:root[data-theme] .bot{
+  border-radius:16px;
+  border:1px solid var(--line);
+  background:var(--bot-bg);
+  box-shadow:none;
+}
+
+:root[data-theme] .bot.active{
+  border-color:var(--bot-active-line);
+  background:var(--acc-bg-2);
+  box-shadow:var(--bot-active-sh);
+}
+
+:root[data-theme] .rebox{
+  border-radius:16px;
+  border:1px solid var(--line-2);
+  background:var(--rebox-bg);
+}
+
+:root[data-theme] .tile{
+  border-radius:14px;
+  border:1px solid var(--line);
+  background:var(--tile-bg);
+}
+
+/* -----------------------------------------------------------------------------
+   5. hero（#statusCard）：整页唯一的一张"强调卡"
+      底 = 强调色渐变，上面压一层 90% 的白纱（浅色）/ 80% 的暗纱（暗色），
+      于是得到"极淡的强调色底"，不需要 color-mix 也能吃到用户选的颜色。
+      状态光晕 --hero-glow 仍然由 JS 写在元素上，排在纱层之上。
+   -------------------------------------------------------------------------- */
+:root[data-theme] .card.hero,
+:root[data-theme] .card#statusCard{
+  color:var(--hero-txt);
+  border:1px solid transparent;
+  border-radius:var(--ios-card);
+  padding:20px 18px 15px;
+  background:
+    radial-gradient(120% 92% at 10% -10%,var(--hero-glow,rgba(0,0,0,0)),rgba(0,0,0,0) 58%) padding-box,
+    var(--hero-veil) padding-box,
+    linear-gradient(160deg,var(--accent),var(--accent-2)) padding-box,
+    var(--hero-stroke) border-box;
+  box-shadow:
+    var(--glass-in),
+    0 18px 40px -26px rgba(0,0,0,.45);
+}
+
+:root[data-theme] .card#statusCard::after{
+  opacity:.5;
+}
+
+:root[data-theme] .card#statusCard .h3v{
+  color:var(--hero-txt);
+  font-weight:600;
+  letter-spacing:-.026em;
+}
+
+:root[data-theme] .card#statusCard .h3s{
+  color:var(--hero-txt-2);
+  font-size:13px;
+  line-height:1.6;
+}
+
+:root[data-theme] .card#statusCard .h3dot.idle{
+  background:var(--hero-dot-idle);
+  color:var(--hero-dot-idle);
+}
+
+:root[data-theme] .card#statusCard #astrBoot{
+  color:var(--hero-txt-2);
+  background:var(--hero-chip);
+  border-color:var(--hero-line);
+  border-radius:14px;
+}
+
+:root[data-theme] .card#statusCard .today{
+  border-top-color:var(--hero-line);
+}
+
+:root[data-theme] .card#statusCard .tlabel{
+  color:var(--hero-txt-2);
+  font-size:10.5px;
+  letter-spacing:.06em;
+}
+
+:root[data-theme] .card#statusCard .tval{
+  color:var(--hero-txt);
+  font-size:17px;
+  letter-spacing:-.02em;
+}
+
+:root[data-theme] .card#statusCard .linkbtn{
+  color:var(--hero-link);
+}
+
+/* -----------------------------------------------------------------------------
+   6. 顶栏：全屏仅有的两条常驻模糊之一
+      顶栏 1px 高光 + 底部一根发丝线就够，不做边框盒、不做阴影堆叠。
+   -------------------------------------------------------------------------- */
+:root[data-theme] header{
+  padding:12px 16px 10px;
+  background:var(--hdr-bg);
+  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(180%);
+  backdrop-filter:blur(var(--glass-blur)) saturate(180%);
+  border-bottom:1px solid var(--glass-hair);
+  box-shadow:var(--hdr-sh);
+}
+
+:root[data-theme] header h1{
+  font-size:20px;
+  font-weight:600;
+  letter-spacing:-.015em;
+  color:var(--h1);
+}
+
+:root[data-theme] .sub{
+  margin-top:1px;
+  font-size:12px;
+  color:var(--txt-3);
+}
+
+:root[data-theme] .mark:not(.hasav){
+  border-radius:11px;
+  background:var(--mark-bg);
+  box-shadow:var(--mark-sh);
+  color:var(--on-accent);
+}
+
+:root[data-theme] .iconbtn{
+  width:36px;
+  height:36px;
+  border-radius:12px;
+  color:var(--txt-2);
+}
+
+:root[data-theme] #btnSettings.on{
+  color:var(--acc-txt);
+  background:var(--acc-bg);
+  border-color:var(--acc-line);
+}
+
+/* -----------------------------------------------------------------------------
+   7. 底栏：悬浮胶囊（另一条常驻模糊）
+      从"贴底的一条"改成"浮起来的一颗"，靠 1px 渐变描边和投影和内容分层。
+   -------------------------------------------------------------------------- */
+:root[data-theme] nav{
+  left:10px;
+  right:10px;
+  bottom:calc(10px + env(safe-area-inset-bottom));
+  gap:2px;
+  padding:6px;
+  border:1px solid transparent;
+  border-radius:26px;
+  background:
+    var(--nav-sheen) padding-box,
+    var(--nav-bg) padding-box,
+    var(--glass-stroke-grad) border-box;
+  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(170%);
+  backdrop-filter:blur(var(--glass-blur)) saturate(170%);
+  box-shadow:var(--nav-sh);
+}
+
+:root[data-theme] nav button{
+  padding:7px 0 6px;
+  border:1px solid transparent;
+  border-radius:19px;
+  font-size:10.5px;
+  font-weight:600;
+  letter-spacing:.01em;
+  color:var(--txt-3);
+  background:transparent;
+  box-shadow:none;
+  transition:
+    color var(--ios-dur-fast) var(--ios-ease),
+    background var(--ios-dur-fast) var(--ios-ease),
+    transform var(--ios-dur-fast) var(--ios-ease);
+}
+
+:root[data-theme] nav button:active{
+  transform:scale(.96);
+}
+
+:root[data-theme] nav .ic{
+  width:21px;
+  height:21px;
+}
+
+/* 选中态：底色吃 --accent（浅色=白纱，暗色=暗纱），文字保持高对比；
+   图标单独用强调色，Tab 的"选中感"就落在图标上，不牺牲字号对比度。 */
+:root[data-theme] nav button.on{
+  color:var(--nav-on-txt);
+  background:var(--nav-on-bg);
+  border-color:var(--nav-on-line);
+  box-shadow:var(--nav-on-sh);
+}
+
+:root[data-theme] nav button.on .ic{
+  color:var(--accent-ink);
+}
+
+:root[data-theme] nav button.on .knob{
+  fill:currentColor;
+}
+
+/* -----------------------------------------------------------------------------
+   8. 分段控件：iOS 的"药丸轨道 + 药丸滑块"
+      轨道只做 5~6% 的灰，滑块是强调色实心，两者都 999px。
+   -------------------------------------------------------------------------- */
+:root[data-theme] .seg{
+  padding:3px;
+  gap:3px;
+  border-radius:var(--r-full);
+  border:1px solid var(--seg-line);
+  background:var(--seg-bg);
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.04);
+  overflow:visible;
+}
+
+:root[data-theme] .seg button{
+  min-height:34px;
+  padding:7px 16px;
+  border:0;
+  border-radius:var(--r-full);
+  font-size:12.5px;
+  font-weight:600;
+  letter-spacing:-.005em;
+  color:var(--seg-txt);
+  background:transparent;
+  box-shadow:none;
+  transition:
+    background var(--ios-dur-fast) var(--ios-ease),
+    color var(--ios-dur-fast) var(--ios-ease),
+    box-shadow var(--ios-dur-fast) var(--ios-ease);
+}
+
+:root[data-theme] .seg button + button{
+  border-left:0;
+}
+
+:root[data-theme] .seg button.on{
+  color:var(--seg-on-txt);
+  background:var(--seg-on-bg);
+  box-shadow:var(--seg-on-sh);
+}
+
+/* -----------------------------------------------------------------------------
+   9. 开关：严格按 iOS 的比例 —— 50×30 的轨道 + 26px 的圆钮，左右各留 1px
+      （border-box，内宽 48：关 left:1，开 left:21）
+   -------------------------------------------------------------------------- */
+:root[data-theme] .tgl{
+  width:50px;
+  height:30px;
+  padding:0;
+  border-radius:var(--r-full);
+  border:1px solid var(--tgl-line);
+  background:var(--tgl-bg);
+  box-shadow:var(--tgl-sh);
+  transition:
+    background var(--ios-dur) var(--ios-ease),
+    border-color var(--ios-dur) var(--ios-ease),
+    box-shadow var(--ios-dur) var(--ios-ease);
+}
+
+:root[data-theme] .tgl::after{
+  top:1px;
+  left:1px;
+  width:26px;
+  height:26px;
+  border-radius:50%;
+  background:#FFFFFF;
+  box-shadow:var(--tgl-knob-sh);
+  transition:left var(--ios-dur) var(--ios-ease-pop);
+}
+
+:root[data-theme] .tgl.on{
+  background:var(--tgl-on-bg);
+  border-color:transparent;
+  box-shadow:var(--tgl-on-sh);
+}
+
+:root[data-theme] .tgl.on::after{
+  left:21px;
+  background:#FFFFFF;
+}
+
+:root[data-theme] .tgl.locked::after{
+  background:var(--tgl-off-knob);
+}
+
+/* -----------------------------------------------------------------------------
+   10. 按钮：全部收成胶囊；主按钮是强调色渐变 + 黑纱，次级按钮退成玻璃面
+   -------------------------------------------------------------------------- */
+:root[data-theme] .btns > button,
+:root[data-theme] button.small,
+:root[data-theme] button.primary,
+:root[data-theme] button.danger,
+:root[data-theme] button.ok,
+:root[data-theme] .dfoot button{
+  border-radius:var(--r-full);
+}
+
+:root[data-theme] button:active{
+  transform:scale(.97);
+  opacity:.96;
+}
+
+:root[data-theme] button.small{
+  background:var(--btn-bg);
+  border-color:var(--line-2);
+  color:var(--txt);
+  box-shadow:var(--btn-sh);
+}
+
+:root[data-theme] button.primary,
+:root[data-theme] .btns > button.primary:only-child,
+:root[data-theme] .btns > button.primary[style*="flex:1"]{
+  background:var(--pri-bg);
+  border-color:var(--pri-line);
+  color:var(--on-accent);
+  box-shadow:var(--pri-sh);
+}
+
+/* 一屏只允许一颗实心主按钮。并排的、行内的、提示条里的 primary 一律退成
+   玻璃面 + 强调色文字（层级靠"实心 vs 空心"，不靠颜色深浅）。 */
+:root[data-theme] .btns > button.primary:not(:only-child),
+:root[data-theme] .lkbtns button.small.primary,
+:root[data-theme] .lkrow .btns > button.primary,
+:root[data-theme] #noticeWrap button.primary{
+  background:var(--btn2-bg);
+  border:1px solid var(--btn2-line);
+  color:var(--btn2-txt);
+  box-shadow:var(--btn-sh);
+}
+
+:root[data-theme] button.danger{
+  background:var(--dngbtn-bg);
+  border-color:var(--dngbtn-line);
+  color:var(--dngbtn-txt);
+  box-shadow:var(--btn-sh);
+}
+
+:root[data-theme] button.ok{
+  background:var(--okbtn-bg);
+  border-color:var(--okbtn-line);
+  color:var(--okbtn-txt);
+  box-shadow:var(--btn-sh);
+}
+
+:root[data-theme] button[data-act="backhome"]{
+  background:transparent;
+  border-color:transparent;
+  color:var(--accent-ink);
+  box-shadow:none;
+}
+
+/* -----------------------------------------------------------------------------
+   11. 胶囊状态 / 标签
+   -------------------------------------------------------------------------- */
+:root[data-theme] .pill{
+  padding:4px 11px;
+  border-radius:var(--r-full);
+  font-size:11.5px;
+  font-weight:500;
+  letter-spacing:0;
+  background:var(--pill-bg);
+  border:1px solid var(--line-2);
+  box-shadow:var(--pill-gloss);
+}
+
+/* iOS 的状态点是一颗实心小圆，不带发光（发光是旧版霓虹感的来源） */
+:root[data-theme] .pill::before{
+  width:6px;
+  height:6px;
+  box-shadow:none;
+  background:currentColor;
+}
+
+:root[data-theme] .tag{
+  padding:3px 10px;
+  border-radius:var(--r-full);
+  font-weight:500;
+  letter-spacing:.005em;
+}
+
+:root[data-theme] .tag.on{
+  color:var(--tag-on-txt);
+  border-color:var(--acc-line);
+  background:var(--acc-bg-2);
+}
+
+/* -----------------------------------------------------------------------------
+   12. 表单：输入框是"陷下去的"填充面，聚焦时描边变强调色并加一道内描边
+      （不用 box-shadow 光晕，暗色下会更干净）
+   -------------------------------------------------------------------------- */
+:root[data-theme] select,
+:root[data-theme] input:not([type="range"]),
+:root[data-theme] textarea{
+  padding:11px 13px;
+  border-radius:14px;
+  font-size:14px;
+  color:var(--txt);
+  background:var(--input-bg);
+  border:1px solid var(--input-line);
+  box-shadow:var(--input-sh);
+  transition:
+    border-color var(--ios-dur-fast) var(--ios-ease),
+    box-shadow var(--ios-dur-fast) var(--ios-ease);
+}
+
+:root[data-theme] select:focus,
+:root[data-theme] input:not([type="range"]):focus,
+:root[data-theme] textarea:focus{
+  outline:none;
+  border-color:var(--focus-line);
+  box-shadow:var(--input-sh),inset 0 0 0 1px var(--focus-line);
+}
+
+:root[data-theme] textarea{
+  width:100%;
+  min-height:88px;
+  line-height:1.6;
+  resize:vertical;
+}
+
+/* 旧层给输入框写死了 38px 定高，再叠加 11px 上下内边距，文字就会被裁掉上半截；
+   这里把高度交还给内容，只保留最小高度。下拉框同时把右侧箭头位留出来，
+   否则原生箭头会压在文字尾巴上（截图验证过的两处实际缺陷）。 */
+:root[data-theme] select,
+:root[data-theme] input:not([type="range"]){
+  height:auto;
+  min-height:44px;
+  line-height:1.35;
+}
+
+/* 旧层的箭头是用 background-image 画的双渐变 chevron；上面那条 background 简写
+   会把它一并清空，所以这里原样补回来，并按新的 44px 高度重新定心。 */
+:root[data-theme] select{
+  padding-right:38px;
+  background-image:linear-gradient(45deg,transparent 50%,var(--txt-3) 50%),
+                   linear-gradient(135deg,var(--txt-3) 50%,transparent 50%);
+  background-repeat:no-repeat,no-repeat;
+  background-position:calc(100% - 19px) 20px,calc(100% - 14px) 20px;
+  background-size:5px 5px,5px 5px;
+}
+
+/* -----------------------------------------------------------------------------
+   13. 对话框 / 遮罩：第三条也是最后一条 backdrop-filter
+       iOS 的做法是"底下的内容被糊掉，但还看得出是毛玻璃"，所以遮罩只给
+       一层薄纱 + 12px 模糊，不给 40px 的重模糊（那在 4 核机上是白送 GPU）。
+   -------------------------------------------------------------------------- */
+:root[data-theme] .dlgmask{
+  background:var(--mask-bg);
+  -webkit-backdrop-filter:blur(12px) saturate(120%);
+  backdrop-filter:blur(12px) saturate(120%);
+  animation:v7-fade .2s var(--ios-ease) both;
+}
+
+:root[data-theme] .dlg{
+  border:1px solid transparent;
+  border-radius:var(--ios-dlg);
+  background:
+    var(--glass-sheen) padding-box,
+    var(--dlg-bg) padding-box,
+    var(--glass-stroke-grad) border-box;
+  box-shadow:var(--dlg-sh);
+  animation:v7-dlg-in .34s var(--ios-ease) both;
+}
+
+:root[data-theme] .dlg h2,
+:root[data-theme] .dlg h3{
+  font-weight:600;
+  letter-spacing:-.015em;
+}
+
+:root[data-theme] .dlg .sub,
+:root[data-theme] .dlg p{
+  color:var(--txt-2);
+}
+
+:root[data-theme] .dlg .qrnone{
+  border-radius:18px;
+  border:1px dashed var(--line-2);
+  background:var(--surface);
+  color:var(--txt-3);
+}
+
+/* 底部动作区：一条发丝线收口，按钮沿用胶囊 */
+:root[data-theme] .dfoot{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:10px;
+  padding-top:14px;
+  border-top:1px solid var(--line);
+}
+
+/* 只有一颗按钮的对话框（条款、公告这类）让它撑满整行，别缩在右下角 */
+:root[data-theme] .dfoot > button:only-child{
+  flex:1;
+}
+
+/* -----------------------------------------------------------------------------
+   14. 外观卡：行、色板、滑块
+      这里的每个控件都是"实心填充面"，故意不用玻璃 —— 外观面板本身就在一张
+      卡里，再叠玻璃会变成磨砂塑料。
+   -------------------------------------------------------------------------- */
+:root[data-theme] .fxrow{
+  padding:12px 0;
+  border-top:1px solid var(--line);
+}
+
+:root[data-theme] .fxrow:first-of-type{
+  padding-top:2px;
+  border-top:0;
+}
+
+:root[data-theme] .fxlabel{
+  font-size:13px;
+  font-weight:600;
+  letter-spacing:-.005em;
+  color:var(--txt);
+}
+
+:root[data-theme] .fxval{
+  font-size:12px;
+  font-variant-numeric:tabular-nums;
+  color:var(--txt-3);
+}
+
+:root[data-theme] .swatches{
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+/* 色块只调形状与描边：底色是 JS 写的 inline background-image，v7 不碰 */
+:root[data-theme] .sw{
+  width:38px;
+  height:38px;
+  border-radius:13px;
+  border:1px solid var(--line-2);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.22),
+    0 1px 2px rgba(15,23,42,.10);
+  transition:
+    transform var(--ios-dur-fast) var(--ios-ease),
+    box-shadow var(--ios-dur-fast) var(--ios-ease);
+}
+
+:root[data-theme] .sw:active{
+  transform:scale(.94);
+}
+
+/* -----------------------------------------------------------------------------
+   15. 启动条 / 状态横幅 / 进度条
+       .bootbar 是"拉起 / 起好 / 起不来"的横幅（不是进度条），左边那道 3px 的
+       状态轨保留 —— 它是全页唯一允许的"色条传达状态"，因为文案也同时变了。
+       进度条 .bar 只做渐变填充，不做扫光（扫光是无限动画，线上就是它在吃 GPU）。
+   -------------------------------------------------------------------------- */
+:root[data-theme] .bootbar{
+  margin:10px 0 0;
+  padding:11px 14px;
+  border-radius:18px;
+  border:1px solid var(--line);
+  border-left:3px solid var(--line-2);
+  background:var(--boot-bg);
+  box-shadow:var(--boot-sh);
+  animation:v7-rise .34s var(--ios-ease) both;
+}
+
+:root[data-theme] .bootbar .bi{
+  color:var(--accent);
+}
+
+:root[data-theme] .bootbar .bt b{
+  font-size:12.5px;
+  font-weight:600;
+  letter-spacing:-.005em;
+}
+
+:root[data-theme] .bootbar .bt span{
+  font-size:11.5px;
+  line-height:1.45;
+}
+
+:root[data-theme] .bootbar.ok{
+  border-color:var(--line);
+  border-left-color:var(--ok);
+}
+
+:root[data-theme] .bootbar.bad{
+  border-color:var(--line);
+  border-left-color:var(--boot-bad-ic);
+}
+
+:root[data-theme] .bootbar.crash{
+  border-color:var(--line);
+  border-left-color:var(--warn);
+  background:var(--card-bg);
+  box-shadow:var(--boot-sh);
+}
+
+:root[data-theme] .bar{
+  height:6px;
+  border:0;
+  border-radius:var(--r-full);
+  background:var(--bar-bg);
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.06);
+  overflow:hidden;
+}
+
+:root[data-theme] .bar > i{
+  border-radius:var(--r-full);
+  background:var(--bar-fill);
+  box-shadow:0 0 10px var(--bar-glow);
+  transition:width .45s var(--ios-ease);
+}
+
+/* -----------------------------------------------------------------------------
+   16. 依赖安装浮层 #depov
+       它本身就是一块全屏玻璃（允许 blur），所以内部面板一律不 blur。
+       底色 = 深色纱 + 一团强调色光，白字对比度稳稳在 4.5:1 以上。
+   -------------------------------------------------------------------------- */
+:root[data-theme] #depov{
+  background:
+    linear-gradient(180deg,rgba(9,12,19,.66),rgba(7,9,15,.90) 55%,rgba(6,8,13,.94)),
+    radial-gradient(110% 70% at 50% -8%,var(--accent),rgba(0,0,0,0) 62%);
+  -webkit-backdrop-filter:blur(14px) saturate(120%);
+  backdrop-filter:blur(14px) saturate(120%);
+  animation:v7-fade .22s var(--ios-ease) both;
+}
+
+:root[data-theme] .depov-in{
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:28px;
+  background:rgba(255,255,255,.055);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.10),
+    0 24px 60px -24px rgba(0,0,0,.70);
+}
+
+:root[data-theme] .depov-t{
+  font-size:19px;
+  font-weight:600;
+  letter-spacing:-.012em;
+  color:#FFFFFF;
+}
+
+:root[data-theme] .depov-s{
+  font-size:12.5px;
+  line-height:1.6;
+  color:rgba(255,255,255,.66);
+}
+
+:root[data-theme] .depov-hint{
+  font-size:11.5px;
+  color:rgba(255,255,255,.50);
+}
+
+/* 圆环：描边换成强调色，去掉 drop-shadow —— 那个滤镜每帧都要重算模糊，
+   是浮层里最贵的一行，删掉之后环一样好看。 */
+:root[data-theme] .depov-ring .trk{
+  stroke:rgba(255,255,255,.10);
+}
+
+:root[data-theme] .depov-ring .arc{
+  stroke:var(--accent);
+  filter:none;
+}
+
+:root[data-theme] .depov-bar{
+  border-radius:var(--r-full);
+  background:rgba(255,255,255,.12);
+  overflow:hidden;
+}
+
+:root[data-theme] .depov-bar > i{
+  border-radius:var(--r-full);
+  background:linear-gradient(90deg,var(--accent),var(--accent-2));
+  transition:width .4s var(--ios-ease);
+}
+
+:root[data-theme] .depov-log{
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(0,0,0,.32);
+}
+
+:root[data-theme] .depov-off{
+  padding:8px 18px;
+  border-radius:var(--r-full);
+  border:1px solid rgba(255,255,255,.16);
+  background:rgba(255,255,255,.10);
+  color:#FFFFFF;
+  font-weight:600;
+}
+
+/* -----------------------------------------------------------------------------
+   17. 终端块 / 令牌框：圆角 14 + 发丝线，跟卡片同一套语言
+   -------------------------------------------------------------------------- */
+:root[data-theme] pre,
+:root[data-theme] .term{
+  border-radius:14px;
+  border:1px solid var(--line);
+  background:var(--term-bg);
+  box-shadow:var(--term-gloss);
+  font-size:12.5px;
+  line-height:1.55;
+}
+
+:root[data-theme] .tokbox{
+  border-radius:14px;
+  border:1px solid var(--line);
+  background:var(--tok-bg);
+  box-shadow:var(--tok-sh);
+}
+
+/* -----------------------------------------------------------------------------
+   18. 入场动效：只在这里出现 animation，全部 one-shot（无 infinite），
+       结束时 transform 回到 none，避免给卡片留下 containing block。
+   -------------------------------------------------------------------------- */
+@keyframes v7-fade{
+  from{opacity:0}
+  to{opacity:1}
+}
+
+@keyframes v7-rise{
+  from{opacity:0;transform:translate3d(0,10px,0)}
+  to{opacity:1;transform:none}
+}
+
+@keyframes v7-dlg-in{
+  from{opacity:0;transform:translate3d(0,16px,0) scale(.985)}
+  to{opacity:1;transform:translate3d(0,0,0) scale(1)}
+}
+
+:root[data-theme] .card{
+  animation:v7-rise .42s var(--ios-ease) both;
+}
+
+/* 第二张之后依次晚 40ms 起来，一串卡片像被"抖"出来的 */
+:root[data-theme] .card:nth-of-type(2){
+  animation-delay:.04s;
+}
+
+:root[data-theme] .card:nth-of-type(3){
+  animation-delay:.08s;
+}
+
+:root[data-theme] .card:nth-of-type(n+4){
+  animation-delay:.12s;
+}
+
+:root[data-theme] .sw{
+  animation:v7-fade .3s var(--ios-ease) both;
+}
+
+/* -----------------------------------------------------------------------------
+   19. 低配开关：data-glass="off" 时把全页仅有的三处 backdrop-filter 一起关掉，
+       并把顶栏/底栏换成不透明的实色面（否则关掉模糊会看见底下的字）。
+       前端只需要在设置里给一个"省电模式"就能用。
+   -------------------------------------------------------------------------- */
+:root[data-glass="off"] header{
+  background:var(--hdr-solid);
+  -webkit-backdrop-filter:none;
+  backdrop-filter:none;
+}
+
+:root[data-glass="off"] nav{
+  background:var(--nav-solid);
+  -webkit-backdrop-filter:none;
+  backdrop-filter:none;
+}
+
+:root[data-glass="off"] .dlgmask{
+  background:var(--mask-bg);
+  -webkit-backdrop-filter:none;
+  backdrop-filter:none;
+}
+
+:root[data-glass="off"] #depov{
+  -webkit-backdrop-filter:none;
+  backdrop-filter:none;
+}
+
+:root[data-glass="off"] .dlg{
+  background:var(--dlg-solid);
+}
+
+/* -----------------------------------------------------------------------------
+   20. 降级 / 兜底：不支持 backdrop-filter 的 WebView 直接吃实色面，
+       不能出现"顶上一条透明、字叠字"的样子。
+   -------------------------------------------------------------------------- */
+@supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){
+  :root[data-theme] header{
+    background:var(--hdr-solid);
+  }
+
+  :root[data-theme] nav{
+    background:var(--nav-solid);
+  }
+
+  :root[data-theme] .dlgmask{
+    background:var(--mask-bg);
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   21. 降低动效：系统开了"减少动态效果"就全部停掉，只留下透明度瞬切。
+       滑块/进度条的 width 过渡也一并关掉，避免拖动时逐帧重排。
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce){
+  :root[data-theme] .card,
+  :root[data-theme] .sw,
+  :root[data-theme] .bootbar,
+  :root[data-theme] .dlg,
+  :root[data-theme] .dlgmask,
+  :root[data-theme] #depov{
+    animation:none;
+  }
+
+  :root[data-theme] button,
+  :root[data-theme] .tgl,
+  :root[data-theme] .tgl::after,
+  :root[data-theme] nav button,
+  :root[data-theme] .seg button,
+  :root[data-theme] .sw,
+  :root[data-theme] .bar > i,
+  :root[data-theme] .depov-bar > i,
+  :root[data-theme] .bootbar > i,
+  :root[data-theme] select,
+  :root[data-theme] input,
+  :root[data-theme] textarea{
+    transition-duration:.001s;
+    transition-delay:0s;
+  }
+
+  :root[data-theme] button:active,
+  :root[data-theme] nav button:active,
+  :root[data-theme] .sw:active{
+    transform:none;
+  }
+
+  /* 载入圈是唯一的无限动画，它只在"正在加载"时存在；低动效下放慢而不是冻结，
+     否则用户会以为界面卡死。 */
+  .spin{
+    animation-duration:2.6s;
+  }
+}
+
+/* ============================================================================
+   22. 前端接线说明（本层只吃变量，不改任何 JS 结构）
+
+   写入位置：全部写在 document.documentElement 的内联 style 上
+            （等价于 CSS 里 :root 的那几个变量，内联优先级最高）。
+   主题开关：data-theme="light" | data-theme="dark"（本层两套都覆盖）。
+
+   一、必接变量（用户可调，改了立刻生效，不需要重排）
+     --accent          强调色，十六进制，如 #0A84FF / #FF9F0A / #30D158
+                       暗色下建议换成更亮的一档（本层默认 #4DA3FF）
+     --accent-2        强调色副色，用于主按钮/进度条的渐变右端
+     --glass-alpha     玻璃不透明度，数值 0.30 ~ 0.95
+                       例：--glass-alpha: .62
+     --glass-blur      模糊半径，长度 0px ~ 28px
+                       例：--glass-blur: 16px
+                       （旧变量 --glassBlur 保留，本层以 --glass-blur 为准）
+     --bg-tint         背景色/渐变，任意 background 值
+                       例：--bg-tint: linear-gradient(180deg,#F8FAFD,#E7EDF8)
+                       仅在没有背景图/预设时才轮得到它
+
+   二、由强调色派生的变量（前端算好一起写，本层直接引用，不会算错色）
+     --acc-txt         rgb() 实色，用于白底上的强调色文字
+     --acc-line        rgba()，强调色描边
+     --acc-line-2      rgba()，更淡的强调色描边
+     --acc-bg          linear-gradient(...)，强调色半透明底（只作背景图用）
+     --acc-bg-2        同上，更淡一档
+
+   三、本层自己读的活变量（已在用，别删）
+     --hero-glow       由 #statusCard 内联写入 var(--hero-ok|warn|bad|idle)
+
+   四、可选开关
+     data-glass="off"  写在 <html> 上：关掉全页仅有的三处 backdrop-filter，
+                       顶栏/底栏换成实色面。给"省电模式"用。
+
+   五、取值范围建议
+     --glass-alpha 低于 .30 时，自定义照片背景会透到正文上，正文对比度掉到
+     4.5:1 以下；高于 .95 就和实色面没区别，玻璃感消失。
+     --glass-blur 为 0 时不会报错，本层的描边与顶光仍然成立（这就是为什么
+     卡片不用 blur 也立得住）。模糊每涨 6px，安卓中端机的合成开销大约涨一倍，
+     建议不超过 24px。
+     --accent 在浅色主题下请保持亮度 ≥ 45%（HSL L），否则白字按钮的对比度
+     不足；本层已经用 --pri-scrim 给主按钮压了一层纱，但底色过浅仍会打回原形。
+
+   六、持久化键（现有实现）
+     qqbot.accent、qqbot.bgtint、qqbot.glasspct、qqbot.glass
+   ============================================================================ */
+
+/* 玻璃透明度滑块：v7 层只给了卡片/按钮，没管 input[type=range]，原生滑块
+   在安卓上是灰蓝小圆点，跟这套 iOS 面板不搭。这里自绘：8px 圆角轨道 + 26px 白拇指，
+   已填充部分用强调色（--fill 由 JS 写百分比）。控件整体 40px 高，手点得住。 */
+#glassRange.rng{
+  -webkit-appearance:none;appearance:none;
+  width:100%;height:40px;margin:0;padding:0;background:transparent;
+  display:block;
+}
+#glassRange.rng::-webkit-slider-runnable-track{
+  height:8px;border-radius:999px;
+  background:linear-gradient(90deg,var(--accent) 0,var(--accent) var(--fill,62%),rgba(120,130,150,.28) var(--fill,62%),rgba(120,130,150,.28) 100%);
+}
+#glassRange.rng::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;
+  width:26px;height:26px;margin-top:-9px;border-radius:50%;
+  background:#fff;border:0;
+  box-shadow:0 1px 4px rgba(15,23,42,.35),0 0 0 .5px rgba(15,23,42,.12);
+}
+#glassRange.rng:focus-visible{outline:2px solid var(--accent);outline-offset:4px;border-radius:999px}
+
+/* 触控目标放大：色板 38 → 42、分段按钮 34 → 40 高、滑块轨道补上下内边距，
+   手上点得到（40+ 是安卓的可点下限，色板 8 个一行仍然放得下）。 */
+#accentSw .sw,#tintSw .sw{width:42px;height:42px}
+#glassSeg button{min-height:40px}
+#glassRange.rng{padding:10px 0}
+.wrap #appearanceCard .fxrow{gap:8px}
+
+/* 主按钮统一成「强调色实心 + 白字」：v7 的 --pri-bg 本身就是强调色渐变，
+   但老样式里有几条 `.btns > button.primary[style*="flex:1"]` 之类的规则把它改成了
+   白玻璃，于是同一页里「重新部署」是白的、「配置模型与人格」是蓝的 —— 层级读不出来。
+   这里统一压回来；小号 primary 用强调色淡底 + 强调色文字，别再做成白底。 */
+:root[data-theme] button.primary,
+:root[data-theme] .btns > button.primary,
+:root[data-theme] .btns > button.primary[style]{
+  background:var(--pri-bg);
+  color:var(--on-accent);
+  border-color:var(--pri-line);
+  box-shadow:var(--pri-sh);
+}
+:root[data-theme] button.primary:active{filter:brightness(.94)}
+:root[data-theme] button.small.primary,
+:root[data-theme] .btns > button.small.primary,
+:root[data-theme] .btns > button.small.primary[style]{
+  background:var(--pri-bg);
+  color:var(--on-accent);
+  border-color:var(--pri-line);
+  box-shadow:var(--pri-sh);
+}
+:root[data-theme] button.primary[disabled],
+:root[data-theme] button.primary:disabled{opacity:.45}
+
+/* 浅色主题的三级文字再压深一档：#666E7C 落在卡片玻璃上实测 4.46，
+   差一点点够不到 4.5 的正文门槛，改成 #5C6472 后实测 5.7 左右。 */
+:root[data-theme="light"]{--txt-3:#5C6472}
+
+@media (prefers-reduced-motion: reduce){
+  #glassRange.rng::-webkit-slider-thumb{transition:none}
+}
+
+/* 顶栏标题双击改名时的编辑态：给个细边框，让人看得出可以打字 */
+#appTitle[contenteditable="true"]{outline:2px solid var(--accent);outline-offset:3px;border-radius:8px;padding:1px 6px;cursor:text}
 </style>
 </head>
 <body>
@@ -3219,9 +4773,11 @@ section.tab.on{display:flex;flex-direction:column}
 <header>
   <div class="hdrow">
     <div class="brand">
-      <span class="mark" aria-hidden="true"><img src="appicon.png" alt="" width="30" height="30"></span>
+      <!-- 左上角图标：登录 QQ 后换成那个号的头像（Java 侧 AstrAvatar 缓存 + QqbotBridge.avatarInfo），
+         没登录就退回包内的 appicon.png。avatarPaint() 在 refreshAll 里按 60 秒节流刷新。 -->
+      <span class="mark" id="hdMark" aria-hidden="true"><img id="hdAvatar" src="appicon.png" alt="" width="30" height="30"></span>
       <div class="hdmain">
-        <h1>烛之控制台</h1>
+        <h1 id="appTitle" title="双击可以改名">烛之控制台</h1>
         <div class="sub" id="hdrSub">正在读取状态…</div>
       </div>
     </div>
@@ -3325,7 +4881,7 @@ section.tab.on{display:flex;flex-direction:column}
     <!-- 四个真正常用的动作：留在首屏。其余（部署、组件开关、连接、访问地址）
          全部折进下面的「更多工具」。 -->
     <div class="quick" id="quickRow">
-      <button class="qk" data-act="openpanel" id="qkNap" data-arg="http://127.0.0.1:6099/webui/?token=zhuxin"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18"/><circle cx="6.4" cy="6.6" r=".8"/><circle cx="9" cy="6.6" r=".8"/></svg></span><span>NapCat</span></button>
+      <button class="qk" data-act="openpanel" id="qkNap" data-arg="http://127.0.0.1:6099/webui/"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18"/><circle cx="6.4" cy="6.6" r=".8"/><circle cx="9" cy="6.6" r=".8"/></svg></span><span>NapCat</span></button>
       <button class="qk" data-act="openpanel" id="qkAstr" data-arg="http://127.0.0.1:6185"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.6 14.8h4"/></svg></span><span>控制台</span></button>
       <button class="qk" data-act="showlogs" id="qkLog"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6.5h14"/><path d="M5 12h14"/><path d="M5 17.5h9"/></svg></span><span>日志</span></button>
       <button class="qk" data-act="gorestart" id="qkRestart"><span class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4.5V9h-4.5"/></svg></span><span>重启</span></button>
@@ -3404,25 +4960,25 @@ section.tab.on{display:flex;flex-direction:column}
       <div class="row"><span class="k">WebUI 地址</span><span class="v mono" id="v-napurl">http://127.0.0.1:6099</span></div>
       <div class="row"><span class="k">登录 Token</span><span class="v mono" id="v-token">-</span></div>
       <div class="tokbox">
-        <code id="tokText">zhuxin</code>
+        <code id="tokText">—</code>
         <button class="small ok" data-act="copytoken">复制</button>
       </div>
       <div class="row"><span class="k">AstrBot 地址</span><span class="v mono" id="v-astrurl">http://127.0.0.1:6185</span></div>
-      <div class="row"><span class="k">账号</span><span class="v mono">astrbot</span></div>
-      <div class="row"><span class="k">密码</span><span class="v mono">Astrbot123</span></div>
+      <div class="row"><span class="k">账号</span><span class="v mono" id="v-astruser">—</span></div>
+      <div class="row"><span class="k">密码</span><span class="v mono" id="v-astrpass">—</span></div>
       <div class="btns" style="margin-top:10px">
-        <button class="small primary" style="flex:1" data-act="openpanel" id="btnNapPanel" data-arg="http://127.0.0.1:6099/webui/?token=zhuxin">在浏览器打开 NapCat 面板</button>
+        <button class="small primary" style="flex:1" data-act="openpanel" id="btnNapPanel" data-arg="http://127.0.0.1:6099/webui/">在浏览器打开 NapCat 面板</button>
       </div>
       <div class="btns" style="margin-top:8px">
         <button class="small" data-act="copyuser">复制账号</button>
-        <button class="small" data-act="copypass">复制密码</button>
+        <button class="small" data-act="copypass" id="btnCopyPass">复制密码</button>
         <button class="small primary" style="flex:1" data-act="openpanel" id="btnAstrPanel" data-arg="http://127.0.0.1:6185">在浏览器打开 AstrBot 控制台</button>
       </div>
       <div class="hint">二维码需要另一台设备扫：手机与电脑连同一个 Wi-Fi，用电脑浏览器打开 <b id="v-napurl2">http://手机IP:6099</b>，再用手机 QQ 扫码。也可以点上面的按钮，用系统浏览器打开 NapCat 面板扫码。首次登录 AstrBot 后请立即修改密码。</div>
     </div>
 
     <div class="pagefoot">
-    <span class="pf1">烛之控制台 · <span class="pfv" id="pfv-home">—</span></span>
+    <span class="pf1"><span class="pftitle">烛之控制台</span> · <span class="pfv" id="pfv-home">—</span></span>
     <span class="pf2">本地运行，数据不出设备</span>
   </div>
 </section>
@@ -3449,7 +5005,7 @@ section.tab.on{display:flex;flex-direction:column}
       </div>
     </div>
     <div class="pagefoot">
-    <span class="pf1">烛之控制台 · <span class="pfv" id="pfv-bots">—</span></span>
+    <span class="pf1"><span class="pftitle">烛之控制台</span> · <span class="pfv" id="pfv-bots">—</span></span>
     <span class="pf2">本地运行，数据不出设备</span>
   </div>
 </section>
@@ -3519,7 +5075,7 @@ section.tab.on{display:flex;flex-direction:column}
 
     <div class="hint" id="logCardsTip" style="display:none">「其它日志文件」这一张已经收起来了。二维码和实时日志始终显示；想恢复请回「主页 → 运行状态 → 查看日志」点一下。</div>
     <div class="pagefoot">
-    <span class="pf1">烛之控制台 · <span class="pfv" id="pfv-logs">—</span></span>
+    <span class="pf1"><span class="pftitle">烛之控制台</span> · <span class="pfv" id="pfv-logs">—</span></span>
     <span class="pf2">本地运行，数据不出设备</span>
   </div>
 </section>
@@ -3634,6 +5190,53 @@ section.tab.on{display:flex;flex-direction:column}
       </div>
     </div>
 
+    <div class="card" id="appearanceCard">
+      <h2>外观</h2>
+      <!-- v7 Liquid Glass：整体走 iOS 观感。下面三组（强调色 / 背景色调 / 玻璃透明度）
+           全部落到 document.documentElement 的 CSS 变量上（--accent、--bg-tint、--glass-alpha、
+           --glass-blur），所以换主题、换背景都不会互相打架。持久化键：qqbot.accent、qqbot.bgtint、
+           qqbot.glasspct（三档薄/中/厚仍保留，点一下就是把滑块拨到对应百分比）。 -->
+      <div class="fxrow" style="flex-wrap:wrap">
+        <span class="fxlabel">强调色</span>
+        <div class="swatches" id="accentSw"></div>
+      </div>
+      <div class="fxrow" style="flex-wrap:wrap">
+        <span class="fxlabel">背景色调</span>
+        <div class="swatches" id="tintSw"></div>
+      </div>
+      <div class="fxrow" style="flex-wrap:wrap">
+        <span class="fxlabel">渐变预设</span>
+        <div class="swatches" id="swatches"></div>
+      </div>
+      <div class="fxrow fxcol">
+        <div class="fxhead"><span class="fxlabel">玻璃透明度</span><span class="fxval" id="glassVal">62%</span></div>
+        <input type="range" id="glassRange" class="rng" min="0" max="100" step="1" value="62" aria-label="玻璃透明度">
+      </div>
+      <div class="fxrow">
+        <span class="fxlabel">厚度档</span>
+        <div class="seg" id="glassSeg">
+          <button data-act="glass" data-arg="thin">薄</button>
+          <button data-act="glass" data-arg="mid" class="on">中</button>
+          <button data-act="glass" data-arg="thick">厚</button>
+        </div>
+      </div>
+      <div class="fxrow">
+        <span class="fxlabel">背景图片</span>
+        <div class="btns">
+          <button class="small primary" data-act="pickbg">选择本机图片</button>
+          <button class="small" data-act="clearbg">恢复默认</button>
+        </div>
+      </div>
+      <div class="fxrow">
+        <span class="fxlabel">桌面图标</span>
+        <div class="btns">
+          <button class="small primary" data-act="iconpin" id="btnIconPin">用头像钉到桌面</button>
+        </div>
+      </div>
+      <div class="hint" id="appearHint">背景图片保存在本机，仅作显示，不上传。玻璃透明度越高越朦胧；低配机型建议 40% 以下。安卓不允许运行时改桌面上那个启动图标，所以「桌面图标」是用头像钉一个快捷方式，登录的号换了它会跟着换。</div>
+    </div>
+
+
     <div class="card" id="guardCard">
       <h2><span class="dot" id="d-guard"></span>后台守护</h2>
       <div class="hint">Android 在内存紧张时会冻结甚至杀掉后台应用，沙盒里的 NapCat 与 AstrBot 就会「进程还在、但完全没有反应」。开启下面的常驻守护后，本应用会保留一条常驻通知以维持前台优先级，并每分钟自检一次沙盒，掉线就自动拉起。</div>
@@ -3720,30 +5323,6 @@ section.tab.on{display:flex;flex-direction:column}
     
     </div>
 
-    <div class="card" id="appearanceCard">
-      <h2>外观</h2>
-      <div class="fxrow">
-        <span class="fxlabel">背景</span>
-        <div class="btns">
-          <button class="small primary" data-act="pickbg">选择本机图片</button>
-          <button class="small" data-act="clearbg">恢复默认</button>
-        </div>
-      </div>
-      <div class="fxrow" style="flex-wrap:wrap">
-        <span class="fxlabel">预设</span>
-        <div class="swatches" id="swatches"></div>
-      </div>
-      <div class="fxrow">
-        <span class="fxlabel">玻璃强度</span>
-        <div class="seg" id="glassSeg">
-          <button data-act="glass" data-arg="thin">薄</button>
-          <button data-act="glass" data-arg="mid" class="on">中</button>
-          <button data-act="glass" data-arg="thick">厚</button>
-        </div>
-      </div>
-      <div class="hint">背景图片保存在本机，仅作显示，不上传。玻璃强度越厚越朦胧，低配机型建议选「薄」。</div>
-    </div>
-
     <div class="card">
       <h2>终端</h2>
       <div class="hint" style="margin-top:0">需要手动执行命令时可切到 Termux 终端。常用：qqbot-start / qqbot-stop / qqbot-status / qqbot-shell。</div>
@@ -3752,7 +5331,7 @@ section.tab.on{display:flex;flex-direction:column}
       </div>
     </div>
     <div class="pagefoot">
-    <span class="pf1">烛之控制台 · <span class="pfv" id="pfv-more">—</span></span>
+    <span class="pf1"><span class="pftitle">烛之控制台</span> · <span class="pfv" id="pfv-more">—</span></span>
     <span class="pf2">本地运行，数据不出设备</span>
   </div>
 </section>
@@ -3874,7 +5453,7 @@ section.tab.on{display:flex;flex-direction:column}
       <div class="row"><span class="k">PREFIX</span><span class="v mono" id="v-prefix">-</span></div>
     </div>
     <div class="pagefoot">
-    <span class="pf1">烛之控制台 · <span class="pfv" id="pfv-settings">—</span></span>
+    <span class="pf1"><span class="pftitle">烛之控制台</span> · <span class="pfv" id="pfv-settings">—</span></span>
     <span class="pf2">本地运行，数据不出设备</span>
   </div>
 </section>
@@ -4052,7 +5631,7 @@ section.tab.on{display:flex;flex-direction:column}
     <div class="dbody">
       <div class="hint" style="margin-top:0">控制台的账号密码在部署时就固定好了。登录之后建议在控制台里改掉密码，改成自己的。</div>
       <div class="row"><span class="k">账号</span><span class="v mono" id="alUser">astrbot</span></div>
-      <div class="row"><span class="k">密码</span><span class="v mono" id="alPass">Astrbot123</span></div>
+      <div class="row"><span class="k">密码</span><span class="v mono" id="alPass">—</span></div>
       <div class="btns" style="margin-top:10px">
         <button class="small" data-act="alcopyuser">复制账号</button>
         <button class="small" id="alCopyPass" data-act="alcopypass">复制密码</button>
@@ -4099,12 +5678,22 @@ var S = { bots: { active: "", bots: [] }, editing: null, auto: true, prefix: "",
    v2 统一压到 .10–.18 的强度，色调偏中性，让上面的玻璃卡片成为焦点。
    六套仍保持可区分的冷暖关系，只是把「艳」换成「沉」。 */
 var BG_PRESETS = [
-  { id: "space",  name: "深空",   css: "radial-gradient(115% 88% at 20% 0%, rgba(92,124,190,.16), rgba(0,0,0,0) 60%),radial-gradient(105% 82% at 84% 100%, rgba(120,104,180,.13), rgba(0,0,0,0) 62%),linear-gradient(165deg,#0a0c12,#111722 48%,#070810)" },
-  { id: "aurora", name: "极光",   css: "radial-gradient(110% 82% at 18% 6%, rgba(58,190,178,.15), rgba(0,0,0,0) 60%),radial-gradient(112% 86% at 88% 94%, rgba(74,116,200,.14), rgba(0,0,0,0) 62%),linear-gradient(165deg,#07100f,#0b1d24 48%,#06101a)" },
-  { id: "silver", name: "石墨",   css: "radial-gradient(118% 86% at 24% 4%, rgba(228,234,244,.13), rgba(0,0,0,0) 56%),radial-gradient(108% 84% at 84% 96%, rgba(140,152,170,.12), rgba(0,0,0,0) 60%),linear-gradient(162deg,#1b1e24,#3a4048 52%,#14171d)" },
-  { id: "gold",   name: "熔金",   css: "radial-gradient(112% 82% at 22% 5%, rgba(206,158,74,.15), rgba(0,0,0,0) 56%),radial-gradient(106% 84% at 86% 96%, rgba(150,96,44,.12), rgba(0,0,0,0) 60%),linear-gradient(162deg,#120e08,#33270f 50%,#170f07)" },
-  { id: "tundra", name: "苔原",   css: "radial-gradient(110% 82% at 18% 4%, rgba(110,186,158,.13), rgba(0,0,0,0) 58%),radial-gradient(112% 86% at 88% 96%, rgba(64,124,146,.12), rgba(0,0,0,0) 60%),linear-gradient(162deg,#07120f,#132a25 48%,#0a1720)" },
-  { id: "sunset", name: "暮色",   css: "radial-gradient(114% 84% at 16% 6%, rgba(198,116,96,.15), rgba(0,0,0,0) 58%),radial-gradient(110% 86% at 88% 94%, rgba(126,84,160,.13), rgba(0,0,0,0) 62%),linear-gradient(162deg,#150d14,#331a2b 50%,#1b0e22)" }
+  /* css = 深色底（原 v2 那批）；lcss = 浅色底（1.3.0 补）。
+     浅色主题继续用深色底会整屏发黑 —— 之前就是这个问题：预设是深色调的，
+     浅色下 veil 只有 .10 白纱，压不住，用户看到的就是「背景有点黑」。
+     浅色的三段落点统一用 rgba(255,255,255,0) 收边，避免停下透明黑产生脏边。 */
+  { id: "space",  name: "深空",   css: "radial-gradient(115% 88% at 20% 0%, rgba(92,124,190,.16), rgba(0,0,0,0) 60%),radial-gradient(105% 82% at 84% 100%, rgba(120,104,180,.13), rgba(0,0,0,0) 62%),linear-gradient(165deg,#0a0c12,#111722 48%,#070810)",
+    lcss: "radial-gradient(115% 88% at 20% 0%, rgba(92,124,190,.18), rgba(255,255,255,0) 60%),radial-gradient(105% 82% at 84% 100%, rgba(120,104,180,.14), rgba(255,255,255,0) 62%),linear-gradient(165deg,#F4F7FD,#E9EFFA 48%,#F6F9FE)" },
+  { id: "aurora", name: "极光",   css: "radial-gradient(110% 82% at 18% 6%, rgba(58,190,178,.15), rgba(0,0,0,0) 60%),radial-gradient(112% 86% at 88% 94%, rgba(74,116,200,.14), rgba(0,0,0,0) 62%),linear-gradient(165deg,#07100f,#0b1d24 48%,#06101a)",
+    lcss: "radial-gradient(110% 82% at 18% 6%, rgba(58,190,178,.18), rgba(255,255,255,0) 60%),radial-gradient(112% 86% at 88% 94%, rgba(74,116,200,.16), rgba(255,255,255,0) 62%),linear-gradient(165deg,#F2FAF9,#E7F3F6 48%,#F4FAFC)" },
+  { id: "silver", name: "石墨",   css: "radial-gradient(118% 86% at 24% 4%, rgba(228,234,244,.13), rgba(0,0,0,0) 56%),radial-gradient(108% 84% at 84% 96%, rgba(140,152,170,.12), rgba(0,0,0,0) 60%),linear-gradient(162deg,#1b1e24,#3a4048 52%,#14171d)",
+    lcss: "radial-gradient(118% 86% at 24% 4%, rgba(160,172,190,.20), rgba(255,255,255,0) 56%),radial-gradient(108% 84% at 84% 96%, rgba(140,152,170,.16), rgba(255,255,255,0) 60%),linear-gradient(162deg,#F7F8FA,#EBEEF3 52%,#F8F9FB)" },
+  { id: "gold",   name: "熔金",   css: "radial-gradient(112% 82% at 22% 5%, rgba(206,158,74,.15), rgba(0,0,0,0) 56%),radial-gradient(106% 84% at 86% 96%, rgba(150,96,44,.12), rgba(0,0,0,0) 60%),linear-gradient(162deg,#120e08,#33270f 50%,#170f07)",
+    lcss: "radial-gradient(112% 82% at 22% 5%, rgba(206,158,74,.20), rgba(255,255,255,0) 56%),radial-gradient(106% 84% at 86% 96%, rgba(180,130,80,.15), rgba(255,255,255,0) 60%),linear-gradient(162deg,#FDF8EF,#F6EDDD 50%,#FCF7F0)" },
+  { id: "tundra", name: "苔原",   css: "radial-gradient(110% 82% at 18% 4%, rgba(110,186,158,.13), rgba(0,0,0,0) 58%),radial-gradient(112% 86% at 88% 96%, rgba(64,124,146,.12), rgba(0,0,0,0) 60%),linear-gradient(162deg,#07120f,#132a25 48%,#0a1720)",
+    lcss: "radial-gradient(110% 82% at 18% 4%, rgba(90,168,140,.18), rgba(255,255,255,0) 58%),radial-gradient(112% 86% at 88% 96%, rgba(64,124,146,.15), rgba(255,255,255,0) 60%),linear-gradient(162deg,#F2FAF5,#E9F4EE 48%,#F5FBF8)" },
+  { id: "sunset", name: "暮色",   css: "radial-gradient(114% 84% at 16% 6%, rgba(198,116,96,.15), rgba(0,0,0,0) 58%),radial-gradient(110% 86% at 88% 94%, rgba(126,84,160,.13), rgba(0,0,0,0) 62%),linear-gradient(162deg,#150d14,#331a2b 50%,#1b0e22)",
+    lcss: "radial-gradient(114% 84% at 16% 6%, rgba(198,116,96,.18), rgba(255,255,255,0) 58%),radial-gradient(110% 86% at 88% 94%, rgba(150,110,190,.15), rgba(255,255,255,0) 62%),linear-gradient(162deg,#FDF4F2,#F8EDF3 50%,#FBF4F8)" }
 ];
 
 function lsGet(k, dflt){
@@ -4135,6 +5724,13 @@ function themePaint(){
     bs[i].classList.toggle("on", on);
     bs[i].setAttribute("aria-pressed", on ? "true" : "false");
   }
+  /* v7：强调色的派生变量、背景色调的底色都是「浅色一套、深色一套」，
+     主题一变就得重算，否则深色下会留着一层浅色底、按钮还是旧蓝。 */
+  try { applyAccent(S.accent || lsGet("qqbot.accent", "blue"), true); } catch (e) {}
+  try { if (!S.bgImg) applyBg(); } catch (e2) {}
+  try { renderTints(); } catch (e3) {}
+  /* 预设色块的预览也分浅深两套，主题一切就得重画 */
+  try { renderPresets(); } catch (e4) {}
 }
 function themeSet(pref){
   if (pref !== "light" && pref !== "dark") pref = "auto";
@@ -4148,8 +5744,12 @@ try {
 } catch (e) {}
 
 function presetCss(id){
-  for (var i = 0; i < BG_PRESETS.length; i++) if (BG_PRESETS[i].id === id) return BG_PRESETS[i].css;
-  return BG_PRESETS[0].css;
+  /* 浅色主题必须取 lcss：六套预设原本只有深色底，浅色下直接用会整屏发黑 */
+  var dark = themeDark();
+  for (var i = 0; i < BG_PRESETS.length; i++) {
+    if (BG_PRESETS[i].id === id) return (dark || !BG_PRESETS[i].lcss) ? BG_PRESETS[i].css : BG_PRESETS[i].lcss;
+  }
+  return (dark || !BG_PRESETS[0].lcss) ? BG_PRESETS[0].css : BG_PRESETS[0].lcss;
 }
 
 /* 背景：优先自定义图片，否则用预设渐变 */
@@ -4160,9 +5760,15 @@ function applyBg(){
   if (img) {
     lay.style.backgroundImage = "url(" + img + ")";
     lay.style.backgroundColor = "";
-  } else {
+  } else if (lsGet("qqbot.bgpreset", "")) {
+    /* 用户主动选过渐变预设：以预设为准（v2 那六套是深色调的，还在） */
     S.bgPreset = lsGet("qqbot.bgpreset", "space");
     lay.style.backgroundImage = presetCss(S.bgPreset);
+    lay.style.backgroundColor = "";
+  } else {
+    /* v7 默认：按「背景色调」现拼一条，浅色/深色各一套底色，不写死 */
+    S.bgTint = lsGet("qqbot.bgtint", "ios");
+    lay.style.backgroundImage = tintCss(S.bgTint);
     lay.style.backgroundColor = "";
   }
   // 照片有亮有暗，预设渐变都是深色；亮照片上浅色文字会糊掉，
@@ -4192,7 +5798,7 @@ function renderPresets(){
   var box = el("swatches");
   if (!box) return;
   var hasImg = !!S.bgImg;
-  var cur = lsGet("qqbot.bgpreset", "space");
+  var cur = lsGet("qqbot.bgpreset", "");
   S.bgPreset = cur;
   var h = [];
   for (var i = 0; i < BG_PRESETS.length; i++) {
@@ -4204,12 +5810,14 @@ function renderPresets(){
   for (var j = 0; j < kids.length; j++) {
     var pid = kids[j].getAttribute("data-arg");
     for (var k = 0; k < BG_PRESETS.length; k++) {
-      if (BG_PRESETS[k].id === pid) { kids[j].style.backgroundImage = BG_PRESETS[k].css; break; }
+      if (BG_PRESETS[k].id === pid) { kids[j].style.backgroundImage = presetCss(pid); break; }
     }
   }
 }
 
 function setPreset(id){
+  lsDel("qqbot.bgtint");
+  S.bgTint = "";
   S.bgImg = "";
   S.bgPreset = id;
   lsSet("qqbot.bgpreset", id);
@@ -4238,11 +5846,268 @@ function setGlass(mode){
   applyGlass(mode);
 }
 
+/* ---------- 顶栏标题：双击改成自己的名字 ---------- */
+/* 用户要求「上面的烛之控制台字样可以双击修改」。名字存在 localStorage 的 qqbot.title，
+   空 = 用默认名字；页脚那五处同名文字和 document.title 一起跟着变，
+   这样桌面 / 最近任务里看到的也是自己的名字。 */
+var DEF_TITLE = "烛之控制台";
+function titleNow(){
+  var t = "";
+  try { t = String(localStorage.getItem("qqbot.title") || ""); } catch (e) { t = ""; }
+  return t || DEF_TITLE;
+}
+function titlePaint(){
+  var t = titleNow();
+  var h = document.getElementById("appTitle");
+  if (h && h.textContent !== t) h.textContent = t;
+  var pf = document.querySelectorAll(".pftitle");
+  for (var i = 0; i < pf.length; i++) if (pf[i].textContent !== t) pf[i].textContent = t;
+  if (document.title !== t) document.title = t;
+}
+function titleSave(v){
+  v = String(v || "").replace(/\s+/g, " ").trim().slice(0, 16);
+  /* 清空或改回默认值就删键，免得以后改默认名还被老值压着。 */
+  try {
+    if (v && v !== DEF_TITLE) localStorage.setItem("qqbot.title", v);
+    else localStorage.removeItem("qqbot.title");
+  } catch (e) {}
+  titlePaint();
+  try { if (window.Android && Android.toast) Android.toast(v ? ("名字改成「" + v + "」") : "已改回默认名字"); } catch (e) {}
+}
+function titleEdit(){
+  var h = document.getElementById("appTitle");
+  if (!h) return;
+  if (h.getAttribute("contenteditable") === "true") return;
+  h.setAttribute("contenteditable", "true");
+  h.focus();
+  try {
+    var r = document.createRange();
+    r.selectNodeContents(h);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+  } catch (e) {}
+}
+function titleDone(){
+  var h = document.getElementById("appTitle");
+  if (!h) return;
+  if (h.getAttribute("contenteditable") !== "true") return;
+  var v = h.textContent;
+  h.removeAttribute("contenteditable");
+  titleSave(v);
+}
+function titleWire(){
+  var h = document.getElementById("appTitle");
+  if (!h || h._tw) return;
+  h._tw = 1;
+  /* 双击进编辑（安卓 WebView 里 dblclick 是有的，但用两次 tap 兜底：600ms 内点两下）。 */
+  h.addEventListener("dblclick", function (e) { e.preventDefault(); titleEdit(); });
+  h.addEventListener("blur", function () { titleDone(); });
+  h.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); titleDone(); }
+    else if (e.key === "Escape") { e.preventDefault(); h.textContent = titleNow(); h.removeAttribute("contenteditable"); }
+  });
+  titlePaint();
+}
 function initAppearance(){
   S.glass = lsGet("qqbot.glass", "mid");
   applyGlass(S.glass);
+  applyAccent(lsGet("qqbot.accent", "blue"), true);
+  /* 优先用滑块存下来的百分比（qqbot.glasspct）；没有才退回三档档位换算。
+     不这么写的话，用户把滑块拖到 25% 重开页面会被三档的默认「中」覆盖回 62%。 */
+  var _pct = lsGet("qqbot.glasspct", "");
+  applyGlassAlpha(_pct === "" ? glassPctOf(S.glass) : parseInt(_pct, 10), true);
   renderPresets();
   syncBgFromAndroid();
+  renderAccents();
+  renderTints();
+}
+
+/* ---------- v7 外观引擎：强调色 / 玻璃透明度 / 背景色调 / 头像 ---------- */
+/* 强调色八套。只存 id，颜色写死在这里；applyAccent() 把 --accent 系列变量
+   覆盖到 <html> 的行内样式上（行内优先级最高，能盖过样式里各层的浅色/深色覆盖）。 */
+var ACCENTS = [
+  { id: "blue",   name: "iOS 蓝", a: "#0a84ff", b: "#5e5cf6" },
+  { id: "indigo", name: "靛蓝",   a: "#5e5ce6", b: "#bf5af2" },
+  { id: "violet", name: "紫",     a: "#a855f7", b: "#ec4899" },
+  { id: "pink",   name: "粉",     a: "#ff375f", b: "#ff9f0a" },
+  { id: "green",  name: "绿",     a: "#30d158", b: "#0aa2c0" },
+  { id: "teal",   name: "青",     a: "#0aa2c0", b: "#32ade6" },
+  { id: "orange", name: "橙",     a: "#ff9f0a", b: "#ff375f" },
+  { id: "graph",  name: "石墨",   a: "#8e8e93", b: "#48484a" }
+];
+/* 背景色调八套：两个光斑色 + 两套底色（浅色/深色各一条），applyBg() 按当前主题挑一条。
+   深浅分开写是因为同一个渐变放到另一套主题里不是糊掉就是过曝。 */
+var TINTS = [
+  { id: "ios",    name: "雾白",   h1: "#0a84ff", h2: "#5e5ce6", l: ["#f8fafd", "#eef3fb", "#e7edf8"], d: ["#080a10", "#0c1019", "#07080d"] },
+  { id: "ice",    name: "冰蓝",   h1: "#32ade6", h2: "#0a84ff", l: ["#f4fafd", "#e8f2fb", "#e0ecf8"], d: ["#060c12", "#08121b", "#050a10"] },
+  { id: "mint",   name: "薄荷",   h1: "#30d158", h2: "#0aa2c0", l: ["#f4fbf7", "#e8f7ee", "#e0f2e9"], d: ["#060f0b", "#081611", "#050d0a"] },
+  { id: "rose",   name: "玫瑰",   h1: "#ff375f", h2: "#bf5af2", l: ["#fef7f9", "#fbeaf0", "#f6e2ea"], d: ["#100609", "#180a10", "#0d0508"] },
+  { id: "sand",   name: "暖砂",   h1: "#ff9f0a", h2: "#ff375f", l: ["#fdfaf4", "#f8f0e2", "#f3e9d8"], d: ["#100b06", "#181009", "#0d0804"] },
+  { id: "grape",  name: "葡萄",   h1: "#a855f7", h2: "#5e5ce6", l: ["#fbf8fe", "#f1ebfa", "#e9e2f6"], d: ["#0c0713", "#120b1d", "#0a0610"] },
+  { id: "graph",  name: "石墨",   h1: "#8e8e93", h2: "#48484a", l: ["#f9fafb", "#eef0f3", "#e6e9ee"], d: ["#0a0b0d", "#0f1114", "#08090b"] },
+  { id: "night",  name: "深夜",   h1: "#0a84ff", h2: "#30d158", l: ["#f5f7fb", "#e9eef7", "#dfe6f2"], d: ["#05060a", "#070a10", "#04050a"] }
+];
+
+function hexA(hex, a){
+  var h = String(hex || "").replace("#", "");
+  if (h.length === 3) h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+  var n = parseInt(h, 16);
+  if (!isFinite(n)) n = 0x0a84ff;
+  return "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + a + ")";
+}
+function themeDark(){
+  try { return document.documentElement.getAttribute("data-theme") === "dark"; } catch (e) { return false; }
+}
+
+/* 强调色：--accent 与本项目里所有从它派生出来的变量一起覆盖，否则按钮、标签、开关
+   会一半新色一半旧蓝。派生规则跟样式里那几层保持一致（浅色压深、深色提亮）。 */
+function applyAccent(id, quiet){
+  var cur = null;
+  for (var i = 0; i < ACCENTS.length; i++) if (ACCENTS[i].id === id) { cur = ACCENTS[i]; break; }
+  if (!cur) { cur = ACCENTS[0]; }
+  var dark = themeDark();
+  var a = cur.a, b = cur.b;
+  /* 深色下把主色调亮一点，否则 #0a84ff 在近黑底上偏闷 */
+  var at = dark ? a : a;
+  var s = document.documentElement.style;
+  s.setProperty("--accent", at);
+  s.setProperty("--accent-2", b);
+  s.setProperty("--acc-txt", dark ? hexA(at, 1).replace(/rgba\(([^)]+),1\)/, "rgb($1)") : a);
+  s.setProperty("--acc-line", hexA(at, dark ? .55 : .45));
+  s.setProperty("--acc-line-2", hexA(at, dark ? .40 : .30));
+  s.setProperty("--acc-bg", "linear-gradient(180deg," + hexA(at, dark ? .26 : .14) + "," + hexA(at, dark ? .12 : .06) + ")");
+  s.setProperty("--acc-bg-2", "linear-gradient(180deg," + hexA(at, dark ? .18 : .10) + "," + hexA(at, dark ? .06 : .04) + ")");
+  /* 背景极光专用的半透明强调色：以前这里直接用 var(--accent)（不透明色）当渐变起点，
+     深色下就成了一块"实心蓝"的色块。改成带 alpha 的派生色，光晕才只剩颜色，不出边界。 */
+  s.setProperty("--acc-soft", hexA(at, dark ? .30 : .24));
+  s.setProperty("--acc-soft-2", hexA(b, dark ? .26 : .20));
+  S.accent = cur.id;
+  if (!quiet) lsSet("qqbot.accent", cur.id);
+  var box = el("accentSw");
+  if (box) {
+    var bs = box.querySelectorAll("button.sw.acc");
+    for (var j = 0; j < bs.length; j++) bs[j].classList.toggle("on", bs[j].getAttribute("data-arg") === cur.id);
+  }
+}
+function setAccent(id){ applyAccent(id, false); }
+
+/* 玻璃透明度：0~100 映射到 --glass-alpha(.30~.95) 与 --glass-blur(0~26px)。
+   三档「薄 / 中 / 厚」只是把这个滑块拨到 28 / 62 / 92，保留是为了习惯。 */
+var GLASS_PCT = { thin: 28, mid: 62, thick: 92 };
+function glassPctOf(mode){ return GLASS_PCT[mode] || 62; }
+function applyGlassAlpha(pct, quiet){
+  var v = parseInt(pct, 10);
+  if (!isFinite(v)) v = 62;
+  v = Math.max(0, Math.min(100, v));
+  var alph = (0.30 + v * 0.0065);
+  var blur = Math.round(v / 100 * 26);
+  var s = document.documentElement.style;
+  s.setProperty("--glass-alpha", alph.toFixed(3));
+  s.setProperty("--glass-blur", blur + "px");
+  /* 老变量留着：v2~v6 那几层还在用它 */
+  s.setProperty("--glassBlur", blur + "px");
+  S.glassPct = v;
+  if (!quiet) lsSet("qqbot.glasspct", String(v));
+  var rng = el("glassRange");
+  if (rng) {
+    if (String(rng.value) !== String(v)) rng.value = String(v);
+    /* 轨道左侧的强调色填充比例（CSS 用 var(--fill) 画） */
+    try { rng.style.setProperty("--fill", v + "%"); } catch (e0) {}
+  }
+  var lab = el("glassVal");
+  if (lab) lab.textContent = v + "%";
+  var seg = el("glassSeg");
+  if (seg) {
+    var mode = v <= 45 ? "thin" : (v >= 80 ? "thick" : "mid");
+    S.glass = mode;
+    var bs = seg.querySelectorAll("button");
+    for (var i = 0; i < bs.length; i++) bs[i].classList.toggle("on", bs[i].getAttribute("data-arg") === mode);
+  }
+}
+function setGlassPct(v){ applyGlassAlpha(v, false); }
+
+/* 背景色调：把一个色斑对铺到 #bgLayer 上；用户选了自定义照片就以照片为准。 */
+function tintCss(id){
+  var t0 = null;
+  for (var i = 0; i < TINTS.length; i++) if (TINTS[i].id === id) { t0 = TINTS[i]; break; }
+  if (!t0) t0 = TINTS[0];
+  var base = themeDark() ? t0.d : t0.l;
+  return "radial-gradient(118% 92% at 12% 0%," + hexA(t0.h1, themeDark() ? .22 : .18) + ",rgba(0,0,0,0) 62%)," +
+         "radial-gradient(108% 88% at 88% 100%," + hexA(t0.h2, themeDark() ? .18 : .14) + ",rgba(0,0,0,0) 64%)," +
+         "linear-gradient(168deg," + base[0] + "," + base[1] + " 52%," + base[2] + ")";
+}
+function renderAccents(){
+  var box = el("accentSw");
+  if (!box) return;
+  var cur = S.accent || lsGet("qqbot.accent", "blue");
+  var h = [];
+  for (var i = 0; i < ACCENTS.length; i++) {
+    var p = ACCENTS[i];
+    h.push('<div class="swwrap"><button class="sw acc' + (p.id === cur ? " on" : "") + '" data-act="accent" data-arg="' + p.id + '" aria-label="' + esc(p.name) + '" style="background:linear-gradient(145deg,' + p.a + "," + p.b + ')"></button><span class="swname">' + esc(p.name) + "</span></div>");
+  }
+  setHtml(box, h.join(""));
+}
+function renderTints(){
+  var box = el("tintSw");
+  if (!box) return;
+  var cur = S.bgTint || lsGet("qqbot.bgtint", "ios");
+  var h = [];
+  for (var i = 0; i < TINTS.length; i++) {
+    var p = TINTS[i];
+    h.push('<div class="swwrap"><button class="sw' + (p.id === cur ? " on" : "") + '" data-act="bgtint" data-arg="' + p.id + '" aria-label="' + esc(p.name) + '" style="background-image:' + tintCss(p.id) + '"></button><span class="swname">' + esc(p.name) + "</span></div>");
+  }
+  setHtml(box, h.join(""));
+}
+function setTint(id){
+  var ok = false;
+  for (var i = 0; i < TINTS.length; i++) if (TINTS[i].id === id) ok = true;
+  if (!ok) id = "ios";
+  S.bgTint = id;
+  lsSet("qqbot.bgtint", id);
+  S.bgImg = "";
+  lsDel("qqbot.bgimg");
+  applyBg();
+  renderTints();
+  renderPresets();
+}
+
+/* 头像：Java 侧 AstrAvatar 在 <filesDir>/avatar/ 里缓存，未命中时第一次返回 ok:false
+   并在后台下载，下一轮 refresh 再问就有了。没登录 / 取不到就退回包内 appicon.png。 */
+var AV = { uin: "", data: "", at: 0 };
+function avatarPaint(force){
+  var img = el("hdAvatar");
+  if (!img) return;
+  if (!brHas("avatarInfo")) { img.src = "appicon.png"; return; }
+  var now = Date.now();
+  if (!force && now - AV.at < 60000) return;
+  AV.at = now;
+  var r = null;
+  try { r = normJson(Android.avatarInfo()); } catch (e) { r = null; }
+  var mk = el("hdMark");
+  if (r && r.ok && r.uin && r.data) {
+    if (r.uin !== AV.uin || r.data !== AV.data) {
+      AV.uin = String(r.uin);
+      AV.data = String(r.data);
+      img.src = AV.data;
+      if (mk) mk.classList.add("hasav");
+      /* 桌面那个「用头像钉的快捷方式」不用在这里管：QqbotActivity.onResume 里
+         AstrIconShortcut.refresh() 会静默把图标换成同一张脸。 */
+    }
+  } else if (AV.uin) {
+    AV.uin = ""; AV.data = "";
+    img.src = "appicon.png";
+    if (mk) mk.classList.remove("hasav");
+  } else {
+    img.src = "appicon.png";
+  }
+}
+function iconPin(){
+  if (!brHas("avatarIconPin")) { extToast("这个版本还不支持钉桌面图标"); return; }
+  var r = null;
+  try { r = normJson(Android.avatarIconPin()); } catch (e) { r = null; }
+  if (r && r.ok) extToast(r.msg || "已处理");
+  else extToast((r && r.err) || "钉图标失败");
 }
 
 /* ---------- 工具 ---------- */
@@ -4664,7 +6529,13 @@ function riskPanel(){ openExternal(riskNapcatUrl()); }
    这一次刷新半途中断、更不该让后面每一轮轮询跟着失效，所以整体包一层。
    原来只有 JSON.parse 那一处 try。refreshAll() 就是原来的函数体。 */
 function refresh(){
-  try { refreshAll(); } catch (e) { try { console.log("刷新页面时出错：" + e); } catch (e2) {} }
+  try { refreshAll(); } catch (e) {
+    try { console.log("刷新页面时出错：" + e); } catch (e2) {}
+    /* 以前这里只写 console.log：WebView 里没人看得到，界面就静默停在「正在读取状态…」，
+       用户只能看到一屏「检测中…」和一堆点不动的按钮（1.3.0 的 bs 未定义就是这么暴露的）。
+       现在把错误顶到副标题上，下一轮刷新成功会自动覆盖回正常文案。 */
+    try { el("hdrSub").textContent = "界面出错了：" + ((e && e.message) ? e.message : e); } catch (e3) {}
+  }
 }
 
 function refreshAll(){
@@ -4675,6 +6546,8 @@ function refreshAll(){
   /* 放在最前面：后面读 state() 失败会提前 return，风控横幅不该跟着一起卡住不刷。
      整个调用不会抛异常，不会影响下面任何一块渲染。 */
   refreshRisk();
+  /* 头像：Java 侧首次未命中会立刻返回「下载中」并后台拉，下一轮就有了。这里 60 秒节流。 */
+  try { avatarPaint(false); } catch (e0) {}
   var st;
   var stErr = "";
   try { st = JSON.parse(Android.state()); } catch (e) { st = null; stErr = "读取状态失败"; }
@@ -4758,12 +6631,26 @@ function refreshAll(){
   var abt = el("astrBoot");
   /* 守进程要是都没起来，说什么「正在启动」都是误导 —— 只有守护活着才可能是正在起。 */
   if (abt) abt.style.display = (installed && st.supervisorAlive !== false && !st.astrbotOff && !st.astrbotUp) ? "block" : "none";
-  var tok = "zhuxin";
-  var napPort = st.napcatPort || 6099;
+  /* Token / 端口按真实配置文件显示（m11049）：NapCat 自己的 webui.json 才是生效值，
+     bots.json 只是启动脚本的输入。两个都读不到就写「—」，绝不再摆一个看起来像真的值
+     出来 —— 用户照着抄进面板登不进去，比空着更糟。 */
+  var cr = credsInfo(false);
+  var tok = (cr && cr.napToken) ? String(cr.napToken) : "";
+  var napPort = (cr && parseInt(cr.napPort, 10)) ? parseInt(cr.napPort, 10) : 0;
+  /* bs 必须无条件声明：以前它写在下面那个 if 里面，一旦 creds 直接读到 token 与端口
+     （正常路径），这个 if 被跳过，bs 就是 undefined，下面拼副标题时 bs.length 抛异常，
+     refreshAll 从中间断掉 —— 页面永远停在「正在读取状态… / 检测中…」，按钮也全是灰的。 */
   var bs = validBots(S.bots.bots);
-  for (var i = 0; i < bs.length; i++) if (bs[i].id === S.bots.active) { tok = bs[i].token || "zhuxin"; napPort = bs[i].napcatPort || 6099; }
-  el("v-token").textContent = tok;
-  el("tokText").textContent = tok;
+  if (!tok || !napPort) {
+    for (var i = 0; i < bs.length; i++) if (bs[i].id === S.bots.active) {
+      if (!tok && bs[i].token) tok = bs[i].token;
+      if (!napPort && bs[i].napcatPort) napPort = bs[i].napcatPort;
+    }
+  }
+  if (!napPort) napPort = st.napcatPort || 6099;
+  el("v-token").textContent = tok || "—";
+  el("tokText").textContent = tok || "—";
+  paintCreds(cr);
   /* 尾斜杠不是洁癖：NapCat 的 /webui?token= 会先 301 到 /webui/?token=，多一次跳转；
      直接给 /webui/?token= 少一次（实机试过，两种都能自动登录）。 */
   el("btnNapPanel").setAttribute("data-arg", "http://127.0.0.1:" + napPort + "/webui/?token=" + encodeURIComponent(tok));
@@ -4801,6 +6688,12 @@ function refreshAll(){
   syncAstrPortInput();
   renderPorts();
   refreshDeploy();
+  /* 内置包状态那行以前只在「更多」页刷新，可它显示在主页的部署卡上 —— 用户不开「更多」就永远
+     看着「内置离线包：检测中…」。这里每 60 秒探一次（桥调用只是查几个文件，别每 4 秒都问）。 */
+  if (!window.__bundleAt || Date.now() - window.__bundleAt > 60000) {
+    window.__bundleAt = Date.now();
+    try { renderBundle(); } catch (e9b) {}
+  }
   /* 部署磁贴的步数不再写死「8/8 步」：refreshDeploy() 上面刚把最新的 d 缓存进
      S.deployInfo，用它实际的 doneCount/total 拼，增删部署步骤也不会对不上。
      放在 refreshDeploy() 之后才不会用到旧值。 */
@@ -5348,7 +7241,7 @@ function renderBots(){
     h.push('<div class="bot' + (act ? " active" : "") + '">');
     h.push('<div class="bh"><span class="bn">' + esc(b.name || b.id) + '</span><span class="bh-r">' + botPill(b) + '<span class="tag' + (act ? " on" : "") + '">' + (act ? "当前使用" : "备用") + '</span></span></div>');
     h.push('<div class="row"><span class="k">QQ</span><span class="v mono">' + esc(b.qq || "未填写") + '</span></div>');
-    h.push('<div class="row"><span class="k">Token</span><span class="v mono">' + esc(b.token || "zhuxin") + '</span></div>');
+    h.push('<div class="row"><span class="k">Token</span><span class="v mono">' + esc(b.token || "—") + '</span></div>');
     h.push('<div class="row"><span class="k">端口</span><span class="v mono">WebUI ' + esc(b.napcatPort) + ' / OneBot ' + esc(b.onebotPort) + '</span></div>');
     /* v4：一屏只留一个「设为当前」和一个 ⋯，其余四项收进展开区。
        展开态存 ext().botMore —— renderBots 每 4 秒重写 innerHTML，存 DOM 会被刷掉。 */
@@ -5359,7 +7252,7 @@ function renderBots(){
     h.push('</div>');
     if (bopen) {
       h.push('<div class="bmore">');
-      h.push('<button class="small" data-act="copytok" data-arg="' + esc(b.token || "zhuxin") + '">复制 Token</button>');
+      h.push('<button class="small" data-act="copytok" data-arg="' + esc(b.token || "—") + '">复制 Token</button>');
       /* 手动入口：账号没登上时随时可以把二维码调回来。v4 收按钮时把这条漏掉了，
          结果「显示二维码」只能从日志页找，这里补回来。 */
       h.push('<button class="small" data-act="showqr" data-arg="' + esc(b.id) + '">扫码登录</button>');
@@ -5539,11 +7432,11 @@ function renderHomeBots(){
     h.push('<div class="bh"><span class="bn">' + esc(b.name || b.id) + '</span><span class="bh-r">' + statusPill + '</span></div>');
     h.push('<div class="row"><span class="k">QQ</span><span class="v mono">' + esc(b.qq || "未登录") + '</span></div>');
     h.push('<div class="row"><span class="k">登录地址</span><span class="v mono">' + esc(url) + '</span></div>');
-    h.push('<div class="row"><span class="k">Token</span><span class="v mono">' + esc(b.token || "zhuxin") + '</span></div>');
+    h.push('<div class="row"><span class="k">Token</span><span class="v mono">' + esc(b.token || "—") + '</span></div>');
     h.push('<div class="row"><span class="k">OneBot</span><span class="v mono">ws://127.0.0.1:' + esc(b.onebotPort || 6199) + '/ws</span></div>');
     h.push('<div class="btns" style="margin-top:10px">');
     h.push('<button class="small primary" data-act="copyurl" data-arg="' + esc(url) + '">复制登录地址</button>');
-    h.push('<button class="small ok" data-act="copytok" data-arg="' + esc(b.token || "zhuxin") + '">复制 Token</button>');
+    h.push('<button class="small ok" data-act="copytok" data-arg="' + esc(b.token || "—") + '">复制 Token</button>');
     h.push('<button class="small" data-act="link">对接 AstrBot</button>');
     h.push(toggleBtnHtml(b));
     h.push('<button class="small" data-act="showqr" data-arg="' + esc(b.id) + '">显示二维码</button>');
@@ -6302,8 +8195,19 @@ document.addEventListener("click", function(ev){
   else if (act === "copytoken") Android.copy(el("tokText").textContent);
   else if (act === "copytok") Android.copy(arg || "");
   else if (act === "copyurl") Android.copy(arg || "");
-  else if (act === "copyuser") Android.copy("astrbot");
-  else if (act === "copypass") Android.copy("Astrbot123");
+  else if (act === "copyuser") {
+    var _cu = el("v-astruser");
+    var _uv = _cu ? String(_cu.textContent || "") : "";
+    if (!_uv || _uv === "—") { extToast("还没读到控制台账号，等一两秒再点"); return; }
+    Android.copy(_uv);
+  }
+  else if (act === "copypass") {
+    var _cp = el("v-astrpass");
+    var _pv = _cp ? String(_cp.textContent || "") : "";
+    /* 改过密码时不复制：界面显示的是「（你改过密码）」，把这句话复制出去没有意义。 */
+    if (!_pv || _pv.charAt(0) === "（") { extToast("密码已经改过了，用你自己设的那个"); return; }
+    Android.copy(_pv);
+  }
   else if (act === "copylog") Android.copy(el("logBox").textContent);
   else if (act === "copynap") Android.copy(el("logNap").textContent);
   else if (act === "copyastr") Android.copy(el("logAstr").textContent);
@@ -6436,7 +8340,10 @@ else if (act === "uploadlogs") doUploadLogs();
     Android.toast("已删掉自定义图片，改回上次选的预设背景");
   }
   else if (act === "bgpreset") { setPreset(arg || "space"); Android.toast("已切换背景：" + presetName(arg)); }
-  else if (act === "glass") { setGlass(arg || "mid"); Android.toast("玻璃强度：" + glassName(arg)); }
+  else if (act === "glass") { var _gp = glassPctOf(arg); setGlassPct(_gp); lsSet("qqbot.glass", arg || "mid"); Android.toast("玻璃强度：" + glassName(arg)); }
+  else if (act === "accent") { setAccent(arg || "blue"); Android.toast("强调色已切换"); }
+  else if (act === "bgtint") { setTint(arg || "ios"); Android.toast("背景色调已切换"); }
+  else if (act === "iconpin") { iconPin(); }
   else if (act === "status") runCmd("qqbot-status");
   else if (act === "resetdeploy") {
     /* 必须走桥：QqbotBridge 的 resetdeploy 分支会同时删掉 deploy.done 与 deploy.pid。
@@ -8359,8 +10266,25 @@ document.addEventListener("visibilitychange", function(){
   if (todayBridgeOk()) { refreshToday(); todayStart(); }
 });
 
+titleWire();
 initAppearance();
 themePaint();
+/* 左上角头像：首次启动立刻问一次，之后由 refresh 里按 60 秒节流刷新 */
+try { avatarPaint(true); } catch (e) {}
+/* 玻璃透明度滑块：拖动时实时改 CSS 变量（不写 localStorage，松手才落盘） */
+try {
+  var _gr = el("glassRange");
+  if (_gr) {
+    /* 拖动时实时改变量；松手 250ms 后落盘 —— 安卓 WebView 里松手不一定发 change，
+       实测（1.3.0 MuMu）只靠 change 落盘会丢，重开页面又回到默认值。 */
+    _gr.addEventListener("input", function(){
+      applyGlassAlpha(_gr.value, true);
+      try { clearTimeout(_gr._pt); } catch (e1) {}
+      _gr._pt = setTimeout(function(){ setGlassPct(_gr.value); }, 250);
+    });
+    _gr.addEventListener("change", function(){ setGlassPct(_gr.value); });
+  }
+} catch (e2) {}
 loadHiddenCards();
 clearFixedCardHidden();
 applyCards();
@@ -8468,6 +10392,39 @@ function astrRelayOpen(){
   openExternal(u);
 }
 
+/* ---------- 账号 / 密码 / Token：全部按真实配置文件（m11049） ---------- */
+function credsStore(){
+  var E = ext();
+  if (!E.creds) E.creds = { at: 0, data: null };
+  return E.creds;
+}
+/* 桥里那次登录探针自己有 90 秒缓存；这里压到 30 秒，避免每 2.5 秒读一遍文件。 */
+function credsInfo(force){
+  var d = credsStore();
+  var now = Date.now();
+  if (d.data && !force && (now - d.at) < 30000) return d.data;
+  if (!brHas("creds")) { d.data = null; d.at = now; return null; }
+  var v = null;
+  try { v = normJson(Android.creds()); } catch (e) { v = null; }
+  d.data = (v && v.ok !== false) ? v : null;
+  d.at = now;
+  return d.data;
+}
+/* 账号 / 密码两行 + 「复制密码」按钮。改过密码就显示「（你改过密码）」并收起复制按钮：
+   把错的明文摆出来，用户拿去登录只会更糊涂。 */
+function paintCreds(cr){
+  var eu = el("v-astruser"), ep = el("v-astrpass"), bp = el("btnCopyPass");
+  var u = (cr && cr.user) ? String(cr.user) : "";
+  var pv = (cr && cr.pass) ? String(cr.pass) : "";
+  if (eu) eu.textContent = u || "—";
+  if (ep) {
+    if (pv) ep.textContent = pv;
+    else if (cr) ep.textContent = "（你改过密码）";
+    else ep.textContent = "—";
+  }
+  if (bp) bp.style.display = pv ? "" : "none";
+}
+
 /* ---------- 控制台登录凭据弹窗（只看第一次） ---------- */
 var ASTR_LOGIN_KEY = "qqbot_astr_login_seen";
 function astrLoginSeen(){
@@ -8481,17 +10438,24 @@ function astrPanelUrl(){
 function astrLoginPaint(){
   var j = null;
   try { j = astrInfo(); } catch (e) { j = null; }
-  var u = (j && j.dashUser) ? String(j.dashUser) : "astrbot";
-  /* dashPassDefault 由原生侧比对 md5("Astrbot123") 得出：用户改过密码就绝不能
-     还在这儿显示默认密码，那等于让人拿着错密码去试。 */
-  var isDef = !j || j.dashPassDefault !== false;
-  if (el("alUser")) el("alUser").textContent = u;
-  if (el("alPass")) el("alPass").textContent = isDef ? "Astrbot123" : "（你改过密码）";
+  /* 账号密码一律用 creds() 的真值：它在原生侧拿默认密码真登录了一次，
+     比只比 md5 准确（AstrBot 4.29 已经把密码升级成 pbkdf2，md5 只是存量字段）。 */
+  var cr = null;
+  try { cr = credsInfo(false); } catch (e) { cr = null; }
+  var u = (cr && cr.user) ? String(cr.user) : ((j && j.dashUser) ? String(j.dashUser) : "");
+  var isDef = cr ? !!cr.passDefault : (!j || j.dashPassDefault !== false);
+  if (el("alUser")) el("alUser").textContent = u || "—";
+  /* 读不到 creds（桥没就绪 / 刚启动）就写「—」，绝不回落到写死的默认密码：
+     用户要求这几行必须反映真实配置文件（m11049），猜错比留空更糟。 */
+  if (el("alPass")) el("alPass").textContent = (cr && cr.pass) ? String(cr.pass) : (cr ? "（你改过密码）" : "—");
+  /* 只有真读到密码才给「复制」，否则按钮点下去只会复制出一个破折号。 */
   var cp = el("alCopyPass");
-  if (cp) cp.style.display = isDef ? "" : "none";
-  if (el("alNote")) el("alNote").textContent = isDef
-    ? "改完密码后这里会显示「你改过密码」，不再提示默认密码。"
-    : "这个装置上的控制台密码已经不是默认值了，用你自己设的那个；忘了可以重新部署一次（会保留数据）。";
+  if (cp) cp.style.display = (cr && cr.pass) ? "" : "none";
+  if (el("alNote")) el("alNote").textContent = !cr
+    ? "正在读取这台装置上的控制台账号…"
+    : (cr.pass
+        ? "改完密码后这里会显示「你改过密码」，不再提示默认密码。"
+        : "这个装置上的控制台密码已经不是默认值了，用你自己设的那个；忘了可以重新部署一次（会保留数据）。");
 }
 function astrLoginOpen(){
   var m = el("dlgAstrLogin");

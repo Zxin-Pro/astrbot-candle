@@ -1,6 +1,6 @@
 # 从源码构建 AstrBot烛版
 
-本文说明如何从本仓库的源码重新构建出可安装的 `AstrBot-<版本>-<架构>.apk`（当前版本 1.2.13，发布产物 `AstrBot-1.2.13-arm64.apk`，只发这一个包）。
+本文说明如何从本仓库的源码重新构建出可安装的 `AstrBot-<版本>-<架构>.apk`（当前版本 1.3.0，发布产物 `AstrBot-1.3.0-arm64.apk`，只发这一个包）。
 
 > 构建过程**只能在一台配好工具链的 Windows 机器上**完成（脚本是 PowerShell + 本机 JDK）。
 > 构建不联网、不跑 Gradle，也不需要 Android Studio。
@@ -268,11 +268,11 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 | 版本 | 字段 | 值 |
 | --- | --- | --- |
-| **1.2.13（当前）** | `versionName` / 派生 `versionCode` | `1.2.13` / `10213` |
+| **1.3.0（当前）** | `versionName` / 派生 `versionCode` | `1.3.0` / `10300` |
 | 1.2.10（上一版） | `versionName` / 派生 `versionCode` | `1.2.10` / `10210` |
 | 1.2.9 | `versionName` / 派生 `versionCode` | `1.2.9` / `10209` |
 
-本轮 1.2.13 只发一个安装包：`AstrBot-1.2.13-arm64.apk`，`<APK 字节数>`，SHA-256 是 `<APK SHA-256>`；签名证书 SHA-256 仍是 `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3）。
+本轮 1.3.0 只发一个安装包：`AstrBot-1.3.0-arm64.apk`，`26,148,605`，SHA-256 是 `4CFE9DEF…（完整值见上）`；签名证书 SHA-256 仍是 `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3）。
 
 规则：`versionCode = MAJOR*10000 + MINOR*100 + PATCH`。
 

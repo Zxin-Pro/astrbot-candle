@@ -34,7 +34,7 @@ public final class AstrHot {
     private AstrHot() {}
 
     /** 单个 provider 的调用结果。 */
-    private static final class Resp {
+    static final class Resp {
         int code;
         String body = "";
     }

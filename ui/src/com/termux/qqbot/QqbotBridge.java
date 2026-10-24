@@ -447,6 +447,19 @@ public class QqbotBridge {
         return act.qrShare(id);
     }
 
+    // 当前登录 QQ 的头像：{"ok":true,"uin":"…","data":"data:image/png;base64,…","mtime":…}
+    // 没有缓存时立刻返回 {"ok":false,"err":"下载中"} 并在后台线程去下，前端下一轮 refresh 再问
+    @JavascriptInterface
+    public String avatarInfo() {
+        return AstrAvatar.info(act);
+    }
+
+    // 把当前头像钉成桌面图标：{"ok":true,"msg":"…"} 或 {"ok":false,"err":"…"}
+    @JavascriptInterface
+    public String avatarIconPin() {
+        return AstrIconShortcut.pin(act);
+    }
+
     // 开关某个实例的容器（只翻转 enable；沙盒里的守护进程 5 秒内会启停它）
     @JavascriptInterface
     public String toggleBot(String id) {
@@ -853,6 +866,19 @@ public class QqbotBridge {
             return AstrCfg.info(act.filesDirPub());
         } catch (Throwable t) {
             return errJson("读取 AstrBot 配置失败", t);
+        }
+    }
+
+    /**
+     * 「访问地址」卡上的账号 / 密码 / Token，全部按真实配置文件现读（m11049）。
+     * 密码用「默认密码真登录一次」来判别：改过密码就返回空串，前端据此显示「你改过密码」。
+     */
+    @JavascriptInterface
+    public String creds() {
+        try {
+            return AstrAccount.info(act);
+        } catch (Throwable t) {
+            return errJson("读取账号信息失败", t);
         }
     }
 
