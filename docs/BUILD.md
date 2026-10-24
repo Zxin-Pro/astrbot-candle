@@ -101,7 +101,7 @@ powershell -ExecutionPolicy Bypass -File .\build-ui.ps1
 ### 2. 再注入并签名（build-apk）
 
 ```powershell
-# 默认出精简包；-Arch 仍可用（arm64 / amd64），但两包内容相同，发布只发 arm64 一个
+# 默认出全量包（自带运行环境镜像）；-Arch 仍可用（arm64 / amd64），发布只发 arm64 一个
 powershell -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch arm64
 powershell -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch amd64
 ```
@@ -113,12 +113,6 @@ powershell -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch amd64
 > **发版规矩（2026-10-24 起）：每版只出一个全量包。** 带 `-Arch` 构建时默认就把 `out\bundle-<arch>.tar.xz` 塞进 APK（约 600 MB），产物是 `AstrBot-<ver>-<arch>.apk`；手机端第一次部署就是把这份镜像解压出来，全程不需要联网。
 >
 > `-Update` 保留作热修逃生门（打 25 MB 瘦包、写入 0 字节 `assets/qqbot-update-pkg` 标记、文件名带 `-update`，不会覆盖全量包），正常发版不用它。
-
-
-> `-Arch` 参数仍存在，但两个架构的包内容相同（724 个条目里只有 `assets/qqbot-scripts.zip` 的时间戳不同），发布只发 arm64 一个。
-> 镜像打进 APK 现在是默认行为，不需要再加 `-Bundle`（`-Bundle` 仍可写，等价）。
-> → `AstrBot-<版本>-arm64.apk`（约 600 MB）；`-Arch amd64 -Bundle` → `AstrBot-<版本>-amd64.apk`（约 630 MB）。
-> `-Update` 只是热修逃生门：打 25 MB 瘦包、写 `assets/qqbot-update-pkg` 标记、文件名带 `-update`，正常发版不用。
 
 这一步分五小步（对应脚本日志里的 `[1/5]`～`[5/5]`）：
 
