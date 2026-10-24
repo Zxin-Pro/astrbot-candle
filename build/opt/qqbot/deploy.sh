@@ -181,10 +181,20 @@ run_steps() {
       else
         qqlog "========== 步骤 $s（第 $_n 次尝试）=========="
       fi
-      if bash "$QQBOT_OPT/steps/$s.sh"; then
+      _src=0
+      bash "$QQBOT_OPT/steps/$s.sh" || _src=$?
+      if [ "$_src" -eq 0 ]; then
         : > "$QQBOT_STEPS/$s"
         qqok "步骤 $s 完成"
         break
+      fi
+      # 退出码 3 = 这一步自己判定「重试也没用」（内置镜像解压出真错误、树不完整）。
+      # 以前不看退出码一律重试三次：用户那边每次都要把 2 GB 的镜像重新解一遍，
+      # 界面就卡在「第 2 步」十几分钟，最后还是失败。
+      if [ "$_src" -eq 3 ]; then
+        qqerr "步骤 $s 判定为不可重试的错误，先停下（看上面的具体原因）"
+        FAILED="$s"
+        return 1
       fi
       if [ "$_n" -ge "$TRIES" ]; then
         qqerr "步骤 $s 连续 $_n 次失败"

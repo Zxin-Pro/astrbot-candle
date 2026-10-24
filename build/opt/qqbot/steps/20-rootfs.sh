@@ -26,6 +26,72 @@ qq_bundle_ready() {
   [ -s "$BUNDLE" ] && [ -f "$BUNDLE_OK" ]
 }
 
+# ---------------------------------------------------------------------------
+# 解压内置包时「硬链接建不了」的自愈
+#
+# 真机（Redmi / Android 16）的应用私有目录 link(2) 直接 EPERM，
+# 而镜像里有 6 条硬链接（/usr/bin 的别名：perl5.38.2 / zipinfo / perlthanks /
+# bunzip2 / bzip2 / gunzip）。tar 解到这些条目时会在 stderr 打
+#   tar: ./usr/bin/zipinfo: Cannot hard link to ‘./usr/bin/unzip’: Operation not permitted
+# 然后继续解完剩下的内容，最后以 rc=2 退出。rc 非 0 并不代表树是坏的。
+#
+# 这些条目本质是「同一文件的另一个名字」，用 cp -p 复制一份完全等价，
+# 代价是每个别名多占一点空间（这几个加起来不到 5 MB）。
+# ---------------------------------------------------------------------------
+qq_tar_hardlink_pairs() {
+  _f=${1:-$QQBOT_CACHE/bundle-tar.err}
+  [ -s "$_f" ] || return 1
+  # 先把引号都剥掉（GNU tar 的 quoting style 跟 locale 有关，‘ ’ “ ” " ' 都可能出现），
+  # 格式就固定成 tar: NAME: Cannot hard link to TARGET: REASON
+  tr -d '\342\200\230\342\200\231\342\200\234\342\200\235\042\047' < "$_f" 2>/dev/null \
+    | sed -n 's/^tar: \(.*\): Cannot hard link to \(.*\): .*$/\1|\2/p'
+}
+
+qq_fix_hardlinks() {
+  _err=${1:-$QQBOT_CACHE/bundle-tar.err}
+  _root=${2:-$ROOTFS}
+  _map="$QQBOT_CACHE/bundle-hardlinks.txt"
+  qq_tar_hardlink_pairs "$_err" > "$_map" 2>/dev/null || true
+  _fixed=0
+  while IFS='|' read -r _n _t; do
+    [ -n "$_n" ] && [ -n "$_t" ] || continue
+    _n=$(printf '%s' "$_n" | sed -e 's|^\./||' -e 's|^/||')
+    _t=$(printf '%s' "$_t" | sed -e 's|^\./||' -e 's|^/||')
+    [ -f "$_root/$_t" ] || continue
+    [ -e "$_root/$_n" ] && continue
+    mkdir -p "$(dirname "$_root/$_n")" 2>/dev/null || true
+    cp -p "$_root/$_t" "$_root/$_n" 2>/dev/null && _fixed=$((_fixed + 1))
+  done < "$_map"
+  # 再按「这版镜像里已知的 6 条硬链接」无条件补一遍（上面已经补过的会跳过）：
+  # 万一 tar 的报错格式变了（换 tar 版本 / 换 locale）导致一条都没解析出来，
+  # 或者只解析出一半，这里能把剩下的补齐，不至于让一棵残树被当成解压成功。
+  for _pair in \
+    usr/bin/perl:usr/bin/perl5.38.2 \
+    usr/bin/unzip:usr/bin/zipinfo \
+    usr/bin/perlbug:usr/bin/perlthanks \
+    usr/bin/bzcat:usr/bin/bunzip2 \
+    usr/bin/bzcat:usr/bin/bzip2 \
+    usr/bin/uncompress:usr/bin/gunzip
+  do
+    _t=${_pair%%:*}; _n=${_pair##*:}
+    [ -f "$_root/$_t" ] || continue
+    [ -e "$_root/$_n" ] && continue
+    cp -p "$_root/$_t" "$_root/$_n" 2>/dev/null && _fixed=$((_fixed + 1))
+  done
+  [ "$_fixed" -gt 0 ] && qqlog "已用复制补齐 $_fixed 个硬链接（/usr/bin 里的别名）"
+  return 0
+}
+
+# 过滤掉「已知无害」的 tar 告警，剩下的是真的坏条目（截断 / 磁盘满 / 权限全挂）。
+qq_tar_real_errors() {
+  _f=${1:-$QQBOT_CACHE/bundle-tar.err}
+  [ -s "$_f" ] || return 0
+  # 只放过「不影响树完整性」的告警：硬链接（已用复制补齐）、utime/chown/chmod
+  # （Termux 侧 tar 没有 root，改不了时间戳和属主，无所谓）、重复条目。
+  # 符号链接失败**不**放过 —— 那种树是残的，宁可报错也别让用户装完才发现。
+  grep -v -E 'Cannot hard link to|Cannot utime|Cannot change ownership|Cannot chmod|File exists|Exiting with failure status|Removing leading' "$_f" 2>/dev/null | head -n 5 || true
+}
+
 if [ ! -f "$QQBOT_HOME/deploy.done" ] && ! qq_bundle_ready && [ -f "$BUNDLE_PENDING" ]; then
   qqlog "正在释放沙盒镜像（约 600 MB，解压需要几分钟）"
   _w=0
@@ -146,14 +212,31 @@ if [ "$BUNDLE_USE" = "1" ]; then
   BRC=$?
   set -e
   if [ "$BRC" != "0" ]; then
-    qqerr "内置包解压失败（tar 返回 $BRC，详见 $QQBOT_CACHE/bundle-tar.err）"
-    rm -rf "$ROOTFS"
-    exit 1
+    # ---------------------------------------------------------------------
+    # tar 非 0 不等于解压失败。真机（Redmi / Android 16）上实测过：这台机器
+    # 的存储建不了硬链接（link(2) 直接 EPERM，fs-probe 也报了同样的话），
+    # 而内置包里带着 6 个硬链接条目（/usr/bin 里的别名：perl5.38.2、zipinfo、
+    # perlthanks、bunzip2、bzip2、gunzip）。tar 解到那几条时 link() 失败，
+    # 会打一行 "Cannot hard link to ..." 到 stderr，然后**继续解完剩下的**，
+    # 最终以 rc=2 退出。旧代码只看 rc 就把整棵已经解好的树删掉、再重试三次，
+    # 用户看到的就是「第 2 步卡着、一直在解压」。
+    #
+    # 这几条的本质是「同一个文件的另一个名字」，用复制补上完全等价（多占几百 KB）。
+    # ---------------------------------------------------------------------
+    qq_fix_hardlinks "$QQBOT_CACHE/bundle-tar.err" "$ROOTFS"
+    _left="$(qq_tar_real_errors "$QQBOT_CACHE/bundle-tar.err")"
+    if [ -n "$_left" ] || [ ! -f "$ROOTFS/opt/AstrBot/main.py" ] || [ ! -x "$ROOTFS/bin/bash" ]; then
+      qqerr "内置包解压失败（tar 返回 $BRC，详见 $QQBOT_CACHE/bundle-tar.err）"
+      [ -n "$_left" ] && printf '%s\n' "$_left" | head -n 5 | while IFS= read -r _l; do qqerr "  $_l"; done
+      rm -rf "$ROOTFS"
+      exit 3
+    fi
+    qqwarn "解压时有硬链接建不了，已用复制代替（tar 返回 $BRC，其余条目完整）"
   fi
   if [ ! -x "$ROOTFS/bin/bash" ] || [ ! -d "$ROOTFS/var/lib/dpkg" ]; then
     qqerr "内置包解压后缺少关键目录，镜像可能损坏"
     rm -rf "$ROOTFS"
-    exit 1
+    exit 3
   fi
   # 上面的两个路径在「只解出一棵 ubuntu-base」的残缺树里同样存在，判据还不够。
   # 内置包按定义是把整台机器都装好了，所以再验一个只有装完才会有的东西：
@@ -161,7 +244,7 @@ if [ "$BUNDLE_USE" = "1" ]; then
   if [ ! -f "$ROOTFS/opt/AstrBot/main.py" ]; then
     qqerr "内置包只解出一部分（缺 /opt/AstrBot/main.py），已放弃本次离线安装"
     rm -rf "$ROOTFS"
-    exit 1
+    exit 3
   fi
   # 解压完立刻删掉，650 MB 不能留成永久占用。
   rm -f "$BUNDLE" "$BUNDLE_OK" "$BUNDLE_PENDING"

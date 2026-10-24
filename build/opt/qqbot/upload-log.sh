@@ -54,6 +54,29 @@ have() { command -v "$1" >/dev/null 2>&1; }
   echo "----- 上次失败原因 (deploy.error) -----"
   cat "$QQBOT_HOME/deploy.error" 2>/dev/null || echo "(无)"
   echo
+  # 内置镜像解压失败时，真正的原因只在 tar 的 stderr 里（就是那行 "Cannot hard link to …"），
+  # 以前报告只带一句「tar 返回 2」，等于没有线索，白让用户再传一次。
+  echo "----- 内置镜像解压现场 -----"
+  echo "BUNDLE_ARCH : $(cat "$QQBOT_OPT/BUNDLE_ARCH" 2>/dev/null || echo '(无)')"
+  echo "bundle 文件 : $(ls -l "$QQBOT_HOME/bundle.tar.xz" 2>/dev/null || echo '(已删除/未落盘)')"
+  echo "bundle 标记 : .bundle-ok=$([ -f "$QQBOT_HOME/.bundle-ok" ] && echo yes || echo no) .bundle-pending=$([ -f "$QQBOT_HOME/.bundle-pending" ] && echo yes || echo no) deploy.done=$([ -f "$QQBOT_HOME/deploy.done" ] && echo yes || echo no)"
+  echo "rootfs 大小 : $(du -sm "$QQBOT_ROOTFS" 2>/dev/null | awk '{print $1" MB"}' || echo '?')"
+  echo "rootfs 标志 : arch=$(cat "$QQBOT_ROOTFS/rootfs.arch" 2>/dev/null || echo '?') main.py=$([ -f "$QQBOT_ROOTFS/opt/AstrBot/main.py" ] && echo yes || echo no) bin/bash=$([ -x "$QQBOT_ROOTFS/bin/bash" ] && echo yes || echo no)"
+  _berr="$QQBOT_CACHE/bundle-tar.err"
+  if [ -s "$_berr" ]; then
+    echo "--- tar stderr（$(wc -c < "$_berr" 2>/dev/null) 字节，尾部 80 行）---"
+    tail -n 80 "$_berr" 2>/dev/null
+    echo "--- 归类统计 ---"
+    echo "Cannot hard link to : $(grep -c 'Cannot hard link to' "$_berr" 2>/dev/null || echo 0)"
+    echo "Cannot create symlink : $(grep -c 'Cannot create symlink' "$_berr" 2>/dev/null || echo 0)"
+    echo "Cannot open : $(grep -c 'Cannot open' "$_berr" 2>/dev/null || echo 0)"
+    echo "Unexpected EOF : $(grep -c 'Unexpected EOF' "$_berr" 2>/dev/null || echo 0)"
+  else
+    echo "(没有 bundle-tar.err：这版还没跑过解压，或解压成功)"
+  fi
+  echo "--- 硬链接映射（解压时用复制补齐的别名）---"
+  cat "$QQBOT_CACHE/bundle-hardlinks.txt" 2>/dev/null | head -n 20 || echo "(无)"
+  echo
   echo "----- 部署日志尾部 300 行 (deploy.log) -----"
   tail -n 300 "$QQBOT_HOME/logs/deploy.log" 2>/dev/null || echo "(无)"
   echo
