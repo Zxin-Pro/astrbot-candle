@@ -3141,53 +3141,72 @@ section.tab.on{display:flex;flex-direction:column}
 .depov-in {
   width: 100%;
   max-width: 340px;
+  padding: 24px 22px 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
   color: #eef2f9;
 }
-.depov-ring { position: relative; width: 132px; height: 132px; margin-bottom: 18px; }
-.depov-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-.depov-ring circle { fill: none; stroke-width: 7; stroke-linecap: round; }
+.depov-ring { position: relative; width: 150px; height: 150px; margin: 2px auto 18px; }
+.depov-ring svg { display: block; width: 100%; height: 100%; transform: rotate(-90deg); }
+.depov-ring circle { fill: none; stroke-width: 9; stroke-linecap: round; }
 .depov-ring .trk { stroke: rgba(255, 255, 255, .10); }
+/* 弧线用 SVG 渐变描边（蓝 → 青 → 淡紫），比纯色环更像「在流动」；
+   2π×60 ≈ 377，dashoffset 由 JS 按百分比算，别在 CSS 里写死长度。 */
 .depov-ring .arc {
-  stroke: #6b95ff;
-  stroke-dasharray: 326.7;
-  stroke-dashoffset: 326.7;
-  transition: stroke-dashoffset .55s cubic-bezier(.22, .61, .36, 1);
-  filter: drop-shadow(0 0 7px rgba(107, 149, 255, .55));
+  stroke: url(#depovGrad);
+  stroke-dasharray: 377;
+  stroke-dashoffset: 377;
+  transition: stroke-dashoffset .6s cubic-bezier(.22, .61, .36, 1);
 }
-.depov-ring b {
+.depov-ring.run .arc { animation: depovBreath 2.8s ease-in-out infinite; }
+@keyframes depovBreath { 0%, 100% { opacity: 1 } 50% { opacity: .68 } }
+.depov-mid {
   position: absolute;
   inset: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 34px;
+  gap: 3px;
+}
+.depov-mid b {
+  font-size: 36px;
   font-weight: 650;
-  letter-spacing: -.02em;
+  line-height: 1;
+  letter-spacing: -.03em;
   font-variant-numeric: tabular-nums;
 }
-.depov-ring b i { font-style: normal; font-size: 15px; font-weight: 500; opacity: .55; margin-left: 1px; }
+.depov-mid b i { font-style: normal; font-size: 15px; font-weight: 500; opacity: .55; margin-left: 1px; }
+.depov-mid .depov-step {
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: .06em;
+  color: rgba(255, 255, 255, .55);
+  font-variant-numeric: tabular-nums;
+}
 .depov-t { font-size: 17px; font-weight: 600; letter-spacing: .01em; }
 .depov-s { margin-top: 7px; font-size: 12.5px; line-height: 1.6; color: rgba(238, 242, 249, .62); }
-.depov-bar {
-  width: 100%;
+/* 步骤刻度：比「环 + 一条直线进度条」少一层重复编码 —— 环给百分比，刻度给
+   「一共几步、走到第几步」，两者说的不是同一件事。完成段上渐变，当前段呼吸。 */
+.depov-dots {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin: 16px 0 13px;
+}
+.depov-dots i {
+  width: 18px;
   height: 4px;
-  margin: 18px 0 14px;
   border-radius: 99px;
-  background: rgba(255, 255, 255, .10);
-  overflow: hidden;
+  background: rgba(255, 255, 255, .13);
+  transition: background .35s cubic-bezier(.22, .61, .36, 1), opacity .35s linear;
 }
-.depov-bar i {
-  display: block;
-  height: 100%;
-  width: 0;
-  border-radius: 99px;
-  background: linear-gradient(90deg, #4f7df3, #7fd4ff);
-  transition: width .55s cubic-bezier(.22, .61, .36, 1);
-}
+.depov-dots i.done { background: linear-gradient(90deg, #4f7df3, #7fd4ff); }
+.depov-dots i.cur { background: rgba(255, 255, 255, .45); animation: depovDot 1.8s ease-in-out infinite; }
+@keyframes depovDot { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
 .depov-log {
   width: 100%;
   min-height: 34px;
@@ -4472,21 +4491,23 @@ section.tab.on{display:flex;flex-direction:column}
   stroke:rgba(255,255,255,.10);
 }
 
+/* 环的渐变直接挂在 SVG 的 stop-color 上（stop 颜色用 var(--accent)），
+   这里只是把深色底下的描边源指到那条渐变，并清掉滤镜。 */
 :root[data-theme] .depov-ring .arc{
-  stroke:var(--accent);
+  stroke:url(#depovGrad);
   filter:none;
 }
 
-:root[data-theme] .depov-bar{
-  border-radius:var(--r-full);
-  background:rgba(255,255,255,.12);
-  overflow:hidden;
+:root[data-theme] .depov-dots i{
+  background:rgba(255,255,255,.13);
 }
 
-:root[data-theme] .depov-bar > i{
-  border-radius:var(--r-full);
+:root[data-theme] .depov-dots i.done{
   background:linear-gradient(90deg,var(--accent),var(--accent-2));
-  transition:width .4s var(--ios-ease);
+}
+
+:root[data-theme] .depov-dots i.cur{
+  background:rgba(255,255,255,.48);
 }
 
 :root[data-theme] .depov-log{
@@ -4624,7 +4645,9 @@ section.tab.on{display:flex;flex-direction:column}
   :root[data-theme] .bootbar,
   :root[data-theme] .dlg,
   :root[data-theme] .dlgmask,
-  :root[data-theme] #depov{
+  :root[data-theme] #depov,
+  .depov-ring.run .arc,
+  .depov-dots i.cur{
     animation:none;
   }
 
@@ -4635,7 +4658,7 @@ section.tab.on{display:flex;flex-direction:column}
   :root[data-theme] .seg button,
   :root[data-theme] .sw,
   :root[data-theme] .bar > i,
-  :root[data-theme] .depov-bar > i,
+  :root[data-theme] .depov-dots i,
   :root[data-theme] .bootbar > i,
   :root[data-theme] select,
   :root[data-theme] input,
@@ -5648,16 +5671,26 @@ section.tab.on{display:flex;flex-direction:column}
 
 <div class="depov" id="depov" role="status" aria-live="polite">
   <div class="depov-in">
-    <div class="depov-ring">
-      <svg viewBox="0 0 120 120" aria-hidden="true">
-        <circle class="trk" cx="60" cy="60" r="52"></circle>
-        <circle class="arc" id="depovArc" cx="60" cy="60" r="52"></circle>
+    <div class="depov-ring" id="depovRing">
+      <svg viewBox="0 0 144 144" aria-hidden="true">
+        <defs>
+          <linearGradient id="depovGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#3B82F6"></stop>
+            <stop offset=".58" stop-color="#7FD4FF"></stop>
+            <stop offset="1" stop-color="#C4B5FD"></stop>
+          </linearGradient>
+        </defs>
+        <circle class="trk" cx="72" cy="72" r="60"></circle>
+        <circle class="arc" id="depovArc" cx="72" cy="72" r="60"></circle>
       </svg>
-      <b id="depovPct">0<i>%</i></b>
+      <div class="depov-mid">
+        <b id="depovPct">0<i>%</i></b>
+        <span class="depov-step" id="depovStep">准备中</span>
+      </div>
     </div>
     <div class="depov-t" id="depovT">正在准备部署</div>
     <div class="depov-s" id="depovS">读一下当前进度…</div>
-    <div class="depov-bar"><i id="depovBar"></i></div>
+    <div class="depov-dots" id="depovDots"></div>
     <div class="depov-log" id="depovLog">　</div>
     <button class="depov-off" data-act="depovoff">放到后台，继续部署</button>
     <div class="depov-hint">部署期间请保持应用在前台、屏幕常亮</div>
@@ -6987,6 +7020,29 @@ function depovShow(on){
   var o = el("depov"); if (!o) return;
   if (on) o.classList.add("on"); else o.classList.remove("on");
 }
+/* 环的周长按 r=60 算：2πr ≈ 377。写死会在改半径时静默错位，所以由 JS 给。 */
+var DEPOV_C = 2 * Math.PI * 60;
+function depovRingSet(pct){
+  var a = el("depovArc"); if (!a) return;
+  if (!(pct > 0)) pct = 0;
+  if (pct > 100) pct = 100;
+  a.style.strokeDasharray = String(DEPOV_C);
+  a.style.strokeDashoffset = String(DEPOV_C * (1 - pct / 100));
+  var r = el("depovRing");
+  if (r) { if (pct >= 100) r.classList.remove("run"); else r.classList.add("run"); }
+}
+function depovDotsPaint(dc, tot, curIdx){
+  var box = el("depovDots"); if (!box) return;
+  if (!tot) { box.innerHTML = ""; return; }
+  if (box.childNodes.length !== tot) {
+    var h = "";
+    for (var i = 0; i < tot; i++) h += "<i></i>";
+    box.innerHTML = h;
+  }
+  for (var k = 0; k < box.childNodes.length; k++) {
+    box.childNodes[k].className = k < dc ? "done" : (k === curIdx ? "cur" : "");
+  }
+}
 function depovPaint(d){
   var o = el("depov"); if (!o) return;
   var D = depovData();
@@ -6996,8 +7052,9 @@ function depovPaint(d){
     if (D.wasRun) {
       D.wasRun = 0;
       el("depovPct").innerHTML = '100<i>%</i>';
-      el("depovArc").style.strokeDashoffset = "0";
-      el("depovBar").style.width = "100%";
+      depovRingSet(100);
+      el("depovStep").textContent = "完成";
+      depovDotsPaint(d.total || 8, d.total || 8, -1);
       el("depovT").textContent = "部署完成";
       el("depovS").textContent = "沙盒已经装好，接下来扫码登录 QQ 就能用了";
       depovShow(true);
@@ -7028,8 +7085,9 @@ function depovPaint(d){
   }
   var pct = tot ? Math.round(dc * 100 / tot) : 0;
   el("depovPct").innerHTML = pct + '<i>%</i>';
-  el("depovArc").style.strokeDashoffset = String(326.7 * (1 - pct / 100));
-  el("depovBar").style.width = pct + "%";
+  depovRingSet(pct);
+  el("depovStep").textContent = tot ? (dc + " / " + tot + " 步") : "";
+  depovDotsPaint(dc, tot, cur ? curIdx : -1);
   el("depovT").textContent = cur ? ("第 " + (curIdx + 1) + " / " + tot + " 步：" + cur.label) : "正在收尾";
   var age = d.logAge || 0;
   var mins = Math.floor(age / 60);

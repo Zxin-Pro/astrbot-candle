@@ -267,12 +267,13 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 | 版本 | 字段 | 值 |
 | --- | --- | --- |
-| **1.3.1（当前）** | `versionName` / 派生 `versionCode` | `1.3.1` / `10301` |
+| **1.3.2（当前）** | `versionName` / 派生 `versionCode` | `1.3.2` / `10302` |
+| 1.3.1 | `versionName` / 派生 `versionCode` | `1.3.1` / `10301` |
 | 1.3.0 | `versionName` / 派生 `versionCode` | `1.3.0` / `10300` |
 | 1.2.10 | `versionName` / 派生 `versionCode` | `1.2.10` / `10210` |
 | 1.2.9 | `versionName` / 派生 `versionCode` | `1.2.9` / `10209` |
 
-1.3.1 起每版只有一个安装包：`AstrBot-1.3.1-arm64.apk`，`609,341,253`（约 581 MB，镜像在 APK 里），SHA-256 `2AB0B7794DF9C4C5188527F8E15B536694A8AF706AB781448E96F85EFD70B70A`；签名证书 SHA-256 仍是 `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3）。
+1.3.1 起每版只有一个安装包：`AstrBot-1.3.2-arm64.apk`，`609,349,445`（约 581 MB，镜像在 APK 里），SHA-256 `86C78810164E5B2CD946E29006E6F6A99C2994B53D7F89C0EBFB3AB278924001`；签名证书 SHA-256 仍是 `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3）。
 
 规则：`versionCode = MAJOR*10000 + MINOR*100 + PATCH`。
 

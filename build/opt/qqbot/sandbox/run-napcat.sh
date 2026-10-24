@@ -837,6 +837,67 @@ napcat_mode_save() {
   return 0
 }
 
+# 把 QQ 的 NapCat 注入补齐：安装包里没有 resources/app/loadNapCat.js、main 仍指向
+# application.asar 时，QQ 起来也不会加载 NapCat（WebUI 端口永远不通）。幂等；失败只告警。
+ensure_napcat_injection() {
+  local qdir="${1:-}" id="${2:-}" app main="" stub=""
+  [ -n "$qdir" ] || return 1
+  app="$qdir/resources/app"
+  if [ ! -d "$app" ]; then
+    log "警告：找不到 $app，跳过 NapCat 注入检查"
+    return 0
+  fi
+  if [ ! -s "$app/app_launcher/napcat/napcat.mjs" ]; then
+    log "警告：NapCat 本体不在 $app/app_launcher/napcat，跳过注入检查"
+    return 0
+  fi
+  stub="$app/loadNapCat.js"
+  if [ ! -s "$stub" ]; then
+    cat > "$stub" <<'JSEOF'
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
+import(pathToFileURL(path.join(__dirname, 'app_launcher/napcat/napcat.mjs')).href);
+JSEOF
+    if [ -s "$stub" ]; then
+      log "实例 $id 补写了 loadNapCat.js（内置镜像里的 QQ 没有注入过）"
+    else
+      log "警告：实例 $id 写 $stub 失败，NapCat 可能不会被加载"
+      return 0
+    fi
+  fi
+  # 入口字段只可能出现在顶层（腾讯这份 package.json 里 "main" 全局仅一处），
+  # 所以先用 sed 原地替换 —— 真机上 python3 不一定在 PATH 里（venv 自检就报过
+  # .venv/bin/python 不可执行），把命中率最高的做法放在最前面，不起进程也更稳。
+  pj="$app/package.json"
+  if [ ! -s "$pj" ]; then
+    log "警告：实例 $id 的 $pj 不存在，NapCat 可能不会被加载"
+    return 0
+  fi
+  if grep -q '"main"[[:space:]]*:[[:space:]]*"\./loadNapCat\.js"' "$pj" 2>/dev/null; then
+    return 0          # 已经是注入后的状态，别每次启动都动文件
+  fi
+  main=$(sed -n 's/^[[:space:]]*"main"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$pj" 2>/dev/null | head -n 1)
+  sed -i.bak 's#^\([[:space:]]*\)"main"[[:space:]]*:[[:space:]]*"[^"]*"#\1"main": "./loadNapCat.js"#' "$pj" 2>/dev/null
+  rm -f "$pj.bak"
+  if ! grep -q '"main"[[:space:]]*:[[:space:]]*"\./loadNapCat\.js"' "$pj" 2>/dev/null \
+     && command -v python3 >/dev/null 2>&1; then
+    # sed 没命中（缩进/写法变了）才走 python3：它能保证 JSON 结构不被改坏
+    python3 - "$pj" <<'PYEOF' 2>/dev/null || true
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p, encoding='utf-8-sig'))
+d['main'] = './loadNapCat.js'
+json.dump(d, open(p, 'w', encoding='utf-8'), indent=2, ensure_ascii=False)
+PYEOF
+  fi
+  if grep -q '"main"[[:space:]]*:[[:space:]]*"\./loadNapCat\.js"' "$pj" 2>/dev/null; then
+    log "实例 $id 已把 QQ 入口改成 loadNapCat.js（原来是 ${main:-空}）"
+  else
+    log "警告：实例 $id 改写 $pj 失败（原 main=${main:-空}），NapCat 可能不会被加载"
+  fi
+  return 0
+}
+
 # 端口是否有人在听（/proc/net/tcp 的本地地址是 16 进制、大写）
 port_listen() {
   local port="${1:-}" hex
@@ -1249,6 +1310,13 @@ PY
   # 所以第一档就该是「什么额外参数都不加」，后面几档只在别的机型还卡 GPU 时兜底。
   QQ_OK=0
   QQ_USED="-"
+
+  # 内置镜像里的 QQ 是「未注入」状态：安装包没带 resources/app/loadNapCat.js，
+  # package.json 的 main 还指向 application.asar。而解压内置镜像时 50-napcat 会被直接
+  # 标记为已完成，注入那一步永远不会再跑 —— 完整客户端模式下 NapCat 就没被加载，
+  # WebUI（6099）永远探测不通，supervisor 只会反复「NapCat 端口探测不通」。
+  # 每次拉起 QQ 前把注入补齐即可（幂等；失败只告警，绝不拦启动）。
+  ensure_napcat_injection "$QQDIR" "$id"
 
   setup_crashwatch
 
