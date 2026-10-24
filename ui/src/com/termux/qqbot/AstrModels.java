@@ -60,7 +60,18 @@ public final class AstrModels {
             int code = c.getResponseCode();
             if (code != 200) {
                 out.put("ok", false);
-                out.put("err", "中转站返回 HTTP " + code + (code == 401 || code == 403 ? "（密钥不对或没填）" : ""));
+                /*
+                 * 401 / 403 的提示要分开写：以前一律「密钥不对或没填」，可那条路上最常见的情况
+                 * 恰恰是「密钥早就保存过、只是输入框留空」——这句话把用户引到错的方向
+                 * （以为要重新贴密钥，甚至以为插件坏了）。现在按「到底有没有密钥」分两句。
+                 */
+                String hint = "";
+                if (code == 401 || code == 403) {
+                    hint = (k.length() == 0)
+                        ? "（这台手机上还没有保存密钥，先贴一把再点这里）"
+                        : "（密钥被中转站拒了：换过 / 删过密钥的话，重新贴一把再试）";
+                }
+                out.put("err", "中转站返回 HTTP " + code + hint);
                 return out.toString();
             }
             in = c.getInputStream();
