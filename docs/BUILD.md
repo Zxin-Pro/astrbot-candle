@@ -397,6 +397,11 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 7. **测试版不进站**：`pick_apk()` 跳过文件名含 `beta` 的资产，站点更新列表也跳过 GitHub 标了 pre-release
    的版本；`/releases/latest` 本身就不返回预发布。所以 beta 如果发到 GitHub，**必须勾上
    "Set as a pre-release"** —— 忘了勾，它就成了 latest，官网下载卡与应用内「检查更新」会直接把测试版推给所有人。
+8. **同版本重打包后，Release 正文里的字节数 / SHA-256 要一起改**。站点历史卡片是照着 Release 正文（`body`）渲染的，
+   资产换了而正文没换，用户按卡片上的哈希核对就会对不上（1.3.1 的全量包 10 月 24 日重传过，正文里还留着第一次的
+   `609,341,253` / `2AB0B779…`，而实际资产是 `609,345,349` / `945E306A…`）。改法：
+   `PATCH /repos/Zxin-Pro/astrbot-candle/releases/<id>`，body 只发 `{"body": "<新正文>"}`；
+   不想等每日同步就同时对 `data/astrbot.json` 与 `data/astrbot_content.json` 做同样的字符串替换（改前 `cp -a` 备份）。
 
 ---
 
