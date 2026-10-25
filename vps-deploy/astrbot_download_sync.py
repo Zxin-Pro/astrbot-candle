@@ -144,6 +144,8 @@ def pick_apk(rel):
             continue
         if "-update" in name:
             continue            # 更新包是给老用户覆盖安装的瘦包，不能当主下载（第一次装它会联网下 1 GB）
+        if "beta" in name:
+            continue            # 测试版只发给人手动装，不进站内下载卡（验收完再发正式版）
         score = 4
         if score > best_score:
             best, best_score = a, score
@@ -1006,8 +1008,8 @@ def build(latest, all_rels, extra=None, mirror=None, pc=None):
 
     ch_cards = []
     for rel in (all_rels or [])[:6]:
-        if rel.get("draft"):
-            continue
+        if rel.get("draft") or rel.get("prerelease"):
+            continue            # 站点只列正式版；beta 是「先给内测的人装」的那一步
         rtag = rel.get("tag_name") or ""
         rpub = (rel.get("published_at") or "")[:10]
         rbody = (rel.get("body") or "").strip()

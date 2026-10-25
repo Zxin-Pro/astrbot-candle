@@ -267,19 +267,25 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 | 版本 | 字段 | 值 |
 | --- | --- | --- |
-| **1.3.2（当前）** | `versionName` / 派生 `versionCode` | `1.3.2` / `10302` |
+| **1.3.2-beta.1（当前，测试版）** | `versionName` / 派生 `versionCode` | `1.3.2-beta.1` / `10302` |
+| 1.3.2（正式版，待 beta 验收后发） | `versionName` / 派生 `versionCode` | `1.3.2` / `10302` |
 | 1.3.1 | `versionName` / 派生 `versionCode` | `1.3.1` / `10301` |
 | 1.3.0 | `versionName` / 派生 `versionCode` | `1.3.0` / `10300` |
 | 1.2.10 | `versionName` / 派生 `versionCode` | `1.2.10` / `10210` |
 | 1.2.9 | `versionName` / 派生 `versionCode` | `1.2.9` / `10209` |
 
-1.3.1 起每版只有一个安装包：`AstrBot-1.3.2-arm64.apk`，`609,349,445`（约 581 MB，镜像在 APK 里），SHA-256 `66A4682F8DC7CBF0A9A569EDA847EA78C80D7C680B1C423B1F58D2D66121245D`；签名证书 SHA-256 仍是 `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3）。
+1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.2-beta.1-arm64.apk`，`609,349,445`（约 581 MB，镜像在 APK 里），SHA-256 `26CE2732650FD197E271EB647AB4D0214D099FA90C95660A90C649181B7164E7`；覆盖安装用的 `AstrBot-1.3.2-beta.1-arm64-update.apk` 是 `26,169,154` B，SHA-256 `1A74F6B2295ACF455280095B430EDA52CC48D90368392AA39000E31E193580E2`。签名证书 SHA-256 仍是 `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3）。
 
 规则：`versionCode = MAJOR*10000 + MINOR*100 + PATCH`。
 
 - **MAJOR**（X.0.0）：不兼容改动，例如换沙盒方案、需要重装 APK 才能升级；
 - **MINOR**（0.X.0）：新增功能；
 - **PATCH**（0.0.X）：修 bug、文案、性能。
+
+**预发布后缀**：`VERSION` 允许写 `1.3.2-beta.1` 这种带后缀的测试版，`build-ui.ps1` 会把它原样写进
+`versionName`（应用「设置」页、崩溃上报里都看得到），`versionCode` 仍按数字段算 `10302`。
+**不要为了区分 beta 去改 `versionCode`**：beta 与随后的正式版 `versionCode` 必须相同，
+否则正式版对装了 beta 的手机就是「降级」，覆盖安装会被系统拒绝。
 
 改完记得同步更新 `CHANGELOG.md`。
 
@@ -383,3 +389,26 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 5. 站内文件名固定为 `AstrBot-<版本>.apk`；要强制换包，删掉 `downloads/AstrBot-<版本>.apk` 再跑同步。
 6. **沙盒镜像（约 580～604 MB）不走 GitHub Release**：只传到 VPS 的 `/data/www/zhuxin-site/dl/`（见第四节）；
    GitHub 上只有约 25 MB 的精简包，本机直接上传即可，不需要再走 SFTP 中转。
+7. **测试版不进站**：`pick_apk()` 跳过文件名含 `beta` 的资产，站点更新列表也跳过 GitHub 标了 pre-release
+   的版本；`/releases/latest` 本身就不返回预发布。所以 beta 如果发到 GitHub，**必须勾上
+   "Set as a pre-release"** —— 忘了勾，它就成了 latest，官网下载卡与应用内「检查更新」会直接把测试版推给所有人。
+
+---
+
+## 九、发布节奏：先 beta，验收通过再出正式版
+
+从 1.3.2 起固定这个节奏，每一版都一样：
+
+1. **改版本号**：`VERSION` 写成下一版加后缀，例如 `1.3.2-beta.1`；同一版本还要再发一次测试就递增 `-beta.2`。
+2. **写更新日志**：`CHANGELOG.md` 增加 `## [1.3.2-beta.1] - YYYY-MM-DD` 一段，写清这次改了什么
+   —— beta 段也要写全，验收的人就是照着它逐条测。正式版再单独写一段（不要直接改 beta 那段）。
+3. **构建**（顺序不能反，`build-apk.ps1` 用的是 `build-ui.ps1` 产出的 UI APK）：
+   `build-ui.ps1` → `build-apk.ps1 -Arch arm64 -Update` → `build-apk.ps1 -Arch arm64`。
+4. **交付 beta**：把 `AstrBot-1.3.2-beta.1-arm64.apk`（全量）与 `AstrBot-1.3.2-beta.1-arm64-update.apk`
+   （覆盖安装用）连同 SHA-256 发给验收的人；本地打 tag `v1.3.2-beta.1`。beta **不进官网、不推 GitHub latest**。
+5. **验收通过 → 发正式版**：`VERSION` 去掉后缀写成 `1.3.2`，`CHANGELOG.md` 加正式版那段，
+   重新走一遍第 3 步构建（`versionCode` 不变，装了 beta 的手机直接覆盖安装即可），打 tag `v1.3.2`，
+   再把全量包传到 GitHub Release（**不要**勾 pre-release），官网同步脚本第二天会自动更新下载卡。
+
+beta 与正式版之间不需要卸载重装：同一 `versionCode` 的覆盖安装是允许的，数据（沙盒、账号、配置）全部保留。
+
