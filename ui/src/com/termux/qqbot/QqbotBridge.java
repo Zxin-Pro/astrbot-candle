@@ -105,6 +105,10 @@ public class QqbotBridge {
             // 但界面上的开关必须仍然是「已关闭」而不是自己弹回「已开启」。
             o.put("guardOn", QqbotGuardService.enabled(act));
             o.put("guardWake", QqbotGuardService.wakeEnabled(act));
+            // 息屏模式（1.3.3-beta.2）：开关状态 + 此刻是否真的处于「灭屏加强」，
+            // 界面按后者显示「灭屏加强中」，用户一眼能确认策略生效了。
+            o.put("guardScreen", ScreenMode.isOn(act));
+            o.put("screenDark", ScreenMode.boosted(act));
             o.put("guardRunning", QqbotGuardService.guardRunning);
             o.put("guardNote", QqbotGuardService.lastNote == null ? "" : QqbotGuardService.lastNote);
             // 常驻通知能不能出现：false 时「关闭进程」根本没入口，后台只能靠进应用手动停
@@ -682,6 +686,7 @@ public class QqbotBridge {
             boolean on = "on".equals(pr[2]);
             if ("guard".equals(pr[1])) return QqbotGuardService.setGuard(act, on);
             if ("wake".equals(pr[1])) return QqbotGuardService.setWake(act, on);
+            if ("screen".equals(pr[1])) return ScreenMode.setOn(act, on);
             return "bad guard name";
         }
         if ("battery".equals(what)) {

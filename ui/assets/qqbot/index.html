@@ -7394,7 +7394,11 @@ function renderGuard(st){
   var rows = [
     { n: "guard", label: "常驻后台守护", desc: "前台常驻通知 + 每分钟自检沙盒，进程消失自动拉起", on: !!st.guardOn,
       tag: (st.guardOn && !gRunning) ? "off" : "", tagTxt: (st.guardOn && !gRunning) ? "开关已开 · 服务未运行" : "" },
-    { n: "wake", label: "息屏保持运行", desc: "持有 CPU 唤醒锁，息屏后 NapCat 才能继续维持 QQ 长连接", on: !!st.guardWake }
+    { n: "wake", label: "息屏保持运行", desc: "持有 CPU 唤醒锁，息屏后 NapCat 才能继续维持 QQ 长连接", on: !!st.guardWake },
+    /* 息屏模式：不用手点。屏幕一灭自动把心跳加密到 1 分钟、掉线阈值减半、
+       自愈间隔缩到 5 分钟，亮屏自动退回 2 分钟；此刻真在黑屏加强时会亮「灭屏加强中」。 */
+    { n: "screen", label: "息屏模式（自动加强）", desc: "屏幕一灭自动加密自检：每分钟体检一次、掉线阈值减半，亮屏恢复普通节奏", on: !!st.guardScreen,
+      tag: st.guardScreen && st.screenDark ? "on" : "", tagTxt: st.guardScreen && st.screenDark ? "灭屏加强中" : "" }
   ];
   var h = [];
   for (var i = 0; i < rows.length; i++){
@@ -7432,12 +7436,14 @@ function renderGuard(st){
 function doGuard(arg){
   /* 跟组件开关同样的道理：S.st 最长 4 秒前，点完立刻本地翻转，否则连点会被旧值吞掉。 */
   var st = S.st || {};
-  var on = arg === "wake" ? !!st.guardWake : !!st.guardOn;
+  var on = arg === "wake" ? !!st.guardWake : (arg === "screen" ? !!st.guardScreen : !!st.guardOn);
   var r = "";
   /* 桥调用抛异常会整段中断这次点击处理，后面的本地翻转/重绘/刷新全都不会跑 */
   try { r = String(Android.action("guard:" + arg + ":" + (on ? "off" : "on"))); } catch (e) { r = "失败：" + e; }
   Android.toast(r);
-  if (arg === "wake") st.guardWake = !on; else st.guardOn = !on;
+  if (arg === "wake") st.guardWake = !on;
+  else if (arg === "screen") { st.guardScreen = !on; if (!on) st.screenDark = false; }
+  else st.guardOn = !on;
   renderGuard(st);
   setTimeout(refresh, 1500);
 }

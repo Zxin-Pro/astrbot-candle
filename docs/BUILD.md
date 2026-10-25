@@ -267,7 +267,8 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 | 版本 | 字段 | 值 |
 | --- | --- | --- |
-| **1.3.3-beta.1（当前，测试版）** | `versionName` / 派生 `versionCode` | `1.3.3-beta.1` / `10303` |
+| **1.3.3-beta.2（当前，测试版）** | `versionName` / 派生 `versionCode` | `1.3.3-beta.2` / `10303` |
+| 1.3.3-beta.1 | `versionName` / 派生 `versionCode` | `1.3.3-beta.1` / `10303` |
 | 1.3.2（正式版） | `versionName` / 派生 `versionCode` | `1.3.2` / `10302` |
 | 1.3.2-beta.2 | `versionName` / 派生 `versionCode` | `1.3.2-beta.2` / `10302` |
 | 1.3.2-beta.1 | `versionName` / 派生 `versionCode` | `1.3.2-beta.1` / `10302` |
@@ -276,7 +277,7 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 | 1.2.10 | `versionName` / 派生 `versionCode` | `1.2.10` / `10210` |
 | 1.2.9 | `versionName` / 派生 `versionCode` | `1.2.9` / `10209` |
 
-1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.3-beta.1-arm64.apk`，`609,361,733`（约 581 MB，镜像在 APK 里），SHA-256 `FF664A7C19A3416BE5717D89FF54BB9785A2786CA535CF2EE03D36A3C4639A3C`；覆盖安装用的 `AstrBot-1.3.3-beta.1-arm64-update.apk` 是 `26,181,442` B，SHA-256 `D7C10D8B80CB1790A041AC71B5FEA7D76B8C491165A571C0E5EDC980E17E43B1`。签名证书 SHA-256 仍是 `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3）。
+1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.3-beta.2-arm64.apk`，`609,361,733`（约 581 MB，镜像在 APK 里），SHA-256 `7B439808B6889D654219E632C3AEC66C52507D07E7140529E10AC06EDBAFB496`；覆盖安装用的 `AstrBot-1.3.3-beta.2-arm64-update.apk` 是 `26,181,442` B，SHA-256 `2D75ABA2B43B3076F04D12FABE9DE278D4CBFF3790EE4D3470A48F1513EBF44E`。签名证书 SHA-256 仍是 `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3）。
 
 规则：`versionCode = MAJOR*10000 + MINOR*100 + PATCH`。
 

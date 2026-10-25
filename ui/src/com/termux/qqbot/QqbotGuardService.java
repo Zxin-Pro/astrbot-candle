@@ -284,6 +284,9 @@ public class QqbotGuardService extends Service {
         // 排上 2 分钟一次的保活心跳：服务被系统收掉、或整组被缓存冻结时，
         // 由广播把进程重新叫醒并把沙盒兜回来（KeepAlive 里有完整解释）。
         try { KeepAlive.arm(this); } catch (Throwable ignored) {}
+        // 息屏模式：监听 SCREEN_ON / SCREEN_OFF（清单里静态注册收不到这两个广播，
+        // 只能跟着服务动态注册）。服务在 → 监听就在；服务停 → onDestroy 里注销。
+        try { ScreenMode.start(this); } catch (Throwable ignored) {}
         try {
             startForeground(NOTI_ID, buildNoti("正在检查沙盒…"));
         } catch (Throwable ignored) {
@@ -350,6 +353,7 @@ public class QqbotGuardService extends Service {
         if (task != null) task.stop();
         try { NetworkWatch.stop(); } catch (Throwable ignored) {}
         try { BatteryMon.stop(this); } catch (Throwable ignored) {}
+        try { ScreenMode.stop(this); } catch (Throwable ignored) {}
         releaseWake();
         // 前台服务停了就必须把常驻卡片收掉，否则通知栏会留一条点不开的僵尸通知。
         try { stopForeground(true); } catch (Throwable ignored) {}

@@ -44,6 +44,10 @@ public class KeepAlive {
     private static final int FAIL_MAX = 3;
     /** 两次「冻结重启」之间至少隔 10 分钟，避免沙盒自己起得慢时被反复重启。 */
     private static final long RESTART_GAP_MS = 600000L;
+    /** 息屏模式（灭屏加强）：心跳 1 分钟一次，1 次不应答就准备重启，两次自愈间隔 5 分钟。 */
+    private static final long EVERY_OFF_MS = 60000L;
+    private static final int FAIL_MAX_OFF = 2;
+    private static final long RESTART_GAP_OFF_MS = 300000L;
 
     private KeepAlive() {
     }
@@ -72,10 +76,13 @@ public class KeepAlive {
             if (Build.VERSION.SDK_INT >= 23) flags |= PendingIntent.FLAG_IMMUTABLE;
             PendingIntent pi = PendingIntent.getBroadcast(c, REQ, i, flags);
             if (pi == null) return;
-            long at = System.currentTimeMillis() + EVERY_MS;
+            long every = everyMs(c);
+            long at = System.currentTimeMillis() + every;
             // 用户关掉「息屏保持运行」时用非唤醒闹钟：屏幕不亮、设备睡着就等它自己醒，
             // 只保证进程被系统收掉后还能被拉回来，不强行耗电。
-            boolean wake = QqbotGuardService.wakeEnabled(c);
+            // 例外是息屏模式（灭屏加强）：它存在的意义就是「黑屏期间也要真在跑」，
+            // 非唤醒闹钟在深度睡眠里根本不会投递，所以这时强制用唤醒闹钟。
+            boolean wake = ScreenMode.boosted(c) || QqbotGuardService.wakeEnabled(c);
             int type = wake ? AlarmManager.RTC_WAKEUP : AlarmManager.RTC;
             if (wake && Build.VERSION.SDK_INT >= 23) {
                 am.setExactAndAllowWhileIdle(type, at, pi);
@@ -92,10 +99,19 @@ public class KeepAlive {
                 if (Build.VERSION.SDK_INT >= 23) flags |= PendingIntent.FLAG_IMMUTABLE;
                 PendingIntent pi = PendingIntent.getBroadcast(c, REQ, i, flags);
                 if (am != null && pi != null) {
-                    am.set(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + EVERY_MS, pi);
+                    am.set(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + everyMs(c), pi);
                 }
             } catch (Throwable ignored) {
             }
+        }
+    }
+
+    /** 心跳间隔：息屏模式的黑屏期间 1 分钟，平时 2 分钟。 */
+    private static long everyMs(Context c) {
+        try {
+            return ScreenMode.boosted(c) ? EVERY_OFF_MS : EVERY_MS;
+        } catch (Throwable t) {
+            return EVERY_MS;
         }
     }
 
@@ -123,6 +139,8 @@ public class KeepAlive {
      * ② 进程在、但 6099 的 WebUI 连续 3 次不应答（多半被整组冻结）→ 重启沙盒。
      * 只在应用处于后台时做 ②：用户正开着面板时，守护循环每 60 秒本来就会兜底，
      * 不该让它把正在冷启动的沙盒又打断一次。
+     * 息屏模式（ScreenMode）开着且此刻黑屏时，② 放宽为「不要求后台」，阈值改成
+     * 2 次 / 自愈间隔 5 分钟：用户看不见面板，只能靠这一层兜回来。
      */
     public static void rescue(Context c) {
         try {
@@ -131,6 +149,8 @@ public class KeepAlive {
             if (!QqbotShell.bootstrapReady(filesDir)) return;
             File qq = QqbotShell.qqbotDir(filesDir);
             if (!new File(qq, "deploy.done").isFile()) return;
+            // 正在部署 / 解压镜像时别插队：那会儿沙盒本来就还没起，去重启只会打断部署。
+            if (QqbotShell.pidAlive(new File(qq, "deploy.pid"), null)) return;
             File pid = new File(qq, "supervisor.pid");
             if (!QqbotShell.pidAlive(pid, "proot")) {
                 StringBuilder n = new StringBuilder();
@@ -140,12 +160,17 @@ public class KeepAlive {
             }
             int port = botPort(c);
             if (port <= 0) return;
-            if (background(c) && !httpAlive(port)) {
+            // 息屏模式下不再要求「应用处于后台」：黑屏那一刻 Activity 可能还是 RESUMED，
+            // 但用户根本看不见面板，卡住的沙盒得照常救回来。阈值也一并收紧。
+            boolean boost = ScreenMode.boosted(c);
+            if ((boost || background(c)) && !httpAlive(port)) {
+                int failMax = boost ? FAIL_MAX_OFF : FAIL_MAX;
+                long gap = boost ? RESTART_GAP_OFF_MS : RESTART_GAP_MS;
                 SharedPreferences p = pref(c);
                 int fail = p.getInt(K_FAIL, 0) + 1;
                 long now = System.currentTimeMillis();
                 long last = p.getLong(K_LAST, 0L);
-                if (fail >= FAIL_MAX && now - last > RESTART_GAP_MS) {
+                if (fail >= failMax && now - last > gap) {
                     p.edit().putInt(K_FAIL, 0).putLong(K_LAST, now).apply();
                     android.util.Log.w("QqbotKeepAlive", "沙盒进程在、WebUI 连续 " + fail + " 次没应答，按冻结处理并重启沙盒");
                     File stop = new File(QqbotShell.usrDir(filesDir), "opt/qqbot/stop-sandbox.sh");
