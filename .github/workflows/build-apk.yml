@@ -11,6 +11,14 @@ on:
         options:
           - arm64
           - amd64
+      variant:
+        description: "Package variant (update = slim delta package without the offline sandbox image)"
+        required: true
+        default: update
+        type: choice
+        options:
+          - update
+          - full
 
 permissions:
   contents: read
@@ -102,12 +110,16 @@ jobs:
       - name: Build APK
         shell: powershell
         run: |
-          powershell -NoProfile -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch "${{ inputs.arch }}"
+          if ("${{ inputs.variant }}" -eq "update") {
+            powershell -NoProfile -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch "${{ inputs.arch }}" -Update
+          } else {
+            powershell -NoProfile -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch "${{ inputs.arch }}"
+          }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AstrBot-${{ inputs.arch }}-apk
-          path: AstrBot-*-${{ inputs.arch }}.apk
+          name: AstrBot-${{ inputs.arch }}-${{ inputs.variant }}-apk
+          path: AstrBot-*-${{ inputs.arch }}*.apk
           if-no-files-found: error
