@@ -48,6 +48,11 @@ public class GuardKillTask implements Runnable {
             new EmergencyStop(svc.getFilesDir()).startDetached();
         } catch (Throwable ignored) {
         }
+        // 1.5) 撤掉保活心跳：用户要的是彻底关掉，不能两分钟后被闹钟叫醒又活过来。
+        try {
+            KeepAlive.disarm(svc);
+        } catch (Throwable ignored) {
+        }
         // 2) 收起守护服务：撤常驻通知 + 停前台 + stopSelf，别在通知栏留僵尸卡片
         try {
             svc.stopQuiet();

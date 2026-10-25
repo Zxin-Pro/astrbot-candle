@@ -92,10 +92,14 @@ have() { command -v "$1" >/dev/null 2>&1; }
   echo "----- AstrBot 自检（在沙盒里跑）-----"
   # 直接拿 venv 里的 python 探一遍：能 import 就说明依赖是好的，问题在别处；
   # 报 ImportError 就把缺的模块名打出来，一眼定位。
-  if [ -x "$QQBOT_ROOTFS/opt/AstrBot/.venv/bin/python" ]; then
+  # 判据必须是「沙盒里的文件」而不是宿主机上的可执行位：venv 里的 bin/python 是指向
+  # /usr/bin/python3.x 的绝对符号链接，宿主上根本不存在，[ -x ] 永远为假 —— 1.3.2 的
+  # 报告里因此出现「venv 不存在或不可执行」，而实际上 AstrBot 正跑在这个 venv 上。
+  # pyvenv.cfg 是 venv 的真实标记，类型是普通文件，宿主侧 stat 就能判。
+  if [ -f "$QQBOT_ROOTFS/opt/AstrBot/.venv/pyvenv.cfg" ]; then
     qq_proot "cd /opt/AstrBot 2>/dev/null || exit 0; ./.venv/bin/python -V 2>&1; echo '--- import astrbot ---'; ./.venv/bin/python -c 'import astrbot' 2>&1 | tail -n 12; echo '--- main.py 语法/导包 ---'; ./.venv/bin/python -c 'import ast,sys; ast.parse(open(\"main.py\",encoding=\"utf-8\").read()); print(\"main.py 语法 ok\")' 2>&1 | tail -n 6" 2>&1 | sed 's/\x1b\[[0-9;]*m//g'
   else
-    echo "venv 不存在或不可执行：$QQBOT_ROOTFS/opt/AstrBot/.venv/bin/python"
+    echo "venv 不存在（缺 $QQBOT_ROOTFS/opt/AstrBot/.venv/pyvenv.cfg）：AstrBot 依赖可能没装好"
   fi
   echo
   echo "----- bots.json（token 已打码）-----"

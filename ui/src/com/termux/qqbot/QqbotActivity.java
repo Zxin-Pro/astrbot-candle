@@ -8,6 +8,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.net.ConnectivityManager;
+import android.net.LinkProperties;
+import android.net.Network;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Looper;
@@ -790,6 +793,9 @@ public class QqbotActivity extends Activity {
     public String startServices() {
         File bash = new File(usrDir(), "bin/bash");
         if (!bash.isFile()) return "Termux 基础环境还没解包好，退出重进一次应用再试";
+        // 先补解析器再拉 proot：内置镜像里可能压根没有 /etc/resolv.conf，那样沙盒起来
+        // 也是「QQ 能收发、AI 不回话」的半死状态（详见 ensureSandboxDns）。
+        try { ensureSandboxDns(); } catch (Throwable ignored) {}
         File pid = new File(qqbotDir(), "supervisor.pid");
         if (pidAlive(pid)) return "服务已经在跑了";
         String qh = qqbotDir().getAbsolutePath();
@@ -1182,6 +1188,7 @@ public class QqbotActivity extends Activity {
         try {
             if (!deployDoneFile().isFile()) return;
             if (pidAlive(deployPidFile())) return;
+            try { ensureSandboxDns(); } catch (Throwable ignored) {}
             if (!pidAlive(new File(qqbotDir(), "supervisor.pid"))) return;
             String prefix = usrDir().getAbsolutePath();
             String qh = qqbotDir().getAbsolutePath();
@@ -1239,6 +1246,86 @@ public class QqbotActivity extends Activity {
         }
     }
 
+
+    /** 沙盒里没有可用解析器时，AstrBot 所有域名请求都会挂（日志里的
+     *  「Temporary failure in name resolution」），表现为：大模型不回话、插件市场打不开、
+     *  更新检查失败，而 QQ / NapCat 照常收发 —— 它用自己的 IP 列表，不查 DNS。
+     *
+     *  1.3.2 的全量包内置镜像在打包时漏了 /etc/resolv.conf（/etc/hosts、/etc/nsswitch.conf
+     *  也一起丢了），而 20-rootfs.sh 走「解压内置包」那条路时假定这些文件已经在镜像里，
+     *  于是全新安装（全量包）的机器一进沙盒就没有解析器：glibc 去连 127.0.0.1:53，全挂。
+     *  覆盖安装（25 MB update 包）走在线 ubuntu-base 分支，会写 DNS，所以看不出来。
+     *
+     *  这里在每次启动时把「系统当前网络用的 DNS」写进 rootfs。写的是真实的运营商 /
+     *  路由器 DNS，不是写死的公共 DNS，这样内网 DNS、公司分流、IPv6-only 网络都能用；
+     *  读不到系统 DNS 才用公共 DNS 兜底。内容没变就不写，不反复动 rootfs。
+     *
+     *  返回 true 表示这次确实改过文件。
+     */
+    public boolean ensureSandboxDns() {
+        try {
+            if (!deployDoneFile().isFile()) return false;
+            File etc = new File(new File(homeDir(), "ubuntu"), "etc");
+            if (!etc.isDirectory()) return false;
+            /*
+             * 系统 DNS 打头，后面再挂两个公共解析器兜底：
+             * 系统给的是「当前这张网」的解析器（路由器 / 运营商 / VPN 下发），换网之后
+             * 旧值会立刻失效 —— 典型场景是关掉 Wi-Fi 改用移动数据，resolv.conf 里还留着
+             * 家里路由器的 192.168.x.1，每次解析都要先等它超时，用户看到的就是「什么都慢」。
+             * glibc 按顺序试，前一个超时才轮到下一个，所以最后补一行 options 把单个
+             * 服务器的等待压到 2 秒，别让一次解析卡到 10 秒以上。
+             */
+            java.util.List<String> all = new java.util.ArrayList<String>(systemDnsServers());
+            for (String p : new String[]{"223.5.5.5", "119.29.29.29", "114.114.114.114"}) {
+                if (!all.contains(p)) all.add(p);
+            }
+            StringBuilder ns = new StringBuilder();
+            for (String d : all) ns.append("nameserver ").append(d).append('\n');
+            ns.append("options timeout:2 attempts:2\n");
+            boolean changed = writeIfDifferent(new File(etc, "resolv.conf"), ns.toString());
+            // hosts / nsswitch 缺了不致命（glibc 会退回 files dns），但每次解析 localhost
+            // 都要去问一次 DNS，慢且在某些网络下会卡住，顺手补上。
+            String hosts = "127.0.0.1\tlocalhost\n::1\tlocalhost ip6-localhost ip6-loopback\n";
+            if (writeIfDifferent(new File(etc, "hosts"), hosts)) changed = true;
+            String nss = "passwd:         files\ngroup:          files\nshadow:         files\n"
+                    + "hosts:          files dns myhostname\nnetworks:       files\n"
+                    + "protocols:      files\nservices:       files\n";
+            if (writeIfDifferent(new File(etc, "nsswitch.conf"), nss)) changed = true;
+            return changed;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 系统当前网络用的 DNS：过滤回环 / 链路本地，IPv4 优先。 */
+    private java.util.List<String> systemDnsServers() {
+        java.util.List<String> v4 = new java.util.ArrayList<String>();
+        java.util.List<String> v6 = new java.util.ArrayList<String>();
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            Network n = cm == null ? null : cm.getActiveNetwork();
+            LinkProperties lp = n == null ? null : cm.getLinkProperties(n);
+            if (lp != null) {
+                for (InetAddress a : lp.getDnsServers()) {
+                    if (a == null || a.isLoopbackAddress() || a.isLinkLocalAddress()) continue;
+                    String h = a.getHostAddress();
+                    if (h == null || h.length() == 0) continue;
+                    if (a instanceof Inet4Address) { if (!v4.contains(h)) v4.add(h); }
+                    else { if (!v6.contains(h)) v6.add(h); }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        if (!v4.isEmpty()) return v4;
+        return v6;   // 只有 v6 的网络才用 v6 的解析器
+    }
+
+    /** 内容不同才写，返回是否写过。 */
+    private boolean writeIfDifferent(File f, String text) {
+        String old = readText(f, 65536);
+        if (text.equals(old)) return false;
+        return writeFile(f, text) && f.length() > 0;
+    }
     public String defaultBots() {
         try {
             JSONObject bot = new JSONObject();

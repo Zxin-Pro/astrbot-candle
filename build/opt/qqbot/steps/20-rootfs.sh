@@ -258,6 +258,18 @@ if [ "$BUNDLE_USE" = "1" ]; then
            "$ROOTFS/tmp" "$ROOTFS/root" "$ROOTFS/opt" 2>/dev/null || true
   chmod 1777 "$ROOTFS/tmp" 2>/dev/null || true
   qqok "已补齐运行时目录 dev / proc / sys / run / tmp"
+  # 内置包是 --exclude 打的，/etc/resolv.conf（hosts、nsswitch.conf 同理）没进包，
+  # 而这条路以前直接 exit 0，把「镜像里已经写好 DNS」当成了既定事实 —— 1.3.2 全量包
+  # 装出来的机器就是因此没有任何解析器，AstrBot 全体域名请求报 name resolution。
+  # Java 每次启动会按系统 DNS 覆盖一次；这里写公共 DNS 兜底，保证只跑脚本也能上网。
+  mkdir -p "$ROOTFS/etc"
+  printf 'nameserver 223.5.5.5\nnameserver 119.29.29.29\nnameserver 114.114.114.114\n' > "$ROOTFS/etc/resolv.conf"
+  [ -s "$ROOTFS/etc/hosts" ] || printf '127.0.0.1\tlocalhost\n::1\tlocalhost ip6-localhost ip6-loopback\n' > "$ROOTFS/etc/hosts"
+  if [ ! -s "$ROOTFS/etc/nsswitch.conf" ]; then
+    printf 'passwd:         files\ngroup:          files\nshadow:         files\n' > "$ROOTFS/etc/nsswitch.conf"
+    printf 'hosts:          files dns myhostname\nnetworks:       files\nprotocols:      files\nservices:       files\n' >> "$ROOTFS/etc/nsswitch.conf"
+  fi
+  qqok "已写入 /etc/resolv.conf 与 hosts / nsswitch.conf（内置包没带 DNS 配置）"
   # 包里已经装好哪几步，就标哪几步完成。标记只在包内清单里写明的情况下才落，
   # 半成品的包不会让后面四步被误跳过。
   if [ -f "$ROOTFS/.qqbot-bundle" ]; then
@@ -364,6 +376,13 @@ chmod -R u+rwX "$ROOTFS/var/lib/dpkg" "$ROOTFS/var/lib/apt" "$ROOTFS/var/cache/a
 qqlog "写入 DNS / apt 源 / 沙盒基础配置"
 mkdir -p "$ROOTFS/etc/apt/apt.conf.d" "$ROOTFS/etc/apt/sources.list.d"
 printf 'nameserver 223.5.5.5\nnameserver 119.29.29.29\n' > "$ROOTFS/etc/resolv.conf"
+# hosts / nsswitch 同样可能缺（ubuntu-base 是精简镜像）：缺了不致命，但 localhost 解析
+# 会退回一次网络查询，某些网络下会卡住；顺手补上，和内置包那条路保持一致。
+[ -s "$ROOTFS/etc/hosts" ] || printf '127.0.0.1\tlocalhost\n::1\tlocalhost ip6-localhost ip6-loopback\n' > "$ROOTFS/etc/hosts"
+if [ ! -s "$ROOTFS/etc/nsswitch.conf" ]; then
+  printf 'passwd:         files\ngroup:          files\nshadow:         files\n' > "$ROOTFS/etc/nsswitch.conf"
+  printf 'hosts:          files dns myhostname\nnetworks:       files\nprotocols:      files\nservices:       files\n' >> "$ROOTFS/etc/nsswitch.conf"
+fi
 printf 'APT::Sandbox::User "root";\nAcquire::Retries "3";\n' > "$ROOTFS/etc/apt/apt.conf.d/99proot-sandbox.conf"
 rm -f "$ROOTFS"/etc/apt/sources.list.d/ubuntu.sources "$ROOTFS"/etc/apt/sources.list.d/*.list 2>/dev/null
 # CA 证书：Ubuntu 基础 rootfs 不带 ca-certificates，首次 apt 走 https 会报

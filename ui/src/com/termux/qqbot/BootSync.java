@@ -29,6 +29,14 @@ public class BootSync implements Runnable {
                 healed = act.repairNapcatInjection();
             } catch (Throwable ignored) {
             }
+            // 另一件「镜像本身有毛病」的事：全量包内置镜像漏了 /etc/resolv.conf，
+            // 沙盒里没有解析器，AstrBot 所有域名请求都报 name resolution（AI 不回话、
+            // 插件市场打不开），而 QQ 照常收发。启动时按系统当前 DNS 补一份。
+            // 不用重启：glibc 每次查询都会重新读这个文件，正在跑的沙盒立刻生效。
+            try {
+                if (act.ensureSandboxDns()) android.util.Log.i("AstrBotBoot", "已按系统 DNS 补齐沙盒 /etc/resolv.conf");
+            } catch (Throwable ignored) {
+            }
             // 判断放在同步之后：同步这一两秒里用户完全可能刚按了「关闭进程」。
             if (healed) android.util.Log.i("AstrBotBoot", "已自动补齐 NapCat 注入（旧沙盒里的 QQ 没注入过），重启一次容器");
             if ((synced || healed) && !closedByUser()) act.restartServicesIfRunning();

@@ -163,6 +163,20 @@ if [ "$USER_START" = "1" ]; then
 else
   echo "[start] 自动启动（非用户点击），保留紧急下线标记"
 fi
+# 沙盒里的 /etc/resolv.conf 是「能不能上网」的命根子：全量包的内置镜像打包时漏了它
+# （/etc/hosts、/etc/nsswitch.conf 也一起丢了），而 20-rootfs.sh 走「解压内置包」那条路
+# 又假定它已经在包里 —— 于是全新安装的机器一进沙盒，glibc 就去连 127.0.0.1:53，所有域名
+# 解析全部失败。表现是 AstrBot 回「Temporary failure in name resolution」：大模型不回话、
+# 插件市场打不开、更新检查失败，而 QQ / NapCat 用自己的 IP 列表照常收发，看着像「只有 AI 挂了」。
+#
+# Java 侧启动时会写系统当前 DNS（ensureSandboxDns）覆盖这里；这一句是给「不经过 Java」的
+# 启动路径兜底：看门狗拉起、网络自愈、用户在终端里手敲。只在缺 nameserver 时才动文件。
+if ! grep -qs '^nameserver' "$QQBOT_ROOTFS/etc/resolv.conf" 2>/dev/null; then
+  mkdir -p "$QQBOT_ROOTFS/etc" 2>/dev/null || true
+  printf 'nameserver 223.5.5.5\nnameserver 119.29.29.29\nnameserver 114.114.114.114\n' \
+    > "$QQBOT_ROOTFS/etc/resolv.conf" 2>/dev/null \
+    && echo "[start] 沙盒里没有 DNS 配置，已写入 223.5.5.5 / 119.29.29.29 / 114.114.114.114"
+fi
 # -b "$QQBOT_STATE:/qqbot-state"：把原生层写的状态目录（风控 risk.json / risk-<id>.flag、
 # 降载 degrade、下线 offline）暴露给沙盒，run-napcat.sh 才能读到风控暂停标记。
 # 没绑上也不会崩：沙盒里的 [ -f /qqbot-state/... ] 判断自然为假，行为退回到「不启用」。

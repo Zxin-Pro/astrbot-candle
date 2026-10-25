@@ -5262,7 +5262,8 @@ section.tab.on{display:flex;flex-direction:column}
 
     <div class="card" id="guardCard">
       <h2><span class="dot" id="d-guard"></span>后台守护</h2>
-      <div class="hint">Android 在内存紧张时会冻结甚至杀掉后台应用，沙盒里的 NapCat 与 AstrBot 就会「进程还在、但完全没有反应」。开启下面的常驻守护后，本应用会保留一条常驻通知以维持前台优先级，并每分钟自检一次沙盒，掉线就自动拉起。</div>
+      <div class="hint">Android 在内存紧张时会冻结甚至杀掉后台应用，沙盒里的 NapCat 与 AstrBot 就会「进程还在、但完全没有反应」。开启下面的常驻守护后，本应用会保留一条常驻通知以维持前台优先级，每分钟自检一次沙盒，掉线就自动拉起；另外还有一条两分钟一次的闹钟心跳，即使整个应用被系统冻住，也会被叫醒并把沙盒兜回来。</div>
+      <div class="hint" style="margin-top:6px">如果挂后台一阵子还是掉线，多半是厂商省电策略：到下面「省电策略」里点「去设置」，把本应用设为「不限制 / 允许后台高耗电」，并打开「自启动」（vivo：i管家 → 应用管理 → 自启动；设置 → 电池 → 后台耗电管理 → 允许后台高耗电）。</div>
       <div id="guardList" style="margin-top:10px"></div>
       <div class="btns" style="margin-top:10px">
         <button class="small" data-act="battery" style="flex:1">申请电池优化白名单</button>
@@ -5280,7 +5281,7 @@ section.tab.on{display:flex;flex-direction:column}
          分支跳对应设置页（失败退回应用详情页）。只做引导，不假装能替用户改系统设置。 -->
     <div class="card" id="powerCard">
       <h2><span class="dot" id="d-power"></span>省电策略</h2>
-      <div class="hint" style="margin-top:0">手机厂商的省电策略会把后台应用「冻结」：通知还在，沙盒却不再收消息。这里按机型跳到对应的设置页，把本应用设为「不限制」。</div>
+      <div class="hint" style="margin-top:0">手机厂商的省电策略会把后台应用「冻结」：通知还在，沙盒却不再收消息。这里按机型跳到对应的设置页，把本应用设为「不限制」。小米/红米还要在最近任务里把本应用「锁定」；vivo / iQOO 要同时打开「自启动」与「允许后台高耗电」；华为/荣耀在「应用启动管理」里关掉自动管理。</div>
       <div class="hint" id="powerState" style="margin-top:8px">—</div>
       <div class="btns" style="margin-top:8px">
         <button class="small primary" data-act="powgo" id="powBtnGo">去设置</button>

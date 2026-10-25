@@ -281,6 +281,9 @@ public class QqbotGuardService extends Service {
         } catch (Throwable ignored) {
         }
         guardRunning = true;
+        // 排上 2 分钟一次的保活心跳：服务被系统收掉、或整组被缓存冻结时，
+        // 由广播把进程重新叫醒并把沙盒兜回来（KeepAlive 里有完整解释）。
+        try { KeepAlive.arm(this); } catch (Throwable ignored) {}
         try {
             startForeground(NOTI_ID, buildNoti("正在检查沙盒…"));
         } catch (Throwable ignored) {
