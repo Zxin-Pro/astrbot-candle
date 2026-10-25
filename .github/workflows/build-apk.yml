@@ -94,7 +94,14 @@ jobs:
           $ErrorActionPreference = "Stop"
           if ($env:ANDROID_KEYSTORE_BASE64) {
             Write-Host "Using repository secret ANDROID_KEYSTORE_BASE64"
-            [IO.File]::WriteAllBytes("$PWD\_research\debug.keystore", [Convert]::FromBase64String($env:ANDROID_KEYSTORE_BASE64))
+            # 仓库里存的是 PKCS12：它能在任何平台上生成/导出，JKS 只有 JDK 自己会写。
+            # uber-apk-signer 的 --ksDebug 是按 JKS 加载的，所以这里先用 keytool 转一次。
+            # 不转会报 "Invalid keystore format"，而那一步在 CI 上不好复现。
+            $p12 = "$PWD\_research\release.p12"
+            [IO.File]::WriteAllBytes($p12, [Convert]::FromBase64String($env:ANDROID_KEYSTORE_BASE64))
+            & "$env:JAVA_HOME\bin\keytool.exe" -importkeystore -srckeystore $p12 -srcstoretype PKCS12 -srcstorepass android -destkeystore "$PWD\_research\debug.keystore" -deststoretype JKS -deststorepass android -destkeypass android -noprompt
+            if ($LASTEXITCODE -ne 0) { throw "keystore conversion failed" }
+            Remove-Item -Force $p12
           } else {
             Write-Host "::warning::ANDROID_KEYSTORE_BASE64 not set; generating a temporary debug keystore. This APK will NOT update over the released 1.2.2 build."
             & "$env:JAVA_HOME\bin\keytool.exe" -genkeypair -v -keystore "$PWD\_research\debug.keystore" -storepass android -keypass android -alias androiddebugkey -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
