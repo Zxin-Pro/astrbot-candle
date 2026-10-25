@@ -10626,6 +10626,9 @@ function refreshExtras(st){
 
 /* 切页签时按需立刻拉一次，不用等下一个轮询周期 */
 function extOnTab(t){
+  /* 1.3.3-beta.4：扩展内核（dev/ext/*.js）挂在同一个切页钩子上。
+     放在最前面：它只读桥与 DOM，不依赖下面这些 refreshXXX，先渲染能少等一帧。 */
+  try { if (window.CE && CE.tab) CE.tab(t); } catch (e0) {}
   try {
     if (t === "home") refreshInst(true);
     else if (t === "more"){ refreshBk(true); refreshStorage(true); refreshCrash(true); }
@@ -11156,5 +11159,2900 @@ function siteVerTick(){
   }, 800);
 }
 </script>
+<!-- CE:EXT:BEGIN -->
+<script>
+/* ===== CE 扩展包（由 dev/ext-build.mjs 生成，勿手工编辑此段）===== */
+
+/* ---- 00-core.js ---- */
+
+/* =====================================================================
+   CE — Candle Extensions（控制台扩展内核，1.3.3-beta.4）
+   ---------------------------------------------------------------------
+   为什么单开一层：index.html 已经 1.1 万行，新功能再往主脚本里塞会互相踩变量。
+   这里用最小内核把「扩展卡片」隔离出来：
+     · 每个模块只管自己的根节点（root），不碰外面的 DOM；
+     · 事件走一层委托（data-ce-act），不用 onclick 内联；
+     · 取数优先复用已有的 window.Android 桥（state / todayStats / exec …），
+       桥缺方法时模块自己退化成空态，绝不抛到全局。
+   ES5 写法：应用内 WebView 可能是 Android 7 的旧内核，不用箭头函数 / 模板串。
+   ===================================================================== */
+(function () {
+  if (window.CE && window.CE.v === "1.3.3-beta.4") return;
+
+  var MODS = [];
+  var MOUNTED = {};      /* id -> 已渲染过 */
+  var SLOTS = {};        /* tab -> 容器节点 */
+  var CURRENT = "home";
+  var TICK_MS = 8000;
+  var busy = {};
+
+  /* ---------------- 基础工具 ---------------- */
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function kb(n) {
+    n = Number(n) || 0;
+    if (n < 1024) return n + " KB";
+    var mb = n / 1024;
+    if (mb < 1024) return (mb < 10 ? mb.toFixed(1) : Math.round(mb)) + " MB";
+    var gb = mb / 1024;
+    return (gb < 10 ? gb.toFixed(2) : Math.round(gb)) + " GB";
+  }
+  function dur(sec) {
+    sec = Math.max(0, Number(sec) || 0);
+    var d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600);
+    var m = Math.floor((sec % 3600) / 60), s = Math.floor(sec % 60);
+    if (d > 0) return d + " 天 " + h + " 小时";
+    if (h > 0) return h + " 小时 " + m + " 分";
+    if (m > 0) return m + " 分 " + s + " 秒";
+    return s + " 秒";
+  }
+  function clock(ts) {
+    ts = Number(ts) || 0;
+    if (!ts) return "—";
+    var d = new Date(ts < 1e12 ? ts * 1000 : ts);
+    function p(n) { return n < 10 ? "0" + n : "" + n; }
+    return p(d.getHours()) + ":" + p(d.getMinutes());
+  }
+  function pct(a, b) {
+    b = Number(b) || 0; a = Number(a) || 0;
+    if (b <= 0) return 0;
+    return Math.max(0, Math.min(100, Math.round(a * 100 / b)));
+  }
+  function json(raw, def) {
+    if (raw == null || raw === "") return def === undefined ? null : def;
+    if (typeof raw === "object") return raw;
+    try { return JSON.parse(String(raw)); } catch (e) { return def === undefined ? null : def; }
+  }
+  function has(name) {
+    try {
+      return typeof Android !== "undefined" && !!Android && typeof Android[name] === "function";
+    } catch (e) { return false; }
+  }
+  function call(name, a, b) {
+    if (!has(name)) return "";
+    try { return Android[name](a, b); } catch (e) { return ""; }
+  }
+  function toast(msg) {
+    if (has("toast")) { try { Android.toast(String(msg)); return; } catch (e) {} }
+    flash(String(msg));
+  }
+  function copy(text) {
+    if (has("copy")) { try { Android.copy(String(text)); return true; } catch (e) {} }
+    return false;
+  }
+  var flashBox = null, flashT = null;
+  function flash(msg) {
+    try {
+      if (!flashBox) {
+        flashBox = document.createElement("div");
+        flashBox.id = "ceFlash";
+        flashBox.setAttribute("role", "status");
+        document.body.appendChild(flashBox);
+      }
+      flashBox.textContent = msg;
+      flashBox.className = "on";
+      clearTimeout(flashT);
+      flashT = setTimeout(function () { flashBox.className = ""; }, 2200);
+    } catch (e) {}
+  }
+
+  /* 命令执行：Android.exec 是同步的（最长 60 秒），会卡住 JS 线程。
+     所以先让出一帧把"执行中"画出来，再调。所有扩展模块一律走这里。 */
+  function exec(cmd, cb) {
+    if (!has("exec")) { if (cb) cb("", false); return; }
+    setTimeout(function () {
+      var out = "";
+      try { out = String(Android.exec(String(cmd)) || ""); } catch (e) { out = ""; }
+      if (cb) cb(out, true);
+    }, 40);
+  }
+  function tool(sub) {
+    return 'bash "$PREFIX/opt/qqbot/extras.sh" ' + sub + ' 2>/dev/null';
+  }
+  /* 跑一条 extras.sh 子命令并把 stdout 解析成对象 */
+  function toolJson(sub, cb) {
+    exec(tool(sub), function (out) {
+      var line = "", lines = String(out || "").split("\n");
+      for (var i = lines.length - 1; i >= 0; i--) {
+        var t = lines[i].trim();
+        if (t.charAt(0) === "{") { line = t; break; }
+      }
+      cb(json(line, null));
+    });
+  }
+
+  /* ---------------- 样式（只用主样式表的配色令牌，深浅色自动跟随） ---------------- */
+  var CSS = [
+    "#ceFlash{position:fixed;left:50%;bottom:88px;transform:translateX(-50%) translateY(14px);",
+    "max-width:78%;padding:10px 16px;border-radius:14px;background:rgba(15,23,42,.92);color:#fff;",
+    "font-size:13px;line-height:1.45;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;",
+    "z-index:9999;box-shadow:0 12px 30px rgba(0,0,0,.28);word-break:break-all}",
+    "#ceFlash.on{opacity:1;transform:translateX(-50%) translateY(0)}",
+    ".ce-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}",
+    ".ce-cell{background:var(--cell,rgba(15,23,42,.04));border-radius:12px;padding:9px 11px}",
+    ".ce-cell b{display:block;font-size:16px;line-height:1.25;font-variant-numeric:tabular-nums;color:var(--v)}",
+    ".ce-cell span{display:block;font-size:11px;color:var(--txt-3);margin-top:2px}",
+    ".ce-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid var(--line)}",
+    ".ce-row:first-child{border-top:0}",
+    ".ce-row .ce-rt{flex:1;min-width:0}",
+    ".ce-row .ce-rt b{display:block;font-size:13px;font-weight:600;color:var(--h2);word-break:break-all}",
+    ".ce-row .ce-rt span{display:block;font-size:11px;color:var(--txt-3);margin-top:2px;word-break:break-all}",
+    ".ce-row .ce-rv{font-size:12px;color:var(--txt-2);font-variant-numeric:tabular-nums;white-space:nowrap}",
+    ".ce-dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--dot-idle,#94a3b8)}",
+    ".ce-dot.ok{background:#16a34a;box-shadow:0 0 0 3px rgba(22,163,74,.15)}",
+    ".ce-dot.bad{background:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.15)}",
+    ".ce-dot.warn{background:#d97706;box-shadow:0 0 0 3px rgba(217,119,6,.15)}",
+    ".ce-bar{height:6px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:6px}",
+    ".ce-bar i{display:block;height:100%;border-radius:99px;background:var(--acc,#2563eb);transition:width .4s}",
+    ".ce-bar i.warn{background:#d97706}.ce-bar i.bad{background:#dc2626}",
+    ".ce-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}",
+    ".ce-tag{font-size:11px;padding:3px 9px;border-radius:99px;background:var(--line);color:var(--txt-2)}",
+    ".ce-pre{margin-top:8px;max-height:240px;overflow:auto;background:var(--pre,rgba(15,23,42,.05));",
+    "border-radius:10px;padding:9px 11px;font-family:var(--mono);font-size:11px;line-height:1.55;",
+    "white-space:pre-wrap;word-break:break-all;color:var(--txt-2)}",
+    ".ce-mono{font-family:var(--mono);font-size:11px}",
+    ".ce-hint{font-size:11px;color:var(--txt-3);line-height:1.5;margin-top:6px}",
+    ".ce-ok{color:#16a34a}.ce-bad{color:#dc2626}.ce-warn{color:#d97706}",
+    ".ce-svg{width:100%;height:auto;display:block;margin-top:8px}",
+    ".ce-svg .axis{stroke:var(--line);stroke-width:1}",
+    ".ce-svg .grid{stroke:var(--line);stroke-width:1;stroke-dasharray:3 4;opacity:.7}",
+    ".ce-svg .ln{fill:none;stroke:var(--acc,#2563eb);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}",
+    ".ce-svg .ln2{fill:none;stroke:#dc2626;stroke-width:1.6;stroke-dasharray:4 3}",
+    ".ce-svg .pt{fill:var(--acc,#2563eb)}",
+    ".ce-svg text{fill:var(--txt-3);font-size:9px;font-family:var(--font)}",
+    ".ce-svg .val{fill:var(--txt-2);font-size:10px;font-weight:600}",
+    ".ce-empty{padding:14px 4px;text-align:center;font-size:12px;color:var(--txt-3)}",
+    ".ce-pre mark{background:rgba(37,99,235,.22);color:inherit;border-radius:3px;padding:0 1px}",
+    ".ce-kv{display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:5px 0;color:var(--txt-2)}",
+    ".ce-kv b{font-weight:600;color:var(--h2);font-variant-numeric:tabular-nums;text-align:right;word-break:break-all}",
+    ".ce-load{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--txt-3);padding:10px 2px}",
+    ".ce-load i{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--acc,#2563eb);",
+    "border-radius:50%;animation:ceSpin .8s linear infinite;display:block}",
+    "@keyframes ceSpin{to{transform:rotate(360deg)}}"
+  ].join("");
+
+  function injectCSS() {
+    if (document.getElementById("ceCSS")) return;
+    var st = document.createElement("style");
+    st.id = "ceCSS";
+    st.appendChild(document.createTextNode(CSS));
+    (document.head || document.documentElement).appendChild(st);
+  }
+
+  /* ---------------- 模块注册 / 挂载 ---------------- */
+  function reg(mod) {
+    if (!mod || !mod.id) return;
+    for (var i = 0; i < MODS.length; i++) if (MODS[i].id === mod.id) return;
+    mod.tab = mod.tab || "more";
+    mod.order = typeof mod.order === "number" ? mod.order : 50;
+    MODS.push(mod);
+    MODS.sort(function (a, b) { return (a.order || 50) - (b.order || 50); });
+  }
+
+  function slot(tab, pos) {
+    var key = tab + "#" + (pos || "end");
+    if (SLOTS[key]) return SLOTS[key];
+    var sec = document.getElementById("tab-" + tab);
+    if (!sec) return null;
+    var box = document.createElement("div");
+    box.className = "ce-slot";
+    box.setAttribute("data-ce-tab", tab);
+    if (pos === "top" && sec.firstChild) sec.insertBefore(box, sec.firstChild);
+    else sec.appendChild(box);
+    SLOTS[key] = box;
+    return box;
+  }
+
+  function wrap(mod) {
+    var d = document.createElement("div");
+    d.className = "ce-mod";
+    d.setAttribute("data-ce-mod", mod.id);
+    d.setAttribute("data-ce-order", String(mod.order || 50));
+    return d;
+  }
+
+  function render(mod, force) {
+    var box = slot(mod.tab, mod.pos);
+    if (!box) return;
+    var root = box.querySelector('[data-ce-mod="' + mod.id + '"]');
+    if (!root) {
+      root = wrap(mod);
+      /* 按 order 插到合适位置：找到第一个 order 比它大的已存在模块，插在它前面 */
+      var after = null, kids = box.children;
+      for (var i = 0; i < kids.length; i++) {
+        var mid = kids[i].getAttribute("data-ce-mod");
+        var mm = find(mid);
+        if (mm && (mm.order || 50) > (mod.order || 50)) { after = kids[i]; break; }
+      }
+      if (after) box.insertBefore(root, after); else box.appendChild(root);
+    }
+    if (MOUNTED[mod.id] && !force) return;
+    var html = "";
+    try { html = mod.html ? String(mod.html() || "") : ""; } catch (e) { html = ""; }
+    if (!html) { root.parentNode && root.parentNode.removeChild(root); return; }
+    root.innerHTML = html;
+    MOUNTED[mod.id] = true;
+    if (mod.mount) { try { mod.mount(root); } catch (e) {} }
+  }
+
+  function find(id) {
+    for (var i = 0; i < MODS.length; i++) if (MODS[i].id === id) return MODS[i];
+    return null;
+  }
+
+  function renderTab(tab) {
+    CURRENT = tab;
+    for (var i = 0; i < MODS.length; i++) if (MODS[i].tab === tab) render(MODS[i], false);
+    tickTab(tab);
+  }
+
+  function tickTab(tab) {
+    for (var i = 0; i < MODS.length; i++) {
+      var m = MODS[i];
+      if (m.tab !== tab) continue;
+      /* 没挂上的模块每轮再试一次：像「上手检查」这种会把自己整张卡收起来的模块，
+         状态变了（部署完成 / 权限给了）就得能重新长回来，不能一次空串就永久消失。 */
+      if (!MOUNTED[m.id]) { render(m, true); continue; }
+      var box = SLOTS[tab + "#" + (m.pos || "end")];
+      if (!box) continue;
+      var root = box.querySelector('[data-ce-mod="' + m.id + '"]');
+      if (!root || !m.tick) continue;
+      try { m.tick(root); } catch (e) {}
+    }
+  }
+
+  /* ---------------- 事件委托 ---------------- */
+  function rootOf(node) {
+    while (node && node !== document) {
+      if (node.getAttribute && node.getAttribute("data-ce-mod")) return node;
+      node = node.parentNode;
+    }
+    return null;
+  }
+
+  document.addEventListener("click", function (ev) {
+    var t = ev.target;
+    while (t && t !== document && !(t.getAttribute && t.getAttribute("data-ce-act"))) t = t.parentNode;
+    if (!t || t === document || !t.getAttribute) return;
+    var act = t.getAttribute("data-ce-act");
+    if (!act) return;
+    var root = rootOf(t);
+    if (!root) return;
+    var mod = find(root.getAttribute("data-ce-mod"));
+    if (!mod || !mod.on) return;
+    var arg = t.getAttribute("data-ce-arg");
+    ev.preventDefault();
+    try { mod.on(act, arg, root, t); } catch (e) { toast("操作失败：" + e.message); }
+  }, false);
+
+  /* ---------------- 定时刷新：只刷当前页，页面不可见时整轮跳过 ---------------- */
+  setInterval(function () {
+    if (document.hidden) return;
+    tickTab(CURRENT);
+  }, TICK_MS);
+
+  /* 主脚本切页时调我们（showTab 里已经有一处 extOnTab 调用，这里再挂一次监听，
+     两条路径都覆盖：新版 showTab 会派发 ce:tab 事件，旧版只走 extOnTab 钩子）。 */
+  document.addEventListener("ce:tab", function (e) {
+    if (e && e.detail) renderTab(String(e.detail));
+  }, false);
+
+  /* ---------------- 对外接口 ---------------- */
+  window.CE = {
+    v: "1.3.3-beta.4",
+    reg: reg,
+    tab: renderTab,
+    tick: tickTab,
+    get: find,
+    has: has,
+    call: call,
+    exec: exec,
+    tool: tool,
+    toolJson: toolJson,
+    toast: toast,
+    copy: copy,
+    esc: esc,
+    kb: kb,
+    dur: dur,
+    clock: clock,
+    pct: pct,
+    json: json,
+    busy: busy,
+    /* 记一条本地偏好（扩展模块自己的小状态都放这里，别污染主脚本的 S） */
+    ls: function (k, v) {
+      try {
+        if (v === undefined) {
+          var raw = localStorage.getItem("ce_" + k);
+          return raw == null ? null : json(raw, raw);
+        }
+        localStorage.setItem("ce_" + k, JSON.stringify(v));
+      } catch (e) {}
+      return null;
+    }
+  };
+
+  injectCSS();
+
+  /* 首次启动：等主脚本把 4 秒一轮的 refresh 排上，再挂第一屏 */
+  function boot() {
+    injectCSS();
+    renderTab("home");
+  }
+  if (document.readyState === "complete" || document.readyState === "interactive") {
+    setTimeout(boot, 600);
+  } else {
+    document.addEventListener("DOMContentLoaded", function () { setTimeout(boot, 600); }, false);
+  }
+})();
+
+/* ---- 10-sysmon.js ---- */
+
+/* =====================================================================
+   10-sysmon.js — 主页「资源监控」卡（id=sysmon / tab=home / order=30）
+   ---------------------------------------------------------------------
+   数据只有两条只读来源，都是 extras.sh 的子命令，单位统一是 KB：
+     · sysinfo —— 读 /proc/loadavg、/proc/meminfo、df，几十毫秒，跟着
+       内核 8 秒一轮的 tick 全量刷新；
+     · procs   —— 扫一圈 /proc/<pid>/status 再排序，慢一档，所以用模块内的
+       计数器压到每 3 次 tick 一次；用户展开「进程 TOP」时再补刷一次，
+       免得边看边开时读到的是 8 秒前的旧表。
+   拿不到数据（null 或 ok !== true）时整块退化成一句空态文案：
+   tick 是内核统一循环里调的，模块一抛异常就会把同页其它模块一起打断，
+   所以这里每个入口都包了 try/catch。
+   ===================================================================== */
+(function () {
+  "use strict";
+
+  var PROC_EVERY = 3;      /* procs 的刷新节流：每 N 次 tick 才跑一次 */
+
+  var sys = null;          /* 最近一次 sysinfo 结果，null 表示没拿到 */
+  var prc = null;          /* 最近一次 procs 结果 */
+  var tried = false;       /* sysinfo 回过一次没有（用来区分「读取中」和「读失败」） */
+  var prcDone = false;     /* procs 回过一次没有 */
+  var lastTs = 0;          /* 最近一次取数时刻（秒），失败时标题右侧也要有东西显示 */
+  var tickN = 0;           /* tick 计数器，给 procs 节流用 */
+  var busySys = false;     /* CE.exec 是「让出一帧再执行」，这个窗口里别重复发命令 */
+  var busyProcs = false;
+  var open = false;        /* 进程 TOP 展开态，持久化在 CE.ls("sysmon.open") */
+
+  /* ---------------- 格式化小工具 ---------------- */
+
+  /* 剩余量按需求写成「x.x GB」；不足 100 MB 时退回 CE.kb，
+     否则快满的存储会显示成没有信息量的 "0.0 GB" */
+  function freeGb(k) {
+    k = Number(k) || 0;
+    if (k < 102400) return CE.kb(k);
+    return (k / 1048576).toFixed(1) + " GB";
+  }
+
+  /* .ce-pre 是等宽字体，靠空格对齐比多列布局省事，窄屏也不会挤成两行 */
+  function padRight(s, n) {
+    s = String(s == null ? "" : s);
+    while (s.length < n) s += " ";
+    return s;
+  }
+
+  /* 阈值是产品定死的，不走主题：>92% 判危，>80% 判警 */
+  function barCls(p) {
+    if (p > 92) return "bad";
+    if (p > 80) return "warn";
+    return "";
+  }
+
+  /* margin-top 归零：三条条子要和上面三格指标严格同列对齐，
+     统一由外层网格的 gap 控制间距，否则每条的基线会错开 6px */
+  function bar(p) {
+    p = Math.max(0, Math.min(100, Math.round(Number(p) || 0)));
+    return '<div class="ce-bar" style="margin-top:0"><i class="' + barCls(p) + '" style="width:' +
+      p + '%"></i></div>';
+  }
+
+  /* 三格指标 + 三条进度条都走同一套 3 等分网格，条子就正好落在各自那格下面 */
+  var COLS = "grid-template-columns:repeat(3,1fr)";
+
+  /* diskTotal 读不到时按需求留一条 0 宽度的空条，第三列不断行 */
+  function zeroBar() {
+    return '<div class="ce-bar" style="margin-top:0"><i style="width:0%"></i></div>';
+  }
+
+  /* 一格指标：<b> 是值（.ce-cell b 已内置 tabular-nums，不用再定宽） */
+  function cell(val, label) {
+    return '<div class="ce-cell"><b>' + CE.esc(val) + '</b><span>' + CE.esc(label) + '</span></div>';
+  }
+
+  /* procs 的 list 可能缺失 / 为空 / ok=false，统一收敛成数组 */
+  function plist(d) {
+    if (!d || d.ok !== true || !d.list || !d.list.length) return [];
+    return d.list;
+  }
+
+  /* ---------------- 页面片段 ---------------- */
+
+  function headHtml() {
+    /* 主样式表里 .card h2 在有的主题是 flex、有的主题是 block，
+       所以把排版写死在 h2 上（只写布局，不写字面颜色），
+       时间用 margin-left:auto 顶到右侧；浅色主题的 h2::before 装饰条仍然在最前。 */
+    var ts = CE.clock(sys && sys.ts ? sys.ts : lastTs);
+    return '<h2 style="display:flex;align-items:baseline;gap:8px">资源监控' +
+      '<span class="ce-mono" data-ce-ts style="margin-left:auto">' + CE.esc(ts) + '</span></h2>';
+  }
+
+  function procsHtml() {
+    var list = plist(prc), n = list.length;
+    var row = '<div class="ce-row" data-ce-act="toggle-procs" role="button" aria-expanded="' +
+      (open ? "true" : "false") + '">' +
+      '<div class="ce-rt"><b>进程 TOP</b><span>点这一行展开 / 收起</span></div>' +
+      '<div class="ce-rv">' + (n ? n + " 个 " : "") + (open ? "▴" : "▾") + '</div></div>';
+    if (!open) return row;
+    /* 展开时才拼这 6 行：默认折叠，别让内存在每次 tick 里做无用渲染 */
+    var lines = [], i, it;
+    for (i = 0; i < n && i < 6; i++) {
+      it = list[i] || {};
+      lines.push(CE.esc(padRight(it.name || "?", 14) + CE.kb(it.rssKB)));
+    }
+    return row + '<div class="ce-pre">' + (lines.length ? lines.join("\n") : "—") + '</div>';
+  }
+
+  function hintHtml() {
+    if (!prcDone) return '<div class="ce-hint">进程表读取中…</div>';
+    if (!plist(prc).length) return '<div class="ce-hint">沙盒没在跑，进程列表为空</div>';
+    return '<div class="ce-hint">只统计沙盒相关进程（python / napcat / qq / proot），' +
+      '每 ' + PROC_EVERY + ' 轮刷新更新一次</div>';
+  }
+
+  function footHtml() {
+    return '<div class="btns" style="margin-top:10px">' +
+      '<button class="small" data-ce-act="refresh">刷新</button></div>';
+  }
+
+  function bodyHtml() {
+    if (!sys || sys.ok !== true) {
+      /* 首次请求还没回来：先给加载态，别让卡片闪一下「读取失败」 */
+      if (!tried) return '<div class="ce-load"><i></i>读取资源数据…</div>';
+      /* 多半是 extras.sh 还没部署，文案要顺带告诉用户下一步做什么 */
+      return '<div class="ce-empty">资源数据读取失败：需要先完成部署' +
+        '（脚本 extras.sh 还没就位）</div>' + footHtml();
+    }
+
+    var cores = Math.round(Number(sys.cores) || 0) || 1;
+    var load1 = Number(sys.load1) || 0;
+    var memTotal = Number(sys.memTotal) || 0;
+    var memAvail = Number(sys.memAvail) || 0;
+    var dTotal = Number(sys.diskTotal) || 0;
+    var dUsed = Number(sys.diskUsed) || 0;
+    var dFree = Number(sys.diskFree) || 0;
+
+    var cpuP = CE.pct(load1, cores);                                  /* load1 相对核数 */
+    var memP = memTotal > 0 ? CE.pct(memTotal - memAvail, memTotal) : 0;
+    /* 磁盘占用按需求用 used/(used+free)：部分机型 df 的 total 含预留块，会被算低 */
+    var diskP = (dUsed + dFree) > 0 ? CE.pct(dUsed, dUsed + dFree) : 0;
+    /* diskTotal 为 0 说明 df 没读到（或分区不可见），这时显示「—」、进度条宽度 0 */
+    var diskOk = dTotal > 0;
+
+    return '<div class="ce-grid" style="' + COLS + '">' +
+        cell(load1.toFixed(2), "CPU 负载 · " + cores + " 核") +
+        cell(memTotal > 0 ? memP + "%" : "—",
+          memTotal > 0 ? "内存 · 剩余 " + freeGb(memAvail) : "内存 · 无数据") +
+        cell(diskOk ? diskP + "%" : "—",
+          diskOk ? "存储 · 剩余 " + freeGb(dFree) : "存储 · 无数据") +
+      '</div>' +
+      '<div class="ce-bars" style="display:grid;' + COLS + ';gap:8px;margin-top:7px">' +
+        bar(cpuP) + bar(memP) + (diskOk ? bar(diskP) : zeroBar()) +
+      '</div>' +
+      procsHtml() + hintHtml() + footHtml();
+  }
+
+  /* 只重画 #ceSysBody，标题右侧的时间单独更新：
+     整卡 re-render 会把展开态、滚动位置一起冲掉，没必要。 */
+  function paint(root) {
+    try {
+      if (!root || !root.querySelector) return;
+      var tsEl = root.querySelector("[data-ce-ts]");
+      if (tsEl) tsEl.textContent = CE.clock(sys && sys.ts ? sys.ts : lastTs);
+      var body = root.querySelector("#ceSysBody");
+      if (body) body.innerHTML = bodyHtml();
+    } catch (e) {
+      /* 渲染失败也不能把内核的 tick 循环带挂 */
+    }
+  }
+
+  /* ---------------- 取数 ---------------- */
+
+  function loadSys(root) {
+    if (busySys) return;
+    busySys = true;
+    try {
+      CE.toolJson("sysinfo", function (d) {
+        busySys = false;
+        tried = true;
+        lastTs = Math.floor(Date.now() / 1000);
+        sys = (d && d.ok === true) ? d : null;
+        paint(root);
+      });
+    } catch (e) {
+      busySys = false;
+      tried = true;
+      sys = null;
+      paint(root);
+    }
+  }
+
+  function loadProcs(root) {
+    if (busyProcs) return;
+    busyProcs = true;
+    try {
+      CE.toolJson("procs", function (d) {
+        busyProcs = false;
+        prcDone = true;
+        prc = (d && d.ok === true) ? d : null;
+        paint(root);
+      });
+    } catch (e) {
+      busyProcs = false;
+      prcDone = true;
+      prc = null;
+      paint(root);
+    }
+  }
+
+  /* ---------------- 注册 ---------------- */
+
+  CE.reg({
+    id: "sysmon",
+    tab: "home",
+    order: 30,
+    title: "资源监控",
+
+    html: function () {
+      /* 骨架先按「读取中」出，mount 里立刻发请求，正常情况下 100ms 内出数 */
+      return '<div class="card">' + headHtml() +
+        '<div id="ceSysBody">' + bodyHtml() + '</div></div>';
+    },
+
+    mount: function (root) {
+      try { open = CE.ls("sysmon.open") === true; } catch (e) { open = false; }
+      /* 挂载即拉一次，不等内核那 8 秒；随后 tick 里的 busy 标记会拦掉重复请求 */
+      loadSys(root);
+      loadProcs(root);
+    },
+
+    tick: function (root) {
+      loadSys(root);
+      tickN++;
+      /* procs 慢一档：每 PROC_EVERY 轮一次；展开时跟着每轮刷，用户看到的就是新数 */
+      if (open || tickN % PROC_EVERY === 0) loadProcs(root);
+    },
+
+    on: function (act, arg, root) {
+      if (act === "refresh") {
+        loadSys(root);
+        loadProcs(root);
+        return;
+      }
+      if (act === "toggle-procs") {
+        open = !open;
+        try { CE.ls("sysmon.open", open); } catch (e) {}
+        paint(root);                 /* 先切展开态，别等命令回来才动 */
+        if (open) loadProcs(root);   /* 展开时补一次最新数据 */
+      }
+    }
+  });
+})();
+
+/* ---- 11-linkmap.js ---- */
+
+/* =====================================================================
+   11-linkmap — 链路状态（home / order 32）
+   ---------------------------------------------------------------------
+   为什么做成一条链：用户问「机器人不回消息」，真正想知道的是断在哪一环。
+   五段严格按依赖顺序排：沙盒容器 → NapCat → OneBot 端口 → AstrBot → QQ 账号。
+   前一段确定断了，后一段的真实状态就没有参考价值（NapCat 没起来，OneBot 自然也
+   连不上），所以统一标成灰点「上游没通」，保证一眼只看到一个真正的断点。
+
+   取数只在 tick 里调一次 state()：它会读宿主文件，主界面 4 秒一轮已经在调，
+   模块重复调只会白白增加卡顿。首次 html() 只画骨架，真正的数据由 mount 后的
+   第一轮 tick 填进来。
+   ===================================================================== */
+(function () {
+  "use strict";
+
+  var BODY = "ceLinkBody";
+  var LAST = null;      /* 最近一次成功解析的 state，按钮处理复用它，避免再读文件 */
+  var armUntil = 0;     /* 容器重启的二次确认截止时间（毫秒），只放内存，不写本地存储 */
+  var armTimer = null;
+
+  /* ---------------- 小工具 ---------------- */
+
+  /* 桥里的布尔值可能是 true / 1 / "1" / "true"，统一收口，避免各处写法不一致 */
+  function on(v) {
+    return v === true || v === 1 || v === "1" || v === "true";
+  }
+
+  function blank(v) {
+    return v === undefined || v === null || v === "";
+  }
+
+  function nowMs() {
+    return (new Date()).getTime();
+  }
+
+  function portText(p) {
+    return p ? String(p) : "—";
+  }
+
+  /* state() 只调这一处；它返回空串或明确失败时给 null，调用方统一走空态。
+     注意真机部分版本的 state() 成功时并不带 ok 字段（只有出错才带 ok:false），
+     所以「没有 ok 但结构像 state」的返回也放行，否则整卡在真机上会永远空着。 */
+  function readState() {
+    var raw = "";
+    try { raw = CE.call("state"); } catch (e) { raw = ""; }
+    if (blank(raw)) return null;
+    var st = null;
+    try { st = CE.json(raw, null); } catch (e) { st = null; }
+    if (!st || typeof st !== "object") return null;
+    if (st.ok === false || st.ok === 0 || st.ok === "0" || st.ok === "false") return null;
+    if (st.ok !== true && st.deployDone === undefined && st.supervisorAlive === undefined) return null;
+    return st;
+  }
+
+  /* state().bots 在真机上是 {active:"bot1", bots:[…]}，契约里写的是直接一个数组；
+     两种都兼容，取不到就给空数组，后面按「没有实例」降级。 */
+  function botList(st) {
+    var raw = st && st.bots;
+    if (!raw || typeof raw !== "object") return [];
+    if (typeof raw.length === "number") return raw;
+    if (raw.bots && typeof raw.bots.length === "number") return raw.bots;
+    return [];
+  }
+
+  function activeId(st) {
+    var raw = st && st.bots;
+    var v = "";
+    if (raw && typeof raw === "object" && !blank(raw.active)) v = raw.active;
+    else if (st && !blank(st.active)) v = st.active;
+    return blank(v) ? "" : String(v);
+  }
+
+  /* 「当前实例」：优先 bots.active 指向的那个，其次带 active 标记的，再其次第一个 up 的 */
+  function pickBot(st) {
+    var list = botList(st);
+    var aid = activeId(st);
+    var i, b;
+    if (!list.length) return null;
+    if (aid) {
+      for (i = 0; i < list.length; i++) {
+        b = list[i];
+        if (b && String(b.id || "") === aid) return b;
+      }
+    }
+    for (i = 0; i < list.length; i++) if (list[i] && list[i].active) return list[i];
+    for (i = 0; i < list.length; i++) if (list[i] && on(list[i].up)) return list[i];
+    return list[0] || null;
+  }
+
+  /* 契约字段是 uin，真机 bots.json 用的是 qq；uin 明确为空时按「未登录」处理，
+     只有 uin 整个字段不存在（老数据）才退回 qq */
+  function qqOf(bot) {
+    if (!bot) return "";
+    var v = bot.uin;
+    if (v === undefined || v === null) v = bot.qq;
+    return (v === undefined || v === null) ? "" : String(v);
+  }
+
+  function nameOf(bot) {
+    if (!bot) return "—";
+    if (!blank(bot.label)) return String(bot.label);
+    if (!blank(bot.name)) return String(bot.name);
+    if (!blank(bot.id)) return String(bot.id);
+    return "默认实例";
+  }
+
+  /* 端口以 state 顶层为准（它按当前实例推导过），缺失再退回实例自己的字段 */
+  function portOf(st, key) {
+    var n = parseInt(st ? st[key] : "", 10) || 0;
+    if (n <= 0) {
+      var b = pickBot(st);
+      if (b) n = parseInt(b[key], 10) || 0;
+    }
+    return n > 0 ? String(n) : "";
+  }
+
+  function push(list, id, name, cls, text, fix, btn) {
+    list.push({ id: id, name: name, cls: cls, text: text, fix: fix, btn: btn });
+  }
+
+  /* ---------------- 五段状态 ---------------- */
+
+  function buildSegs(st) {
+    var bot = pickBot(st);
+    var uin = qqOf(bot);
+    var nap = portText(portOf(st, "napcatPort"));
+    var ob = portText(portOf(st, "onebotPort"));
+    var ast = portText(portOf(st, "astrbotPort"));
+    var segs = [];
+
+    /* 1. 沙盒容器：整条链的根，NapCat / AstrBot 都跑在它里面 */
+    if (blank(st.supervisorAlive)) {
+      push(segs, "container", "沙盒容器", "warn",
+        "读不到容器状态，可能刚启动",
+        "状态没上报，点「重启」可以重新拉起沙盒（会短暂中断消息）", "重启");
+    } else if (on(st.supervisorAlive)) {
+      push(segs, "container", "沙盒容器", "ok",
+        "容器在运行", "", "重启");
+    } else {
+      push(segs, "container", "沙盒容器", "bad",
+        "容器没在运行，消息进程全停了",
+        "沙盒守护进程没在跑，点「重启」把容器拉起来（会短暂中断消息）", "重启");
+    }
+
+    /* 2. NapCat：端口在听且用户没有手动关闭才算好 */
+    if (on(st.napcatOff)) {
+      push(segs, "napcat", "NapCat", "bad",
+        "NapCat 已被手动关闭",
+        "NapCat 被关掉了，去「更多 → 组件开关」重新打开，或点「打开 WebUI」确认状态", "打开 WebUI");
+    } else if (blank(st.napcatUp)) {
+      push(segs, "napcat", "NapCat", "warn",
+        "读不到 NapCat 端口状态",
+        "点「打开 WebUI」看看 NapCat 是否还在启动", "打开 WebUI");
+    } else if (!on(st.napcatUp)) {
+      push(segs, "napcat", "NapCat", "bad",
+        "端口 " + nap + " 没在监听，NapCat 没起来",
+        "NapCat 没起来，点「打开 WebUI」看日志或重启 NapCat", "打开 WebUI");
+    } else {
+      push(segs, "napcat", "NapCat", "ok",
+        "端口 " + nap + " 在监听", "", "打开 WebUI");
+    }
+
+    /* 3. OneBot 端口：AstrBot 连 NapCat 的通道 */
+    if (blank(st.onebotUp)) {
+      push(segs, "onebot", "OneBot 端口", "warn",
+        "读不到 OneBot 端口状态",
+        "去「更多 → 端口设置」检查端口是否和其它实例撞了", "检查");
+    } else if (!on(st.onebotUp)) {
+      push(segs, "onebot", "OneBot 端口", "bad",
+        "端口 " + ob + " 没监听，AstrBot 连不上 NapCat",
+        "OneBot 端口没监听：去「更多 → 端口设置」检查是否和其它实例撞了", "检查");
+    } else {
+      push(segs, "onebot", "OneBot 端口", "ok",
+        "端口 " + ob + " 在监听", "", "检查");
+    }
+
+    /* 4. AstrBot 控制台：端口在听且用户没有手动关闭 */
+    if (on(st.astrbotOff)) {
+      push(segs, "astrbot", "AstrBot 控制台", "bad",
+        "AstrBot 已被手动关闭",
+        "AstrBot 被关掉了，去「更多 → 组件开关」重新打开，或点「打开控制台」确认状态", "打开控制台");
+    } else if (blank(st.astrbotUp)) {
+      push(segs, "astrbot", "AstrBot 控制台", "warn",
+        "读不到 AstrBot 状态",
+        "点「打开控制台」看看 AstrBot 是否还在启动", "打开控制台");
+    } else if (!on(st.astrbotUp)) {
+      push(segs, "astrbot", "AstrBot 控制台", "bad",
+        "控制台端口 " + ast + " 没响应",
+        "AstrBot 没起来，点「打开控制台」看启动日志", "打开控制台");
+    } else {
+      push(segs, "astrbot", "AstrBot 控制台", "ok",
+        "控制台端口 " + ast + " 正常响应", "", "打开控制台");
+    }
+
+    /* 5. QQ 账号：当前实例有号且在线，才算整条链真的通了 */
+    if (!bot) {
+      push(segs, "qq", "QQ 账号", "bad",
+        "未登录，还没有机器人实例",
+        "去「机器人」页新增一个实例，填 QQ 号和 Token 后会自动登录", "扫码登录");
+    } else if (!uin) {
+      push(segs, "qq", "QQ 账号", "bad",
+        "未登录，还没绑定 QQ 号",
+        "QQ 未登录，点「扫码登录」用手机 QQ 扫码", "扫码登录");
+    } else if (blank(bot.up)) {
+      push(segs, "qq", "QQ 账号", "warn",
+        "读不到账号在线状态",
+        "点「扫码登录」可以重新调出二维码", "扫码登录");
+    } else if (!on(bot.up)) {
+      push(segs, "qq", "QQ 账号", "bad",
+        "账号 " + uin + " 掉线了",
+        "QQ 掉线了，点「扫码登录」用手机 QQ 重新扫码", "扫码登录");
+    } else {
+      push(segs, "qq", "QQ 账号", "ok",
+        "账号 " + uin + " 在线", "", "扫码登录");
+    }
+
+    return segs;
+  }
+
+  /* 上游确定断了以后，下游统一灰点：避免 NapCat 挂了时 OneBot/AstrBot 跟着一片红，
+     用户分不清到底该先修哪个。灰点不是"未知"，而是"现在判断没有意义"。 */
+  function settle(segs) {
+    var blocked = false;
+    var i;
+    for (i = 0; i < segs.length; i++) {
+      if (blocked) {
+        segs[i].cls = "";
+        segs[i].text = "上游没通，先修好上面那段";
+      }
+      if (segs[i].cls === "bad") blocked = true;
+    }
+  }
+
+  /* ---------------- 渲染 ---------------- */
+
+  function hintHtml(segs) {
+    var i, badAt = -1, firstWarn = -1, allOk = true;
+    for (i = 0; i < segs.length; i++) {
+      if (segs[i].cls !== "ok") allOk = false;
+      if (badAt < 0 && segs[i].cls === "bad") badAt = i;
+      if (firstWarn < 0 && segs[i].cls === "warn") firstWarn = i;
+    }
+    if (allOk) {
+      return '<div class="ce-hint ce-ok">✔ 链路完整，消息可以正常收发</div>';
+    }
+    if (badAt >= 0) {
+      var from = badAt === 0 ? "手机" : segs[badAt - 1].name;
+      return '<div class="ce-hint ce-bad">断在：' + CE.esc(from) + ' → ' +
+        CE.esc(segs[badAt].name) + ' 之间 · ' + CE.esc(segs[badAt].fix) + '</div>';
+    }
+    /* 没有红点、但有读不到的状态：别谎报"正常"，明确告诉用户还在等数据 */
+    var who = firstWarn >= 0 ? segs[firstWarn].name : "部分组件";
+    return '<div class="ce-hint ce-warn">' + CE.esc("链路状态不完整：" + who + " 状态读不到，稍后会自动重试") + '</div>';
+  }
+
+  function rowsHtml(segs) {
+    var h = "<div>";
+    var now = nowMs();
+    var i, s, armed, cls, label;
+    for (i = 0; i < segs.length; i++) {
+      s = segs[i];
+      /* 二次确认状态跨 tick 保留：8 秒刷新时按钮不能偷偷变回「重启」 */
+      armed = s.id === "container" && armUntil > now;
+      cls = armed ? "small primary" : "small";
+      label = armed ? "确认重启？" : s.btn;
+      h += '<div class="ce-row">' +
+        '<span class="ce-dot' + (s.cls ? " " + s.cls : "") + '"></span>' +
+        '<div class="ce-rt"><b>' + CE.esc(s.name) + '</b><span>' + CE.esc(s.text) + '</span></div>' +
+        '<div class="ce-rv"><button class="' + cls + '" data-ce-act="fix" data-ce-arg="' +
+        CE.esc(s.id) + '">' + CE.esc(label) + '</button></div>' +
+        '</div>';
+    }
+    return h + "</div>";
+  }
+
+  function footHtml(st) {
+    var bot = pickBot(st);
+    var inst = bot ? nameOf(bot) : "—";
+    var uin = qqOf(bot) || "未登录";
+    return '<div class="ce-hint ce-mono">实例 ' + CE.esc(inst) +
+      ' · QQ ' + CE.esc(uin) +
+      ' · napcat ' + CE.esc(portText(portOf(st, "napcatPort"))) +
+      ' · onebot ' + CE.esc(portText(portOf(st, "onebotPort"))) +
+      ' · astrbot ' + CE.esc(portText(portOf(st, "astrbotPort"))) + '</div>';
+  }
+
+  function bodyHtml(st) {
+    var segs = buildSegs(st);
+    settle(segs);
+    return hintHtml(segs) + rowsHtml(segs) + footHtml(st);
+  }
+
+  function deployHtml() {
+    return '<div class="ce-empty">还没完成部署，链路待建立</div>' +
+      '<div class="btns"><button class="small primary" data-ce-act="deploy">去部署</button></div>';
+  }
+
+  /* ---------------- 注册 ---------------- */
+
+  CE.reg({
+    id: "linkmap",
+    tab: "home",
+    order: 32,
+    title: "链路状态",
+
+    html: function () {
+      return '<div class="card"><h2>链路状态</h2>' +
+        '<div id="' + BODY + '"><div class="ce-load"><i></i>正在检查链路…</div></div>' +
+        '</div>';
+    },
+
+    tick: function (root) {
+      var box = null;
+      try { box = root.querySelector("#" + BODY); } catch (e) { box = null; }
+      if (!box) return;
+
+      /* 整轮只读一次 state —— 它会去读宿主文件，不能在这里重复调 */
+      var st = readState();
+      LAST = st;
+
+      if (!st) {
+        box.innerHTML = '<div class="ce-empty">读不到运行状态，稍后自动重试</div>';
+        return;
+      }
+      if (!st.deployDone) {
+        box.innerHTML = deployHtml();
+        return;
+      }
+      try {
+        box.innerHTML = bodyHtml(st);
+      } catch (e) {
+        box.innerHTML = '<div class="ce-empty">链路状态渲染失败，稍后自动重试</div>';
+      }
+    },
+
+    on: function (act, arg, root, el) {
+      try {
+        if (act === "deploy") {
+          CE.call("action", JSON.stringify({ act: "deploy" }));
+          return;
+        }
+        if (act !== "fix") return;
+
+        var st = LAST || readState();
+        if (!st) { CE.toast("还没读到运行状态，稍后再试"); return; }
+
+        /* 重启沙盒会掐断正在跑的消息，必须两步确认；WebView 里 window.confirm
+           被系统禁用，所以用「按钮文字变更 + 3 秒窗口」这套纯前端确认。 */
+        if (arg === "container") {
+          var now = nowMs();
+          if (armUntil && now <= armUntil) {
+            armUntil = 0;
+            if (armTimer) { clearTimeout(armTimer); armTimer = null; }
+            if (el) el.textContent = "重启";
+            CE.toast("正在重启沙盒…");
+            CE.call("action", JSON.stringify({ act: "restartnow" }));
+            return;
+          }
+          armUntil = now + 3000;
+          if (el) el.textContent = "确认重启？";
+          if (armTimer) clearTimeout(armTimer);
+          armTimer = setTimeout(function () {
+            armUntil = 0;
+            armTimer = null;
+            try {
+              var b = root.querySelector('[data-ce-act="fix"][data-ce-arg="container"]');
+              if (b) b.textContent = "重启";
+            } catch (e2) {}
+          }, 3100);
+          return;
+        }
+
+        if (arg === "napcat") {
+          var napPort = portOf(st, "napcatPort");
+          if (!napPort) { CE.toast("还没读到 NapCat 端口，稍后再试"); return; }
+          CE.call("openPanel", "http://127.0.0.1:" + napPort + "/webui/");
+          return;
+        }
+
+        if (arg === "onebot") {
+          var obPort = portOf(st, "onebotPort");
+          CE.toast("OneBot 端口 " + (obPort || "?") +
+            " 没监听：去「更多 → 端口设置」检查是否和其它实例撞了");
+          return;
+        }
+
+        if (arg === "astrbot") {
+          var astPort = portOf(st, "astrbotPort");
+          if (!astPort) { CE.toast("还没读到 AstrBot 端口，稍后再试"); return; }
+          CE.call("openPanel", "http://127.0.0.1:" + astPort + "/");
+          return;
+        }
+
+        if (arg === "qq") {
+          CE.call("action", JSON.stringify({ act: "showqr" }));
+          return;
+        }
+      } catch (e) {
+        CE.toast("操作失败：" + (e && e.message ? e.message : "未知错误"));
+      }
+    }
+  });
+})();
+
+/* ---- 12-trend.js ---- */
+
+(function () {
+  "use strict";
+
+  /* ------------------------------------------------------------------
+     7 日趋势（home）
+     ------------------------------------------------------------------
+     为什么要有：主页只有「今日」四个数字，用户问得最多的是「这两天是不是变差了」。
+     桥里没有历史接口（TodayStats 只存当天快照），所以历史只能由前端自己攒：
+     每次 tick 把 todayStats() 落一份到 localStorage，按天去重，最多留 30 天。
+     新装的第一天图上只有一个点，这是正常的 —— 文案里要说清楚，别让用户以为坏了。
+     ------------------------------------------------------------------ */
+
+  var KEY = "trend.days";
+  var MAX = 30;
+
+  function today() {
+    var d = new Date();
+    function p(n) { return n < 10 ? "0" + n : "" + n; }
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+  }
+
+  function load() {
+    var o = CE.ls(KEY);
+    if (!o || typeof o !== "object") return {};
+    return o;
+  }
+
+  function save(o) {
+    /* 只保留最近 MAX 天：按 key 排序后砍掉多余的，免得 localStorage 越攒越大 */
+    var ks = [];
+    for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ks.push(k);
+    ks.sort();
+    while (ks.length > MAX) { delete o[ks.shift()]; }
+    CE.ls(KEY, o);
+  }
+
+  /* 今天这一格：只在数值有意义时更新，避免沙盒没跑时把 0 覆盖上去
+     （离线期间 todayStats 依旧返回当天累计值，所以这里其实一直是真值；
+      真要防的是「桥还没就绪返回空对象」—— 那种情况 optNum 会给 -1） */
+  function absorb() {
+    var raw = CE.call("todayStats");
+    var j = CE.json(raw, null);
+    if (!j || j.ok !== true) return load();
+    var o = load();
+    var d = j.day || today();
+    var cell = o[d] || {};
+    if (typeof j.msgs === "number") cell.msgs = j.msgs;
+    if (typeof j.errors === "number") cell.errors = j.errors;
+    if (typeof j.onlineSec === "number") cell.onlineSec = j.onlineSec;
+    cell.ts = Date.now();
+    o[d] = cell;
+    save(o);
+    return o;
+  }
+
+  function last7(o) {
+    var out = [];
+    var now = new Date();
+    for (var i = 6; i >= 0; i--) {
+      var d = new Date(now.getTime() - i * 86400000);
+      function p(n) { return n < 10 ? "0" + n : "" + n; }
+      var k = d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+      out.push({ key: k, label: (d.getMonth() + 1) + "/" + d.getDate(), v: o[k] || null });
+    }
+    return out;
+  }
+
+  /* 迷你折线：两条线（消息 / 异常）+ 面积点。手写 SVG，不引任何图表库 —— 
+     包里没有 CDN，也不该为了一个小图去加 30 KB 的依赖。 */
+  function chart(rows) {
+    var W = 320, H = 96, PL = 6, PR = 6, PT = 10, PB = 22;
+    var iw = W - PL - PR, ih = H - PT - PB;
+    var maxM = 1, maxE = 1, i, v;
+    for (i = 0; i < rows.length; i++) {
+      v = rows[i].v;
+      if (!v) continue;
+      if ((v.msgs || 0) > maxM) maxM = v.msgs;
+      if ((v.errors || 0) > maxE) maxE = v.errors;
+    }
+    function x(i) { return PL + (rows.length <= 1 ? iw / 2 : iw * i / (rows.length - 1)); }
+    function yM(n) { return PT + ih - ih * (Math.max(0, n) / maxM); }
+
+    var s = '<svg class="ce-svg" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="最近 7 天消息趋势">';
+    /* 三条横网格：基线 / 中值 / 顶 */
+    for (i = 0; i <= 2; i++) {
+      var gy = PT + ih * i / 2;
+      s += '<line class="grid" x1="' + PL + '" y1="' + gy.toFixed(1) + '" x2="' + (W - PR) + '" y2="' + gy.toFixed(1) + '"/>';
+    }
+    /* 消息折线 */
+    var dpath = "", started = false, pts = [];
+    for (i = 0; i < rows.length; i++) {
+      v = rows[i].v;
+      if (!v) { started = false; continue; }
+      var px = x(i), py = yM(v.msgs || 0);
+      dpath += (started ? " L" : " M") + px.toFixed(1) + " " + py.toFixed(1);
+      started = true;
+      pts.push([px, py, v.msgs || 0]);
+    }
+    if (dpath) s += '<path class="ln" d="' + dpath + '"/>';
+    for (i = 0; i < pts.length; i++) {
+      s += '<circle class="pt" cx="' + pts[i][0].toFixed(1) + '" cy="' + pts[i][1].toFixed(1) + '" r="2.6"/>';
+    }
+    /* 异常数：用短竖条压在基线上，不跟消息共用 y 轴（量级差太多，共用会看不见） */
+    for (i = 0; i < rows.length; i++) {
+      v = rows[i].v;
+      if (!v || !v.errors) continue;
+      var bh = Math.min(ih * 0.5, 4 + (v.errors / maxE) * ih * 0.4);
+      var bx = x(i) - 3;
+      s += '<rect x="' + bx.toFixed(1) + '" y="' + (PT + ih - bh).toFixed(1) +
+        '" width="6" height="' + bh.toFixed(1) + '" rx="2" fill="#dc2626" opacity=".55"/>';
+    }
+    /* x 轴标签：7 个全写会挤，隔一个写一个；最后一天一定写 */
+    for (i = 0; i < rows.length; i++) {
+      if (i % 2 === 1 && i !== rows.length - 1) continue;
+      s += '<text x="' + x(i).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle">' + CE.esc(rows[i].label) + "</text>";
+    }
+    s += "</svg>";
+
+    /* 图例 + 峰值 */
+    var peak = 0, peakDay = "";
+    for (i = 0; i < rows.length; i++) {
+      v = rows[i].v;
+      if (v && (v.msgs || 0) >= peak) { peak = v.msgs || 0; peakDay = rows[i].label; }
+    }
+    s += '<div class="ce-tags"><span class="ce-tag">消息</span>' +
+      '<span class="ce-tag" style="background:rgba(220,38,38,.12);color:#dc2626">异常</span>' +
+      (peak > 0 ? '<span class="ce-tag">峰值 ' + CE.esc(String(peak)) + " · " + CE.esc(peakDay) + "</span>" : "") +
+      "</div>";
+    return s;
+  }
+
+  function summary(rows) {
+    var n = 0, msgs = 0, errs = 0, online = 0, i, v;
+    for (i = 0; i < rows.length; i++) {
+      v = rows[i].v;
+      if (!v) continue;
+      n++;
+      msgs += v.msgs || 0;
+      errs += v.errors || 0;
+      online += v.onlineSec || 0;
+    }
+    if (!n) return '<div class="ce-empty">还没有历史数据。每天打开一次应用就会自动记一天，攒够 7 天这里就是完整的一张趋势图。</div>';
+    var avg = Math.round(msgs / n);
+    return '<div class="ce-grid">' +
+      '<div class="ce-cell"><b>' + CE.esc(String(n)) + ' 天</b><span>有数据的天数</span></div>' +
+      '<div class="ce-cell"><b>' + CE.esc(String(msgs)) + '</b><span>累计消息</span></div>' +
+      '<div class="ce-cell"><b>' + CE.esc(String(avg)) + '</b><span>日均消息</span></div>' +
+      '<div class="ce-cell"><b class="' + (errs > 0 ? "ce-warn" : "") + '">' + CE.esc(String(errs)) + '</b><span>累计异常</span></div>' +
+      '</div>' +
+      '<div class="ce-hint">累计在线 ' + CE.esc(CE.dur(online)) + '</div>';
+  }
+
+  function paint(root) {
+    var body = root.querySelector("#ceTrendBody");
+    if (!body) return;
+    var o = absorb();
+    var rows = last7(o);
+    body.innerHTML = summary(rows) + (rows.some(function (r) { return !!r.v; }) ? chart(rows) : "");
+  }
+
+  CE.reg({
+    id: "trend",
+    tab: "home",
+    order: 34,
+    title: "7 日趋势",
+    html: function () {
+      return '<div class="card"><h2>7 日趋势</h2>' +
+        '<div class="hint" style="margin-top:0">每天打开应用会自动记一条，只存在本机。</div>' +
+        '<div id="ceTrendBody"></div>' +
+        '<div class="btns" style="margin-top:8px">' +
+        '<button class="small" data-ce-act="clear">清空历史</button></div></div>';
+    },
+    mount: function (root) { paint(root); },
+    tick: function (root) { paint(root); },
+    on: function (act, arg, root) {
+      if (act === "clear") {
+        if (CE.ls("trend.cleared") === 1) {
+          CE.ls(KEY, {});
+          CE.ls("trend.cleared", 0);
+          CE.toast("历史已清空");
+          paint(root);
+        } else {
+          /* 二次确认：WebView 里 confirm() 不可靠，改成"再点一次" */
+          CE.ls("trend.cleared", 1);
+          CE.toast("再点一次就清空（3 秒内有效）");
+          setTimeout(function () { CE.ls("trend.cleared", 0); }, 3000);
+        }
+      }
+    }
+  });
+})();
+
+/* ---- 13-checklist.js ---- */
+
+(function () {
+  "use strict";
+
+  /* ------------------------------------------------------------------
+     上手检查清单（home）
+     ------------------------------------------------------------------
+     新装用户最常见的三个问题，全都不是 bug：
+       ① 没给通知权限 → 常驻通知上的「关闭进程」没了，以为软件坏了；
+       ② 没加省电白名单 → 息屏十分钟进程被系统杀掉，以为断线；
+       ③ 部署没跑完就点重启。
+     这张卡只在「还有事情没做」时出现，全部打勾后 html() 返回空串，
+     内核会把整张卡从 DOM 里摘掉 —— 老用户永远看不到它。
+     ------------------------------------------------------------------ */
+
+  var ITEMS = [
+    { id: "deploy", t: "完成沙盒部署", d: "NapCat / AstrBot 要装进手机里的 Linux 沙盒，首次约 20–60 分钟。", todo: "去部署", act: "deploy" },
+    { id: "inst", t: "添加一个 QQ 实例", d: "每个实例就是一个要登录的 QQ 号，端口互相独立。", todo: "去添加", act: "addbot" },
+    { id: "login", t: "扫码登录 QQ", d: "登录后 NapCat 才能收发消息，二维码在「日志」页。", todo: "去扫码", act: "showqr" },
+    { id: "noti", t: "开启通知栏权限", d: "没有通知权限，后台被系统收走时你会毫无察觉。", todo: "去开启", act: "notiask" },
+    { id: "power", t: "关闭电池优化（加白名单）", d: "国产系统的省电策略会在息屏后冻结应用，机器人就掉线了。", todo: "去设置", act: "power" },
+    { id: "guard", t: "打开后台守护", d: "守护进程会在容器或组件挂掉时自动拉起来。", todo: "去打开", act: "guard" }
+  ];
+
+  function probe() {
+    var S = CE.json(CE.call("state"), null) || {};
+    var pw = CE.json(CE.call("powerState"), null) || {};
+    var bots = (S.bots && S.bots.length) ? S.bots : [];
+    var logged = false;
+    for (var i = 0; i < bots.length; i++) {
+      if (bots[i] && bots[i].uin) { logged = true; break; }
+    }
+    var res = {};
+    res.deploy = S.ok === true && S.deployDone === true;
+    res.inst = bots.length > 0;
+    res.login = logged;
+    res.noti = S.notiGranted === true;
+    /* powerState 的字段在各版本间变过：只要明确是「已确认/已加白」才算完成，
+       字段缺失按「未完成」处理 —— 宁可多提示一次，也别让用户以为已经加过了。 */
+    res.power = !!(pw && (pw.ok === true && (pw.acked === true || pw.shown === true || pw.whitelisted === true)));
+    res.guard = S.guardOn === true;
+    return res;
+  }
+
+  function rows(res) {
+    var done = 0, total = ITEMS.length, out = "", pending = [];
+    for (var i = 0; i < ITEMS.length; i++) {
+      var it = ITEMS[i], ok = !!res[it.id];
+      if (ok) done++; else pending.push(it.t);
+      out += '<div class="ce-row"><span class="ce-dot ' + (ok ? "ok" : "warn") + '"></span>' +
+        '<div class="ce-rt"><b>' + CE.esc(it.t) + "</b><span>" + CE.esc(it.d) + "</span></div>" +
+        (ok ? '<span class="ce-rv ce-ok">已完成</span>'
+          : '<button class="small" data-ce-act="go" data-ce-arg="' + it.id + '">' + CE.esc(it.todo) + "</button>") +
+        "</div>";
+    }
+    return { html: out, done: done, total: total, pending: pending };
+  }
+
+  function paint(root) {
+    var body = root.querySelector("#ceChkBody");
+    if (!body) return;
+    var r = rows(probe());
+    var head = r.done === r.total
+      ? '<div class="ce-hint ce-ok">✔ 全部就绪，这张卡下次就不出现了</div>'
+      : '<div class="ce-hint">还有 ' + (r.total - r.done) + " 项没做：" + CE.esc(r.pending.slice(0, 3).join("、")) +
+        (r.pending.length > 3 ? " 等" : "") + "</div>";
+    body.innerHTML = '<div class="ce-bar"><i style="width:' + CE.pct(r.done, r.total) + '%"></i></div>' + head + r.html;
+  }
+
+  function fire(id) {
+    if (id === "power") {
+      var j = CE.json(CE.call("powerGuide"), null);
+      if (j && j.ok === false && j.err) CE.toast(j.err);
+      else CE.toast("已尝试打开电池设置");
+      return;
+    }
+    if (id === "guard") {
+      if (CE.has("action")) CE.call("action", JSON.stringify({ act: "guardset", arg: "1" }));
+      CE.toast("已请求打开后台守护");
+      return;
+    }
+    var it = null;
+    for (var i = 0; i < ITEMS.length; i++) if (ITEMS[i].id === id) { it = ITEMS[i]; break; }
+    if (it && CE.has("action")) CE.call("action", JSON.stringify({ act: it.act }));
+  }
+
+  CE.reg({
+    id: "checklist",
+    tab: "home",
+    order: 36,
+    title: "上手检查",
+    html: function () {
+      var r = rows(probe());
+      /* 全做完就不占地方了：返回空串，内核会摘掉这张卡 */
+      if (r.done === r.total) return "";
+      return '<div class="card"><h2>上手检查</h2>' +
+        '<div class="hint" style="margin-top:0">按顺序做完这 ' + r.total + " 项，机器人就能稳定在线了。</div>" +
+        '<div id="ceChkBody"></div></div>';
+    },
+    mount: function (root) { paint(root); },
+    tick: function (root) { paint(root); },
+    on: function (act, arg) {
+      if (act === "go") fire(arg);
+    }
+  });
+})();
+
+/* ---- 15-netdiag.js ---- */
+
+/* =====================================================================
+   15-netdiag.js — 「网络诊断」卡片（tab=more，order=20）
+   ---------------------------------------------------------------------
+   为什么做成「按钮触发 + 结果面板」：
+     extras.sh 的 netdiag 子命令里有一条 curl（最长 6 秒），而 CE.exec 是
+     同步阻塞 JS 线程的。如果 html()/mount/tick 里自动跑，用户一进「更多」
+     页就整页卡住 6 秒，非常像"死机"。所以只在用户主动点按钮时才跑，
+     并且先把 loading 写进 DOM、把按钮置灰，再发命令。
+   结果会存一份 CE.ls 缓存，下次进页面先显示上次的，点按钮才重跑。
+   ===================================================================== */
+(function () {
+  "use strict";
+
+  /* 最近一次成功的结果（内存里也留一份，复制时不用再去读缓存） */
+  var cur = null;
+  /* 正在诊断的标志：防止用户连点两下把两条 curl 排进队列 */
+  var running = false;
+
+  var EMPTY_TEXT = "还没诊断过，点上面的按钮开始";
+  var UNAVAIL_TEXT = "诊断脚本不可用，请先完成部署或重新安装本版本";
+
+  function pad2(n) { return n < 10 ? "0" + n : "" + n; }
+
+  /* 报告里要写成完整日期时间，光有时分容易分不清是哪天的结果 */
+  function fmtFull(ts) {
+    ts = Number(ts) || 0;
+    if (!ts) return "—";
+    var d = new Date(ts < 1e12 ? ts * 1000 : ts);
+    return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()) +
+      " " + pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+  }
+
+  /* 结果条目清洗：脚本/缓存都不可信，逐条校验类型，脏条目直接丢掉。
+     返回 null 表示"根本没有可用数据"，交给上层渲染空态。 */
+  function normItems(arr) {
+    if (!arr || typeof arr !== "object" || !(arr instanceof Array) || arr.length === 0) {
+      return null;
+    }
+    var out = [], i, it, name, ok;
+    for (i = 0; i < arr.length; i++) {
+      it = arr[i];
+      if (!it || typeof it !== "object") continue;
+      name = it.name == null ? "" : String(it.name);
+      if (!name) continue;
+      /* extras.sh 是手拼 JSON 的，ok 既可能是 true 也可能被写成 1 / "true" */
+      ok = it.ok === true || it.ok === 1 || it.ok === "true" || it.ok === "1";
+      out.push({
+        name: name,
+        ok: ok,
+        detail: it.detail == null ? "" : String(it.detail)
+      });
+    }
+    return out.length ? out : null;
+  }
+
+  /* 读缓存：CE.ls 解析失败时会原样返回字符串，所以先判类型再判字段 */
+  function readCache() {
+    var raw = null;
+    try { raw = CE.ls("netdiag.last"); } catch (e) { return null; }
+    if (!raw || typeof raw !== "object") return null;
+    if (raw instanceof Array) return null;
+    var ts = Number(raw.ts);
+    if (!ts || ts <= 0) return null;
+    var items = normItems(raw.items);
+    if (!items) return null;
+    return { ts: ts, items: items };
+  }
+
+  function rowsHTML(items) {
+    var out = "", i, it, okc;
+    for (i = 0; i < items.length; i++) {
+      it = items[i];
+      okc = it.ok ? "ok" : "bad";
+      out += '<div class="ce-row">' +
+        '<span class="ce-dot ' + okc + '"></span>' +
+        '<div class="ce-rt"><b>' + CE.esc(it.name) + '</b>' +
+        '<span>' + CE.esc(it.detail) + '</span></div>' +
+        '<div class="ce-rv ' + (it.ok ? "ce-ok" : "ce-bad") + '">' +
+        (it.ok ? "通" : "断") + '</div>' +
+        '</div>';
+    }
+    return out;
+  }
+
+  /* 顶部结论行：全通给一句安心话，有失败就把失败项的名字串起来，一眼看到卡在哪步 */
+  function verdictHTML(items) {
+    var bad = [], i;
+    for (i = 0; i < items.length; i++) {
+      if (!items[i].ok) bad.push(items[i].name);
+    }
+    if (!bad.length) {
+      return '<div class="ce-hint ce-ok">' + items.length + ' 项全通，网络没问题</div>';
+    }
+    return '<div class="ce-hint ce-bad">' + bad.length + ' 项不通：' + CE.esc(bad.join("、")) + '</div>';
+  }
+
+  /* isLast=true 表示这是从缓存还原的旧结果，把"上次诊断"标出来免得用户误当成本次 */
+  function resultHTML(ts, items, isLast) {
+    var head = isLast ? "上次诊断：" : "诊断完成：";
+    return verdictHTML(items) +
+      '<div class="ce-hint">' + head + CE.esc(CE.clock(ts)) + '</div>' +
+      rowsHTML(items) +
+      '<div class="btns">' +
+        '<button class="small" data-ce-act="copy">复制报告</button>' +
+        '<button class="small" data-ce-act="recheck">重新诊断</button>' +
+      '</div>' +
+      /* 复制失败时把纯文本摊在这里，让用户长按手动取 */
+      '<div id="ceNdPre"></div>';
+  }
+
+  function buildBody() {
+    var c = readCache();
+    if (c) {
+      cur = c;
+      return resultHTML(c.ts, c.items, true);
+    }
+    return '<div class="ce-empty">' + EMPTY_TEXT + '</div>';
+  }
+
+  function setBody(root, html) {
+    var box = root.querySelector("#ceNdBody");
+    if (box) box.innerHTML = html;
+  }
+
+  function run(root) {
+    if (running) return;
+    var body = root.querySelector("#ceNdBody");
+    if (!body) return;
+    running = true;
+
+    var btn = root.querySelector('[data-ce-act="run"]');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "诊断中…";
+    }
+    /* 先画 loading 再执行：CE.toolJson 只让出 40ms，够渲染但不能省掉这一步 */
+    body.innerHTML = '<div class="ce-load"><i></i> 正在诊断，最多 20 秒…</div>';
+
+    var done = false;
+    function finish(data, errText) {
+      if (done) return;
+      done = true;
+      running = false;
+      var b = root.querySelector("#ceNdBody");
+      var bt = root.querySelector('[data-ce-act="run"]');
+      if (bt) {
+        bt.disabled = false;
+        bt.textContent = "开始诊断";
+      }
+      if (!b) return;
+      if (errText) {
+        b.innerHTML = '<div class="ce-empty">' + CE.esc(errText) + '</div>';
+        return;
+      }
+      /* data 为 null：extras.sh 不在了 / Android.exec 不可用 / JSON 解析失败 */
+      if (!data || typeof data !== "object") {
+        b.innerHTML = '<div class="ce-empty">' + UNAVAIL_TEXT + '</div>';
+        return;
+      }
+      var items = normItems(data.items);
+      if (!items) {
+        b.innerHTML = '<div class="ce-empty">' + UNAVAIL_TEXT + '</div>';
+        return;
+      }
+      var ts = Number(data.ts) || Math.floor(new Date().getTime() / 1000);
+      var payload = { ts: ts, items: items };
+      cur = payload;
+      try { CE.ls("netdiag.last", payload); } catch (e) { /* 缓存写失败不影响展示 */ }
+      b.innerHTML = resultHTML(ts, items, false);
+    }
+
+    try {
+      CE.toolJson("netdiag", function (data) {
+        try { finish(data, ""); } catch (e) { finish(null, "渲染诊断结果失败：" + e.message); }
+      });
+    } catch (e) {
+      /* 连让出帧的机会都没有（极端情况），也别把按钮永远锁死 */
+      finish(null, "诊断调用失败：" + e.message);
+    }
+  }
+
+  function copyReport(root) {
+    var d = cur;
+    if (!d) {
+      try { d = readCache(); } catch (e) { d = null; }
+    }
+    if (!d) {
+      CE.toast("还没有诊断结果");
+      return;
+    }
+    var lines = [], i, it;
+    for (i = 0; i < d.items.length; i++) {
+      it = d.items[i];
+      lines.push((it.ok ? "[通]" : "[断]") + " " + it.name + " — " + it.detail);
+    }
+    var text = "网络诊断报告 " + fmtFull(d.ts) + "\n" + lines.join("\n");
+
+    var okc = false;
+    try { okc = CE.copy(text); } catch (e) { okc = false; }
+    if (okc) {
+      CE.toast("诊断报告已复制");
+      /* 上次复制失败留下的展开始文本要收掉，不然面板会越积越长 */
+      var fb = root.querySelector("#ceNdPre");
+      if (fb) fb.innerHTML = "";
+      return;
+    }
+    /* 降级：桥里没有 copy（老版本），把文本铺出来让用户长按手动复制 */
+    var box = root.querySelector("#ceNdPre");
+    if (box) box.innerHTML = '<div class="ce-pre">' + CE.esc(text) + '</div>';
+    CE.toast("复制失败，已展开报告，可长按选择");
+  }
+
+  CE.reg({
+    id: "netdiag",
+    tab: "more",
+    order: 20,
+    title: "网络诊断",
+
+    /* html() 只渲染缓存结果或空态，绝不自动跑诊断（curl 会卡 6 秒） */
+    html: function () {
+      var body = "";
+      try {
+        body = buildBody();
+      } catch (e) {
+        body = '<div class="ce-empty">' + EMPTY_TEXT + '</div>';
+      }
+      return '<div class="card">' +
+        '<h2>网络诊断</h2>' +
+        '<div class="hint">点一次把本机端口、DNS、外网全查一遍，卡在哪一步一眼看到</div>' +
+        '<div class="btns">' +
+          '<button class="small primary" data-ce-act="run">开始诊断</button>' +
+        '</div>' +
+        '<div id="ceNdBody">' + body + '</div>' +
+      '</div>';
+    },
+
+    /* mount 里同样什么都不做：进页面就卡住是这次明确要避免的体验 */
+    mount: function () {
+      running = false;
+    },
+
+    on: function (act, arg, root) {
+      if (act === "run" || act === "recheck") { run(root); return; }
+      if (act === "copy") { copyReport(root); return; }
+    }
+  });
+})();
+
+/* ---- 16-portmap.js ---- */
+
+/* =====================================================================
+   16-portmap.js — 「端口地图」卡片（id=portmap / tab=more / order=22）
+   ---------------------------------------------------------------------
+   为什么只有 #cePortBody 会被重画：
+     ports 子命令是一串 /dev/tcp 试探，毫秒级，跟着内核 8 秒的 tick 每轮
+     跑完全没负担。但每次 tick 重建整张卡会把底部按钮销毁重建，用户看到
+     的就是按钮「闪一下」，按下去也可能丢失按压态。所以标题、说明、按钮
+     固定在 html() 里，tick / 刷新只替换 #cePortBody 的内容。
+   为什么 html() 不取数：
+     CE.toolJson 内部先让出一帧再执行 Android.exec，是异步回调。html()
+     里等数据只会拿到空值，所以先渲染骨架 + 「读取中」，mount / tick 里
+     再异步填数据。
+   ===================================================================== */
+(function () {
+  "use strict";
+
+  /* 三个固定端口字段：数组顺序同时决定三格与冲突提示的展示顺序 */
+  var FIELDS = [
+    { key: "napcatPort", label: "NapCat WebUI", short: "NapCat" },
+    { key: "onebotPort", label: "OneBot", short: "OneBot" },
+    { key: "astrbotPort", label: "AstrBot 控制台", short: "AstrBot" }
+  ];
+
+  var UNAVAIL = "端口信息不可用，请先完成部署";
+
+  var cur = null;      /* 最近一次解析成功的数据，null 表示没有可用数据 */
+  var tried = false;   /* 是否已收到过一次回调：区分「读取中」和「读失败」 */
+  var busy = false;    /* CE.exec 让出帧的窗口里不重复发命令，避免 tick 叠请求 */
+
+  /* ---------------- 小工具 ---------------- */
+
+  /* 端口统一成正整数：0 / 空 / 非数字 / 负数一律当 0（显示「—」） */
+  function num(v) {
+    var n = Number(v);
+    if (!isFinite(n) || n <= 0) return 0;
+    return Math.floor(n);
+  }
+
+  /* extras.sh 是手拼 JSON 的，布尔字段可能是 true / 1 / "true" / "1" */
+  function flag(v) {
+    return v === true || v === 1 || v === "true" || v === "1";
+  }
+
+  /* .ce-pre 与复制文本都靠空格对齐，这里手动补尾部空格 */
+  function padRight(s, n) {
+    s = String(s == null ? "" : s);
+    while (s.length < n) s += " ";
+    return s;
+  }
+
+  /* 结果清洗：脚本返回的东西不可信，端口非法的条目直接丢掉。
+     返回 null 表示整份数据不可用，交给上层渲染空态。 */
+  function norm(d) {
+    if (!d || typeof d !== "object") return null;
+    if (!flag(d.ok)) return null;
+
+    var out = {
+      napcatPort: num(d.napcatPort),
+      onebotPort: num(d.onebotPort),
+      astrbotPort: num(d.astrbotPort),
+      list: []
+    };
+
+    var raw = d.list;
+    if (raw && typeof raw === "object" && typeof raw.length === "number") {
+      var i, it, p, who;
+      for (i = 0; i < raw.length; i++) {
+        it = raw[i];
+        if (!it || typeof it !== "object") continue;
+        p = num(it.port);
+        if (!p) continue;
+        who = (it.who == null || it.who === "") ? "—" : String(it.who);
+        out.list.push({ port: p, who: who, open: flag(it.open) });
+      }
+    }
+    return out;
+  }
+
+  /* ---------------- 页面片段 ---------------- */
+
+  /* 冲突检测：三个字段两两比较。端口相同且都不为 0 时两个服务会抢同一个
+     端口，后者（或先起来的那个）起不来，必须提示到具体是哪两个撞了。 */
+  function conflictHTML(d) {
+    var msgs = [], i, j, a, b;
+    for (i = 0; i < FIELDS.length; i++) {
+      for (j = i + 1; j < FIELDS.length; j++) {
+        a = d[FIELDS[i].key];
+        b = d[FIELDS[j].key];
+        if (a > 0 && a === b) {
+          msgs.push("端口冲突：" + CE.esc(FIELDS[i].short) + " 与 " + CE.esc(FIELDS[j].short) +
+            " 都配成了 " + CE.esc(a) +
+            "，两个服务会抢同一个端口，去「设置 → 端口设置」改一个");
+        }
+      }
+    }
+    if (!msgs.length) return "";
+    /* 三个都相同时会有三条，塞进同一个提示块里逐行列出 */
+    return '<div class="ce-hint ce-bad">' + msgs.join("<br>") + '</div>';
+  }
+
+  /* 顶部三格：当前实例的 NapCat / OneBot / AstrBot 端口，0 或缺失写「—」 */
+  function gridHTML(d) {
+    var out = "", i, p;
+    for (i = 0; i < FIELDS.length; i++) {
+      p = d[FIELDS[i].key];
+      out += '<div class="ce-cell"><b>' + (p > 0 ? CE.esc(p) : "—") + '</b>' +
+        '<span>' + CE.esc(FIELDS[i].label) + '</span></div>';
+    }
+    /* 三格排一行：默认 .ce-grid 是两列，这里只改布局不碰颜色 */
+    return '<div class="ce-grid" style="grid-template-columns:repeat(3,1fr)">' + out + '</div>';
+  }
+
+  /* 逐行列出探测结果：左状态点、中端口 + 归属、右是否在监听 */
+  function rowsHTML(list) {
+    if (!list.length) return '<div class="ce-empty">没有可显示的端口</div>';
+    var out = "", i, it;
+    for (i = 0; i < list.length; i++) {
+      it = list[i];
+      out += '<div class="ce-row">' +
+        '<span class="ce-dot ' + (it.open ? "ok" : "bad") + '"></span>' +
+        '<div class="ce-rt"><b>端口 ' + CE.esc(it.port) + '</b>' +
+        '<span>' + CE.esc(it.who) + '</span></div>' +
+        '<div class="ce-rv ' + (it.open ? "ce-ok" : "ce-bad") + '">' +
+        (it.open ? "监听中" : "未监听") + '</div>' +
+        '</div>';
+    }
+    return out;
+  }
+
+  /* 底部统计：用 list 自己数，避免 listening 字段缺失时显示成 0 */
+  function countHTML(list) {
+    var open = 0, i;
+    for (i = 0; i < list.length; i++) {
+      if (list[i].open) open++;
+    }
+    return '<div class="ce-hint">共 ' + list.length + ' 个端口，' + open + ' 个在监听</div>';
+  }
+
+  function bodyHTML() {
+    if (!cur) {
+      /* 首次请求还没回来：给加载态，别让卡片闪一下「不可用」 */
+      if (!tried) return '<div class="ce-load"><i></i> 正在读取端口信息…</div>';
+      return '<div class="ce-empty">' + UNAVAIL + '</div>';
+    }
+    return conflictHTML(cur) + gridHTML(cur) + rowsHTML(cur.list) + countHTML(cur.list);
+  }
+
+  /* 只改 #cePortBody：按钮、标题都留在原位，tick 时不会闪 */
+  function setBody(root, html) {
+    try {
+      var box = root && root.querySelector ? root.querySelector("#cePortBody") : null;
+      if (box) box.innerHTML = html;
+    } catch (e) {
+      /* 渲染失败也不能把内核的 tick 循环带挂 */
+    }
+  }
+
+  function paint(root) {
+    try { setBody(root, bodyHTML()); } catch (e) {}
+  }
+
+  /* ---------------- 取数 ---------------- */
+
+  function load(root, manual) {
+    if (busy) return;
+    busy = true;
+
+    var btn = null;
+    if (manual) {
+      btn = root && root.querySelector ? root.querySelector('[data-ce-act="refresh"]') : null;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "刷新中…";
+      }
+      /* 只有当前没数据时才铺 loading；已有表就留着，避免手动刷新整块闪空 */
+      if (!cur) setBody(root, '<div class="ce-load"><i></i> 正在读取端口信息…</div>');
+    }
+
+    var finished = false;
+    function finish(d) {
+      if (finished) return;
+      finished = true;
+      busy = false;
+      tried = true;
+      try { cur = norm(d); } catch (e) { cur = null; }
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "刷新";
+      }
+      paint(root);
+    }
+
+    try {
+      CE.toolJson("ports", function (d) {
+        try { finish(d); } catch (e) { finish(null); }
+      });
+    } catch (e) {
+      /* 连回调都排不进去（极端情况），别让 busy 永远卡住 */
+      finish(null);
+    }
+  }
+
+  /* ---------------- 复制 ---------------- */
+
+  function copyTable(root) {
+    var d = cur;
+    if (!d || !d.list.length) {
+      CE.toast("还没有端口数据");
+      return;
+    }
+    var lines = [], i, it;
+    for (i = 0; i < d.list.length; i++) {
+      it = d.list[i];
+      /* 端口补到 5 位，短端口也能和 5 位数对齐；每行形如：
+         6099  NapCat WebUI  监听中 */
+      lines.push(padRight(String(it.port), 5) + " " + it.who + "  " +
+        (it.open ? "监听中" : "未监听"));
+    }
+    var text = lines.join("\n");
+
+    var ok = false;
+    try { ok = CE.copy(text); } catch (e) { ok = false; }
+    if (ok) {
+      CE.toast("端口表已复制");
+      /* 老版本桥没有 copy 时展开的文本要收掉，不然面板越积越长 */
+      var fb = root && root.querySelector ? root.querySelector("#cePortPre") : null;
+      if (fb) fb.innerHTML = "";
+      return;
+    }
+    /* 降级：把纯文本铺出来让用户长按手动复制 */
+    var box = root && root.querySelector ? root.querySelector("#cePortPre") : null;
+    if (box) box.innerHTML = '<div class="ce-pre">' + CE.esc(text) + '</div>';
+    CE.toast("复制失败，已展开端口表，可长按选择");
+  }
+
+  /* ---------------- 注册 ---------------- */
+
+  CE.reg({
+    id: "portmap",
+    tab: "more",
+    order: 22,
+    title: "端口地图",
+
+    /* 骨架先出「读取中」，数据在 mount / tick 里异步补 */
+    html: function () {
+      var body = "";
+      try { body = bodyHTML(); } catch (e) { body = '<div class="ce-empty">' + UNAVAIL + '</div>'; }
+      return '<div class="card">' +
+        '<h2>端口地图</h2>' +
+        '<div class="hint">NapCat / OneBot / AstrBot 各占哪个端口、有没有在监听，一眼看清</div>' +
+        '<div id="cePortBody">' + body + '</div>' +
+        '<div class="btns" style="margin-top:10px">' +
+          '<button class="small" data-ce-act="refresh">刷新</button>' +
+          '<button class="small" data-ce-act="copy">复制端口表</button>' +
+        '</div>' +
+        '<div id="cePortPre"></div>' +
+        '</div>';
+    },
+
+    /* 挂载即拉一次，不用等内核那 8 秒 */
+    mount: function (root) {
+      load(root, false);
+    },
+
+    /* ports 是纯 /dev/tcp 探测，很快，每轮 tick 都刷 */
+    tick: function (root) {
+      load(root, false);
+    },
+
+    on: function (act, arg, root) {
+      if (act === "refresh") { load(root, true); return; }
+      if (act === "copy") { copyTable(root); return; }
+    }
+  });
+})();
+
+/* ---- 18-cleanup.js ---- */
+
+/* =====================================================================
+   18-cleanup.js — 「存储清理」卡片（id=cleanup / tab=more / order=26）
+   ---------------------------------------------------------------------
+   为什么每个清理都要点两次：
+     clean 子命令是真删（rm -rf 缓存目录），误触一次就是一次不可逆的删除。
+     WebView 里的原生 confirm 对话框在部分国产 ROM / 老内核上不弹或拿不到返回值，
+     所以不用它，改成按钮自己变「再点确认」，3.5 秒内再点才真正执行。
+   为什么点完先把按钮换成 .ce-load：
+     CE.exec 底层是 Android.exec，同步阻塞 JS 线程（pycache / apt 要跑几秒）。
+     不先把 loading 画进 DOM 就调用，用户看到的是整页「卡死」、毫无反馈。
+     所以顺序是：置灰按钮 → 换成 loading → setTimeout 50ms 让浏览器完成一次
+     绘制 → 再发命令；回调里再把按钮换回来。
+   为什么只做这四类：
+     旧日志、下载缓存、__pycache__、apt 索引都能自动重建；配置、bots.json、
+     登录态不碰。卡片说明里写明这一点，用户才敢点「全部清理」。
+   ===================================================================== */
+(function () {
+  "use strict";
+
+  var UNAVAIL = "清理脚本不可用，请先完成部署";
+  var FAILED = "清理失败";
+  var CONFIRM_TEXT = "再点确认";
+  var CONFIRM_MS = 3500;   /* 二次确认的有效窗口 */
+
+  /* name 是行标题，desc 是副说明，btn 是右侧按钮文案 */
+  var ITEMS = [
+    { key: "logs", name: "旧日志", desc: "超过 1 天的 .log", btn: "清理旧日志" },
+    { key: "cache", name: "下载缓存", desc: "安装包与临时解包目录", btn: "清理下载缓存" },
+    { key: "pycache", name: "Python 缓存", desc: "__pycache__ 与 pip 缓存，会慢一点", btn: "清理 Python 缓存" },
+    { key: "apt", name: "apt 索引", desc: "/var/lib/apt/lists", btn: "清理 apt 索引" }
+  ];
+
+  /* data-ce-arg 是 DOM 属性，可能被调试面板改掉；只放行固定几个值，
+     避免任意字符串被拼进 shell 命令。 */
+  var ALLOWED = { logs: 1, cache: 1, pycache: 1, apt: 1, all: 1 };
+
+  /* 二次确认的现场：同一个时刻只允许一个按钮处于「再点确认」状态 */
+  var pendingKey = null;
+  var pendingEl = null;
+  var pendingLabel = "";
+  var pendingTimer = 0;
+
+  /* 清理请求在途：CE.exec 让出帧的窗口里用户还能点到别的按钮，挡住重复请求 */
+  var running = false;
+  /* 顶部结果提示的自动清空计时器 */
+  var hintTimer = 0;
+
+  function labelOf(target) {
+    if (target === "all") return "全部清理";
+    var i;
+    for (i = 0; i < ITEMS.length; i++) {
+      if (ITEMS[i].key === target) return ITEMS[i].btn;
+    }
+    return "清理";
+  }
+
+  /* 数字字段清洗：extras.sh 理论上只会给数字，但手拼 JSON 出了偏差时
+     宁可当失败，也不要显示「已释放 NaN KB」。返回 -1 表示字段不可用。 */
+  function num(v) {
+    var n = Number(v);
+    if (!isFinite(n) || n < 0) return -1;
+    return Math.floor(n);
+  }
+
+  /* 输出可能带杂行（bash 警告、proot 提示），从后往前找最后一行以 { 开头的，
+     和 CE.toolJson 的取法保持一致。 */
+  function parseOut(raw) {
+    var lines = String(raw == null ? "" : raw).split("\n");
+    var i, t;
+    for (i = lines.length - 1; i >= 0; i--) {
+      t = lines[i].trim();
+      if (t.charAt(0) === "{") return CE.json(t, null);
+    }
+    return null;
+  }
+
+  /* ---------------- 页面片段 ---------------- */
+
+  function rowsHTML() {
+    var out = "", i, it;
+    for (i = 0; i < ITEMS.length; i++) {
+      it = ITEMS[i];
+      out += '<div class="ce-row">' +
+        '<div class="ce-rt"><b>' + CE.esc(it.name) + '</b>' +
+        '<span>' + CE.esc(it.desc) + '</span></div>' +
+        '<button class="small" data-ce-act="clean" data-ce-arg="' + CE.esc(it.key) + '">' +
+        CE.esc(it.btn) + '</button>' +
+        '</div>';
+    }
+    return out;
+  }
+
+  /* 顶部提示：成功绿、失败红，4 秒后自己消失，不长期占着卡片高度 */
+  function showHint(root, cls, text) {
+    var box = root.querySelector("#ceCleanHint");
+    if (!box) return;
+    box.innerHTML = '<div class="ce-hint ' + cls + '">' + CE.esc(text) + '</div>';
+    if (hintTimer) clearTimeout(hintTimer);
+    hintTimer = setTimeout(function () {
+      hintTimer = 0;
+      var b = root.querySelector("#ceCleanHint");
+      if (b) b.innerHTML = "";
+    }, 4000);
+  }
+
+  /* 开始新一轮清理前先把上一条结果收掉，避免旧的「已释放…」被误读成本次结果 */
+  function clearHint(root) {
+    if (hintTimer) {
+      clearTimeout(hintTimer);
+      hintTimer = 0;
+    }
+    var box = root.querySelector("#ceCleanHint");
+    if (box) box.innerHTML = "";
+  }
+
+  /* ---------------- 二次确认 ---------------- */
+
+  function cancelConfirm() {
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+      pendingTimer = 0;
+    }
+    var node = pendingEl, label = pendingLabel;
+    pendingKey = null;
+    pendingEl = null;
+    pendingLabel = "";
+    /* 节点可能已被重建（切页 / 强制重渲染），判空后再改，改不到也不报错 */
+    if (node) {
+      try { node.textContent = label; } catch (e) {}
+    }
+  }
+
+  function armConfirm(target, el) {
+    if (!el) return;
+    pendingKey = target;
+    pendingEl = el;
+    pendingLabel = labelOf(target);
+    try { el.textContent = CONFIRM_TEXT; } catch (e) {}
+    pendingTimer = setTimeout(function () {
+      pendingTimer = 0;
+      var node = pendingEl, label = pendingLabel;
+      pendingKey = null;
+      pendingEl = null;
+      pendingLabel = "";
+      try { if (node) node.textContent = label; } catch (e) {}
+    }, CONFIRM_MS);
+  }
+
+  /* ---------------- 真正执行清理 ---------------- */
+
+  function run(target, root, btn) {
+    if (running) return;
+    running = true;
+
+    try { clearHint(root); } catch (e0) {}
+
+    var label = labelOf(target);
+    var cmd = "";
+    try {
+      cmd = CE.tool("clean " + target);
+    } catch (eT) {
+      /* 理论上不会发生；真出了岔子也按内核同样的格式拼一条，别让按钮卡死 */
+      cmd = 'bash "$PREFIX/opt/qqbot/extras.sh" clean ' + target + " 2>/dev/null";
+    }
+    var load = null;
+    var done = false;
+
+    /* 把按钮原地换成 .ce-load（行按钮换在行右侧，全部清理换在 .btns 里） */
+    function swapInLoad() {
+      var box = document.createElement("div");
+      box.className = "ce-load";
+      box.innerHTML = "<i></i> 清理中…";
+      if (btn && btn.parentNode) {
+        btn.parentNode.replaceChild(box, btn);
+        return box;
+      }
+      return null;
+    }
+
+    /* 无论成功失败都必须走这里：恢复按钮，否则下一次点它就是个死按钮 */
+    function finish(cls, text) {
+      if (done) return;
+      done = true;
+      running = false;
+      if (btn) {
+        try {
+          btn.disabled = false;
+          btn.textContent = label;
+          if (load && load.parentNode) load.parentNode.replaceChild(btn, load);
+        } catch (e) {}
+      }
+      try { showHint(root, cls, text); } catch (e2) {}
+    }
+
+    try {
+      if (btn) btn.disabled = true;
+      load = swapInLoad();
+    } catch (e) {
+      /* 连 loading 都画不出来也别放弃执行：命令本身是安全的幂等删除 */
+      load = null;
+    }
+
+    /* 50ms 是留给浏览器把 loading 真正画到屏幕上的，不能省 */
+    setTimeout(function () {
+      try {
+        CE.exec(cmd, function (out, ok) {
+          var data = null;
+          try { data = parseOut(out); } catch (e) { data = null; }
+          try {
+            /* ok=false 表示桥里根本没有 exec，命令压根没跑 */
+            if (!ok) { finish("ce-bad", UNAVAIL); return; }
+            /* 解析失败 / ok 不为 true：多半是 extras.sh 没部署或版本不匹配 */
+            if (!data || typeof data !== "object" || data.ok !== true) {
+              finish("ce-bad", UNAVAIL);
+              return;
+            }
+            var freed = num(data.freedKB);
+            var before = num(data.beforeKB);
+            var after = num(data.afterKB);
+            if (freed < 0 || before < 0 || after < 0) {
+              finish("ce-bad", FAILED);
+              return;
+            }
+            finish("ce-ok", "已释放 " + CE.kb(freed) +
+              "（前 " + CE.kb(before) + " → 后 " + CE.kb(after) + "）");
+          } catch (e2) {
+            finish("ce-bad", FAILED);
+          }
+        });
+      } catch (e3) {
+        finish("ce-bad", FAILED);
+      }
+    }, 50);
+  }
+
+  CE.reg({
+    id: "cleanup",
+    tab: "more",
+    order: 26,
+    title: "存储清理",
+
+    /* 纯静态骨架：不在这里跑任何命令，进页面不会卡、更不会自动删东西 */
+    html: function () {
+      var body = "";
+      try { body = rowsHTML(); } catch (e) { body = '<div class="ce-empty">清理项加载失败</div>'; }
+      return '<div class="card">' +
+        '<h2>存储清理</h2>' +
+        '<div class="hint">只删能重建的东西：旧日志、下载缓存、Python 缓存、apt 索引。配置和登录态不动。</div>' +
+        '<div id="ceCleanHint" aria-live="polite"></div>' +
+        '<div id="ceCleanRows">' + body + '</div>' +
+        '<div class="btns">' +
+          '<button class="small primary" data-ce-act="clean" data-ce-arg="all">全部清理</button>' +
+        '</div>' +
+        '</div>';
+    },
+
+    /* 模块被重建时把上一轮的计时器和状态全部归零，避免老按钮的定时器乱改新 DOM */
+    mount: function () {
+      cancelConfirm();
+      running = false;
+      if (hintTimer) {
+        clearTimeout(hintTimer);
+        hintTimer = 0;
+      }
+    },
+
+    on: function (act, arg, root, el) {
+      if (act !== "clean") return;
+      var target = arg == null ? "" : String(arg);
+      /* 用 hasOwnProperty 而不是直接取 ALLOWED[target]：后者的原型链上
+         有 toString / constructor，会被当成合法目标放进来 */
+      if (!Object.prototype.hasOwnProperty.call(ALLOWED, target)) return;
+      if (running) {
+        CE.toast("正在清理，请稍候");
+        return;
+      }
+      /* 同一个按钮第二次点：窗口内才执行；因为 pendingKey 已随超时清空，
+         超时后再点只会重新进入「再点确认」，不会误删。 */
+      if (pendingKey === target) {
+        cancelConfirm();
+        run(target, root, el);
+        return;
+      }
+      /* 点了别的清理项：撤销上一个的确认态，只保留最后点的那个 */
+      cancelConfirm();
+      armConfirm(target, el);
+    }
+  });
+})();
+
+/* ---- 19-logtools.js ---- */
+
+(function () {
+  "use strict";
+
+  /* ------------------------------------------------------------------
+     日志分析条（logs，置顶）
+     ------------------------------------------------------------------
+     为什么另开一块而不是改现有 <pre>：主脚本每 4 秒用 setPre() 整体覆盖
+     #logNap / #logAstr，任何"就地过滤"都会在下一秒被冲掉（还会闪）。
+     所以这里只做加法：自己用 Android.readLog() 取一份，过滤后画在自己的面板里，
+     原来的实时日志一个字节都不动。用户切页离开时这块也在，互不干扰。
+     ------------------------------------------------------------------ */
+
+  var MAXLINES = 400;
+
+  var LEVELS = [
+    { k: "all", n: "全部" },
+    { k: "err", n: "只看错误" },
+    { k: "warn", n: "只看警告" },
+    { k: "msg", n: "消息收发" }
+  ];
+
+  function st(k, d) {
+    var v = CE.ls("log." + k);
+    return v == null ? d : v;
+  }
+
+  function napName() {
+    /* 主脚本把当前实例的 NapCat 日志名写在 #duoNapName 里（qq-<id>.log 之类）。
+       取不到就退回 qq.log —— 老版本只有这一个文件名。 */
+    var n = "qq.log";
+    try {
+      var e = document.getElementById("duoNapName");
+      if (e && e.textContent && /\S/.test(e.textContent)) n = e.textContent.trim();
+    } catch (e2) {}
+    return n;
+  }
+
+  function classify(line) {
+    var s = line.toLowerCase();
+    if (/\b(error|err|traceback|exception|failed|critical|fatal)\b/.test(s)) return "err";
+    if (/\b(warn|warning|deprecat)/.test(s)) return "warn";
+    /* 「消息收发」没有统一格式，用几个最常见的痕迹兜一下：
+       NapCat 打 [msg]/收到/发送，AstrBot 打 event / on_message / reply */
+    if (/\[msg\]|收到|发送|\bon_message\b|\[\w+\]:\s*\S+\s*->|\breply\b/.test(line)) return "msg";
+    return "info";
+  }
+
+  function filter(text, level, kw) {
+    var lines = String(text || "").split("\n");
+    var out = [], i, k = (kw || "").toLowerCase();
+    for (i = 0; i < lines.length; i++) {
+      var ln = lines[i];
+      if (!ln && out.length === 0) continue;
+      if (level !== "all" && classify(ln) !== level) continue;
+      if (k && ln.toLowerCase().indexOf(k) < 0) continue;
+      out.push(ln);
+    }
+    if (out.length > MAXLINES) out = out.slice(out.length - MAXLINES);
+    return out;
+  }
+
+  function stat(text) {
+    var lines = String(text || "").split("\n");
+    var c = { err: 0, warn: 0, msg: 0, total: 0 };
+    for (var i = 0; i < lines.length; i++) {
+      if (!lines[i]) continue;
+      c.total++;
+      var t = classify(lines[i]);
+      if (t === "err") c.err++;
+      else if (t === "warn") c.warn++;
+      else if (t === "msg") c.msg++;
+    }
+    return c;
+  }
+
+  function hl(line, kw) {
+    var safe = CE.esc(line);
+    if (!kw) return safe;
+    /* 高亮只处理 ASCII 关键字大小写不敏感；中文直接整体替换也可以，
+       但用正则要转义，所以统一走 split/join（关键字本身不参与正则） */
+    var lk = line.toLowerCase(), k = kw.toLowerCase(), out = "", i = 0, p;
+    while ((p = lk.indexOf(k, i)) >= 0) {
+      out += CE.esc(line.slice(i, p)) + "<mark>" + CE.esc(line.slice(p, p + kw.length)) + "</mark>";
+      i = p + kw.length;
+    }
+    out += CE.esc(line.slice(i));
+    return out;
+  }
+
+  var NAMES = [
+    { id: "nap", label: "NapCat" },
+    { id: "astr", label: "AstrBot" }
+  ];
+
+  function readOne(id) {
+    var name = id === "nap" ? napName() : "astrbot.log";
+    if (!CE.has("readLog")) return { name: name, text: "" };
+    var t = "";
+    try { t = String(CE.call("readLog", name, 600) || ""); } catch (e) { t = ""; }
+    return { name: name, text: t };
+  }
+
+  function paint(root) {
+    var box = root.querySelector("#ceLogBody");
+    if (!box) return;
+    var level = st("level", "all");
+    var kw = String(st("kw", "") || "");
+    var src = st("src", "astr");
+    var one = readOne(src);
+    var c = stat(one.text);
+    var rows = filter(one.text, level, kw);
+
+    /* 顶部：计数 + 当前文件 */
+    var out = '<div class="ce-tags">' +
+      '<span class="ce-tag">' + CE.esc(one.name) + "</span>" +
+      '<span class="ce-tag">共 ' + c.total + " 行</span>" +
+      '<span class="ce-tag" style="background:rgba(220,38,38,.12);color:#dc2626">错误 ' + c.err + "</span>" +
+      '<span class="ce-tag" style="background:rgba(217,119,6,.14);color:#d97706">警告 ' + c.warn + "</span>" +
+      '<span class="ce-tag">消息 ' + c.msg + "</span></div>";
+
+    /* 源与级别：两排小按钮 */
+    out += '<div class="btns" style="margin-top:8px">';
+    for (var i = 0; i < NAMES.length; i++) {
+      out += '<button class="small' + (src === NAMES[i].id ? " primary" : "") +
+        '" data-ce-act="src" data-ce-arg="' + NAMES[i].id + '">' + NAMES[i].label + "</button>";
+    }
+    out += "</div><div class=\"btns\" style=\"margin-top:6px\">";
+    for (i = 0; i < LEVELS.length; i++) {
+      out += '<button class="small' + (level === LEVELS[i].k ? " primary" : "") +
+        '" data-ce-act="level" data-ce-arg="' + LEVELS[i].k + '">' + LEVELS[i].n + "</button>";
+    }
+    out += "</div>";
+
+    /* 关键字 */
+    out += '<div class="field" style="margin-top:8px"><input id="ceLogKw" type="search" ' +
+      'placeholder="过滤关键字（例如 10001 / timeout / 群）" value="' + CE.esc(kw) + '" autocomplete="off"></div>';
+
+    /* 结果 */
+    if (!rows.length) {
+      out += '<div class="ce-empty">' + (one.text ? "当前筛选条件下没有匹配的行" : "日志还是空的（组件可能没在跑）") + "</div>";
+    } else {
+      var body = [];
+      for (i = 0; i < rows.length; i++) {
+        var cls = classify(rows[i]);
+        if (cls === "err") body.push('<span class="ce-bad">' + hl(rows[i], kw) + "</span>");
+        else if (cls === "warn") body.push('<span class="ce-warn">' + hl(rows[i], kw) + "</span>");
+        else body.push(hl(rows[i], kw));
+      }
+      out += '<div class="ce-pre" id="ceLogView">' + body.join("\n") + "</div>";
+      out += '<div class="ce-hint">显示最近 ' + rows.length + " 行（最多 " + MAXLINES + " 行）</div>";
+    }
+
+    out += '<div class="btns" style="margin-top:8px">' +
+      '<button class="small" data-ce-act="copy">复制当前结果</button>' +
+      '<button class="small" data-ce-act="reload">重新读取</button>' +
+      "</div>";
+
+    box.innerHTML = out;
+
+    /* 输入框：重新渲染会把焦点丢掉，这里补回来（只在用户正在输入时） */
+    var inp = box.querySelector("#ceLogKw");
+    if (inp && root.__kwFocus) {
+      inp.focus();
+      try { inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e3) {}
+    }
+  }
+
+  CE.reg({
+    id: "logtools",
+    tab: "logs",
+    pos: "top",
+    order: 10,
+    title: "日志分析",
+    html: function () {
+      return '<div class="card"><h2>日志分析</h2>' +
+        '<div class="hint" style="margin-top:0">按级别和关键字筛最近 600 行，不打断上面的实时日志。</div>' +
+        '<div id="ceLogBody"></div></div>';
+    },
+    mount: function (root) {
+      paint(root);
+      /* 输入用防抖：每敲一个字就重读一次日志会卡，300ms 足够 */
+      var box = root.querySelector("#ceLogBody");
+      if (!box) return;
+      var timer = null;
+      box.addEventListener("input", function (ev) {
+        var t = ev.target;
+        if (!t || t.id !== "ceLogKw") return;
+        root.__kwFocus = true;
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+          CE.ls("log.kw", t.value);
+          root.__kwFocus = false;
+          paint(root);
+        }, 300);
+      }, false);
+    },
+    tick: function (root) {
+      /* 只在用户停手时刷新：正在输入就把这一轮跳过，免得光标乱跳 */
+      var inp = root.querySelector("#ceLogKw");
+      if (inp && document.activeElement === inp) return;
+      paint(root);
+    },
+    on: function (act, arg, root) {
+      if (act === "src") { CE.ls("log.src", arg); paint(root); }
+      else if (act === "level") { CE.ls("log.level", arg); paint(root); }
+      else if (act === "reload") { paint(root); CE.toast("已重新读取"); }
+      else if (act === "copy") {
+        var view = root.querySelector("#ceLogView");
+        if (!view) { CE.toast("没有可复制的内容"); return; }
+        if (CE.copy(view.textContent)) CE.toast("已复制 " + view.textContent.split("\n").length + " 行");
+        else CE.toast("复制失败：剪贴板不可用");
+      }
+    }
+  });
+})();
+
+/* ---- 20-instpro.js ---- */
+
+(function () {
+  "use strict";
+
+  /* ------------------------------------------------------------------
+     实例筛选 / 批量（bots，置顶）
+     ------------------------------------------------------------------
+     多号用户的痛点是「十几个实例卡，找一个号要滑三屏」。主脚本把实例卡渲染进
+     #botList，每次 refresh 都可能整体重写 innerHTML，所以这里不接管渲染，
+     只在它写完之后给 .bot 加/去 display:none —— 用 MutationObserver 跟着重放，
+     不跟主脚本抢 DOM。批量只做「启动」，不做「停止」：一键停掉所有号会让人
+     以为软件崩了，那种操作应该是 deliberate 的，不该藏在一个批量按钮里。
+     ------------------------------------------------------------------ */
+
+  var KEY_Q = "inst.q";
+  var KEY_SORT = "inst.sort";
+
+  function q() { return String(CE.ls(KEY_Q) || ""); }
+  function sortMode() { return String(CE.ls(KEY_SORT) || "default"); }
+
+  function list() {
+    return document.getElementById("botList");
+  }
+
+  function cards() {
+    var l = list(), out = [];
+    if (!l) return out;
+    for (var i = 0; i < l.children.length; i++) {
+      var c = l.children[i];
+      if (c.classList && c.classList.contains("bot")) out.push(c);
+    }
+    return out;
+  }
+
+  function isOnline(card) {
+    if (!card) return false;
+    if (card.classList.contains("active")) return true;
+    var t = card.textContent || "";
+    return /运行中|在线|已登录/.test(t);
+  }
+
+  function applyFilter() {
+    var kw = q().toLowerCase();
+    var cs = cards(), shown = 0, i;
+    for (i = 0; i < cs.length; i++) {
+      var hit = !kw || (cs[i].textContent || "").toLowerCase().indexOf(kw) >= 0;
+      cs[i].style.display = hit ? "" : "none";
+      if (hit) shown++;
+    }
+    /* 主脚本在「没有实例」时塞一个 .empty，过滤后要给它让路 */
+    var l = list();
+    if (l) {
+      for (i = 0; i < l.children.length; i++) {
+        if (l.children[i].classList && l.children[i].classList.contains("empty")) {
+          l.children[i].style.display = (cs.length && shown === 0) ? "" : "none";
+        }
+      }
+    }
+    return { shown: shown, total: cs.length };
+  }
+
+  function applySort() {
+    var l = list();
+    if (!l || sortMode() === "default") return;
+    var cs = cards();
+    var online = [], offline = [];
+    for (var i = 0; i < cs.length; i++) (isOnline(cs[i]) ? online : offline).push(cs[i]);
+    var ordered = online.concat(offline);
+    for (i = 0; i < ordered.length; i++) l.appendChild(ordered[i]);
+  }
+
+  function stats() {
+    var cs = cards(), on = 0, i;
+    for (i = 0; i < cs.length; i++) if (isOnline(cs[i])) on++;
+    return { total: cs.length, on: on };
+  }
+
+  /* 主脚本重写 #botList.innerHTML 之后，display:none 会全丢 —— 跟着补一遍。
+     用 requestAnimationFrame 合并同一轮里的多次变更，别在 4 秒一次的刷新里连跑十几遍。 */
+  function watch() {
+    var l = list();
+    if (!l || l.__ceWatched) return;
+    l.__ceWatched = true;
+    if (typeof MutationObserver === "undefined") return;   /* 老内核直接退化成 tick 时补 */
+    var pend = false;
+    var mo = new MutationObserver(function () {
+      if (pend) return;
+      pend = true;
+      (window.requestAnimationFrame || function (fn) { setTimeout(fn, 16); })(function () {
+        pend = false;
+        applySort();
+        refresh();
+      });
+    });
+    mo.observe(l, { childList: true });
+  }
+
+  function body(root) { return root.querySelector("#ceInstBody"); }
+
+  function paint(root) {
+    var b = body(root);
+    if (!b) return;
+    var s = stats();
+    var filtered = applyFilter();
+    b.innerHTML = '<div class="ce-tags">' +
+      '<span class="ce-tag">共 ' + s.total + " 个实例</span>" +
+      '<span class="ce-tag" style="background:rgba(22,163,74,.14);color:#16a34a">在线 ' + s.on + "</span>" +
+      (q() ? '<span class="ce-tag">筛选出 ' + filtered.shown + " 个</span>" : "") +
+      "</div>";
+  }
+
+  function refresh() {
+    var root = null;
+    var mods = document.querySelectorAll('[data-ce-mod="instpro"]');
+    if (mods.length) root = mods[0];
+    if (root) paint(root);
+  }
+
+  CE.reg({
+    id: "instpro",
+    tab: "bots",
+    pos: "top",
+    order: 10,
+    title: "实例筛选",
+    html: function () {
+      /* 没有实例时不显示：空列表上放一个筛选框很奇怪 */
+      if (!cards().length) return "";
+      return '<div class="card"><h2>实例筛选</h2>' +
+        '<div class="hint" style="margin-top:0">号多了以后用关键字快速定位；「运行中优先」把在线的排到最上面。</div>' +
+        '<div class="field" style="margin-top:8px"><input id="ceInstQ" type="search" ' +
+        'placeholder="搜名称 / QQ 号 / 端口" value="' + CE.esc(q()) + '" autocomplete="off"></div>' +
+        '<div id="ceInstBody"></div>' +
+        '<div class="btns" style="margin-top:8px">' +
+        '<button class="small" data-ce-act="sort">' + (sortMode() === "online" ? "排序：运行中优先" : "排序：默认") + "</button>" +
+        '<button class="small" data-ce-act="startall">启动全部</button>' +
+        "</div></div>";
+    },
+    mount: function (root) {
+      watch();
+      applySort();
+      paint(root);
+      var inp = root.querySelector("#ceInstQ");
+      if (!inp) return;
+      var timer = null;
+      inp.addEventListener("input", function () {
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+          CE.ls(KEY_Q, inp.value);
+          paint(root);
+        }, 220);
+      }, false);
+    },
+    tick: function (root) {
+      watch();
+      var inp = root.querySelector("#ceInstQ");
+      if (inp && document.activeElement === inp) return;
+      /* 主脚本重新渲染过卡片时 input 会被重建，这里把值补回去 */
+      if (inp && inp.value !== q()) inp.value = q();
+      paint(root);
+    },
+    on: function (act, arg, root, el) {
+      if (act === "sort") {
+        var next = sortMode() === "online" ? "default" : "online";
+        CE.ls(KEY_SORT, next);
+        if (el) el.textContent = next === "online" ? "排序：运行中优先" : "排序：默认";
+        applySort();
+        CE.toast(next === "online" ? "已按运行状态排序" : "已恢复默认顺序");
+        return;
+      }
+      if (act === "startall") {
+        if (el && el.getAttribute("data-sure") !== "1") {
+          el.setAttribute("data-sure", "1");
+          el.textContent = "再点一次启动全部";
+          setTimeout(function () {
+            if (!el) return;
+            el.setAttribute("data-sure", "0");
+            el.textContent = "启动全部";
+          }, 3500);
+          return;
+        }
+        if (el) { el.setAttribute("data-sure", "0"); el.textContent = "启动全部"; }
+        startAll();
+      }
+    }
+  });
+
+  /* 逐个把 enable === false 的实例打开。toggleBot 是「翻转」语义，
+     所以必须先读 state 里的 enable，不能无脑调一遍（会把手动停掉的号又打开、
+     把开着的号关掉）。 */
+  function startAll() {
+    var S = CE.json(CE.call("state"), null) || {};
+    var bs = (S.bots && S.bots.length) ? S.bots : [];
+    var todo = [], i;
+    for (i = 0; i < bs.length; i++) {
+      if (bs[i] && bs[i].enable === false) todo.push(bs[i]);
+    }
+    if (!todo.length) { CE.toast("所有实例都已经在运行"); return; }
+    if (!CE.has("toggleBot")) { CE.toast("当前版本不支持批量启动"); return; }
+    var n = 0;
+    (function step() {
+      if (n >= todo.length) {
+        CE.toast("已启动 " + todo.length + " 个实例");
+        return;
+      }
+      var b = todo[n++];
+      try {
+        var r = CE.json(CE.call("toggleBot", b.id), null);
+        if (r && r.ok === false) CE.toast((b.label || b.id) + " 启动失败：" + (r.error || r.err || "未知原因"));
+      } catch (e) {}
+      /* 每个实例都要写一次 bots.json，串行一点，别把主线程一次性堵住 */
+      setTimeout(step, 260);
+    })();
+  }
+})();
+
+/* ---- 21-uiscale.js ---- */
+
+(function () {
+  "use strict";
+
+  /* ------------------------------------------------------------------
+     界面缩放 + 紧凑模式（settings）
+     ------------------------------------------------------------------
+     为什么用 zoom 而不是改 font-size：主样式表里字号全是 px（一千多处），
+     没有 rem 基准，改根字号一点效果都没有。zoom 是 WebView 原生支持的整页缩放，
+     一行就能让「字太小看不清」的用户用上，副作用是 1:1 像素背景图会被一起缩放
+     —— 这一点在文案里如实说明，不做隐藏。
+     两个偏好都存 localStorage，和主题一样只影响本机。
+     ------------------------------------------------------------------ */
+
+  var SIZES = [
+    { v: "0.94", n: "紧凑" },
+    { v: "1", n: "标准" },
+    { v: "1.08", n: "大" },
+    { v: "1.16", n: "特大" }
+  ];
+
+  function cur() {
+    var z = CE.ls("ui.zoom");
+    return z == null ? "1" : String(z);
+  }
+  function compact() {
+    return CE.ls("ui.compact") === 1;
+  }
+
+  /* 注入/更新样式表。放在 head 末尾，优先级压过主样式表。 */
+  function apply() {
+    var z = cur(), cp = compact();
+    var st = document.getElementById("ceUIScale");
+    if (!st) {
+      st = document.createElement("style");
+      st.id = "ceUIScale";
+      (document.head || document.documentElement).appendChild(st);
+    }
+    var css = "";
+    if (z !== "1") {
+      /* zoom 只作用在内容区，避开固定在视口上的东西（toast/浮层），
+         否则它们会跟着缩放跑到屏幕外。 */
+      css += "body{zoom:" + z + "}";
+    }
+    if (cp) {
+      css += ".card{padding:12px 13px;margin:9px 0;border-radius:16px}";
+      css += ".card h2{font-size:14px;margin-bottom:2px}";
+      css += ".hint{font-size:11px;line-height:1.45}";
+      css += ".tab{padding-top:4px}";
+      css += ".btns{margin-top:6px}";
+      css += ".lkrow{padding:8px 0}";
+    }
+    st.textContent = css;
+  }
+
+  function paint(root) {
+    var body = root.querySelector("#ceUiBody");
+    if (!body) return;
+    var z = cur(), out = "";
+    for (var i = 0; i < SIZES.length; i++) {
+      out += '<button data-ce-act="zoom" data-ce-arg="' + SIZES[i].v + '" aria-pressed="' +
+        (SIZES[i].v === z ? "true" : "false") + '">' + SIZES[i].n + "</button>";
+    }
+    body.innerHTML = '<div class="seg" role="group" aria-label="界面缩放">' + out + "</div>" +
+      '<div class="hint">当前 ' + Math.round(parseFloat(z) * 100) + "%" +
+      (z !== "1" ? "（不是标准比例时，本机背景图会跟着缩放）" : "") + "</div>";
+  }
+
+  CE.reg({
+    id: "uiscale",
+    tab: "settings",
+    order: 10,
+    title: "界面缩放",
+    html: function () {
+      /* 进来先把已保存的偏好应用一遍：应用重载后 localStorage 还在，
+         但注入的 <style> 已经没了，不重放的话用户会以为设置丢了。 */
+      apply();
+      return '<div class="card"><h2>界面缩放</h2>' +
+        '<div id="ceUiBody"></div>' +
+        '<div class="ce-row" style="margin-top:6px">' +
+        '<div class="ce-rt"><b>紧凑模式</b><span>卡片间距和留白收紧，一屏多放两行</span></div>' +
+        '<button class="small" data-ce-act="compact" aria-pressed="' + (compact() ? "true" : "false") + '">' +
+        (compact() ? "已开启" : "开启") + "</button></div></div>";
+    },
+    mount: function (root) { apply(); paint(root); },
+    tick: function (root) { paint(root); },
+    on: function (act, arg, root, el) {
+      if (act === "zoom") {
+        CE.ls("ui.zoom", arg);
+        apply();
+        paint(root);
+        CE.toast("界面缩放 " + Math.round(parseFloat(arg) * 100) + "%");
+      } else if (act === "compact") {
+        var on = !compact();
+        CE.ls("ui.compact", on ? 1 : 0);
+        apply();
+        if (el) {
+          el.textContent = on ? "已开启" : "开启";
+          el.setAttribute("aria-pressed", on ? "true" : "false");
+        }
+        CE.toast(on ? "紧凑模式已开启" : "紧凑模式已关闭");
+      }
+    }
+  });
+})();
+
+/* ---- 22-search.js ---- */
+
+(function () {
+  "use strict";
+
+  /* ------------------------------------------------------------------
+     功能搜索（more）
+     ------------------------------------------------------------------
+     为什么要有：设置页 20 多张卡片 + 更多页 10 多张，想找「端口设置」得翻半天。
+     索引不手写：直接扫 DOM 里所有 [data-act] 元素，取「离它最近的标题」（.lkt / h2 /
+     .ce-rt b），再补一张同义词表。这样以后主脚本加了新按钮，搜索自动覆盖，
+     不需要再来改这个文件 —— 手写索引表迟早会跟界面脱节。
+     ------------------------------------------------------------------ */
+
+  var TAB_NAME = {
+    home: "主页", bots: "机器人", logs: "日志", more: "更多", settings: "设置"
+  };
+
+  /* 同义词：用户不会记得按钮叫「组件重装」，他想搜「重装」「修复」「装一下」 */
+  var SYN = [
+    ["重启", "restartnow gorestart askrestart svc"],
+    ["日志", "showlogs readLog uploadlog copylog clearlog slim reload"],
+    ["备份", "bkstart bkexport bkrestore"],
+    ["恢复", "bkrestore bkrestoreask"],
+    ["更新", "checkupdate upddl updnotes"],
+    ["二维码", "showqr qrrefresh qrreload qrshare"],
+    ["扫码", "showqr qrrefresh"],
+    ["端口", "portssave portsauto"],
+    ["代理", "saveproxy testproxy clearproxy"],
+    ["流量", "statdetail"],
+    ["网络", "lantoggle lan"],
+    ["省电", "battery powgo powack"],
+    ["守护", "guardset svc svcallon"],
+    ["下线", "stopnow askstop"],
+    ["卸载", "rmall delbot delask"],
+    ["删实例", "delbot delask"],
+    ["主题", "theme pickbg clearbg bgpreset glass accent"],
+    ["背景", "pickbg clearbg bgpreset"],
+    ["模型", "astrconfig astrsave astrfetch"],
+    ["人格", "astrconfig"],
+    ["统计", "statstoggle statdetail statsreset"],
+    ["清理", "stgclean stgrefresh"],
+    ["存储", "stgrefresh stats"],
+    ["崩溃", "crashopen crashclear"],
+    ["自检", "doctor"],
+    ["诊断", "doctor"],
+    ["上传", "uploadlog uploadlogs"],
+    ["终端", "terminal"],
+    ["权限", "notiask"],
+    ["通知", "notiask"],
+    ["群", "openqq"],
+    ["官网", "openurl copyurl"],
+    ["重装", "reinstall"],
+    ["部署", "deploy resetdeploy stopdeploy fixdpkg"],
+    ["修复", "fixdpkg doctor reinstall"],
+    ["密码", "alcopypass copyuser"],
+    ["令牌", "copytoken copytok"]
+  ];
+
+  var IDX = null;
+
+  function closestTitle(node) {
+    var n = node, depth = 0;
+    while (n && depth < 5) {
+      if (n.classList) {
+        if (n.classList.contains("lkrow")) {
+          var t = n.querySelector(".lkt");
+          if (t && t.textContent.trim()) return t.textContent.trim();
+        }
+        if (n.tagName === "DIV" && n.classList.contains("card")) {
+          var h = n.querySelector("h2");
+          if (h && h.textContent.trim()) return h.textContent.trim();
+        }
+      }
+      n = n.parentNode; depth++;
+    }
+    return "";
+  }
+
+  function build() {
+    var out = [], seen = {};
+    var secs = document.querySelectorAll("section.tab");
+    for (var i = 0; i < secs.length; i++) {
+      var sec = secs[i];
+      var tab = (sec.id || "").replace(/^tab-/, "");
+      if (!TAB_NAME[tab]) continue;
+      var nodes = sec.querySelectorAll("[data-act]");
+      for (var k = 0; k < nodes.length; k++) {
+        var b = nodes[k];
+        var act = b.getAttribute("data-act") || "";
+        if (!act) continue;
+        var own = (b.textContent || "").replace(/\s+/g, " ").trim();
+        /* 「复制」「打开」这种按钮自身文字没有辨识度，改用所在行的标题 */
+        if (!own || own.length <= 3) {
+          var ct = closestTitle(b);
+          if (ct) own = ct + " · " + own;
+        }
+        var title = closestTitle(b) || own || act;
+        var key = tab + "|" + act + "|" + title;
+        if (seen[key]) continue;
+        seen[key] = 1;
+        out.push({ tab: tab, act: act, text: (title + " " + own + " " + act).toLowerCase(), title: title, own: own, node: b });
+      }
+    }
+    /* 同名按钮留第一个就够了：设置页里「复制」有十几个，全列出来反而没法选 */
+    return out;
+  }
+
+  function syn(act) {
+    for (var i = 0; i < SYN.length; i++) {
+      if (SYN[i][1].indexOf(act) >= 0) return SYN[i][0];
+    }
+    return "";
+  }
+
+  function query(q, limit) {
+    if (!IDX) IDX = build();
+    q = String(q || "").trim().toLowerCase();
+    if (q.length < 1) return [];
+    var hits = [], i, e, score;
+    for (i = 0; i < IDX.length; i++) {
+      e = IDX[i];
+      score = 0;
+      if (e.act.toLowerCase() === q) score = 100;
+      else if (e.title.toLowerCase().indexOf(q) === 0) score = 80;
+      else if (e.title.toLowerCase().indexOf(q) >= 0) score = 60;
+      else if (e.text.indexOf(q) >= 0) score = 40;
+      else {
+        var s = syn(e.act);
+        if (s && s.indexOf(q) >= 0) score = 30;
+      }
+      if (score > 0) hits.push({ e: e, s: score });
+    }
+    hits.sort(function (a, b) { return b.s - a.s; });
+    var out = [];
+    for (i = 0; i < hits.length && out.length < (limit || 12); i++) {
+      /* 同一张卡片只留一条，否则「备份与恢复」会占满整屏 */
+      var dup = false;
+      for (var j = 0; j < out.length; j++) {
+        if (out[j].o.title === hits[i].e.title && out[j].o.tab === hits[i].e.tab) { dup = true; break; }
+      }
+      if (!dup) out.push({ o: hits[i].e, score: hits[i].s });
+    }
+    return out;
+  }
+
+  function go(item) {
+    try {
+      if (item.tab !== "settings" && window.showTab) window.showTab(item.tab);
+      else if (window.showTab) window.showTab(item.tab);
+    } catch (e) {}
+    setTimeout(function () {
+      var n = item.node;
+      if (!n || !n.scrollIntoView) return;
+      try { n.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (e2) { try { n.scrollIntoView(); } catch (e3) {} }
+      /* 闪一下让人知道落在哪：只加 class，不动样式表，1.2 秒后自己消失 */
+      var old = n.style.boxShadow;
+      n.style.boxShadow = "0 0 0 2px #2563eb";
+      n.style.borderRadius = "8px";
+      setTimeout(function () { n.style.boxShadow = old || ""; }, 1200);
+    }, 260);
+  }
+
+  function paintList(root, q) {
+    var box = root.querySelector("#ceSearchList");
+    if (!box) return;
+    if (!q) {
+      box.innerHTML = "";
+      return;
+    }
+    var hits = query(q, 12);
+    if (!hits.length) {
+      box.innerHTML = '<div class="ce-empty">没有找到「' + CE.esc(q) + '」相关的功能</div>';
+      return;
+    }
+    var out = "";
+    for (var i = 0; i < hits.length; i++) {
+      var e = hits[i].o;
+      out += '<div class="ce-row"><div class="ce-rt"><b>' + CE.esc(e.title) +
+        '</b><span>' + CE.esc(TAB_NAME[e.tab] || e.tab) + " · " + CE.esc(e.own || e.act) + "</span></div>" +
+        '<button class="small" data-ce-act="go" data-ce-arg="' + i + '">去</button></div>';
+    }
+    box.innerHTML = out;
+    box.__hits = hits;
+  }
+
+  CE.reg({
+    id: "search",
+    tab: "more",
+    order: 10,
+    title: "功能搜索",
+    html: function () {
+      return '<div class="card"><h2>功能搜索</h2>' +
+        '<div class="hint" style="margin-top:0">输入关键字直接跳到对应设置，省得一层层翻。</div>' +
+        '<div class="field" style="margin-top:8px"><input id="ceSearchIn" type="search" ' +
+        'placeholder="例如：端口 / 备份 / 重启 / 扫码" autocomplete="off"></div>' +
+        '<div id="ceSearchList"></div></div>';
+    },
+    mount: function (root) {
+      var inp = root.querySelector("#ceSearchIn");
+      if (!inp) return;
+      inp.addEventListener("input", function () {
+        paintList(root, inp.value);
+      }, false);
+    },
+    tick: function (root) {
+      /* 首次进「更多」页时这页的 DOM 已经在了，索引可以晚一点建；
+         主脚本可能重绘实例卡（data-act 节点被换掉），所以每次 tick 重建一次，
+         12 张卡几百个节点，重建开销可以忽略。 */
+      IDX = null;
+    },
+    on: function (act, arg, root) {
+      if (act === "go") {
+        var box = root.querySelector("#ceSearchList");
+        var hits = box && box.__hits;
+        var i = parseInt(arg, 10);
+        if (hits && hits[i]) go(hits[i].o);
+      }
+    }
+  });
+})();
+</script>
+<!-- CE:EXT:END -->
 </body>
 </html>
