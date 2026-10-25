@@ -1,4 +1,4 @@
-# =====================================================================
+﻿# =====================================================================
 # build-ui.ps1 - build the native console (WebView UI) intermediate APK
 #
 #   javac -> d8 -> DexToSmali -> apktool b
@@ -127,6 +127,51 @@ if ($xml2 -notmatch 'android\.permission\.POST_NOTIFICATIONS') {
 } else {
   Write-Host 'manifest: POST_NOTIFICATIONS already present'
 }
+# 3c4) 窗口底色（1.3.3-beta.3）：系统画的启动窗口 / 回前台窗口不要用 Theme.Material 自带的 #303030 灰。
+#      三处一起改：manifest 把 QqbotActivity 的 theme 换成 Theme.QqbotPage；values 与 values-night
+#      写 windowBackground（深色 #05060A / 浅色 #F3F6FC）；values-v31 与 values-night-v31 再补
+#      windowSplashScreenBackground —— Android 12 起冷启动第一帧是系统启动屏，它只认这个属性，
+#      不认 windowBackground（实测：只改 windowBackground 时首帧仍是纯白/纯黑）。
+#      幂等：风格已存在就跳过，重复执行安全。
+$NL = [string][char]13 + [char]10
+$themeRef = '@style/Theme.QqbotPage'
+$mfTheme = Get-Content $mf -Raw -Encoding UTF8
+if ($mfTheme -notmatch [regex]::Escape($themeRef)) {
+  $actPat = '(<activity[^>]*android:name="com.termux.app.QqbotActivity"[^>]*?android:theme=")[^"]*(")'
+  if ($mfTheme -match $actPat) {
+    $mfTheme = [regex]::Replace($mfTheme, $actPat, ('$1' + $themeRef + '$2'))
+    [System.IO.File]::WriteAllText($mf, $mfTheme, (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host ('res: QqbotActivity theme -> ' + $themeRef)
+  } else {
+    Write-Host 'res: QqbotActivity tag not found - theme NOT patched'
+  }
+} else {
+  Write-Host 'res: QqbotActivity theme already Theme.QqbotPage'
+}
+function Ensure-ThemeStyle([string]$Dir, [string]$Color, [bool]$Splash) {
+  $file = Join-Path $Dir 'styles.xml'
+  if (Test-Path $file) {
+    $text = Get-Content $file -Raw -Encoding UTF8
+  } else {
+    $text = '<?xml version="1.0" encoding="utf-8"?>' + $NL + '<resources>' + $NL + '</resources>' + $NL
+  }
+  if ($text -match 'name="Theme.QqbotPage"') {
+    Write-Host ('res: ' + (Split-Path $Dir -Leaf) + ' Theme.QqbotPage already present')
+    return
+  }
+  $items = '        <item name="android:windowBackground">' + $Color + '</item>' + $NL
+  if ($Splash) { $items = $items + '        <item name="android:windowSplashScreenBackground">' + $Color + '</item>' + $NL }
+  $style = '    <style name="Theme.QqbotPage" parent="@android:style/Theme.Material.NoActionBar">' + $NL + $items + '    </style>' + $NL
+  $text = $text.Replace('</resources>', $style + '</resources>')
+  $null = New-Item -ItemType Directory -Force -Path $Dir
+  [System.IO.File]::WriteAllText($file, $text, (New-Object System.Text.UTF8Encoding($false)))
+  Write-Host ('res: ' + (Split-Path $Dir -Leaf) + ' Theme.QqbotPage written (' + $Color + ')')
+}
+Ensure-ThemeStyle (Join-Path $ROOT '_apkwork\res\values') '#fff3f6fc' $false
+Ensure-ThemeStyle (Join-Path $ROOT '_apkwork\res\values-night') '#ff05060a' $false
+Ensure-ThemeStyle (Join-Path $ROOT '_apkwork\res\values-v31') '#fff3f6fc' $true
+Ensure-ThemeStyle (Join-Path $ROOT '_apkwork\res\values-night-v31') '#ff05060a' $true
+
 # 3c3) AV heuristics (v1.2.3): Xiaomi/Tencent flag this as a.gray.devicemaster.a because it is a
 #      terminal app carrying several high-risk permissions plus an exported command service.
 #      None of these permissions are used anywhere in the sources (grep-verified); the RunCommand

@@ -29,6 +29,21 @@ public class QqbotBridge {
         this.act = act;
     }
 
+    /**
+     * 页面把自己当前的底色（getComputedStyle(document.body).backgroundColor，
+     * 形如 rgb(5, 6, 10)）报上来。原生层拿它当窗口 / WebView 底色：
+     * Theme.Material.NoActionBar 的窗口背景是 #303030 的灰，页面是深色，
+     * 冷启动、页面重载、后台切回来那一下就会先灰一层 —— 也就是「灰屏」。
+     * 只存一个 int 到 prefs，重活没有。
+     */
+    @JavascriptInterface
+    public void pageBg(String css) {
+        try {
+            act.onPageBg(css);
+        } catch (Throwable ignored) {
+        }
+    }
+
     /** 手工拼错误 JSON：只把 " 换成 ' 是不够的，异常消息里带反斜杠或换行会让前端的
      *  JSON.parse(Android.state()) 直接抛错，整页落到「读取状态失败」。 */
     private static String errJson(String what, Throwable t) {

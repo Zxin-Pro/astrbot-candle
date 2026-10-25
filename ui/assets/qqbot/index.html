@@ -592,6 +592,33 @@ pre{
   white-space:pre-wrap;word-break:break-word;max-height:38vh;overflow:auto;
 }
 
+/* 「检查更新」的合并弹窗：正式版 / 测试版各一张卡片，详情在卡片里就地展开。
+   圆角 12px、分隔线走 --line（浅色下就是 #E2E8F0），强调色仍是 2563EB 那一套，
+   不另起配色 —— 深色主题下这些变量自己会换。 */
+.updcard{
+  border:1px solid var(--line);border-radius:12px;padding:10px 11px;
+  background:var(--dlg-solid);
+}
+.updcard + .updcard{margin-top:8px}
+.updhd{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.updk{font-size:11px;color:var(--txt-3);letter-spacing:.02em}
+.updtag{font-size:13px;font-weight:650;color:var(--dlg-strong);font-family:var(--mono)}
+.updstate{
+  font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:999px;white-space:nowrap;
+  border:1px solid var(--line-2);background:var(--mute-bg);color:var(--mute-txt);
+}
+.updstate.new{color:var(--ok);border-color:var(--ok-line);background:var(--ok-bg)}
+.updstate.cur{color:var(--acc-ink);border-color:rgba(37,99,235,.28);background:rgba(37,99,235,.09)}
+.updstate.old{color:var(--txt-3);border-color:var(--line);background:var(--mute-bg)}
+.updmeta{font-size:11px;color:var(--mute-txt);margin-top:3px;font-family:var(--mono)}
+.updbtns{display:flex;gap:6px;margin-top:8px}
+.updcard .updnotes{margin-top:8px;max-height:30vh}
+
+/* 「检查更新」下面那两个自动提醒开关：零件跟「局域网 / 匿名统计」是同一套
+   （.swrow + .tgl + .swtag），只是夹在链接行之间，上下留白收一点。 */
+.updsw{margin-top:2px}
+.updsw .swrow{padding:9px 0}
+
 /* ===== 表单 ===== */
 select,input{
   width:100%;padding:10px 12px;border-radius:var(--r-sm);
@@ -4889,10 +4916,10 @@ section.tab.on{display:flex;flex-direction:column}
         <span class="mcg">修改<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></span>
       </button>
       <div class="mcrelay" id="mcRelay" style="display:none">
-        <span class="mrk">中转站</span>
+        <span class="mrk" id="mcRelayTag">中转站</span>
         <span class="mrv" id="mcRelayHost"></span>
-        <button class="small" data-act="copyrelay" aria-label="复制中转站地址">复制</button>
-        <button class="small" data-act="openrelay" aria-label="打开中转站注册页">打开</button>
+        <button class="small" id="mcCopyRelay" data-act="copyrelay" aria-label="复制中转站地址">复制</button>
+        <button class="small" id="mcRelayOpen" data-act="openrelay" aria-label="打开中转站注册页">打开</button>
       </div>
     </div>
 
@@ -5127,6 +5154,25 @@ section.tab.on{display:flex;flex-direction:column}
         <div class="lkbd"><div class="lkt">检查更新</div><div class="lkv" id="updText">点右边按钮看看有没有新版本</div><div class="lkv" id="updBeta" style="display:none"></div><div class="lkv" id="siteVer">官网版本：读取中…</div></div>
         <div class="lkbtns">
           <button class="small primary" data-act="checkupdate" id="updBtn">检查更新</button>
+        </div>
+      </div>
+      <!-- 两个自动提醒开关：只管「查完要不要自己弹窗」，手动点「检查更新」永远弹。
+           存 localStorage，缺省都开（'0' 才算关）—— 用户装了新版本后不点回来，
+           下一次打开还能被提醒到。 -->
+      <div class="updsw">
+        <div class="swrow">
+          <div class="swinfo">
+            <div class="swname">正式版提醒<span class="swtag on" id="updSwStableTag">已开</span></div>
+            <div class="swdesc">有新版时自动弹窗提醒</div>
+          </div>
+          <button class="tgl on" id="updSwStable" data-act="updremind" data-arg="stable" title="点击切换正式版自动提醒"></button>
+        </div>
+        <div class="swrow">
+          <div class="swinfo">
+            <div class="swname">测试版提醒<span class="swtag on" id="updSwBetaTag">已开</span></div>
+            <div class="swdesc">有新版时自动弹窗提醒</div>
+          </div>
+          <button class="tgl on" id="updSwBeta" data-act="updremind" data-arg="beta" title="点击切换测试版自动提醒"></button>
         </div>
       </div>
       <div class="lkrow">
@@ -5562,14 +5608,19 @@ section.tab.on{display:flex;flex-direction:column}
 
 <div class="dlgmask" id="dlgUpdate">
   <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="updDlgTitle">
-    <h3 id="updDlgTitle">发现新版本</h3>
+    <h3 id="updDlgTitle">检查更新</h3>
     <div class="dbody">
       <p id="updDlgCur">当前版本 -</p>
+      <!-- 正式版 / 测试版各一张卡片，由 updDialogFill() 填内容：
+           「详情」在卡片里就地展开，「下载」只在该条确实比当前新的时候出现。 -->
+      <div id="updDlgList"></div>
+      <!-- 旧版弹窗留下的说明区：说明已经挪进每条卡片，元素留着是为了别处
+           还按 id 找得到它（不删 id，只清空并隐藏）。 -->
       <div class="updnotes" id="updDlgNotes" style="display:none"></div>
     </div>
     <div class="dfoot">
       <button class="small" data-act="updlater">以后再说</button>
-      <button class="primary" style="flex:1" data-act="updgo">去下载</button>
+      <button class="primary" style="flex:1" data-act="updclose">关闭</button>
     </div>
   </div>
 </div>
@@ -5765,6 +5816,15 @@ function themePaint(){
   try { renderTints(); } catch (e3) {}
   /* 预设色块的预览也分浅深两套，主题一切就得重画 */
   try { renderPresets(); } catch (e4) {}
+  /* 把页面底色报给原生层：窗口背景跟着变，冷启动 / 重载 / 切回前台时
+     不会先闪一层系统窗口的灰（#303030）。原生层只存一个 int，随便调用。 */
+  try {
+    if (window.Android && Android.pageBg) {
+      var bgc = "";
+      try { bgc = getComputedStyle(document.body).backgroundColor || ""; } catch (e5) { bgc = ""; }
+      if (bgc) Android.pageBg(bgc);
+    }
+  } catch (e6) {}
 }
 function themeSet(pref){
   if (pref !== "light" && pref !== "dark") pref = "auto";
@@ -6353,7 +6413,10 @@ var NO_LOCK_ACTS = [
   "settings", "backhome", "showlogs",
   "pickbg", "clearbg", "bgpreset", "glass", "theme",
   "reload", "slim", "rmcard",
+  /* 更新弹窗里每条卡片的「详情 / 下载」和两个自动提醒开关，全是纯前端动作
+     （读 localStorage、展开说明、把链接交给系统浏览器），跟容器装没装好无关。 */
   "checkupdate", "dlupdate", "updnotes", "updgo", "updlater", "updbeta",
+  "updclose", "upddl", "updremind",
   "copyurl", "openurl", "openqq", "copydisc", "dlgagree", "privacy", "privacyclose", "copydiscp",
   "guardset", "battery", "terminal", "powgo", "powack", "notiask",
   /* 风控横幅说的是账号侧的事（要验证 / 被踢下线），跟「容器装没装好」无关：
@@ -8363,10 +8426,13 @@ document.addEventListener("click", function(ev){
   else if (act === "theme") themeSet(arg || "auto");
   else if (act === "checkupdate") doCheckUpdate(false);
   else if (act === "dlupdate") updDownload();
-  else if (act === "updnotes") updDetail();
+  else if (act === "updnotes") updDetail(arg);
   else if (act === "updbeta") updBetaShow();
   else if (act === "updgo") updDialogGo();
   else if (act === "updlater") updDialogLater();
+  else if (act === "updclose") updCloseDialog();
+  else if (act === "upddl") updRowDownload(arg);
+  else if (act === "updremind") updRemindToggle(arg);
   else if (act === "copytext") Android.copy(arg || "");
   else if (act === "copylog") doCopyDeployLog();
   else if (act === "doctor") doDoctor();
@@ -8716,7 +8782,7 @@ function showDisclaimer(){
 function hideDisclaimer(){
   var d = el("dlgDisclaimer"); if (d) d.classList.remove("on");
   /* 自动更新弹窗要是被免责声明挡着，用户点完「同意」这里补上 */
-  if (updDlgWait) { var j = updDlgWait; updDlgWait = null; updShowDialog(j); }
+  if (updDlgWait) { var w = updDlgWait; updDlgWait = null; updShowDialog(w.j, w.kinds); }
 }
 /* 隐私政策叠在免责声明上面：关掉后回到免责声明，不丢「同意」按钮 */
 function showPrivacy(){ var d = el("dlgPrivacy"); if (d) d.classList.add("on"); }
@@ -8748,18 +8814,23 @@ function openQqGroup(g){
 // 线程去拉，这里每 500ms 问一次结果，界面全程不卡。
 var UPD_LAST_KEY = "qqbot.updcheck";
 var UPD_TICKS    = 90;   // 90 * 500ms = 45 秒还没结果就当超时
-var UPD_SKIP_KEY = "qqbot_update_skip";  // 「以后再说」记下的版本号
+var UPD_SKIP_KEY = "qqbot_update_skip";  // 「以后再说」记下的版本号，现在按条存：{stable:"v1.3.2", beta:"v1.3.3-beta.2"}
+var UPD_REMIND_STABLE_KEY = "qqbot_upd_remind_stable";  // 正式版自动提醒开关，'0' = 关
+var UPD_REMIND_BETA_KEY   = "qqbot_upd_remind_beta";    // 测试版自动提醒开关，'0' = 关
 var UPD_AUTO_TICKS = 40; // 自动检查只等 20 秒：超时就悄悄收工
 var updTimer = null;
 var updPolls = 0;
 var updSilent = false;
 var updAuto = false;     // 这一轮是不是「打开页面自动查」的那次
+var updRepaint = false;  // 「查看更新内容」那种只重画面板的调用，不该顺手把弹窗又弹出来
 var updLast = null;
 var updNotesOpen = false;  // 「查看更新内容」是否已展开
 var updDlgData = null;   // 自动检查命中的那版 release，弹窗按钮要用
-var updDlgWait = null;   // 被免责声明挡住的更新弹窗，等用户点同意后再弹
+var updDlgWait = null;   // 被免责声明挡住的更新弹窗 {j, kinds}，等用户点同意后再弹
 var UPD_BETA_KEY = "qqbot.updbeta";  // 面板上那行「测试版」缓存：每次打开页面先显示上次查到的
 var updBetaData = null;  // 面板上「测试版」那一行对应的 release
+var updDlgKinds = [];    // 这次弹窗里列了哪几条：「stable」/「beta」/两条都有
+var updDlgOpen = "";     // 弹窗里展开了「详情」的那条，空 = 两条都收着
 
 function updEsc(s){
   return String(s == null ? "" : s)
@@ -8864,14 +8935,20 @@ function renderUpdate(j, fromPoll){
   /* 测试版一定是「下一个版本的 beta」：只有比当前装的新才值得提示，
      已经装过或者比当前旧的都不显示。 */
   var beta = (j.beta && j.beta.newer) ? j.beta : null;
-  /* 面板上那行「测试版 xxx」自动、手动都跟着刷：它只是一条状态，
-     不像 updText 那样承载「上次手动查出来的结果」。 */
+  /* 自动检查只负责弹窗：面板一个像素都不碰（用户可能正看着上次手动查的结果）。
+     挑出「开关开着 + 确实比当前新 + 这版没被『以后再说』过」的条目，
+     一条都没有就彻底安静 —— 旧行为是不管开关无脑弹正式版。 */
+  if (auto) {
+    var want = updRemindKinds(j, curRaw);
+    if (want.length) updShowDialog(j, want);
+    return;
+  }
+  /* 面板上那行「测试版 xxx」只在手动查完时刷。自动那一轮要求完全不碰面板，
+     页面重开时 updBetaRestore() 会把上次的记录先放回来。 */
   updBetaPaint(beta, curRaw);
   if (j.hasUpdate) {
-    /* 自动检查发现有新版：直接弹应用内弹窗（同版本点过「以后再说」就不会再弹）。
-       已是最新、本地比线上新、检查失败这三种情况一律静默，一句提示都不给。
-       测试版有更新也绝不自动弹窗 —— 普通用户不该被 beta 打扰。 */
-    if (auto) { updShowDialog(j); return; }
+    /* 走到这里一定是手动那一次（自动在函数开头就 return 了）。
+       面板只留一句结论，两条的版本、时间、大小和说明都在弹窗里。 */
     var meta = [];
     if (j.apkName) meta.push(updEsc(j.apkName));
     if (j.size) meta.push(updSize(j.size));
@@ -8889,8 +8966,7 @@ function renderUpdate(j, fromPoll){
     if (beta) html += "<div style=\"margin-top:6px;opacity:.8\">另有测试版 <b>" + updEsc(beta.version || beta.tag) + "</b> 在测试中</div>";
     updPaint("有新版本 " + lat + " 可以装", html, "再查一次", false, "ok");
   } else if (beta) {
-    /* 正式版没更新，但线上有比当前更新的测试版。给一个入口，不自动弹窗。 */
-    if (auto) return;
+    /* 正式版没更新，但线上有比当前更新的测试版：面板给一个入口。 */
     var bmeta = [];
     if (beta.apkName) bmeta.push(updEsc(beta.apkName));
     if (beta.size) bmeta.push(updSize(beta.size));
@@ -8900,17 +8976,19 @@ function renderUpdate(j, fromPoll){
     bhtml += "<div style=\"margin-top:8px\"><button class=\"small primary\" data-act=\"updbeta\">看看测试版</button></div>";
     updPaint("有测试版 " + updEsc(beta.version || beta.tag) + " 可以试装", bhtml, "再查一次", false, "");
   } else if (j.newer) {
-    if (auto) return;
     if (curRaw.indexOf("-") >= 0) {
       updPaint("当前是测试版 " + cur, "正式版线上最新是 <b>" + lat + "</b>；等它发布后可以在应用内直接升级，不用重装。", "再查一次", false, "");
     } else {
       updPaint("当前 " + cur + " 比线上最新 " + lat + " 还新", "装的可能是还没发布的开发版，不用更新。", "再查一次", false, "");
     }
   } else {
-    if (auto) return;
     updPaint("已经是最新版本 " + cur, "", "再查一次", false, "ok");
     if (!silent) Android.toast("已经是最新版本 " + j.current);
   }
+  /* 手动点「检查更新」查完一律弹合并弹窗：正式版、测试版两条都列出来。
+     开关和「以后再说」只作用于自动那一次 —— 用户主动来问，就得给答案。
+     updRepaint 是「查看更新内容」那种纯重画，别跟着弹。 */
+  if (!updRepaint) updShowDialog(j, ["stable", "beta"]);
 }
 /* ---------- 测试版（beta） ---------- */
 /* 面板「检查更新」下面那行：测试版永远指「下一个版本的 beta」，
@@ -8954,20 +9032,13 @@ function updBetaShow(){
   if (!mask) return;
   /* 免责声明还开着时两个遮罩会叠一起，先让用户把声明处理掉。 */
   var disc = el("dlgDisclaimer");
-  if (disc && disc.classList.contains("on")) { Android.toast("先把上面的提示关掉再看测试版"); return; }
+  if (disc && disc.classList.contains("on")) { extToast("先把上面的提示关掉再看测试版"); return; }
   var curV = el("v-appver") ? String(el("v-appver").textContent || "") : "";
-  updDlgData = {
-    latest: b.version || b.tag,
-    current: curV,
-    notes: b.notes || "",
-    url: b.url || "",
-    htmlUrl: b.htmlUrl || "",
-    isBeta: true
-  };
-  updDialogFill(updDlgData, "测试版 " + updVerText(b.version || b.tag));
+  /* 面板那行只缓存了 beta 自己，拼一条 j 走合并弹窗。正式版没有数据就不列它 ——
+     不能为了凑两行编一个版本号出来。 */
+  updShowDialog({ ok: true, current: curV, beta: b }, ["beta"]);
   var c = el("updDlgCur");
-  if (c) c.textContent = "当前版本 " + updVerText(curV) + " · 测试版，装坏了可以装回正式版";
-  mask.classList.add("on");
+  if (c) c.textContent = "当前版本 " + updVerText(curV) + " · 测试版装坏了可以装回正式版";
 }
 function updDownload(){
   var j = updLast;
@@ -8979,15 +9050,25 @@ function updDownload(){
   Android.toast("已交给浏览器下载，下完点开安装即可");
   openExternal(j.url);
 }
-function updDetail(){
+function updDetail(arg){
+  /* 弹窗里每张卡片上的「详情」：data-arg 是 stable / beta。
+     就地展开 / 收起，弹窗不关、也不跳浏览器。 */
+  if (arg === "stable" || arg === "beta") {
+    var d = el("dlgUpdate");
+    if (!d || !d.classList.contains("on")) return;
+    updDlgOpen = (updDlgOpen === arg) ? "" : arg;
+    var tt = el("updDlgTitle");
+    updDialogFill(updDlgData, tt ? tt.textContent : "检查更新", updDlgKinds);
+    return;
+  }
   var j = updLast;
   if (j && j.notes) {
-    // 有更新内容就在应用内展开／收起，不跳浏览器。
+    // 有更新内容就在面板里展开／收起，不跳浏览器，也不弹合并弹窗。
     updNotesOpen = !updNotesOpen;
     var keep = updSilent;
     updSilent = false;           // 收起／展开不该再弹一次「发现新版本」的 toast
-    renderUpdate(j);
-    updSilent = keep;
+    updRepaint = true;           // 只重画面板，弹窗不归这次管
+    try { renderUpdate(j); } finally { updRepaint = false; updSilent = keep; }
     return;
   }
   var u = (j && j.htmlUrl) ? j.htmlUrl : "https://github.com/Zxin-Pro/astrbot-candle/releases";
@@ -8996,7 +9077,8 @@ function updDetail(){
 }
 // 应用启动后静默查一次：延迟 1.5 秒，等首屏先画出来再发请求。
 // 原来是「12 小时内查过就跳过」的节流，现在需求是每次打开页面都看一眼；
-// 同一版本不重复打扰交给 qqbot_update_skip（点过「以后再说」的版本号）管。
+// 同一版本不重复打扰交给 qqbot_update_skip（按条记「以后再说」点过的 tag）管，
+// 要不要自动弹还看两个开关（qqbot_upd_remind_stable / _beta）。
 function maybeAutoCheck(){
   setTimeout(updAutoFire, 1500);
 }
@@ -9015,81 +9097,267 @@ function updVerText(v){
   if (!v) return "-";
   return /^v/i.test(v) ? v : ("v" + v);
 }
-function updSkipGet(){
-  try { return String(localStorage.getItem(UPD_SKIP_KEY) || ""); } catch (e) { return ""; }
+/* 「以后再说」的记录从「一个版本号」升级成按条存：{stable:"v1.3.2", beta:"v1.3.3-beta.2"}。
+   老机器上这个键里还是纯版本号（升级上来的），读的时候当正式版的记录，
+   别让一次升级把用户之前点过的「以后再说」全丢掉。 */
+function updSkipMap(){
+  var raw = "";
+  try { raw = String(localStorage.getItem(UPD_SKIP_KEY) || ""); } catch (e) { return {}; }
+  if (!raw) return {};
+  if (raw.charAt(0) === "{") {
+    try {
+      var o = JSON.parse(raw);
+      if (o && typeof o === "object") return o;
+    } catch (e2) {}
+    return {};
+  }
+  return { stable: raw };
 }
-function updSkipSet(v){
-  try { localStorage.setItem(UPD_SKIP_KEY, String(v || "")); } catch (e) {}
+function updSkipGet(kind){
+  return String(updSkipMap()[kind] || "");
 }
-/* release notes 是 Markdown 纯文本，动辄几十行。弹窗里只留开头几行，
-   够判断这版值不值得装；要细看就点「去下载」打开发布页。 */
-function updNotesBrief(s){
+function updSkipSet(kind, tag){
+  var m = updSkipMap();
+  if (tag) m[kind] = String(tag);
+  else delete m[kind];
+  try { localStorage.setItem(UPD_SKIP_KEY, JSON.stringify(m)); } catch (e) {}
+}
+/* ---------- 合并弹窗：正式版 / 测试版两条一起看 ---------- */
+/* 一条 release 归一化。正式版的数据在顶层字段，测试版在 j.beta 里，两边形状一样，
+   所以先统一成 {kind,tag,state,size,date,notes,url,...} 再画，省得两套模板各写一遍。
+   state：new（比当前新）/ latest（就是当前这版）/ old（线上比当前旧）/ none（线上没有这条）。 */
+function updSameVer(a, b){
+  var x = String(a == null ? "" : a).replace(/^v/i, "").trim().toLowerCase();
+  var y = String(b == null ? "" : b).replace(/^v/i, "").trim().toLowerCase();
+  return !!x && x === y;
+}
+function updRelRow(o, kind, curRaw){
+  var row = { kind: kind, tag: "", state: "none", size: 0, date: "", notes: "",
+              url: "", apkName: "", htmlUrl: "" };
+  if (!o) return row;
+  row.tag     = String(o.tag || o.version || "").trim();
+  row.notes   = String(o.notes || "");
+  row.size    = Number(o.size || 0);
+  row.date    = String(o.publishedAt || "");
+  row.url     = String(o.url || "");
+  row.apkName = String(o.apkName || "");
+  row.htmlUrl = String(o.htmlUrl || "");
+  if (!row.tag) return row;
+  /* 线上没有正式版时，原生侧可能拿 beta 兜底塞进顶层字段。
+     tag 带 -beta 的不能当正式版展示，否则两张卡片会显示同一个版本号。 */
+  if (kind === "stable" && /-beta/i.test(row.tag)) { row.tag = ""; return row; }
+  /* 两个 newer 是反的，别想当然：原生侧顶层那个 newer 是「当前装的比线上正式版新」
+     （beta 用户看到的就是 true，但它不代表有更新可用），真正表示正式版可升级的是 hasUpdate。
+     beta.newer 才是「这条测试版比当前装的新」。早先这里一律看 newer，结果当前跑 beta 的人
+     会被提示"发现新版本 v1.3.2"、点下载还会被降级。 */
+  var fresh = (kind === "beta") ? (o.newer === true) : (o.hasUpdate === true);
+  if (fresh) row.state = "new";
+  else if (updSameVer(row.tag, curRaw)) row.state = "latest";
+  else row.state = "old";
+  return row;
+}
+function updRowStateText(row){
+  if (row.state === "none") return row.kind === "beta" ? "没有测试版" : "线上暂无正式版";
+  if (row.state === "new") return "有新版本";
+  if (row.state === "latest") return "已是最新";
+  return (row.kind === "beta" ? "线上测试版仍是 " : "线上正式版仍是 ") + updVerText(row.tag);
+}
+function updRowStateClass(row){
+  if (row.state === "new") return "new";
+  if (row.state === "latest") return "cur";
+  return "old";
+}
+/* release notes 摘要：弹窗里最多 12 行 / 400 字，够判断这版要不要装。
+   Markdown 记号在纯文本里只会变成噪声，顺手去掉；要细看还是点「发布页」。 */
+function updNotesCut(s, maxLines, maxChars){
+  maxLines = maxLines || 12;
+  maxChars = maxChars || 400;
   var lines = String(s == null ? "" : s).replace(/\r/g, "").split("\n");
-  var out = [], n = 0;
-  for (var i = 0; i < lines.length && out.length < 6; i++){
+  var out = [], n = 0, cut = false;
+  for (var i = 0; i < lines.length; i++) {
     var ln = lines[i]
       .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")   /* [文字](链接) → 文字 */
-      .replace(/[*`#>]+/g, "")                    /* Markdown 记号 */
-      .replace(/^\s*[-+]\s+/, "")                 /* 列表项前缀 */
+      .replace(/[*#]+/g, "")                     /* Markdown 记号 */
+      .replace(/\x60/g, "")                      /* 行内代码的反引号 */
+      .replace(/^\s*>\s?/, "")                   /* 引用前缀 */
+      .replace(/^\s*[-+]\s+/, "")                /* 列表项前缀 */
       .trim();
-    if (!ln) continue;
-    /* 发布页正文的头两行是「## AstrBot 烛版 1.1.28」和「[1.1.28] - 2026-10-19」，
-       弹窗里已经写着版本号，这两行纯属重复，跳过。 */
-    if (/^AstrBot\s*烛版\s*v?\d+\.\d+\.\d+/.test(ln)) continue;
-    if (/^\d+\.\d+\.\d+\s*[-–]\s*\d{4}-\d{2}-\d{2}$/.test(ln)) continue;
-    if (n + ln.length > 220) {
-      if (!out.length) out.push(ln.substring(0, 220) + "…");
-      break;
-    }
-    out.push(ln); n += ln.length;
+    if (!ln) { if (out.length && out[out.length - 1] !== "") out.push(""); continue; }
+    if (out.length >= maxLines) { cut = true; break; }
+    var room = maxChars - n;
+    if (room < 24) { cut = true; break; }
+    out.push(ln.length > room ? (ln.substring(0, room) + "…") : ln);
+    n += Math.min(ln.length, room) + 1;
+    if (ln.length > room) { cut = true; break; }
   }
-  return out.join("\n");
+  var txt = out.join("\n").replace(/\n{3,}/g, "\n\n").replace(/^\n+|\n+$/g, "");
+  /* 省略号接在最后一行末尾，不另起一行 —— 否则「最多 12 行」会多出第 13 行。 */
+  if (cut && txt.slice(-1) !== "…") txt += " …";
+  return txt;
+}
+/* 一张卡片：标题行（正式版 / 测试版 + tag + 状态）、时间与大小、详情 / 下载按钮。
+   详情展开是同一张卡片里的一块 .updnotes，不跳浏览器、也不关弹窗。 */
+function updDlgRowHtml(row){
+  var open = (updDlgOpen === row.kind);
+  var h = '<div class="updcard" id="updCard-' + row.kind + '">';
+  h += '<div class="updhd"><span class="updk">' + (row.kind === "beta" ? "测试版" : "正式版") + '</span>'
+     + '<span class="updtag">' + (row.tag ? updEsc(updVerText(row.tag)) : "—") + '</span>'
+     + '<span class="updstate ' + updRowStateClass(row) + '">' + updEsc(updRowStateText(row)) + '</span></div>';
+  var meta = [];
+  if (row.tag) {
+    if (row.date) meta.push(updDate(row.date));
+    if (row.size) meta.push(updSize(row.size));
+  }
+  if (meta.length) h += '<div class="updmeta">' + updEsc(meta.join(" · ")) + '</div>';
+  h += '<div class="updbtns">';
+  if (row.tag) {
+    h += '<button class="small" data-act="updnotes" data-arg="' + row.kind + '">'
+       + (open ? "收起" : "详情") + '</button>';
+  }
+  /* 只有确实比当前新、且拿得到链接时才给下载按钮：置灰的按钮点了没反应，不如不显示。 */
+  if (row.state === "new" && (row.url || row.htmlUrl)) {
+    h += '<button class="small primary" data-act="upddl" data-arg="' + row.kind + '">'
+       + (row.url ? "下载" : "发布页") + '</button>';
+  }
+  h += '</div>';
+  if (open) {
+    var brief = updNotesCut(row.notes);
+    h += '<div class="updnotes">' + (brief ? updEsc(brief) : "这版没写更新说明，想细看就点「发布页」。") + '</div>';
+  }
+  h += '</div>';
+  return h;
+}
+function updDialogTitle(rows){
+  var news = [], i;
+  for (i = 0; i < rows.length; i++) if (rows[i].state === "new") news.push(rows[i]);
+  if (news.length > 1) return "发现正式版与测试版更新";
+  if (news.length === 1) return (news[0].kind === "beta" ? "发现新测试版 " : "发现新版本 ") + updVerText(news[0].tag);
+  if (rows.length === 1) {
+    var r0 = rows[0];
+    return (r0.kind === "beta" ? "测试版" : "正式版") + (r0.tag ? " " + updVerText(r0.tag) : "");
+  }
+  return "检查更新结果";
+}
+/* 自动检查该不该弹、弹哪几条：开关开着 + 确实比当前新 + 这一版没被「以后再说」过。
+   返回要列的条目数组，空数组 = 这次完全不打扰（不 toast、不改面板）。 */
+function updRemindKinds(j, curRaw){
+  var out = [];
+  var st = updRelRow(j, "stable", curRaw);
+  if (st.state === "new" && updRemindGet("stable") && updSkipGet("stable") !== st.tag) out.push("stable");
+  var bt = updRelRow(j.beta || null, "beta", curRaw);
+  if (bt.state === "new" && updRemindGet("beta") && updSkipGet("beta") !== bt.tag) out.push("beta");
+  return out;
+}
+/* ---------- 两个「自动弹窗提醒」开关 ---------- */
+function updRemindGet(kind){
+  var k = (kind === "beta") ? UPD_REMIND_BETA_KEY : UPD_REMIND_STABLE_KEY;
+  var v = "";
+  try { v = String(localStorage.getItem(k) || ""); } catch (e) { v = ""; }
+  return v !== "0";   /* 缺省开：没有这个键 = 用户从没关过 */
+}
+function updRemindPaint(){
+  var kinds = ["stable", "beta"], i, k, on, t, tag, tc;
+  for (i = 0; i < kinds.length; i++) {
+    k = kinds[i];
+    on = updRemindGet(k);
+    t = el(k === "beta" ? "updSwBeta" : "updSwStable");
+    tag = el(k === "beta" ? "updSwBetaTag" : "updSwStableTag");
+    if (t) t.className = "tgl" + (on ? " on" : "");
+    if (tag) {
+      tc = "swtag " + (on ? "on" : "off");
+      if (tag.className !== tc) tag.className = tc;
+      tag.textContent = on ? "已开" : "已关";
+    }
+  }
+}
+function updRemindToggle(kind){
+  kind = (kind === "beta") ? "beta" : "stable";
+  var k = (kind === "beta") ? UPD_REMIND_BETA_KEY : UPD_REMIND_STABLE_KEY;
+  var on = !updRemindGet(kind);
+  try { localStorage.setItem(k, on ? "1" : "0"); } catch (e) {}
+  updRemindPaint();
+  extToast((on ? "已开启" : "已关闭") + (kind === "beta" ? "测试版" : "正式版") + "更新提醒");
+}
+/* 卡片上的「下载」：跟面板上的 dlupdate 一样交给系统浏览器，别在 WebView 里开。 */
+function updRowDownload(kind){
+  kind = (kind === "beta") ? "beta" : "stable";
+  var j = updDlgData || {};
+  var row = updRelRow(kind === "beta" ? j.beta : j, kind, String(j.current || ""));
+  var u = row.url || row.htmlUrl;
+  if (!u) {
+    extToast("这个版本没有附安装包，打开 GitHub 页面手动看");
+    openExternal("https://github.com/Zxin-Pro/astrbot-candle/releases");
+    return;
+  }
+  extToast(row.url ? "已交给浏览器下载，下完点开安装即可" : "已用浏览器打开发布页");
+  openExternal(u);
 }
 function updCloseDialog(){
   var d = el("dlgUpdate");
   if (d) d.classList.remove("on");
+  updDlgOpen = "";   /* 关掉，下次重开时两条都收着 */
 }
-function updShowDialog(j){
+/* 合并弹窗：kinds 决定列哪几条（["stable"] / ["beta"] / 两条）。
+   开关和「以后再说」的判断全放在 updRemindKinds 里 —— 手动的「检查更新」
+   要无视这两样，所以进到这里就是真弹，别再判一次。 */
+function updShowDialog(j, kinds){
   var mask = el("dlgUpdate");
   if (!mask || !j) return;
-  updDlgData = j;
-  /* 点过「以后再说」的版本不再自动弹；换了版本号会照弹。 */
-  if (updSkipGet() === String(j.latest || "")) return;
+  var list = (kinds && kinds.length) ? kinds.slice() : ["stable"];
+  updDlgOpen = "";
   /* 免责声明还开着就先记下：两个遮罩叠一起，用户连「同意」都点不踏实。 */
   var disc = el("dlgDisclaimer");
-  if (disc && disc.classList.contains("on")) { updDlgWait = j; return; }
-  updDialogFill(j, "发现新版本 " + updVerText(j.latest));
+  if (disc && disc.classList.contains("on")) { updDlgWait = { j: j, kinds: list }; return; }
+  var curV = String(j.current || "");
+  var rows = [], i;
+  for (i = 0; i < list.length; i++) {
+    rows.push(updRelRow(list[i] === "beta" ? j.beta : j, list[i], curV));
+  }
+  updDialogFill(j, updDialogTitle(rows), list);
   mask.classList.add("on");
 }
-/* 弹窗内容统一在这里填，正式版和测试版走同一套 DOM。 */
-function updDialogFill(j, title){
+/* 弹窗内容统一在这里填：每条一张卡片。标题由调用方给 —— 自动弹「发现新版本」，
+   手动弹「检查更新结果」，点面板上的测试版入口弹「测试版 vX」。 */
+function updDialogFill(j, title, kinds){
+  updDlgData = j;
+  updDlgKinds = (kinds && kinds.length) ? kinds.slice() : ["stable"];
   var t = el("updDlgTitle");
-  if (t) t.textContent = title;
+  if (t) t.textContent = title || "检查更新";
   var c = el("updDlgCur");
-  if (c) c.textContent = "当前版本 " + updVerText(j.current);
-  var n = el("updDlgNotes");
-  if (n) {
-    var brief = updNotesBrief(j.notes);
-    n.textContent = brief;
-    n.style.display = brief ? "block" : "none";
+  if (c) c.textContent = "当前版本 " + updVerText(j && j.current);
+  var list = el("updDlgList");
+  if (list) {
+    var h = "", i, k;
+    for (i = 0; i < updDlgKinds.length; i++) {
+      k = updDlgKinds[i];
+      h += updDlgRowHtml(updRelRow(k === "beta" ? (j && j.beta) : j, k, String((j && j.current) || "")));
+    }
+    list.innerHTML = h;
   }
-  var go = document.querySelector('#dlgUpdate button[data-act="updgo"]');
-  if (go) go.textContent = j.isBeta ? "下载测试版" : "去下载";
+  /* 旧版弹窗那块说明区不再用（说明挪进每条卡片），清空藏起来；
+     #updDlgNotes 这个 id 留着，别处还认它。 */
+  var n = el("updDlgNotes");
+  if (n) { n.innerHTML = ""; n.style.display = "none"; }
 }
 /* 「去下载」：一定要交给系统浏览器（Android.openUrl），别在 WebView 里开。
-   优先 APK 直链，没有就退到 release 页面。 */
+   下载按钮现在按条放进卡片了，这个函数留着是给 updgo 分发与老调用方兜底。 */
 function updDialogGo(){
   var j = updDlgData || {};
-  var u = j.url || j.htmlUrl || "https://github.com/Zxin-Pro/astrbot-candle/releases";
+  var u = j.url || (j.beta && j.beta.url) || j.htmlUrl || (j.beta && j.beta.htmlUrl)
+        || "https://github.com/Zxin-Pro/astrbot-candle/releases";
   updCloseDialog();
-  Android.toast(j.url ? "已交给浏览器下载，下完点开安装即可" : "已用浏览器打开发布页");
+  extToast(j.url ? "已交给浏览器下载，下完点开安装即可" : "已用浏览器打开发布页");
   openExternal(u);
 }
+/* 「以后再说」按条记：只记这次弹出来的、且确实比当前新的 tag。
+   手动的「检查更新」点它同样会记，所以下一次自动检查不会为同一版再弹。 */
 function updDialogLater(){
-  var j = updDlgData || {};
-  /* 测试版弹窗点「以后再说」不写去重记录：那条记录是给正式版弹窗用的，
-     写进 beta 版本号没意义。 */
-  if (!j.isBeta) updSkipSet(j.latest);
+  var j = updDlgData || {}, curV = String(j.current || ""), i, k, row;
+  for (i = 0; i < updDlgKinds.length; i++) {
+    k = updDlgKinds[i];
+    row = updRelRow(k === "beta" ? j.beta : j, k, curV);
+    if (row.state === "new" && row.tag) updSkipSet(k, row.tag);
+  }
   updCloseDialog();
 }
 
@@ -10454,10 +10722,13 @@ try { if (String(Android.disclaimerSeen()) !== "1") showDisclaimer(); } catch (e
 refresh();
 /* 今日概览要读沙盒里的统计文件，晚一拍再取，别跟首屏抢带宽 */
 setTimeout(function(){ refreshToday(); todayStart(); }, 300);
-/* 启动 1.5 秒后静默查一次更新，发现新版本会弹应用内弹窗（同版本点过「以后再说」就不再弹） */
+/* 启动 1.5 秒后静默查一次更新；要不要弹由「更多」里那两个提醒开关说了算，
+   同一版本点过「以后再说」也不再弹（按条记 stable / beta 各自的 tag）。 */
 maybeAutoCheck();
 /* 先把上次查到的测试版（如果有）放回面板，等上面那次自动检查回来再覆盖 */
 try { updBetaRestore(); } catch (e) {}
+/* 两个自动提醒开关的状态在 HTML 里默认画成「开」，这里按 localStorage 纠正一次 */
+try { updRemindPaint(); } catch (e) {}
 /* v4 首屏折叠初始态 */
 try { applyHomeFold(); } catch (e) {}
 try { noticeInit(); } catch (e) {}
@@ -10482,10 +10753,19 @@ function astrHomePaint(){
   var m = el("mcModel"), sub = el("mcSub");
   /* 中转站地址直接摆在卡片里：用户最常问的两件事就是「现在用的什么模型」和
      「密钥是哪个站的」，以前第二件要点进弹窗才看得到。 */
-  var rl = astrRelayUrl(j), rls = astrRelayShow(j);
+  var rl = astrRelayUrl(j), rls = astrRelayShow(j), ours = astrRelayIsOurs(j);
   var box = el("mcRelay"), rh = el("mcRelayHost");
   if (box) box.style.display = rl ? "" : "none";
   if (rh) { rh.textContent = rls || ""; rh.title = rl || ""; }
+  /* 左边那个小标签得说实话：用我们这家中转站的人说「World中转站」，
+     自己填了 DeepSeek / Moonshot 的接口地址的人说「模型商」。
+     换了站还写「中转站」，用户会以为密钥能找我们要。 */
+  var rtag = el("mcRelayTag"), ropen = el("mcRelayOpen"), rcopy = el("mcCopyRelay");
+  if (rtag) rtag.textContent = ours ? "World中转站" : "模型商";
+  /* 「打开」通向的是本家带邀请码的注册页，跟别家的 base 没关系；
+     不是本家就收起来，「复制」留着——复制的是接口地址，换站的人也用得上。 */
+  if (ropen) ropen.style.display = ours ? "" : "none";
+  if (rcopy) rcopy.setAttribute("aria-label", ours ? "复制中转站地址" : "复制接口地址");
   if (!j.hasKey){
     /* 读到模型名却读不到密钥，是 AstrBot 4.29 之后的结构变化造成的（连接信息搬去了
        provider_sources[]），不是「没配过」。以前一律说「还没配置模型」，
@@ -10519,6 +10799,23 @@ function astrRelayUrl(j){
     if (j && j.base) return String(j.base);
   } catch (e) {}
   return "";
+}
+/* api_base 归一化：去首尾空白、去尾部所有 '/'，scheme 和 host 拉成小写，
+   路径原样留着。只为了判断「是不是同一家」，不拿去显示、也不回写给配置。
+   "HTTPS://WorldCodes.Online/v1/" 和 " https://worldcodes.online/v1 " 都算同一个地址。 */
+function astrBaseNorm(b){
+  var s = "";
+  try { s = String(b == null ? "" : b).replace(/^\s+|\s+$/g, "").replace(/\/+$/, ""); } catch (e) { return ""; }
+  if (!s) return "";
+  var m = /^([a-z][a-z0-9+.\-]*):\/\/([^\/?#]*)([\s\S]*)$/i.exec(s);
+  if (!m) return s.toLowerCase();
+  return m[1].toLowerCase() + "://" + m[2].toLowerCase() + m[3];
+}
+/* 卡片上那一行问的是「密钥是哪一家的」：只有 base 精确等于我们那家中转站的默认值，
+   才认作本家（World中转站）。…/v1beta、不带 /v1、或者别的域名，一律算「模型商」——
+   用户自己换的站跟我们的注册页、邀请码没有半点关系。 */
+function astrRelayIsOurs(j){
+  return astrBaseNorm(astrRelayUrl(j)) === "https://worldcodes.online/v1";
 }
 /* 卡片上只显示主机名（worldcodes.online）。完整接口地址 …/v1 对用户没有意义，
    长度还会把「复制 / 打开」挤到第二行；真要看完整地址，点开「模型与人格」弹窗里就有。 */

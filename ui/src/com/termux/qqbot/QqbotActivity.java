@@ -68,6 +68,77 @@ public class QqbotActivity extends Activity {
     public File usrDir() { return new File(getFilesDir(), "usr"); }
     public File homeDir() { return new File(getFilesDir(), "home"); }
     public File qqbotDir() { return new File(homeDir(), ".qqbot"); }
+
+    /* 页面底色：窗口背景要跟它一致，否则冷启动 / 页面重载的第一帧会先露出
+       Theme.Material.NoActionBar 的 windowBackground —— 那是 #FF303030 的灰，
+       页面本来是深色 #05060A，一闪就是用户说的「灰屏」。页面每次换主题 / 换底色
+       都会通过 Android.pageBg() 把 getComputedStyle(body).backgroundColor 报上来，
+       这里存成 prefs，下一次开窗口就直接用它。 */
+    public int pageBgColor() {
+        int dflt = 0xFF05060A;
+        try {
+            android.content.res.Configuration c = getResources().getConfiguration();
+            if ((c.uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                    != android.content.res.Configuration.UI_MODE_NIGHT_YES) {
+                dflt = 0xFFF3F6FC;
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            return getSharedPreferences("qqbot", 0).getInt("pageBg", dflt);
+        } catch (Throwable t) {
+            return dflt;
+        }
+    }
+
+    /** 把窗口和 WebView 的底色刷成页面底色（窗口那层就是「灰屏」露出来的地方）。 */
+    public void applyPageBg(int color) {
+        try {
+            getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(color));
+        } catch (Throwable ignored) {
+        }
+        try {
+            if (web != null) web.setBackgroundColor(color);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 页面报上来的 CSS 颜色（#RRGGBB 或 rgb(r,g,b)）；解析不了就忽略。 */
+    public void onPageBg(String css) {
+        int c = parseCssColor(css);
+        if (c == 0) return;
+        try {
+            android.content.SharedPreferences sp = getSharedPreferences("qqbot", 0);
+            if (sp.getInt("pageBg", 0) != c) sp.edit().putInt("pageBg", c).apply();
+        } catch (Throwable ignored) {
+        }
+        applyPageBg(c);
+    }
+
+    /** getComputedStyle 给的是 rgb(r, g, b)，Color.parseColor 只认 #form。 */
+    private static int parseCssColor(String s) {
+        if (s == null) return 0;
+        s = s.trim().toLowerCase(java.util.Locale.ROOT);
+        if (s.length() == 0) return 0;
+        try {
+            if (s.startsWith("#")) return android.graphics.Color.parseColor(s);
+            if (s.startsWith("rgb")) {
+                int a = s.indexOf('(');
+                int b = s.indexOf(')', a + 1);
+                if (a < 0 || b < 0) return 0;
+                String[] px = s.substring(a + 1, b).split(",");
+                if (px.length < 3) return 0;
+                int r = Math.round(Float.parseFloat(px[0].trim()));
+                int g = Math.round(Float.parseFloat(px[1].trim()));
+                int bl = Math.round(Float.parseFloat(px[2].trim()));
+                int al = 255;
+                if (px.length >= 4) al = Math.round(Float.parseFloat(px[3].trim()) * 255f);
+                return (al << 24) | (r << 16) | (g << 8) | bl;
+            }
+        } catch (Throwable ignored) {
+        }
+        return 0;
+    }
     public File logsDir() { return new File(qqbotDir(), "cache/logs"); }
     public File botsFile() { return new File(qqbotDir(), "bots.json"); }
     // 免责声明是否已同意（"0" = 未同意，其它非空内容 = 已同意）
@@ -176,6 +247,9 @@ public class QqbotActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // 先把窗口底色换成页面底色，再走 super：系统画的第一帧就是页面自己的颜色，
+        // 不再是 Theme.Material.NoActionBar 默认的 #303030 灰。
+        applyPageBg(pageBgColor());
         super.onCreate(savedInstanceState);
         // Android 13+ 通知权限：不申请的话常驻通知（守护卡片）不会出现，
         // 用户也就看不到「重启 / 扫码 / 关闭进程」。targetSdk 28 时系统不会自动弹，只能自己请求。
@@ -199,7 +273,7 @@ public class QqbotActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setAllowFileAccess(true);
         s.setAllowContentAccess(true);
-        web.setBackgroundColor(0xFF0F1115);
+        web.setBackgroundColor(pageBgColor());
         // 带上 this：通知栏「看日志 / 扫码」会带 tab extra 唤起本页，页面加载完要自动切过去
         web.setWebViewClient(new QqClient(this));
         bridge = new QqbotBridge(this);
@@ -343,6 +417,16 @@ public class QqbotActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        // 切回前台立刻要一帧：WebView 的硬件表面在后台会被丢掉，不主动 invalidate
+        // 就得等它自己排到下一轮，肉眼就是「先空一块再出来」。
+        try {
+            if (web != null) {
+                web.resumeTimers();
+                web.invalidate();
+            }
+        } catch (Throwable ignored) {
+        }
+        applyPageBg(pageBgColor());
         if (iconRefreshTried) return;
         iconRefreshTried = true;
         try {

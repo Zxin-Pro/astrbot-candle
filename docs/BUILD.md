@@ -24,7 +24,7 @@
 > `android:debuggable="true"` 删掉（幂等，删不到就跳过）。原因：debug 包是被小米安装器判成
 > 「被重新打包 / 非官方」的显式标记，会更容易被拦下。副作用是 `adb shell run-as zhuxin.astrbot`
 > 从这一版起不可用，要看应用私有目录请用 `adb root`。
-> 从 **1.1.30** 起，`build-ui.ps1` 还多了两段（都幂等、ps1 本身保持纯 ASCII）：
+> 从 **1.1.30** 起，`build-ui.ps1` 还多了两段（都幂等）：
 > **3d** 把 `ui\assets\icon\res\**` 拷进 `_apkwork\res`（先删掉会压过 PNG 的矢量
 > `drawable\ic_foreground.xml`）；**3e** 把 `ui\assets\android-res\**`（小组件布局/图标/背景）
 > 拷进去，并把 `ui\assets\android\widget-manifest.xml` 插到 `</application>` 之前。
@@ -46,6 +46,13 @@
 > 有改动时打印 `manifest: trimmed N dangerous entries, RunCommandService unexported`。
 > 同时 `build-apk.ps1` 的 **2b** 段会在打包前把根目录 `VERSION` 写进
 > `build\opt\qqbot\VERSION`（打包后删除），崩溃聚合与 doctor 读的就是包内这个文件。
+> 从 **1.3.3-beta.3** 起，`build-ui.ps1` 又多了一段 **3c4 窗口底色**（幂等）：把 `QqbotActivity` 的
+> `android:theme` 换成 `@style/Theme.QqbotPage`，并在 `_apkwork\res\values`、`values-night` 里写
+> `windowBackground`（`#fff3f6fc` / `#ff05060a`），`values-v31`、`values-night-v31` 再补
+> `android:windowSplashScreenBackground` —— Android 12 起冷启动第一帧是系统启动屏，它**只认**这个属性，
+> 改 `windowBackground` 不起作用（实测首帧仍是纯白/纯黑）。`_apkwork` 是解包目录、不进 git，
+> 所以这几处必须由 ps1 生成，换台机器重新 `apktool d` 也不会丢。
+> `build-ui.ps1` 里含中文注释，**必须存成 UTF-8 带 BOM**，否则 PowerShell 5.1 按 GBK 读会一片 ParserError。
 > 所以**新增 manifest 条目或 res 资源必须写进 ps1**，直接手改 `_apkwork` 下次构建会被覆盖。
 > 不要试图加 `android:privacyPolicy` —— 这个属性在 Android 里不存在，aapt2 会直接报错。
 
@@ -267,7 +274,8 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 | 版本 | 字段 | 值 |
 | --- | --- | --- |
-| **1.3.3-beta.2（当前，测试版）** | `versionName` / 派生 `versionCode` | `1.3.3-beta.2` / `10303` |
+| **1.3.3-beta.3（当前，测试版）** | `versionName` / 派生 `versionCode` | `1.3.3-beta.3` / `10303` |
+| 1.3.3-beta.2 | `versionName` / 派生 `versionCode` | `1.3.3-beta.2` / `10303` |
 | 1.3.3-beta.1 | `versionName` / 派生 `versionCode` | `1.3.3-beta.1` / `10303` |
 | 1.3.2（正式版） | `versionName` / 派生 `versionCode` | `1.3.2` / `10302` |
 | 1.3.2-beta.2 | `versionName` / 派生 `versionCode` | `1.3.2-beta.2` / `10302` |
@@ -277,7 +285,7 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 | 1.2.10 | `versionName` / 派生 `versionCode` | `1.2.10` / `10210` |
 | 1.2.9 | `versionName` / 派生 `versionCode` | `1.2.9` / `10209` |
 
-1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.3-beta.2-arm64.apk`，`609,361,733`（约 581 MB，镜像在 APK 里），SHA-256 `7B439808B6889D654219E632C3AEC66C52507D07E7140529E10AC06EDBAFB496`；覆盖安装用的 `AstrBot-1.3.3-beta.2-arm64-update.apk` 是 `26,181,442` B，SHA-256 `2D75ABA2B43B3076F04D12FABE9DE278D4CBFF3790EE4D3470A48F1513EBF44E`。签名证书 SHA-256 仍是 `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3）。
+1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.3-beta.3-arm64.apk`，`609,374,021`（约 581 MB，镜像在 APK 里），SHA-256 `55E05CA90986D52226121BB03E2FD478CD3F4566C029C5A90744B0279E19BE5A`；覆盖安装用的 `AstrBot-1.3.3-beta.3-arm64-update.apk` 是 `26,193,730` B，SHA-256 `B217993C3BA613CE7DF8D9CC2B5C2CB76A00270A67E180BDFFAD042F46521543`。签名证书 SHA-256 仍是 `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3）。
 
 规则：`versionCode = MAJOR*10000 + MINOR*100 + PATCH`。
 
