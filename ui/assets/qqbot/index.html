@@ -5124,7 +5124,7 @@ section.tab.on{display:flex;flex-direction:column}
       </div>
       <div class="lkrow">
         <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 12a8.4 8.4 0 1 1-2.6-6"/><path d="M20.4 3.6V9.3h-5.7"/></svg></span>
-        <div class="lkbd"><div class="lkt">检查更新</div><div class="lkv" id="updText">点右边按钮看看有没有新版本</div><div class="lkv" id="siteVer">官网版本：读取中…</div></div>
+        <div class="lkbd"><div class="lkt">检查更新</div><div class="lkv" id="updText">点右边按钮看看有没有新版本</div><div class="lkv" id="updBeta" style="display:none"></div><div class="lkv" id="siteVer">官网版本：读取中…</div></div>
         <div class="lkbtns">
           <button class="small primary" data-act="checkupdate" id="updBtn">检查更新</button>
         </div>
@@ -6352,7 +6352,7 @@ var NO_LOCK_ACTS = [
   "settings", "backhome", "showlogs",
   "pickbg", "clearbg", "bgpreset", "glass", "theme",
   "reload", "slim", "rmcard",
-  "checkupdate", "dlupdate", "updnotes", "updgo", "updlater",
+  "checkupdate", "dlupdate", "updnotes", "updgo", "updlater", "updbeta",
   "copyurl", "openurl", "openqq", "copydisc", "dlgagree", "privacy", "privacyclose", "copydiscp",
   "guardset", "battery", "terminal", "powgo", "powack", "notiask",
   /* 风控横幅说的是账号侧的事（要验证 / 被踢下线），跟「容器装没装好」无关：
@@ -8357,6 +8357,7 @@ document.addEventListener("click", function(ev){
   else if (act === "checkupdate") doCheckUpdate(false);
   else if (act === "dlupdate") updDownload();
   else if (act === "updnotes") updDetail();
+  else if (act === "updbeta") updBetaShow();
   else if (act === "updgo") updDialogGo();
   else if (act === "updlater") updDialogLater();
   else if (act === "copytext") Android.copy(arg || "");
@@ -8750,6 +8751,8 @@ var updLast = null;
 var updNotesOpen = false;  // 「查看更新内容」是否已展开
 var updDlgData = null;   // 自动检查命中的那版 release，弹窗按钮要用
 var updDlgWait = null;   // 被免责声明挡住的更新弹窗，等用户点同意后再弹
+var UPD_BETA_KEY = "qqbot.updbeta";  // 面板上那行「测试版」缓存：每次打开页面先显示上次查到的
+var updBetaData = null;  // 面板上「测试版」那一行对应的 release
 
 function updEsc(s){
   return String(s == null ? "" : s)
@@ -8850,9 +8853,17 @@ function renderUpdate(j, fromPoll){
   }
   var cur = updEsc(j.current || "");
   var lat = updEsc(j.latest || "");
+  var curRaw = String(j.current || "");
+  /* 测试版一定是「下一个版本的 beta」：只有比当前装的新才值得提示，
+     已经装过或者比当前旧的都不显示。 */
+  var beta = (j.beta && j.beta.newer) ? j.beta : null;
+  /* 面板上那行「测试版 xxx」自动、手动都跟着刷：它只是一条状态，
+     不像 updText 那样承载「上次手动查出来的结果」。 */
+  updBetaPaint(beta, curRaw);
   if (j.hasUpdate) {
     /* 自动检查发现有新版：直接弹应用内弹窗（同版本点过「以后再说」就不会再弹）。
-       已是最新、本地比线上新、检查失败这三种情况一律静默，一句提示都不给。 */
+       已是最新、本地比线上新、检查失败这三种情况一律静默，一句提示都不给。
+       测试版有更新也绝不自动弹窗 —— 普通用户不该被 beta 打扰。 */
     if (auto) { updShowDialog(j); return; }
     var meta = [];
     if (j.apkName) meta.push(updEsc(j.apkName));
@@ -8868,15 +8879,88 @@ function renderUpdate(j, fromPoll){
     // 更新内容是应用内展开的：notes 早在检查时就连同 JSON 一起拿回来了，
     // 没必要把用户甩到系统浏览器（那边还得自己登 GitHub，国内多半打不开）。
     if (updNotesOpen && j.notes) html += "<div class=\"updnotes\">" + updEsc(j.notes) + "</div>";
+    if (beta) html += "<div style=\"margin-top:6px;opacity:.8\">另有测试版 <b>" + updEsc(beta.version || beta.tag) + "</b> 在测试中</div>";
     updPaint("有新版本 " + lat + " 可以装", html, "再查一次", false, "ok");
+  } else if (beta) {
+    /* 正式版没更新，但线上有比当前更新的测试版。给一个入口，不自动弹窗。 */
+    if (auto) return;
+    var bmeta = [];
+    if (beta.apkName) bmeta.push(updEsc(beta.apkName));
+    if (beta.size) bmeta.push(updSize(beta.size));
+    if (beta.publishedAt) bmeta.push(updDate(beta.publishedAt));
+    var bhtml = "<div>测试版 <b>" + updEsc(beta.version || beta.tag) + "</b>（当前 " + cur + "）</div>";
+    if (bmeta.length) bhtml += "<div style=\"opacity:.75;margin-top:2px\">" + bmeta.join(" · ") + "</div>";
+    bhtml += "<div style=\"margin-top:8px\"><button class=\"small primary\" data-act=\"updbeta\">看看测试版</button></div>";
+    updPaint("有测试版 " + updEsc(beta.version || beta.tag) + " 可以试装", bhtml, "再查一次", false, "");
   } else if (j.newer) {
     if (auto) return;
-    updPaint("当前 " + cur + " 比线上最新 " + lat + " 还新", "装的可能是还没发布的开发版，不用更新。", "再查一次", false, "");
+    if (curRaw.indexOf("-") >= 0) {
+      updPaint("当前是测试版 " + cur, "正式版线上最新是 <b>" + lat + "</b>；等它发布后可以在应用内直接升级，不用重装。", "再查一次", false, "");
+    } else {
+      updPaint("当前 " + cur + " 比线上最新 " + lat + " 还新", "装的可能是还没发布的开发版，不用更新。", "再查一次", false, "");
+    }
   } else {
     if (auto) return;
     updPaint("已经是最新版本 " + cur, "", "再查一次", false, "ok");
     if (!silent) Android.toast("已经是最新版本 " + j.current);
   }
+}
+/* ---------- 测试版（beta） ---------- */
+/* 面板「检查更新」下面那行：测试版永远指「下一个版本的 beta」，
+   所以只有比当前装的新才显示，不解释历史版本。 */
+function updBetaPaint(b, cur){
+  updBetaData = b || null;
+  var e = el("updBeta");
+  if (e) {
+    if (!b) { e.style.display = "none"; e.innerHTML = ""; }
+    else {
+      e.style.display = "";
+      e.innerHTML = "测试版 <b>" + updEsc(b.version || b.tag) + "</b>"
+        + (b.publishedAt ? "（" + updDate(b.publishedAt) + "）" : "")
+        + " · <a href=\"javascript:void 0\" data-act=\"updbeta\" style=\"color:inherit;text-decoration:underline\">看看</a>";
+    }
+  }
+  /* 存一份：页面重开时先显示上次查到的，等自动检查回来再覆盖。 */
+  try {
+    if (b) localStorage.setItem(UPD_BETA_KEY, JSON.stringify({ beta: b, cur: cur || "", at: new Date().getTime() }));
+    else localStorage.removeItem(UPD_BETA_KEY);
+  } catch (e2) {}
+}
+/* 启动时把上次的测试版提示放回来；装过 / 升级过（当前版本变了）就不再提旧的。 */
+function updBetaRestore(){
+  var raw = "";
+  try { raw = String(localStorage.getItem(UPD_BETA_KEY) || ""); } catch (e) { return; }
+  if (!raw) return;
+  var o = null;
+  try { o = JSON.parse(raw); } catch (e) { o = null; }
+  if (!o || !o.beta) return;
+  var cur = el("v-appver") ? String(el("v-appver").textContent || "") : "";
+  if (o.cur && cur && o.cur !== cur) return;
+  updBetaPaint(o.beta, o.cur || cur);
+}
+/* 点「看看」：复用更新弹窗把测试版说明摊开看。
+   这是用户主动点的，所以不查「以后再说」，也不写去重记录。 */
+function updBetaShow(){
+  var b = updBetaData;
+  if (!b) return;
+  var mask = el("dlgUpdate");
+  if (!mask) return;
+  /* 免责声明还开着时两个遮罩会叠一起，先让用户把声明处理掉。 */
+  var disc = el("dlgDisclaimer");
+  if (disc && disc.classList.contains("on")) { Android.toast("先把上面的提示关掉再看测试版"); return; }
+  var curV = el("v-appver") ? String(el("v-appver").textContent || "") : "";
+  updDlgData = {
+    latest: b.version || b.tag,
+    current: curV,
+    notes: b.notes || "",
+    url: b.url || "",
+    htmlUrl: b.htmlUrl || "",
+    isBeta: true
+  };
+  updDialogFill(updDlgData, "测试版 " + updVerText(b.version || b.tag));
+  var c = el("updDlgCur");
+  if (c) c.textContent = "当前版本 " + updVerText(curV) + " · 测试版，装坏了可以装回正式版";
+  mask.classList.add("on");
 }
 function updDownload(){
   var j = updLast;
@@ -8967,8 +9051,13 @@ function updShowDialog(j){
   /* 免责声明还开着就先记下：两个遮罩叠一起，用户连「同意」都点不踏实。 */
   var disc = el("dlgDisclaimer");
   if (disc && disc.classList.contains("on")) { updDlgWait = j; return; }
+  updDialogFill(j, "发现新版本 " + updVerText(j.latest));
+  mask.classList.add("on");
+}
+/* 弹窗内容统一在这里填，正式版和测试版走同一套 DOM。 */
+function updDialogFill(j, title){
   var t = el("updDlgTitle");
-  if (t) t.textContent = "发现新版本 " + updVerText(j.latest);
+  if (t) t.textContent = title;
   var c = el("updDlgCur");
   if (c) c.textContent = "当前版本 " + updVerText(j.current);
   var n = el("updDlgNotes");
@@ -8977,7 +9066,8 @@ function updShowDialog(j){
     n.textContent = brief;
     n.style.display = brief ? "block" : "none";
   }
-  mask.classList.add("on");
+  var go = document.querySelector('#dlgUpdate button[data-act="updgo"]');
+  if (go) go.textContent = j.isBeta ? "下载测试版" : "去下载";
 }
 /* 「去下载」：一定要交给系统浏览器（Android.openUrl），别在 WebView 里开。
    优先 APK 直链，没有就退到 release 页面。 */
@@ -8990,7 +9080,9 @@ function updDialogGo(){
 }
 function updDialogLater(){
   var j = updDlgData || {};
-  updSkipSet(j.latest);   /* 只记版本号，不动别的任何状态 */
+  /* 测试版弹窗点「以后再说」不写去重记录：那条记录是给正式版弹窗用的，
+     写进 beta 版本号没意义。 */
+  if (!j.isBeta) updSkipSet(j.latest);
   updCloseDialog();
 }
 
@@ -10357,6 +10449,8 @@ refresh();
 setTimeout(function(){ refreshToday(); todayStart(); }, 300);
 /* 启动 1.5 秒后静默查一次更新，发现新版本会弹应用内弹窗（同版本点过「以后再说」就不再弹） */
 maybeAutoCheck();
+/* 先把上次查到的测试版（如果有）放回面板，等上面那次自动检查回来再覆盖 */
+try { updBetaRestore(); } catch (e) {}
 /* v4 首屏折叠初始态 */
 try { applyHomeFold(); } catch (e) {}
 try { noticeInit(); } catch (e) {}
