@@ -427,3 +427,28 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 beta 与正式版之间不需要卸载重装：同一 `versionCode` 的覆盖安装是允许的，数据（沙盒、账号、配置）全部保留。
 
+### 9.1 直连 `github.com:443` 不通时怎么发
+
+症状：`curl -o NUL -w '%{http_code}' https://github.com/` 反复返回 `000`，但 `https://api.github.com/` 返回 200、
+`https://uploads.github.com/` 返回 302 —— 说明只是 `github.com` 这个域名/端口被卡，GitHub 的 API 和上传域名是通的。
+
+这时不要等，用 REST API 把提交和 tag 直接写进远端：
+
+1. `git credential fill` 取 token（`@('protocol=https','host=github.com','')` 用管道喂进去）。
+2. 逐个文件 `POST /repos/{o}/{r}/git/blobs`（内容 base64），再 `POST /git/trees`（`base_tree` = 远端 HEAD 的 tree），
+   然后 `POST /git/commits`（`parents` = 远端 HEAD），最后 `PATCH /git/refs/heads/main` 让 main 指向新提交。
+3. annotated tag：`POST /git/tags`（`object`=新提交、`type=commit`）拿到 tag 对象 sha，再 `POST /git/refs` 建 `refs/tags/<tag>`。
+4. `POST /releases`（`prerelease` / `draft` / `tag_name` / `body`），然后照 §八 第 6 条用 `curl` 传两个包。
+
+三个坑：
+
+- **Release 正文不要让 `Invoke-RestMethod` 发**：带中文长正文时它会把 JSON 撑到几十 MB（本次 47 MB）然后卡死不返回。
+  改成 Python 拼 payload（`json.dumps(..., ensure_ascii=False)` 写 `out/rel-payload.json`），再用
+  `curl -X POST -H @hdr --data-binary @out/rel-payload.json` —— 2098 字节、3.5 秒就建好。
+- **`.ps1` 里有中文必须存 UTF-8 BOM**：`tools.write` 写出的是无 BOM UTF-8，PS 5.1 按 GBK 读会把 `）` 之类读坏，
+  报 `The hash literal was incomplete` / `The string is missing the terminator`。写完用
+  `[IO.File]::WriteAllText($p, $txt, [Text.UTF8Encoding]::new($true))` 补上 BOM。
+- **API 造的提交和本地提交 SHA 不同**（author/committer 变成了 token 的账号）。等 `github.com` 恢复后收口：
+  `git fetch --tags --force origin` → `git reset --hard origin/main` → `git tag -d <tag>` →
+  `git fetch origin refs/tags/<tag>:refs/tags/<tag>`，让本地 tag 也指向远端那个 annotated tag 对象。
+
