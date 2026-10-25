@@ -21,8 +21,17 @@ public class BootSync implements Runnable {
             // 紧急下线」过，重启就是把沙盒又拉起来。同步本身是纯文件操作，照做无妨；
             // 标记只由用户显式「启动」清除（SandboxStart / start-sandbox.sh），这里不碰。
             boolean synced = act.syncScripts();
+            // 覆盖安装后还可能遇到另一件事：沙盒里那份 QQ 是没注入 NapCat 的旧镜像
+            // （QQ 起得来、6099 永远不通）。脚本侧每次启动 QQ 前会补，但旧沙盒已经
+            // 在跑了，只能靠这里先修文件、再重启一次容器，用户什么都不用点。
+            boolean healed = false;
+            try {
+                healed = act.repairNapcatInjection();
+            } catch (Throwable ignored) {
+            }
             // 判断放在同步之后：同步这一两秒里用户完全可能刚按了「关闭进程」。
-            if (synced && !closedByUser()) act.restartServicesIfRunning();
+            if (healed) android.util.Log.i("AstrBotBoot", "已自动补齐 NapCat 注入（旧沙盒里的 QQ 没注入过），重启一次容器");
+            if ((synced || healed) && !closedByUser()) act.restartServicesIfRunning();
         } catch (Throwable ignored) {
         }
         try {

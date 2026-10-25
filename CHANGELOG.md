@@ -16,6 +16,7 @@
 ### 修复
 
 - **内置镜像里的 QQ 是「未注入」状态，NapCat 永远不加载（6099 端口一直不通）**：解压内置镜像时第 50 步（50-napcat）被直接标记为已完成，注入那一步再也不会跑 —— `resources/app/` 里没有 `loadNapCat.js`，`package.json` 的 `main` 还指着 `./application.asar/app_launcher/index.js`，QQ 起来只会显示客户端界面，NapCat 压根没被 require 进来。现在每次拉起 QQ 之前都先补齐注入（缺则写 3 行 `loadNapCat.js`、把 `main` 改成 `./loadNapCat.js`）：幂等、只告警不拦启动；改写优先用 `sed` 原地替换（真机上 `python3` 不保证可用），sed 命中不了才退回 python 改 JSON，最后都会 grep 复核并把原来指向的入口写进日志。
+- **覆盖安装后自动补注入、自动重启，不用再点「重启服务」**：新版 APK 装上后，应用启动时会先做一次纯文件修补（主号走 `opt/QQ`，多实例的 `opt/qqbot-inst/<id>/QQ` 也一并看），发现补过东西就自动重启一次容器让 QQ 带注入重新加载；部署完成时 `deploy.sh` 收尾也会自动拉起 NapCat 与 AstrBot。全程不需要用户点任何按钮。
 - **部署页「AstrBot 版本显示 —」**：本轮按同一份代码在模拟器上复验，版本读取本身没问题（读的是 `ubuntu/opt/AstrBot/astrbot/__init__.py` 里的 `__version__`，模拟器上正常显示 v4.28.2），装回新包再看一眼即可。
 
 ### 变更

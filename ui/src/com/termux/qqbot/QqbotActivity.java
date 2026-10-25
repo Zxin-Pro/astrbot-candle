@@ -1163,6 +1163,19 @@ public class QqbotActivity extends Activity {
         }
     }
 
+    /** 读一个几 KB 的文本文件（package.json 这类），超过 max 就只读前 max 字节。 */
+    private String readText(File f, int max) {
+        try {
+            RandomAccessFile raf = new RandomAccessFile(f, "r");
+            byte[] buf = new byte[(int) Math.min(raf.length(), (long) max)];
+            raf.readFully(buf);
+            raf.close();
+            return new String(buf, "UTF-8");
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
     /** 脚本刚被覆盖，容器还在用旧脚本跑：重启一次让新脚本生效。
      *  必须在线程里调用 —— stop-sandbox.sh 要等 proot 自己退（最多 30 秒）。 */
     public void restartServicesIfRunning() {
@@ -1178,6 +1191,54 @@ public class QqbotActivity extends Activity {
         } catch (Throwable ignored) {
         }
     }
+    /** 覆盖安装新版后自检：内置镜像里那份 QQ 没有注入过 NapCat（缺 loadNapCat.js，
+     *  package.json 的 main 还指向 application.asar），而「解压内置镜像」这条路会把
+     *  50-napcat 直接标记完成，注入步骤永远不会再跑 —— 表现出来就是 QQ 起得来、6099
+     *  一直没人听。这里在启动时纯做文件修补，只碰两个小文件，幂等。
+     *
+     *  和 sandbox/run-napcat.sh 的 ensure_napcat_injection 是同一件事的两层保险：
+     *  脚本那层管「每次启动 QQ 之前」，这里管「新版本刚装上、旧沙盒还在跑」，
+     *  修完由调用方重启一次容器，用户不用点任何按钮。
+     *
+     *  多实例的 QQ 装在 opt/qqbot-inst/&lt;id&gt;/QQ，主号走 opt/QQ，两处都看。
+     *  返回 true 表示这次确实改过文件（调用方据此重启容器）。
+     */
+    public boolean repairNapcatInjection() {
+        try {
+            if (!deployDoneFile().isFile()) return false;
+            File ub = new File(homeDir(), "ubuntu");
+            java.util.List<File> apps = new java.util.ArrayList<File>();
+            apps.add(new File(ub, "opt/QQ/resources/app"));
+            File[] subs = new File(ub, "opt/qqbot-inst").listFiles();
+            if (subs != null) {
+                for (File s : subs) apps.add(new File(s, "QQ/resources/app"));
+            }
+            boolean changed = false;
+            for (File app : apps) {
+                if (!app.isDirectory()) continue;
+                if (!new File(app, "app_launcher/napcat/napcat.mjs").isFile()) continue;
+                File stub = new File(app, "loadNapCat.js");
+                if (stub.length() == 0) {
+                    // 和 run-napcat.sh 里 heredoc 写的内容逐字节一致
+                    String js = "const path = require('node:path');\n"
+                            + "const { pathToFileURL } = require('node:url');\n"
+                            + "import(pathToFileURL(path.join(__dirname, 'app_launcher/napcat/napcat.mjs')).href);\n";
+                    if (writeFileRobust(stub, js.getBytes("UTF-8")) && stub.length() > 0) changed = true;
+                }
+                File pj = new File(app, "package.json");
+                String text = readText(pj, 262144);
+                if (text == null) continue;
+                if (text.contains("\"./loadNapCat.js\"")) continue;   // 已经注入过，别每次开应用都重写
+                String patched = text.replaceFirst("(\"main\"\\s*:\\s*)\"[^\"]*\"", "$1\"./loadNapCat.js\"");
+                if (patched.equals(text)) continue;
+                if (writeFileRobust(pj, patched.getBytes("UTF-8"))) changed = true;
+            }
+            return changed;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     public String defaultBots() {
         try {
             JSONObject bot = new JSONObject();
