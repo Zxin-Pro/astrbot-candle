@@ -371,8 +371,9 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 `zhuxin-astrbot-dl.service`（oneshot）+ `zhuxin-astrbot-dl.timer`（每日）跑 `/data/www/zhuxin-site/scripts/astrbot_download_sync.py`，
 把安装包镜像到 `/data/www/zhuxin-site/downloads/`（最多留 4 个版本），再改写 `data/astrbot.json`。本仓库的 `vps-deploy/astrbot_download_sync.py` 只是源文件。
 
-1.3.1 起 Release 只放一个全量包（`AstrBot-<版本>-arm64.apk`，约 600 MB，镜像在里面，断网也能装完）；
-沙盒镜像按第四节单独传到 VPS 的 `/dl/`，不随 GitHub Release 走。
+1.3.1 起每个 Release 的**主下载**是全量包（`AstrBot-<版本>-arm64.apk`，约 600 MB，镜像在里面，断网也能装完）；
+站点同步 `pick_apk()` 只认它。测试版还会多放一个 `AstrBot-<版本>-update.apk`（约 25 MB），供应用内覆盖升级用。
+沙盒镜像本体按第四节单独传到 VPS 的 `/dl/`，不单独作为 Release 资产。
 
 注意事项：
 
@@ -387,8 +388,11 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
    `/releases/{id}/assets` 确认 `state=uploaded` 且 `digest` 有值；一版里找不到可用包时脚本会沿用站内旧文件，
    不会把它从下载页上抹掉。
 5. 站内文件名固定为 `AstrBot-<版本>.apk`；要强制换包，删掉 `downloads/AstrBot-<版本>.apk` 再跑同步。
-6. **沙盒镜像（约 580～604 MB）不走 GitHub Release**：只传到 VPS 的 `/data/www/zhuxin-site/dl/`（见第四节）；
-   GitHub 上只有约 25 MB 的精简包，本机直接上传即可，不需要再走 SFTP 中转。
+6. **Upload（约 600 MB）用 `curl`，别用 PowerShell 的 `Invoke-RestMethod`**：PS 5.1 传大文件会在中途报
+   `The underlying connection was closed`（本次 1.3.2-beta.1 已踩）。可直接断点重来：
+   `curl.exe -sS -X POST --http1.1 -H @headers.txt -T AstrBot-<版本>-arm64.apk "<upload_url>?name=<文件名>"`，
+   `headers.txt` 里放 `Authorization: token <PAT>` 与 `Content-Type: application/octet-stream` 两行。
+   沙盒镜像本体另按第四节传到 VPS 的 `/data/www/zhuxin-site/dl/`，不单独作为 Release 资产。
 7. **测试版不进站**：`pick_apk()` 跳过文件名含 `beta` 的资产，站点更新列表也跳过 GitHub 标了 pre-release
    的版本；`/releases/latest` 本身就不返回预发布。所以 beta 如果发到 GitHub，**必须勾上
    "Set as a pre-release"** —— 忘了勾，它就成了 latest，官网下载卡与应用内「检查更新」会直接把测试版推给所有人。
@@ -405,10 +409,14 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 3. **构建**（顺序不能反，`build-apk.ps1` 用的是 `build-ui.ps1` 产出的 UI APK）：
    `build-ui.ps1` → `build-apk.ps1 -Arch arm64 -Update` → `build-apk.ps1 -Arch arm64`。
 4. **交付 beta**：把 `AstrBot-1.3.2-beta.1-arm64.apk`（全量）与 `AstrBot-1.3.2-beta.1-arm64-update.apk`
-   （覆盖安装用）连同 SHA-256 发给验收的人；本地打 tag `v1.3.2-beta.1`。beta **不进官网、不推 GitHub latest**。
+   （覆盖安装用）连同 SHA-256 发给验收的人；打 tag `v1.3.2-beta.1` 并 `git push origin refs/tags/v1.3.2-beta.1`。
+   要发 GitHub，就用 `POST /repos/{owner}/{repo}/releases` 建 **`prerelease=true`** 的 Release（tag 填 `v1.3.2-beta.1`），
+   两个包按 §八 第 6 条用 `curl` 上传。beta **不进官网、不推 GitHub latest**。
 5. **验收通过 → 发正式版**：`VERSION` 去掉后缀写成 `1.3.2`，`CHANGELOG.md` 加正式版那段，
    重新走一遍第 3 步构建（`versionCode` 不变，装了 beta 的手机直接覆盖安装即可），打 tag `v1.3.2`，
-   再把全量包传到 GitHub Release（**不要**勾 pre-release），官网同步脚本第二天会自动更新下载卡。
+   把全量包传到 GitHub Release（**不要**勾 pre-release，本 tag 成为 latest），官网同步脚本第二天会自动更新下载卡。
+6. **收尾核对**：`/releases/tags/<tag>` 看 `prerelease` 与两个资产的 `state=uploaded`、`size`、`digest`；
+   beta 阶段再确认 `/releases/latest` 仍是上一正式版；`git rev-list -n 1 <tag>` 与远端 `refs/tags/<tag>^{}` 一致。
 
 beta 与正式版之间不需要卸载重装：同一 `versionCode` 的覆盖安装是允许的，数据（沙盒、账号、配置）全部保留。
 
