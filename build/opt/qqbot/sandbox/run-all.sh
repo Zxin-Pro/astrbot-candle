@@ -44,19 +44,34 @@ degraded() { [ -f /qqbot-state/degrade ]; }
 # stop-sandbox.sh 与 run-napcat.sh 停止时都会清掉该目录里的 *.pid，
 # 所以「停止 = 允许重新拉起」不用额外处理。
 RUNPID=/qqbot-cache/run/run-all.pid
-if [ -f "$RUNPID" ]; then
-  _op=$(cat "$RUNPID" 2>/dev/null)
+# 用 mkdir 抢锁，而不是「先读 pid 再写 pid」：两个启动同时到达时旧写法都能读到
+# 空 pid 然后各写各的，结果是两套 AstrBot/NapCat 一起抢 6099/6199。真机
+# supervisor.log（2026-10-27 01:24:25 和 01:24:29）里两行「开始守护」就是这个问题，
+# 紧接着 NapCat 反复「登录服务已断开」重出二维码。mkdir 是原子的，只有一个能成功。
+RUNLOCK=/qqbot-cache/run/run-all.lock
+mkdir -p /qqbot-cache/run 2>/dev/null
+_try=0
+while ! mkdir "$RUNLOCK" 2>/dev/null; do
+  _op=$(cat "$RUNLOCK/pid" 2>/dev/null)
   case "$_op" in
-    ''|*[!0-9]*) : ;;
-    *)
-      if [ -d "/proc/$_op" ]; then
-        { _oc=$(<"/proc/$_op/cmdline"); } 2>/dev/null
-        case "$_oc" in
-          *run-all.sh*) echo "[supervisor] 已有守护在跑（pid $_op），本次退出"; exit 0 ;;
-        esac
-      fi ;;
+    ''|*[!0-9]*)
+      # 对方可能刚 mkdir，还没把 pid 写进去：等两轮再清，否则会把刚到手的锁删掉。
+      _try=$((_try + 1))
+      if [ "$_try" -ge 3 ]; then rm -rf "$RUNLOCK" 2>/dev/null; _try=0; fi
+      sleep 1
+      continue ;;
   esac
-fi
+  if [ ! -d "/proc/$_op" ]; then
+    rm -rf "$RUNLOCK" 2>/dev/null   # 持有者已死（SIGKILL 残留），清锁重抢
+    continue
+  fi
+  _oc=$(tr '\0' ' ' < "/proc/$_op/cmdline" 2>/dev/null)
+  case "$_oc" in
+    *run-all.sh*) echo "[supervisor] 已有守护在跑（pid $_op），本次退出"; exit 0 ;;
+  esac
+  rm -rf "$RUNLOCK" 2>/dev/null     # pid 被别的进程复用了
+done
+echo $$ > "$RUNLOCK/pid"
 echo $$ > "$RUNPID"
 
 # ---------- 端口探测 ----------
@@ -68,6 +83,25 @@ case "$_pe" in *"No such file"*|*"not supported"*) PORT_PROBE=0 ;; esac
 port_open() {
   [ "$PORT_PROBE" = 1 ] || return 0
   ( exec 3<>"/dev/tcp/127.0.0.1/$1" ) >/dev/null 2>&1
+}
+
+# HTTP 探活：TCP 连通只说明内核把连接收进了 accept 队列。AstrBot 的事件循环被
+# 卡住时，内核照样完成三次握手，旧的 port_open 永远返回「活着」—— 真机日志里
+# 2026-10-27 01:06~01:32 连续 lag 20/116/136/298/92/51/136 秒，supervisor 一次都
+# 没判出卡死。这里发一个最小 GET，N 秒内读不到状态行就算不健康。
+# 读不到 /dev/tcp 时直接返回 0（测不了就别重启，不能把探测能力的缺失当成故障）。
+http_alive() {
+  local port="$1" secs="${2:-6}" line rc
+  [ "$PORT_PROBE" = 1 ] || return 0
+  exec 9<>"/dev/tcp/127.0.0.1/$port" 2>/dev/null || return 1
+  printf 'GET / HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n' >&9 2>/dev/null
+  if [ $? -ne 0 ]; then exec 9<&- 9>&- 2>/dev/null; return 1; fi
+  IFS= read -r -t "$secs" -u 9 line
+  rc=$?
+  exec 9<&- 9>&- 2>/dev/null
+  [ "$rc" = 0 ] || return 1
+  case "$line" in HTTP/*) return 0 ;; esac
+  return 1
 }
 
 # bots.json 里所有实例的 WebUI 端口（可能多个）。只要还有任意一个在监听，
@@ -162,8 +196,9 @@ cleanup() {
   for p in "$NP" "$AB"; do [ -n "$p" ] && kill -TERM -"$p" 2>/dev/null; done
   sleep 1
   for p in "$NP" "$AB"; do [ -n "$p" ] && kill -KILL -"$p" 2>/dev/null; done
-  # 退出时把单实例的 pid 也删掉，否则下一次启动会误判「已有守护在跑」直接退出。
+  # 退出时把单实例的 pid/锁都删掉，否则下一次启动会误判「已有守护在跑」直接退出。
   rm -f "$RUNPID" 2>/dev/null
+  rm -rf "${RUNLOCK:-/qqbot-cache/run/run-all.lock}" 2>/dev/null
   exit 0
 }
 trap cleanup TERM INT
@@ -182,6 +217,9 @@ NAP_PROBE=0
 AB_STARTED=0
 AB_DOWN=0
 AB_PROBE=0
+# AstrBot 卡死用 HTTP 探活判定：连续 3 次（45 秒一轮，约 2 分钟）无响应才重启。
+# 宁可多等一轮，也不要因为手机正忙、一次请求慢了点就把正在回话的服务重启掉。
+AB_MAXDOWN=3
 
 # 宽限期：xvfb + QQ + NapCat 注入本来就要几十秒，刚起来的 180 秒内不判卡死。
 GRACE=180
@@ -293,13 +331,13 @@ while true; do
     AB_PROBE=$NOW
     ABPORT=$(sed -n 's/.*"astrbotPort"[[:space:]]*:[[:space:]]*\([0-9]\{1,5\}\).*/\1/p' "$BOTS_JSON" 2>/dev/null | head -n 1)
     case "${ABPORT:-}" in ''|0|*[!0-9]*) ABPORT=6185 ;; esac
-    if port_open "$ABPORT"; then
+    if http_alive "$ABPORT" 10; then
       AB_DOWN=0
     else
       AB_DOWN=$((AB_DOWN + 1))
-      echo "[supervisor] AstrBot 控制台端口 $ABPORT 探测不通（连续 $AB_DOWN/$MAXDOWN 次）"
-      if [ "$AB_DOWN" -ge "$MAXDOWN" ]; then
-        echo "[supervisor] AstrBot 进程还在但控制台端口一直不通，判定卡死，重启"
+      echo "[supervisor] AstrBot 控制台 $ABPORT 无 HTTP 响应（连续 $AB_DOWN/$AB_MAXDOWN 次）"
+      if [ "$AB_DOWN" -ge "$AB_MAXDOWN" ]; then
+        echo "[supervisor] AstrBot 进程还在但事件循环无响应，判定卡死，重启"
         stop_svc "$AB" AstrBot astrbot
         AB=""
         AB_DOWN=0

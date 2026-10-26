@@ -89,6 +89,40 @@ have() { command -v "$1" >/dev/null 2>&1; }
   echo "----- AstrBot 日志尾部 200 行 (astrbot.log) -----"
   tail -n 200 "$QQBOT_CACHE/logs/astrbot.log" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' || echo "(无)"
   echo
+  # 事件循环卡死时，AstrBot 自己的 watchdog 会把**阻塞线程的完整 Python 堆栈**
+  # 写进这个文件；以前报告只收 astrbot.log 尾部，而那里只有一行「lag detected」，
+  # 等于知道卡了却永远不知道卡在哪（真机 2026-10-27 01:32 那次 136 秒就是这么丢的）。
+  echo "----- 事件循环看门狗堆栈 (event_loop_watchdog.log) -----"
+  _wdlog="$QQBOT_ROOTFS/opt/AstrBot/data/logs/event_loop_watchdog.log"
+  if [ -s "$_wdlog" ]; then
+    echo "### $_wdlog（$(wc -c < "$_wdlog" 2>/dev/null) 字节，修改于 $(date -r "$_wdlog" "+%F %T" 2>/dev/null)）"
+    # 每次阻塞写一份完整堆栈，文件按 1MB 轮转；只取末尾 64KB/200 行，够定位最新的几次。
+    tail -c 65536 "$_wdlog" 2>/dev/null | tail -n 200
+  else
+    echo "(无：AstrBot 只在事件循环阻塞超过 30 秒时才往里写)"
+  fi
+  echo
+  echo "----- 沙盒看门狗日志尾部 80 行 (watchdog.log) -----"
+  tail -n 80 "$QQBOT_HOME/logs/watchdog.log" 2>/dev/null || echo "(无)"
+  echo
+  echo "----- 网络现场采样尾部 120 行 (netdiag.log) -----"
+  tail -n 120 "$QQBOT_CACHE/logs/netdiag.log" 2>/dev/null || echo "(无)"
+  echo
+  echo "----- 组件开关 / 心跳 / pid -----"
+  echo "svc flags : $(ls -1 "$QQBOT_CACHE/svc" 2>/dev/null | tr '\n' ' ')"
+  _hb=$(cat "$QQBOT_CACHE/heartbeat" 2>/dev/null)
+  case "$_hb" in
+    ''|*[!0-9]*) echo "heartbeat : (无)" ;;
+    *) echo "heartbeat : $_hb，距今 $(( $(date +%s) - _hb )) 秒" ;;
+  esac
+  echo "supervisor.pid : $(cat "$QQBOT_HOME/supervisor.pid" 2>/dev/null || echo '(无)')（进程 $([ -d "/proc/$(cat "$QQBOT_HOME/supervisor.pid" 2>/dev/null)" ] && echo 在 || echo 不在)）"
+  echo "watchdog.pid   : $(cat "$QQBOT_HOME/watchdog.pid" 2>/dev/null || echo '(无)')（进程 $([ -d "/proc/$(cat "$QQBOT_HOME/watchdog.pid" 2>/dev/null)" ] && echo 在 || echo 不在)）"
+  for _pf in "$QQBOT_CACHE"/run/*.pid; do
+    [ -f "$_pf" ] || continue
+    _pv=$(cat "$_pf" 2>/dev/null)
+    echo "$(basename "$_pf") : $_pv（进程 $([ -n "$_pv" ] && [ -d "/proc/$_pv" ] && echo 在 || echo 不在)）"
+  done
+  echo
   echo "----- AstrBot 自检（在沙盒里跑）-----"
   # 直接拿 venv 里的 python 探一遍：能 import 就说明依赖是好的，问题在别处；
   # 报 ImportError 就把缺的模块名打出来，一眼定位。
