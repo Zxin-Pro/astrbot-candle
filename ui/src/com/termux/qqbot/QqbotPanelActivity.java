@@ -6,6 +6,7 @@ import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -78,6 +79,11 @@ public class QqbotPanelActivity extends Activity {
         s.setAllowFileAccess(true);
         s.setAllowContentAccess(true);
         web.setWebViewClient(new QqClient());
+        // 同 QqbotActivity：安卓 12+ 的 overscroll stretch 会把整块 WebView 表面拉伸，
+        // NapCat / AstrBot 自己的固定头尾也会跟着变形；滚动条同样是 View 画的，CSS 关不掉。
+        web.setVerticalScrollBarEnabled(false);
+        web.setHorizontalScrollBarEnabled(false);
+        web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         web.setBackgroundColor(0xFF0F1115);
         root.addView(web, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 

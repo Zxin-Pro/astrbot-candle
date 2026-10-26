@@ -139,6 +139,13 @@ body{
 /* 页面本身不滚动出橡皮筋白底 */
 html{ background: var(--page); }
 
+/* B10：滚到顶/底不要再有「橡皮筋 + 下拉刷新」。
+   注意 CSS 只到这一步为止 —— overscroll-behavior 能关掉滚动链和下拉刷新手势，
+   关不掉安卓 12+ WebView 在 View 层对整个 WebView 表面做的 overscroll stretch；
+   那个必须靠 Java 侧 web.setOverScrollMode(View.OVER_SCROLL_NEVER)，
+   WebView 自带的滚动条同理（View 画的，::-webkit-scrollbar 无效）。 */
+html, body{ overscroll-behavior: none; }
+
 button, input, select, textarea{ font: inherit; color: inherit; }
 button{ -webkit-appearance: none; appearance: none; border: 0; background: none; cursor: pointer; }
 /* 触摸端去掉双击缩放带来的等待，点下去立刻派发（触控目标一律只做单击） */
@@ -1267,6 +1274,18 @@ html.bgcroplock{ overflow: hidden; }
   cursor: grab;
 }
 #cropFrame:active{ cursor: grabbing; }
+/* 整图取景（contain）后照片不会铺满框，空白处不能留黑边：先用同一张图按 cover
+   垫满一层，再模糊 + 压暗，看起来像「这张照片自己的虚化延伸」。
+   导出时 cropCanvas 画同一套两层，保证所见即所得。 */
+#cropFill{
+  position: absolute;
+  left: -12%; top: -12%; right: -12%; bottom: -12%;
+  background-position: 50% 50%;
+  background-size: cover;
+  background-repeat: no-repeat;
+  filter: blur(22px) brightness(.55) saturate(1.06);
+  pointer-events: none;
+}
 #cropImg{
   display: block;
   max-width: none;
@@ -2370,7 +2389,14 @@ body{
      退回 visible，既不产生滚动容器（Q1 要的效果不变），也不再包住 fixed 元素。 */
   overflow-x: visible;
   overflow-y: visible;
-  overscroll-behavior-y: auto;
+  /* B10：这一条原来是 auto。CSS 的 overscroll-behavior 只压得住「滚动链 / 下拉刷新
+     手势」，压不住安卓 12+ WebView 在 View 层做的 overscroll stretch（原生拉伸整个
+     WebView 表面，fixed 的背景层和底栏一起被拉长），真正关掉在 QqbotActivity /
+     QqbotPanelActivity 的 setOverScrollMode(View.OVER_SCROLL_NEVER)。
+     这里跟 html 那条对齐成 none，免得某些 ROM 把滚动链留在 body 上又触发下拉刷新。
+     body 现在是 overflow:visible（见上），不是滚动容器，所以这条不会再像 Q1 那样
+     把滚动卡死 —— 那次的根因是 body 变成了滚动容器，而不是 overscroll 本身。 */
+  overscroll-behavior: none;
 }
 
 /* ---------- Q2. 大 R 角令牌 ---------- */
@@ -2456,6 +2482,10 @@ nav.dragging .nav-thumb{ transition: none; }
 nav.calib .nav-thumb{ transition: none; }
 nav button.near{ color: var(--accent); }
 nav button.near .ic{ transform: translateY(-1px) scale(1.05); }
+/* 拖动中：滑块在手上，目标按钮再亮一档，明确「松手就落在这一页」。
+   只动 color / transform，不碰玻璃底。 */
+nav.dragging button.near{ font-weight: 600; }
+nav.dragging button.near .ic{ transform: translateY(-1px) scale(1.1); }
 @media (prefers-reduced-motion: reduce){
   nav .nav-thumb{ transition: none; }
 }
@@ -2601,6 +2631,93 @@ button.small:active, .btns > button:active, .rowbtn:active, .linkbtn:active{
   max-height: 34dvh;
   resize: none;
 }
+
+/* ---------- B10-C. 上传日志附言（「想给开发者的话」） ----------
+   两个上传入口（部署失败框、设置页维护卡）点下去先过这一层：选填一句话再上传。
+   层要盖住底栏（nav 60）、部署遮罩（depov 80）和裁剪器（bgCrop 95），所以给 97。
+   点遮罩故意不关 —— 手滑碰一下刚写的内容就没了；出口只有 ✕ / 取消 / 直接上传。 */
+#devNote{
+  position: fixed;
+  inset: 0;
+  z-index: 97;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: calc(env(safe-area-inset-top, 0px) + 18px) 18px calc(env(safe-area-inset-bottom, 0px) + 18px);
+  background: var(--scrim);
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
+  backdrop-filter: blur(10px) saturate(130%);
+  -webkit-tap-highlight-color: transparent;
+}
+#devNote.on{ display: flex; animation: dnFade var(--dur) var(--ease) both; }
+@keyframes dnFade{ from{ opacity: 0; } to{ opacity: 1; } }
+html.devnotelock{ overflow: hidden; }
+
+.dn-card{
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  max-height: calc(100dvh - 36px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 16px;
+  border: .5px solid var(--glass-line);
+  border-radius: var(--r-md);   /* 16px */
+  background-color: color-mix(in srgb, var(--glass-tint-c) calc(var(--glass-alpha) * 94%), transparent);
+  background-image: linear-gradient(180deg, var(--glass-sheen) 0%, rgba(255,255,255,0) 30%);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 1.8)) saturate(190%) brightness(1.06);
+  backdrop-filter: blur(calc(var(--glass-blur) * 1.8)) saturate(190%) brightness(1.06);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 26px 60px -26px var(--glass-shadow);
+  animation: dnPop var(--dur) var(--ease) both;
+}
+@keyframes dnPop{
+  from{ opacity: 0; transform: translate3d(0, 10px, 0) scale(.97); }
+  to{ opacity: 1; transform: none; }
+}
+.dn-hd{ display: flex; align-items: flex-start; gap: 8px; }
+.dn-t{ flex: 1; padding-top: 3px; font-size: 16.5px; font-weight: 640; letter-spacing: -.2px; color: var(--label); }
+/* ✕ 是 44px 的触控区，但视觉上要贴近卡片右上角，所以用负 margin 顶出去 */
+.dn-x{
+  flex: none;
+  width: 44px; height: 44px;
+  margin: -10px -10px 0 0;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 19px; line-height: 1;
+  color: var(--label-2);
+  background: transparent;
+  box-shadow: none;
+}
+.dn-x:active{ background: var(--fill-2); }
+.dn-x > *{ pointer-events: none; }
+.dn-sub{ margin-top: 2px; font-size: 12.5px; line-height: 1.55; color: var(--label-2); }
+#devNoteTa{
+  display: block;
+  width: 100%;
+  min-height: 116px;
+  max-height: 38dvh;
+  margin-top: 12px;
+  padding: 11px 12px;
+  border: .5px solid var(--field-line);
+  border-radius: var(--r-sm);
+  background: var(--field-bg);
+  color: var(--label);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.6;
+  outline: none;
+  resize: none;
+  -webkit-appearance: none;
+  -webkit-user-select: text;
+  user-select: text;
+}
+#devNoteTa::placeholder{ color: var(--label-3); }
+#devNoteTa:focus{ border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+.dn-ft{ display: flex; align-items: center; gap: 9px; margin-top: 12px; }
+.dn-cnt{ flex: 1; font-size: 11.5px; color: var(--label-3); font-variant-numeric: tabular-nums; }
+.dn-ft button{ flex: none; padding: 0 16px; border-radius: var(--r-md); font-size: 14.5px; }
+.dn-ft button.primary{ min-width: 104px; }
 </style>
 </head>
 <body>
@@ -3518,10 +3635,11 @@ button.small:active, .btns > button:active, .rowbtn:active, .linkbtn:active{
 <div id="bgCrop" role="dialog" aria-modal="true" aria-labelledby="cropTitle" aria-hidden="true">
   <div class="crop-hd">
     <div class="crop-t" id="cropTitle">裁剪背景</div>
-    <div class="crop-s">拖动调整位置 · 双指或滚轮缩放</div>
+    <div class="crop-s">整张照片已完整显示 · 拖动摆位 · 双指或滚轮缩放</div>
   </div>
   <div id="cropStage">
     <div id="cropFrame">
+      <div id="cropFill" aria-hidden="true"></div>
       <img id="cropImg" alt="背景预览" draggable="false">
       <div class="crop-grid" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
     </div>
@@ -3539,6 +3657,27 @@ button.small:active, .btns > button:active, .rowbtn:active, .linkbtn:active{
   </div>
 </div>
 
+
+<!-- ===== 上传日志附言（§B10-C） =====
+     两个上传入口（部署失败框 / 设置页维护卡）现在都先弹这一层，让用户补一句
+     「想给开发者的话」，选填。留言由 Android.uploadLogNote() 落盘到
+     $HOME/.qqbot/devnote.txt，upload-log.sh 在脱敏之前把它贴到报告最前面。
+     按钮顺序沿用全站约定：次要动作在左、主操作在右（同裁剪器的 取消 / 确定）。 -->
+<div id="devNote" role="dialog" aria-modal="true" aria-labelledby="devNoteT" aria-hidden="true">
+  <div class="dn-card" id="devNoteCard">
+    <div class="dn-hd">
+      <div class="dn-t" id="devNoteT">想给开发者说点什么？</div>
+      <button class="dn-x" data-act="devnotex" aria-label="关闭">&times;</button>
+    </div>
+    <div class="dn-sub">选填。说说这次卡在哪一步、看到什么现象，或者报错里那句看不懂的话 —— 作者会连着日志一起看。</div>
+    <textarea id="devNoteTa" maxlength="1000" rows="4" placeholder="例如：这次卡在第 3 步 apt 安装，界面一直没动静，等了 20 分钟…"></textarea>
+    <div class="dn-ft">
+      <span class="dn-cnt" id="devNoteCnt">0 / 1000</span>
+      <button data-act="devnotecancel">取消</button>
+      <button class="primary" data-act="devnoteok" id="btnDevNoteOk">直接上传</button>
+    </div>
+  </div>
+</div>
 
 <div class="depov" id="depov" role="status" aria-live="polite">
   <div class="depov-in">
@@ -3671,6 +3810,14 @@ function applyBg(){
   var lay = el("bgLayer");
   if (!lay) return;
   var img = S.bgImg || lsGet("qqbot.bgimg", "");
+  /* 裁剪产物本身就是「屏幕比例 + 整图都在里面」的一张图，显示时再按 cover 拉
+     一遍等于又裁一刀（横图最明显），所以裁过的图按 100% 100% 铺满，和裁剪框
+     里看到的构图完全一致。没裁过的原生图保持原来的 cover 观感。 */
+  var isCrop = !!img && lsGet("qqbot.bgcrop", "") === "1";
+  /* 注意：后面 Z1 那段用 background 简写画了色雾，简写会把 background-size 重置回
+     auto，没裁过的照片就会按 1:1 原始像素显示（大图只露出中间一小块）。这里显式
+     写死 cover，把原图铺满屏幕的原意补回来。 */
+  lay.style.backgroundSize = isCrop ? "100% 100%" : "cover";
   if (img) {
     lay.style.backgroundImage = "url(" + img + ")";
     lay.style.backgroundColor = "";
@@ -3838,7 +3985,9 @@ function cropLayout(){
   frame.style.height = h + "px";
   CR.frameW = w;
   CR.frameH = h;
-  CR.base = Math.max(w / CR.nw, h / CR.nh);   /* cover */
+  /* 默认整图可见（contain）：照片完整落在取景框里，框里空出来的部分由
+     #cropFill 的模糊填充层垫住，所以不会出现黑边。z = 1 就是整图。 */
+  CR.base = Math.min(w / CR.nw, h / CR.nh);
   var img = el("cropImg");
   if (img) { img.style.width = CR.nw + "px"; img.style.height = CR.nh + "px"; }
 }
@@ -3849,7 +3998,9 @@ function paintCrop(){
   if (!img || !CR.nw) return;
   var k = CR.base * CR.z;
   var dw = CR.nw * k, dh = CR.nh * k;
-  var mx = Math.max(0, (dw - CR.frameW) / 2), my = Math.max(0, (dh - CR.frameH) / 2);
+  /* 活动范围：图比框大时贴住边、图比框小时可以在框内摆但不跑出框。
+     两种情况余量都是 |差值|/2，取绝对值即可。 */
+  var mx = Math.abs(dw - CR.frameW) / 2, my = Math.abs(dh - CR.frameH) / 2;
   CR.ox = Math.max(-mx, Math.min(mx, CR.ox));
   CR.oy = Math.max(-my, Math.min(my, CR.oy));
   var tx = (CR.frameW - dw) / 2 + CR.ox;
@@ -4036,6 +4187,9 @@ function bgCropOpen(src){
     CR.nh = pre.naturalHeight || pre.height || 1;
     CR.srcImg = pre;   /* 导出时直接画这张已解码的图，不依赖可见 img 的解码时机 */
     im.src = src;
+    /* 同一张图给底层填充层：框里空出来的部分用它的虚化版垫住 */
+    var fl = el("cropFill");
+    if (fl) fl.style.backgroundImage = "url(" + src + ")";
     try { document.documentElement.classList.add("bgcroplock"); } catch (e) {}
     ov.classList.add("on");
     ov.setAttribute("aria-hidden", "false");
@@ -4070,6 +4224,9 @@ function bgCropClose(){
   try { document.documentElement.classList.remove("bgcroplock"); } catch (e) {}
   var im = el("cropImg");
   if (im) setTimeout(function(){ if (!CR.open) im.removeAttribute("src"); }, 260);
+  /* 填充层也一起卸掉：dataURL 几百 KB，留在隐藏的层上白占内存 */
+  var fl = el("cropFill");
+  if (fl) setTimeout(function(){ if (!CR.open) fl.style.backgroundImage = ""; }, 260);
 }
 
 /* 「调整裁剪」：优先拿原生原图重新取景（画质比再裁一次本地 JPEG 好），
@@ -4087,30 +4244,75 @@ function bgCropOpenCurrent(){
   bgCropOpen(src);
 }
 
-/* 按框内可视区从原图取样，长边 1600，JPEG 0.85；超 2MB 先降质量再降尺寸 */
-function cropCanvas(){
-  var img = CR.srcImg || el("cropImg");
-  if (!img || !CR.nw) return null;
-  var k = CR.k || (CR.base * CR.z);
-  var sx = -CR.tx / k, sy = -CR.ty / k;
-  var sw = CR.frameW / k, sh = CR.frameH / k;
-  /* 浮点误差可能让取样区越界一像素，越界处 drawImage 会给透明边 */
-  sx = Math.max(0, Math.min(CR.nw - 1, sx));
-  sy = Math.max(0, Math.min(CR.nh - 1, sy));
-  sw = Math.max(1, Math.min(CR.nw - sx, sw));
-  sh = Math.max(1, Math.min(CR.nh - sy, sh));
-  var ratio = CR.frameW / CR.frameH;
+/* 导出尺寸：长边 1600（竖图 h = 1600，横图 w = 1600），比例 = 取景框比例 */
+function cropOutSize(){
+  var ratio = CR.frameH ? CR.frameW / CR.frameH : 0;
+  if (!isFinite(ratio) || ratio <= 0) ratio = 9 / 16;
   var w, h;
   if (ratio >= 1) { w = 1600; h = Math.max(1, Math.round(1600 / ratio)); }
   else { h = 1600; w = Math.max(1, Math.round(1600 * ratio)); }
+  return { w: w, h: h };
+}
+
+/* 底层填充：同图按 cover 取样 → 缩到 1/26 再分两级放大（浏览器双线性缩放，
+   两级后就是柔和虚化，比 ctx.filter 的 blur 便宜很多）→ 压暗。
+   对应预览层 .crop-fill 的 blur(22px)/brightness(.55)。 */
+function cropFillDraw(ctx, w, h){
+  var img = CR.srcImg || el("cropImg");
+  if (!img || !CR.nw || !CR.nh) return;
+  var s = Math.max(w / CR.nw, h / CR.nh);
+  var sw = Math.min(CR.nw, w / s), sh = Math.min(CR.nh, h / s);
+  var sx = (CR.nw - sw) / 2, sy = (CR.nh - sh) / 2;
+  var lw = Math.max(8, Math.round(w / 26)), lh = Math.max(8, Math.round(h / 26));
+  var c0 = document.createElement("canvas");
+  c0.width = lw;
+  c0.height = lh;
+  var x0 = c0.getContext("2d");
+  if (!x0) return;
+  x0.imageSmoothingEnabled = true;
+  x0.drawImage(img, sx, sy, sw, sh, 0, 0, lw, lh);
+  var c1 = document.createElement("canvas");
+  c1.width = Math.max(8, lw * 3);
+  c1.height = Math.max(8, lh * 3);
+  var x1 = c1.getContext("2d");
+  if (!x1) return;
+  x1.imageSmoothingEnabled = true;
+  x1.imageSmoothingQuality = "high";
+  x1.drawImage(c0, 0, 0, c1.width, c1.height);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(c1, 0, 0, w, h);
+  ctx.fillStyle = "rgba(0,0,0,.45)";   /* 对应预览里的 brightness(.55) */
+  ctx.fillRect(0, 0, w, h);
+}
+
+/* 导出 = 预览看到的两层：底层模糊填充铺满 + 上层照片按当前取景落位。
+   照片只画框内可见的那块，避免高倍放大时把整图放大几十倍再裁。 */
+function cropCanvas(){
+  var img = CR.srcImg || el("cropImg");
+  if (!img || !CR.nw) return null;
+  var o = cropOutSize(), w = o.w, h = o.h;
   var c = document.createElement("canvas");
   c.width = w;
   c.height = h;
   var ctx = c.getContext("2d");
   if (!ctx) return null;
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
+  cropFillDraw(ctx, w, h);
+  var k = CR.k || (CR.base * CR.z);
+  if (!isFinite(k) || k <= 0) k = CR.base || 1;
+  var rx = CR.frameW ? w / CR.frameW : 1;
+  var ry = CR.frameH ? h / CR.frameH : 1;
+  var dx = CR.tx * rx, dy = CR.ty * ry, dw = CR.nw * k * rx, dh = CR.nh * k * ry;
+  var x0 = Math.max(0, dx), y0 = Math.max(0, dy);
+  var x1 = Math.min(w, dx + dw), y1 = Math.min(h, dy + dh);
+  if (dw > 0 && dh > 0 && x1 > x0 && y1 > y0) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img,
+      (x0 - dx) / dw * CR.nw, (y0 - dy) / dh * CR.nh,
+      (x1 - x0) / dw * CR.nw, (y1 - y0) / dh * CR.nh,
+      x0, y0, x1 - x0, y1 - y0);
+  }
   return c;
 }
 
@@ -4620,7 +4822,13 @@ function showTab(t){
 var NAVS = {
   nav: null, thumb: null, btns: [], idx: 0, press: 0, hover: 0,
   dragging: false, moved: 0, startX: 0, baseX: 0,
-  suppress: false, tid: 0, on: false
+  suppress: false, tid: 0, on: false,
+  /* v1.3.3-beta.10：拖动要「滑到哪就切到哪」，所以手势期间得记住真的在显示的页签。
+     liveTab = 已经 showTab 过的页签；pendI = 下一帧要落到的按钮序号；raf = 已排队的帧/定时器；
+     lastSw = 上次切页时间（70ms 冷却）；swN = 本次手势切了几次；
+     cx / x0 / x1 = 手势开始时量一次的按钮中心与滑块边界（pointermove 里不再反复量）。 */
+  liveTab: "", pendI: -1, raf: 0, lastSw: 0, swN: 0,
+  cx: null, x0: 0, x1: 0
 };
 
 function navPaint(i){
@@ -4646,20 +4854,95 @@ function navSync(){
 function navCalibrate(){
   var s = NAVS;
   if (!s.nav || !s.thumb) return;
+  s.cx = null;                          /* 尺寸变了，手势缓存的按钮中心作废 */
   s.nav.classList.add("calib");
   navSync();
   void s.thumb.offsetWidth;            /* 先落一帧，再恢复过渡 */
   s.nav.classList.remove("calib");
 }
 
-function navNearest(clientX){
-  var s = NAVS, best = 0, bd = 1e9;
+/* 手势期间按钮几何是静止的：start 时量一次中心点，pointermove 里只做减法。
+   每个 move 都去量 4 个 getBoundingClientRect 会反复触发布局，真机上就是掉帧。 */
+function navMeasure(){
+  var s = NAVS, n = s.btns.length, i, r;
+  s.cx = [];
+  for (i = 0; i < n; i++){
+    r = s.btns[i].getBoundingClientRect();
+    s.cx.push(r.left + r.width / 2);
+  }
+  s.x0 = s.btns[0].offsetLeft + 4;
+  s.x1 = s.btns[n - 1].offsetLeft + 4;
+}
+
+function navCurTab(){
+  var s = NAVS;
   for (var i = 0; i < s.btns.length; i++){
+    if (s.btns[i].classList.contains("on")) return s.btns[i].getAttribute("data-tab");
+  }
+  return "";
+}
+
+function navNearest(clientX){
+  var s = NAVS, best = 0, bd = 1e9, i, d;
+  if (s.cx && s.cx.length === s.btns.length){
+    for (i = 0; i < s.cx.length; i++){
+      d = Math.abs(clientX - s.cx[i]);
+      if (d < bd){ bd = d; best = i; }
+    }
+    return best;
+  }
+  for (i = 0; i < s.btns.length; i++){
     var r = s.btns[i].getBoundingClientRect();
-    var d = Math.abs(clientX - (r.left + r.width / 2));
+    d = Math.abs(clientX - (r.left + r.width / 2));
     if (d < bd){ bd = d; best = i; }
   }
   return best;
+}
+
+/* ---------- 拖动中实时切页（v1.3.3-beta.10） ----------
+   原来只有 thumb 跟着手跑，页面要等抬手才换 —— 用户说的「只有条条在动」就是这个。
+   现在 pointermove 只做两件事：挪 thumb、记下最近页签；真正切页排到下一帧再干，
+   配 70ms 冷却 + 同页签去重，避免快速划动时把整页重渲染刷爆。 */
+function navStopFlush(){
+  var s = NAVS;
+  s.pendI = -1;
+  if (!s.raf) return;
+  try { cancelAnimationFrame(s.raf); } catch (e) {}
+  clearTimeout(s.raf);
+  s.raf = 0;
+}
+
+function navQueue(i){
+  var s = NAVS, wait;
+  if (!s.dragging || i < 0 || i >= s.btns.length) return;
+  s.pendI = i;
+  if (s.raf) return;
+  wait = 70 - (Date.now() - s.lastSw);
+  if (wait > 0){ s.raf = setTimeout(navFlush, wait); return; }
+  if (window.requestAnimationFrame) s.raf = window.requestAnimationFrame(navFlush);
+  else s.raf = setTimeout(navFlush, 16);
+}
+
+function navFlush(){
+  var s = NAVS, i, b, t;
+  s.raf = 0;
+  if (!s.dragging) return;
+  i = s.pendI; s.pendI = -1;
+  b = (i >= 0) ? s.btns[i] : null;
+  if (!b) return;
+  /* .near 跟 .on 一起挪：任何时刻底栏只有一枚高亮，不会出现两个亮按钮。 */
+  if (s.hover !== i){
+    if (s.btns[s.hover]) s.btns[s.hover].classList.remove("near");
+    s.hover = i;
+    b.classList.add("near");
+  }
+  t = b.getAttribute("data-tab");
+  if (!t || t === s.liveTab) return;      /* 同一个页签只切一次 */
+  s.liveTab = t;
+  s.lastSw = Date.now();
+  s.swN++;
+  /* showTab 里的 navSync 在 dragging 时提前 return，所以 thumb 不会被拉回按钮上 */
+  try { showTab(t); } catch (e) {}
 }
 
 function navThumbX(){
@@ -4673,54 +4956,70 @@ function navClearNear(){
 }
 
 function navDown(e){
-  var s = NAVS;
+  var s = NAVS, i, b, sleep;
   if (!s.on || s.dragging) return;
   if (e.pointerType === "mouse" && e.button !== 0) return;
-  var b = e.target && e.target.closest ? e.target.closest("button[data-tab]") : null;
-  var i = b ? s.btns.indexOf(b) : navNearest(e.clientX);
+  b = e.target && e.target.closest ? e.target.closest("button[data-tab]") : null;
+  navMeasure();
+  i = b ? s.btns.indexOf(b) : navNearest(e.clientX);
   if (i < 0) return;
   s.dragging = true; s.moved = 0; s.press = i; s.hover = i;
   s.startX = e.clientX;
-  s.baseX = navThumbX();
+  s.liveTab = navCurTab();      /* 抬手前页面就在这个页签上，别再多切一次 */
+  s.swN = 0;
+  navStopFlush();
   s.nav.classList.add("dragging");
+  /* 设置页不在底栏里：nav 是 .sleep，滑块藏起来了，位置还停在上一页。
+     这时从设置页按下来，先把滑块瞬移到手指下的按钮，否则会从旧位置滑一段过来。 */
+  sleep = s.nav.classList.contains("sleep");
+  if (sleep){
+    s.nav.classList.remove("sleep");
+    navPaint(i);
+  }
+  s.baseX = navThumbX();
   s.btns[i].classList.add("near");
   try { s.nav.setPointerCapture(e.pointerId); } catch (e1) {}
 }
 
 function navMove(e){
-  var s = NAVS;
+  var s = NAVS, dx, x, i;
   if (!s.dragging) return;
-  var dx = e.clientX - s.startX;
+  dx = e.clientX - s.startX;
   if (!s.moved && Math.abs(dx) > 6) s.moved = 1;
   if (!s.moved) return;
   if (e.cancelable) e.preventDefault();
-  var x0 = s.btns[0].offsetLeft + 4;
-  var x1 = s.btns[s.btns.length - 1].offsetLeft + 4;
-  var x = s.baseX + dx;
-  if (x < x0) x = x0;
-  if (x > x1) x = x1;
+  /* 边界与按钮中心都在 navDown 里量过，这里不再读 offsetLeft/getBoundingClientRect */
+  x = s.baseX + dx;
+  if (x < s.x0) x = s.x0;
+  if (x > s.x1) x = s.x1;
   s.thumb.style.transform = "translate3d(" + x + "px,-50%,0)";
-  var i = navNearest(e.clientX);
-  if (i !== s.hover){
-    s.btns[s.hover].classList.remove("near");
-    s.hover = i;
-    s.btns[i].classList.add("near");
-  }
+  /* 只记「最近哪个页签」，切页与换高亮交给 navFlush：一帧最多一次，同页签只切一次 */
+  i = navNearest(e.clientX);
+  if (i !== s.hover) navQueue(i);
 }
 
 function navUp(e){
-  var s = NAVS;
+  var s = NAVS, i, b, t;
   if (!s.dragging) return;
-  s.dragging = false;
+  s.dragging = false;              /* 先解除：navSync 才会真的落位，滑块带过渡吸到最终页签 */
   s.nav.classList.remove("dragging");
   navClearNear();
+  navStopFlush();                  /* 还排着队的切页作废，下面按抬手位置一次定 */
   try { s.nav.releasePointerCapture(e.pointerId); } catch (e1) {}
-  var i = s.moved ? s.hover : s.press;
-  var b = s.btns[i];
+  /* 抬手瞬间以手指位置为准：s.hover 可能还停在上一帧没落地的那一枚上 */
+  i = s.moved ? navNearest(e.clientX) : s.press;
+  if (i < 0 || i >= s.btns.length) i = s.press;
+  b = s.btns[i];
   s.suppress = true;
   clearTimeout(s.tid);
   s.tid = setTimeout(function(){ s.suppress = false; }, 420);
-  if (b) { try { showTab(b.getAttribute("data-tab")); } catch (e2) {} }
+  navSync();
+  if (!b) return;
+  t = b.getAttribute("data-tab");
+  if (!t) return;
+  if (s.moved && t === s.liveTab) return;   /* 拖动途中已经切到这一页了，别重渲染第二次 */
+  s.liveTab = t;
+  try { showTab(t); } catch (e2) {}
 }
 
 function navCancel(){
@@ -4729,6 +5028,8 @@ function navCancel(){
   s.dragging = false;
   s.nav.classList.remove("dragging");
   navClearNear();
+  navStopFlush();
+  /* 拖动中已经真的切过页了，回滚反而突兀：滑块归位到当前页签就好 */
   navSync();
 }
 
@@ -4791,6 +5092,9 @@ var NO_LOCK_ACTS = [
   /* 维护页那个常驻的「上传错误日志」：部署是成功的前提下，服务照样可能起不来，
      而失败弹窗里的那个入口只有部署失败/卡住时才会出现，正好错开了最需要它的场景。 */
   "uploadlogs",
+  /* 上传前那层「想给开发者的话」：它属于上传流程本身（写留言 / 取消 / 上传），
+     部署没成功时正是最需要它的时刻，绝不能因为未部署就把「直接上传」吞掉。 */
+  "devnoteok", "devnotecancel", "devnotex",
   "settings", "backhome", "showlogs",
   "pickbg", "clearbg", "cropbg", "cropreset", "cropcancel", "cropok", "bgpreset", "glass", "theme",
   "reload", "slim", "rmcard",
@@ -6065,9 +6369,99 @@ function paintErrAsk(etxt, d){
   var b = el("btnUploadLog");
   if (b) { b.disabled = UPLOADING; b.textContent = UPLOADING ? "正在上传…" : "上传错误日志"; }
 }
+/* ---------- 上传日志附言（§B10-C） ----------
+   两个上传入口（部署失败框、设置页维护卡）现在都先弹「想给开发者的话」，选填：
+   写不写都要能一键传完。留言交给 Android.uploadLogNote(text)，Java 落盘到
+   $HOME/.qqbot/devnote.txt，upload-log.sh 在脱敏之前把它贴到整份报告最前面。
+   旧安装包没有 uploadLogNote 就退回 uploadLog()——行为与以前一致，只是没有附言。 */
+var DEVNOTE_FROM = "";      /* "" / "err" / "maint"：这次上传从哪个入口进来 */
+var DEVNOTE_WIRED = false;
+
+/* 桥是否具备上传能力：新包有 uploadLogNote，旧包只有 uploadLog */
+function uploadLogAble(){
+  return typeof Android !== "undefined" && !!Android && !!(Android.uploadLogNote || Android.uploadLog);
+}
+/* 真正调桥。留言为空也照传：脚本那边只看 devnote.txt 在不在，没有就没有这一段。 */
+function uploadLogCall(note){
+  var s = note == null ? "" : String(note);
+  try {
+    if (typeof Android !== "undefined" && Android && Android.uploadLogNote) {
+      return String(Android.uploadLogNote(s));
+    }
+    return String(Android.uploadLog());
+  } catch (e) {
+    return "上传失败：" + e;
+  }
+}
+function devNoteCount(){
+  var ta = el("devNoteTa"), c = el("devNoteCnt");
+  if (!ta || !c) return;
+  c.textContent = String(ta.value || "").length + " / 1000";
+}
+function devNoteWire(){
+  if (DEVNOTE_WIRED) return;
+  var ta = el("devNoteTa");
+  if (!ta || !ta.addEventListener) return;
+  DEVNOTE_WIRED = true;
+  ta.addEventListener("input", devNoteCount, false);
+  devNoteCount();
+}
+/* 打开：每次都清空上一轮的草稿，别让上次写的留言被悄悄带到这次的报告里 */
+function devNoteOpen(from){
+  var ov = el("devNote");
+  if (!ov) return false;
+  devNoteWire();
+  DEVNOTE_FROM = from || "";
+  var ta = el("devNoteTa");
+  if (ta) { try { ta.value = ""; } catch (e) {} }
+  devNoteCount();
+  ov.classList.add("on");
+  ov.setAttribute("aria-hidden", "false");
+  document.documentElement.classList.add("devnotelock");
+  /* 等淡入落稳再聚焦：立刻 focus 会让键盘先弹、卡片后到，视觉上跳一下 */
+  setTimeout(function(){
+    var t2 = el("devNoteTa");
+    if (t2 && ov.classList.contains("on")) { try { t2.focus(); } catch (e) {} }
+  }, 240);
+  return true;
+}
+function devNoteClose(){
+  var ta = el("devNoteTa");
+  if (ta) { try { ta.blur(); } catch (e) {} }
+  var ov = el("devNote");
+  if (!ov) return;
+  ov.classList.remove("on");
+  ov.setAttribute("aria-hidden", "true");
+  document.documentElement.classList.remove("devnotelock");
+}
+/* 取消 / ✕：不发请求，直接收起 */
+function devNoteCancel(){
+  DEVNOTE_FROM = "";
+  devNoteClose();
+}
+/* 直接上传：取留言 → 关层 → 走原来的「正在上传…/结果写 cmdOut/toast」流程 */
+function devNoteSubmit(){
+  var ta = el("devNoteTa");
+  var note = ta ? String(ta.value || "") : "";
+  /* 换行要留着（作者看得懂分段），只把回调里的 \r\n 归一化成 \n */
+  note = note.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  if (note.length > 1000) note = note.substring(0, 1000);
+  /* 全空白等于没写：不弹二次确认，直接按空留言上传 */
+  note = note.replace(/^[\s\u3000]+|[\s\u3000]+$/g, "");
+  if (!note.replace(/\s+/g, "")) note = "";
+  var from = DEVNOTE_FROM;
+  DEVNOTE_FROM = "";
+  devNoteClose();
+  if (from === "maint") runUploadLogs(note);
+  else if (from === "err") runUploadLog(note);
+}
 function doUploadLog(){
   if (UPLOADING) return;
-  if (typeof Android === "undefined" || !Android.uploadLog) { Android.toast("这个安装包不支持上传，请到官网装最新版"); return; }
+  if (!uploadLogAble()) { if (typeof Android !== "undefined" && Android.toast) Android.toast("这个安装包不支持上传，请到官网装最新版"); return; }
+  devNoteOpen("err");
+}
+function runUploadLog(note){
+  if (UPLOADING) return;
   UPLOADING = true;
   var box = el("errAsk"), b = el("btnUploadLog");
   var tx = box ? box.querySelector(".asktx") : null;
@@ -6075,8 +6469,7 @@ function doUploadLog(){
   if (b) { b.disabled = true; b.textContent = "正在上传…"; }
   if (tx) tx.textContent = "正在打包上传，大约 10 秒，期间别退出应用…";
   setTimeout(function(){
-    var r = "";
-    try { r = String(Android.uploadLog()); } catch (e) { r = "上传失败：" + e; }
+    var r = uploadLogCall(note);
     UPLOADING = false;
     if (tx) tx.textContent = back;
     if (b) { b.disabled = false; b.textContent = "上传错误日志"; }
@@ -6094,21 +6487,26 @@ function skipErrAsk(){
   Android.toast("好，这次不上传");
 }
 /* 维护页的常驻上传入口。
-   跟部署失败弹窗里那个走同一个 Android.uploadLog()，区别只是结果直接写进
-   「维护」卡片下面那块 cmdOut，不靠 toast —— 编号有十几位，toast 会被截掉，
+   跟部署失败弹窗里那个走同一套上传（现在还会带上「想给开发者的话」），区别只是结果
+   直接写进「维护」卡片下面那块 cmdOut，不靠 toast —— 编号有十几位，toast 会被截掉，
    而用户要把编号念给作者听。 */
 function doUploadLogs(){
-  if (UPLOADING) { Android.toast("正在上传，请稍候"); return; }
-  if (typeof Android === "undefined" || !Android.uploadLog) {
-    Android.toast("这个安装包不支持上传，请到官网装最新版"); return;
+  if (UPLOADING) { if (typeof Android !== "undefined" && Android.toast) Android.toast("正在上传，请稍候"); return; }
+  if (!uploadLogAble()) {
+    if (typeof Android !== "undefined" && Android.toast) Android.toast("这个安装包不支持上传，请到官网装最新版");
+    return;
   }
+  devNoteOpen("maint");
+}
+/* 留言对话框关掉之后才走到这里：note 是用户写的话，可能为空串 */
+function runUploadLogs(note){
+  if (UPLOADING) return;
   UPLOADING = true;
   var b = el("btnUploadLogs"), out = el("cmdOut");
   if (b) { b.disabled = true; b.textContent = "正在打包上传…"; }
   if (out) { out.style.display = ""; out.textContent = "正在打包上传（部署日志 + 各服务日志 + 机型信息），大约 10 秒，期间别退出应用…"; }
   setTimeout(function(){
-    var r = "";
-    try { r = String(Android.uploadLog()); } catch (e) { r = "上传失败：" + e; }
+    var r = uploadLogCall(note);
     UPLOADING = false;
     if (b) { b.disabled = false; b.textContent = "上传错误日志"; }
     if (out) out.textContent = r || "没有回音";
@@ -6856,7 +7254,10 @@ document.addEventListener("click", function(ev){
   else if (act === "copylog") doCopyDeployLog();
   else if (act === "doctor") doDoctor();
   else if (act === "uploadlog") doUploadLog();
-else if (act === "uploadlogs") doUploadLogs();
+  else if (act === "uploadlogs") doUploadLogs();
+  else if (act === "devnoteok") devNoteSubmit();
+  else if (act === "devnotecancel") devNoteCancel();
+  else if (act === "devnotex") devNoteCancel();
   else if (act === "uploadskip") skipErrAsk();
   else if (act === "saveproxy") saveProxy();
   else if (act === "clearproxy") { if (el("inProxy")) el("inProxy").value = ""; saveProxy(); }

@@ -967,6 +967,51 @@ public class QqbotBridge {
      */
     @JavascriptInterface
     public String uploadLog() {
+        return runUploadLog();
+    }
+
+    /**
+     * 带「想给开发者的话」的上传（beta.10 起两个上传入口都会先问一句）。
+     *
+     * note 先落盘成沙盒里的 $HOME/.qqbot/devnote.txt（= act.qqbotDir()/devnote.txt），
+     * upload-log.sh 会在脱敏之前把它贴到整份报告的最前面；脱敏是对合并后的整份文件跑的，
+     * 所以留言里写到的账号、手机号一样会被打码。留言为空就把旧文件删掉，
+     * 免得上一轮写的附言被悄悄带进这次报告。写文件失败不阻断上传：
+     * 附言是可选的，日志本身更重要。
+     */
+    @JavascriptInterface
+    public String uploadLogNote(String note) {
+        writeDevNote(note);
+        return runUploadLog();
+    }
+
+    /** 把附言写进沙盒；空串 = 删掉旧附言。任何异常都静默，上传不靠它成不成。 */
+    private void writeDevNote(String note) {
+        File f = new File(act.qqbotDir(), "devnote.txt");
+        String s = note == null ? "" : note.replace("\r\n", "\n").replace('\r', '\n').trim();
+        if (s.length() > 1000) s = s.substring(0, 1000);
+        try {
+            if (s.length() == 0) {
+                if (f.exists()) f.delete();
+                return;
+            }
+            File dir = f.getParentFile();
+            if (dir != null && !dir.exists()) dir.mkdirs();
+            java.io.OutputStreamWriter w = new java.io.OutputStreamWriter(
+                    new java.io.FileOutputStream(f), "UTF-8");
+            try {
+                w.write(s);
+                w.write("\n");
+            } finally {
+                w.close();
+            }
+        } catch (Throwable ignored) {
+            /* 写不进去就算了，日志照传 */
+        }
+    }
+
+    /** uploadLog()/uploadLogNote() 共用的那段：脚本存在性检查 + 同步跑 shell。 */
+    private String runUploadLog() {
         String script = act.usrDir() + "/opt/qqbot/upload-log.sh";
         File f = new File(script);
         if (!f.exists()) return "上传失败：这台手机上的脚本还没就位（" + script + "），请先完成部署";

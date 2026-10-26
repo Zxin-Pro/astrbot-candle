@@ -17,6 +17,48 @@
 
 ---
 
+## [1.3.3-beta.10] - 2026-10-26
+
+> **测试版**：把「滑动时背景和底栏被拉伸」从原生层关掉，底栏拖动改成「滑到哪、页面就切到哪」，
+> 右侧滚动条彻底清掉；上传日志多了「想给开发者的话」；背景裁剪默认把整张照片放进取景框，
+> 不再只露中间一小条。`versionCode` 仍是 `10303`，可以直接覆盖 1.3.3-beta.9 / beta.8 / beta.7 /
+> beta.6 / beta.5 / beta.4 / beta.3 / beta.2 / beta.1 / 1.3.2 安装，沙盒、QQ 登录态、配置全部保留。
+
+### 新增
+
+- **上传日志时给开发者留言**：两个上传入口（主页告警卡的「上传日志」与更多页的「上传全部日志」）
+  都会先弹「想给开发者的话」，选填、限 1000 字，可换行；留言由 Java 落盘到
+  `$HOME/.qqbot/devnote.txt`，`upload-log.sh` 在**截断之后、脱敏之前**把它贴到整份报告的
+  最前面（`===== 想给开发者的话 =====`），所以留言里的账号 / 手机号同样会被打码。上传成功才删，
+  失败保留，重试还能带上同一段话；旧安装包没有 `uploadLogNote()` 时自动退回原来的上传。
+
+### 变更
+
+- **底栏拖动实时切页**：以前拖动只有滑块跟手，页面要等抬手才换。现在 `pointermove` 只挪滑块、
+  记录最近页签，切页排到下一帧并配 70ms 冷却 + 同页签去重；`.near` 与 `.on` 同帧移动，
+  任何时刻底栏只有一枚高亮。实测主页→更多 10 步拖动只切 3 次、四个页签来回扫 40 步
+  每步都真的在切页，抬手后滑块吸附到最终页签。
+- **背景裁剪默认整图可见**：取景框从 `cover` 改为 `contain`（`CR.base = min(w/nw, h/nh)`），
+  默认 `z=1` 居中，整张照片落在框内；框里空出来的部分由同一张图的模糊层 `#cropFill`
+  （`blur(22px) brightness(.55)`）垫住，不再有黑边。导出图按「所见即所得」画：先画模糊填充层，
+  再按位移 / 缩放画照片，长边 1600px。
+
+### 修复
+
+- **滑动时背景和底栏被拉伸（原生根因）**：安卓 12+ 的 overscroll stretch 由 View 层的 EdgeEffect
+  直接拉伸整块 WebView 表面，被拉长的是原生视图，CSS 的 `overscroll-behavior` 拦不住，
+  所以 beta.9 的纯 CSS 修复在真机上无效。现在 `QqbotActivity` 主 WebView 与 `QqbotPanelActivity`
+  面板 WebView 都关掉 overscroll（`setOverScrollMode(View.OVER_SCROLL_NEVER)`），并把 CSS 的
+  `overscroll-behavior` 统一成 `none`；无头 Chrome 实测滚动 0→300→2411 时 `#bgLayer` / `nav` /
+  `header` 的位置变化都是 0（仅 #bgMask 的 aurora 动画漂移 <1.1px）。
+- **右侧滚动条**：WebView 自带滚动条是 View 画的，`::-webkit-scrollbar` 关不掉；两个 WebView 都
+  `setVerticalScrollBarEnabled(false)` / `setHorizontalScrollBarEnabled(false)`，配合原有 CSS，
+  真机上不再画出 6px 轨道。
+- **背景照片只显示中间一小角**：两个原因叠在一起 —— 取景器用 `cover` 把横图裁成中间一条；
+  `applyBg()` 又没写 `background-size`，而 `#bgLayer{background: radial-gradient(...)}` 简写把它
+  重置成 `auto`，未裁剪的原生大图按 1:1 原始像素铺、只露中间一块。现在已裁剪的图显式
+  `background-size:100% 100%`（与取景框构图一致），未裁剪的原生图显式 `cover`（保持旧观感）。
+
 ## [1.3.3-beta.9] - 2026-10-26
 
 > **测试版**：一次修完手机版集中反馈的九处界面问题——按钮「按好几下才有反应」的根因、

@@ -201,6 +201,29 @@ if [ "${SZ:-0}" -gt 1572864 ]; then
   SZ=$(wc -c < "$TMP" 2>/dev/null || echo 0)
 fi
 
+# ---- 1.4) 想给开发者的话（beta.10）----
+# 界面上那句选填的附言由 Java 落盘到 $QQBOT_HOME/devnote.txt，这里把它贴到整份报告的
+# 最前面（在 AstrBot 标题之前），再 cat 原报告 —— 临时文件 + mv，任何一步失败都只丢掉
+# 附言，不影响后面的脱敏和上传。顺序必须在「截断之后、脱敏之前」：截断只保尾部，
+# 先贴再截会被切掉；脱敏跑在合并后的整份文件上，留言里的账号 / 手机号同样要打码。
+NOTE="$QQBOT_HOME/devnote.txt"
+if [ -s "$NOTE" ]; then
+  # 字数按字符数（不是字节数）：去掉 UTF-8 续字节再数，跟界面上的计数器口径一致
+  NCH=$(printf '%s' "$(cat "$NOTE" 2>/dev/null)" | LC_ALL=C tr -d '\200-\277' | wc -c | tr -d ' ')
+  case "${NCH:-0}" in ''|*[!0-9]*) NCH=0 ;; esac
+  if {
+        echo "===== 想给开发者的话 ====="
+        cat "$NOTE" 2>/dev/null
+        echo
+        echo "（留言 ${NCH} 字）"
+        echo
+      } > "$TMP.note" 2>/dev/null && cat "$TMP" >> "$TMP.note" 2>/dev/null; then
+    mv -f "$TMP.note" "$TMP" 2>/dev/null || rm -f "$TMP.note"
+  else
+    rm -f "$TMP.note"
+  fi
+fi
+
 # ---- 1.5) 整份脱敏（v1.1.31）----
 # 必须放在截断之后：先脱敏再截断的话，被切掉那一段里的命中数统计不到，
 # 而且截断点可能正好落在一串被打码的字符中间。
@@ -233,6 +256,9 @@ if [ "$CODE" = "200" ] || [ "$CODE" = "201" ]; then
     echo "报告里没有发现需要脱敏的内容。"
   fi
   echo "作者会很感谢你 —— 报告里带了机型、系统版本和部署日志尾部。"
+  # 传成功了才删附言；失败保留着，用户再点一次重试还能带上同一段话
+  if [ -s "$NOTE" ]; then echo "附言已经放在报告最前面。"; fi
+  rm -f "$NOTE" 2>/dev/null
   exit 0
 fi
 CID=$(cat "$QQBOT_CACHE/errreport.err" 2>/dev/null | head -n 1)

@@ -16,6 +16,7 @@ import android.os.Bundle;
 import android.os.Looper;
 import android.util.Base64;
 import android.view.KeyEvent;
+import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -273,6 +274,17 @@ public class QqbotActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setAllowFileAccess(true);
         s.setAllowContentAccess(true);
+        // —— 关掉安卓 12+ 的 overscroll 拉伸 ——
+        // 安卓 12 起（targetSdk 31+ / 部分厂商 ROM 更早）滚动到边界会出现「拉伸回弹」效果：
+        // 它由 View 的 EdgeEffect 直接拉伸 WebView 这一整块**表面**，被拉长的是原生视图，
+        // 页面里 position:fixed 的背景层（#bgLayer）和底栏 nav 也一起被拉长/漂移，
+        // 用户看到的就是「背景和底部条跟着滑动被拉伸」。这发生在合成阶段，CSS 管不到
+        // （::-webkit-scrollbar / overscroll-behavior 都拦不住），只能在原生这层关：
+        // setOverScrollMode(NEVER) 关掉边缘效果，滚动条也一起关（WebView 自带的滚动条
+        // 是 View 画的，CSS 的 ::-webkit-scrollbar{display:none} 在真机上无效）。
+        web.setVerticalScrollBarEnabled(false);
+        web.setHorizontalScrollBarEnabled(false);
+        web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         web.setBackgroundColor(pageBgColor());
         // 带上 this：通知栏「看日志 / 扫码」会带 tab extra 唤起本页，页面加载完要自动切过去
         web.setWebViewClient(new QqClient(this));
