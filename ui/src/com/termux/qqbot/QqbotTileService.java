@@ -38,11 +38,25 @@ public class QqbotTileService extends TileService {
     }
 
     public void onClick() {
-        /* 统一入口（v1.1.30）：磁贴自己不判「该启动还是该停」，只把面板叫到前台并带
-           toggle=1，由页面读一次真实状态决定「直接启动」还是「弹紧急下线确认」。
-           原因：磁贴的状态快照可能过期；而 targetSdk 28 下由 service startActivity
-           会被系统以 BAL 拦掉，磁贴自己的 startActivityAndCollapse 是允许的。 */
-        openToggle();
+        /* v1.3.3-beta.6：按「需不需要二次确认」拆开，和小组件同一套口径。
+           旧写法不管什么状态都只把面板叫到前台（toggle=1），在后台就是「点了没反应」：
+           targetSdk 28 下服务自己 startActivity 会被 BAL 拦掉，而磁贴的
+           startActivityAndCollapse 一旦赶上锁屏、桌面正在切换，也同样可能什么都不显示。
+           现在：
+             · 沙盒没在跑 → 直接在服务里启动（不需要界面，锁屏也能起）；
+             · 沙盒在跑   → 停是危险操作，仍旧把面板叫到前台弹「紧急下线」确认。
+           判据与 QqbotWidgetProvider 渲染用的是同一份：supervisor.pid 是不是活着的 proot。 */
+        boolean running = false;
+        try {
+            running = QqbotShell.pidAlive(new java.io.File(
+                    QqbotShell.qqbotDir(getFilesDir()), "supervisor.pid"), "proot");
+        } catch (Throwable ignored) {
+        }
+        if (running) {
+            openToggle();
+        } else {
+            QqbotGuardService.startSandboxInBackground(this);
+        }
         QqbotWidgetProvider.refreshAsync(this);
     }
 

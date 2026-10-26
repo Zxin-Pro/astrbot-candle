@@ -25,7 +25,20 @@ public class QqbotBootReceiver extends BroadcastReceiver {
         boolean isBoot = Intent.ACTION_BOOT_COMPLETED.equals(a)
                 || "android.intent.action.QUICKBOOT_POWERON".equals(a)
                 || "com.termux.app.QUICKBOOT".equals(a);
-        if (!isBoot && !Intent.ACTION_MY_PACKAGE_REPLACED.equals(a)) return;
+        /* v1.3.3-beta.6：USER_UNLOCKED 也当成一次「补开机」。
+           为什么不是 LOCKED_BOOT_COMPLETED：本应用的运行环境全在 credential-encrypted
+           的 filesDir 里（$PREFIX/usr、$HOME/.qqbot），清单里也没有 directBootAware，
+           锁定态下连 bash 都读不到，硬加 LOCKED_BOOT_COMPLETED 只会每次都失败退场。
+           FBE 设备的 BOOT_COMPLETED 本来就要等用户解锁后才发，所以「开机自启」这条
+           路真正缺的不是锁屏态，而是「个别 ROM 的快启动把 BOOT_COMPLETED 吞了」——
+           USER_UNLOCKED 正好补这一刀，而且此时 filesDir 一定已解密，一定能跑起来。
+           与覆盖安装一样：只补拉起，不刷新 lastBoot（那是真开机才有的语义）。 */
+        boolean isUnlock = "android.intent.action.USER_UNLOCKED".equals(a);
+        if (!isBoot && !isUnlock && !Intent.ACTION_MY_PACKAGE_REPLACED.equals(a)) return;
+        if (!isBoot) {
+            // 覆盖安装 / 解锁补刀：只记日志，不动 boot.json 的 lastBoot/attempts 语义
+            android.util.Log.i("QqbotBoot", "收到 " + a + "：按开机路径补一次拉起");
+        }
         // 只有真开机才更新「上次开机时间」；覆盖安装记成开机时间会让界面显示错乱。
         if (isBoot) {
             try {

@@ -47,6 +47,19 @@ public class QqbotGuardService extends Service {
     /** 桌面小组件「启动/停止」：PendingIntent.getService 打回本服务（协议文档里的旧名字也认）。 */
     public static final String ACTION_WIDGET_TOGGLE = "com.termux.app.WIDGET_TOGGLE";
     public static final String ACTION_WIDGET_TOGGLE_LEGACY = "com.termux.qqbot.WIDGET_TOGGLE";
+    /**
+     * 【后台启动入口】不经过界面，直接在服务里把沙盒拉起来（v1.3.3-beta.6）。
+     *
+     * 为什么必须有一条「只走服务」的启动路径：通知栏 Action / 桌面小组件 / 快捷磁贴
+     * 原来的做法都是「把面板叫到前台，由页面读一次状态再决定要不要启动」。这条路
+     * 在后台根本不成立——targetSdk 28 下服务自己 startActivity 会被 BAL
+     * （Background activity launch blocked）拦掉；就算勉强显示出来，用户按 Home
+     * 之后页面也立刻不可见，启动流程跟着一起断。用户的原话是「后台启动要正常启动，
+     * 所有运行和前台运行一样，不管你用什么方式」，所以启动这一步必须在服务里做完，
+     * 界面只作为可选的附加显示。
+     */
+    public static final String ACTION_START = "com.termux.app.GUARD_START";
+    public static final String ACTION_START_LEGACY = "com.termux.qqbot.ACTION_START";
 
     /** 供界面查询：守护是否在跑、最近一次动作。 */
     public static volatile boolean guardRunning = false;
@@ -75,6 +88,35 @@ public class QqbotGuardService extends Service {
             android.util.Log.e("QqbotGuard", "startForegroundService failed: " + t, t);
             return false;
         }
+    }
+
+    /**
+     * 后台启动沙盒（不需要界面、不需要 BAL 豁免）。
+     * 返回「启动请求是否真的发出去了」，与 start() 同口径。
+     */
+    public static boolean startSandboxInBackground(Context c) {
+        try {
+            Intent i = new Intent(c, QqbotGuardService.class);
+            i.setAction(ACTION_START);
+            if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i);
+            else c.startService(i);
+            return true;
+        } catch (Throwable t) {
+            android.util.Log.e("QqbotGuard", "startSandboxInBackground failed: " + t, t);
+            return false;
+        }
+    }
+
+    /**
+     * 后台启动沙盒的 PendingIntent（通知栏 / 小组件 / 磁贴共用）。
+     * 用 getService 而不是 getActivity：系统代发服务启动不受 BAL 限制，
+     * 用户按完按钮就能锁屏走人，沙盒照样起得来。
+     */
+    public static PendingIntent startPi(Context c) {
+        Intent i = new Intent(c, QqbotGuardService.class);
+        i.setAction(ACTION_START);
+        return PendingIntent.getService(c, 16, i,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
     public static void stop(Context c) {
@@ -128,6 +170,22 @@ public class QqbotGuardService extends Service {
             android.util.Log.e("QqbotGuard", "read offline flag failed", t);
         }
         return start(c);
+    }
+
+    /**
+     * 这次启动是不是「该保持关闭」的：offline（紧急下线 / 关闭进程）或 guard.off
+     * （用户关掉了常驻守护）任一存在。专供「系统把服务粘性重启回来」时判断用。
+     */
+    private boolean keepDead() {
+        try {
+            if (offFlag(this).isFile()) return true;
+        } catch (Throwable ignored) {
+        }
+        try {
+            return StateIO.file(getFilesDir(), "offline").isFile();
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     public static boolean enabled(Context c) {
@@ -281,16 +339,30 @@ public class QqbotGuardService extends Service {
         } catch (Throwable ignored) {
         }
         guardRunning = true;
-        // 排上 2 分钟一次的保活心跳：服务被系统收掉、或整组被缓存冻结时，
-        // 由广播把进程重新叫醒并把沙盒兜回来（KeepAlive 里有完整解释）。
-        try { KeepAlive.arm(this); } catch (Throwable ignored) {}
-        // 息屏模式：监听 SCREEN_ON / SCREEN_OFF（清单里静态注册收不到这两个广播，
-        // 只能跟着服务动态注册）。服务在 → 监听就在；服务停 → onDestroy 里注销。
-        try { ScreenMode.start(this); } catch (Throwable ignored) {}
+        // 前台通知必须最先挂上：API 26+ 的 startForegroundService 只给 5 秒宽限，
+        // 中间插任何读盘/等锁都可能超时（RemoteServiceException）。
         try {
             startForeground(NOTI_ID, buildNoti("正在检查沙盒…"));
         } catch (Throwable ignored) {
         }
+        // v1.3.3-beta.6：粘性重启也要认「用户已经关掉了」。
+        // 改成 START_STICKY 之后（见 onStartCommand 的说明），进程被系统收掉时系统会
+        // 把服务重新拉起并给一个 null Intent；如果用户在此之前按过通知栏「关闭进程」
+        // 或界面上的「紧急下线」，这次重启就必须立刻退出，否则「关不干净」的老毛病会
+        // 原样复现。判断口径与 apply()/开机广播完全一致：offline 或 guard.off 任一存在。
+        if (keepDead()) {
+            android.util.Log.i("QqbotGuard", "粘性重启但用户已关闭（offline/guard.off），立即收掉服务");
+            stopQuiet();
+            return;
+        }
+        // 排上 2 分钟一次的保活心跳：服务被系统收掉、或整组被缓存冻结时，
+        // 由广播把进程重新叫醒并把沙盒兜回来（KeepAlive 里有完整解释）。
+        // arm() 里同时会登记一条 JobScheduler 周期任务（KeepAlive.scheduleJob），
+        // 闹钟被 ROM 掐掉/精确闹钟退化成不准时，还有系统级的那条命兜底。
+        try { KeepAlive.arm(this); } catch (Throwable ignored) {}
+        // 息屏模式：监听 SCREEN_ON / SCREEN_OFF（清单里静态注册收不到这两个广播，
+        // 只能跟着服务动态注册）。服务在 → 监听就在；服务停 → onDestroy 里注销。
+        try { ScreenMode.start(this); } catch (Throwable ignored) {}
         acquireWake();
         // 两个子系统都挂在服务上：服务在它们才有意义，服务一停立刻注销，不留泄漏的监听。
         try { NetworkWatch.start(this); } catch (Throwable ignored) {}
@@ -331,21 +403,75 @@ public class QqbotGuardService extends Service {
             } catch (Throwable ignored) {
             }
             return START_NOT_STICKY;
+        } else if (ACTION_START.equals(a) || ACTION_START_LEGACY.equals(a)) {
+            /* 【v1.3.3-beta.6 后台启动】不经过界面，直接在服务里把沙盒拉起来。
+               通知栏 / 小组件 / 磁贴 / 任何第三方入口都可以用 startPi() 或
+               startSandboxInBackground() 打到这里，App 完全在后台（甚至锁屏）也能启动。 */
+            startSandboxThread();
         } else if (ACTION_WIDGET_TOGGLE.equals(a) || ACTION_WIDGET_TOGGLE_LEGACY.equals(a)) {
-            /* 老版本小组件/磁贴的 PendingIntent 还会打到这里（新版本一律直接拉起面板并带
-               toggle=1）。服务这边不判状态、也不自己 startActivity —— 服务在后台起
-               Activity 会被 targetSdk 28 的 BAL 拦掉。只把意图转交给页面，由页面读一次
-               真实状态决定「弹下线确认」还是「启动沙盒」。 */
-            askToggle(getApplicationContext());
+            /* 小组件/磁贴的启停按钮。
+               v1.3.3-beta.6 之前在「在跑 → 停 / 没跑 → 启」之间只做一件事：把面板叫到前台
+               并带 toggle=1，由页面读一次真实状态再决定。那条路在后台是断的——targetSdk 28
+               下服务 startActivity 会被 BAL 拦掉，用户点完按钮什么都没发生。
+               现在按「需不需要二次确认」拆开：
+                 · 沙盒没在跑 → 直接起（启动不需要确认，后台也能做）；
+                 · 沙盒在跑   → 停是危险操作，仍然请页面弹「紧急下线」确认（页面起不来
+                   就什么都不做，绝不静默停止）。
+               判据与 QqbotTileService / 小组件渲染同一份：supervisor.pid 是不是活着的 proot。 */
+            boolean running = QqbotShell.pidAlive(new File(QqbotShell.qqbotDir(getFilesDir()), "supervisor.pid"), "proot");
+            if (running) {
+                askToggle(getApplicationContext());
+            } else {
+                startSandboxThread();
+            }
             QqbotWidgetProvider.refreshAsync(this);
-            return START_NOT_STICKY; // 与下面的约定一致：进程被杀后不要重建
         }
-        // 这里绝对不能返回 START_STICKY：进程被杀后系统会把服务重新拉起来，
-        // onStartCommand 立刻 return、onCreate 又 startForeground，刚被「关闭进程」
-        // 关掉的软件过几秒就自己回来了 —— 这就是「关不干净」的根源。
-        // 改成 START_NOT_STICKY：进程被杀后不要重建；沙盒由开机广播
-        // （QqbotBootReceiver）或用户打开 App（QqbotActivity.onCreate → apply）时重新拉起。
-        return START_NOT_STICKY;
+        /* v1.3.3-beta.6：这里由 START_NOT_STICKY 改成 START_STICKY。
+           旧注释担心的是「进程被杀后系统把服务重新拉起来，刚被『关闭进程』关掉的软件
+           过几秒就自己回来了」。那个担心本身没错，但用 START_NOT_STICKY 堵是堵错了地方：
+           它同时也让「系统/ROM 因为内存、缓存冻结、厂商省电策略收掉进程」这种最常见的
+           后台掉线永远不会自愈——沙盒里的 proot 是 App 的子进程，进程一没，Android 12+
+           的 phantom process killer 会把整棵沙盒子进程一起清掉，表现就是「放着不动就死」，
+           而用户说的正是「后台运行要和前台一模一样」。
+           现在改成：既让系统把服务拉回来（START_STICKY），又在 onCreate 里用 keepDead()
+           认出「用户真的关掉了」并立刻 stopQuiet()——两条语义都保住了，而且
+           「关闭进程」那条路径还有三重保险：GuardKillTask 先写 offline 标记、再
+           stopSelf()、最后 killProcess；被 kill 之前服务已经自己停了，粘性机制根本
+           不会触发；万一触发，onCreate 的 keepDead() 又会立刻收掉它。 */
+        return START_STICKY;
+    }
+
+    /** 起一个后台线程真正把沙盒拉起来（ACTION_START / 小组件启动按钮共用）。 */
+    private void startSandboxThread() {
+        try {
+            Thread th = new Thread(new GuardStart(this), "qqbot-start");
+            th.setDaemon(true);
+            th.start();
+        } catch (Throwable t) {
+            android.util.Log.e("QqbotGuard", "起启动线程失败：" + t, t);
+        }
+    }
+
+    /**
+     * 从最近任务划掉（onTaskRemoved）。
+     *
+     * 为什么需要：划掉之后 Activity 没了，但服务本身不会被系统停（stopWithTask=false）。
+     * 可很多 ROM 会把「整个任务组」一起清掉，进程一走，沙盒的子进程就会被 Android 12+
+     * 的 phantom process killer 连带清掉。这里做三件事，保证「划掉 ≠ 停摆」：
+     * ① 重排心跳闹钟（这一刻起算，避免划掉时刚好错过一次投递）；
+     * ② 再 start 一次服务自己（进程若被 stopWithTask 类策略收掉，能立刻回来）；
+     * ③ 丢一个后台线程做一次沙盒体检（KeepAlive.rescue：进程/端口两路判活 + 自愈）。
+     */
+    public void onTaskRemoved(Intent rootIntent) {
+        android.util.Log.i("QqbotGuard", "任务被移出最近任务：重排心跳 + 立刻体检，后台不停摆");
+        try { KeepAlive.arm(this); } catch (Throwable ignored) {}
+        try { start(getApplicationContext()); } catch (Throwable ignored) {}
+        try {
+            Thread th = new Thread(new KeepAliveTask(getApplicationContext()), "qqbot-taskremoved");
+            th.setDaemon(true);
+            th.start();
+        } catch (Throwable ignored) {}
+        super.onTaskRemoved(rootIntent);
     }
 
     public void onDestroy() {

@@ -237,6 +237,62 @@ if ($xml4 -ne $orig4) {
 } else {
   Write-Host 'manifest: widget/tile already dropped'
 }
+# 3c5) background-run resilience (1.3.3-beta.6).
+#      (a) QqbotGuardService must NOT die with the task: stopWithTask=false is the
+#          default for services, but some ROMs honour an explicit flag and it documents
+#          the intent next to onTaskRemoved().
+#      (b) KeepAliveJobService is the JobScheduler safety net that brings the guard
+#          service back when AlarmManager is throttled/killed by the ROM. A JobService
+#          MUST declare android.permission.BIND_JOB_SERVICE or the system refuses to run it.
+#      Idempotent: each step is skipped when its marker is already present.
+$mfJob = Get-Content $mf -Raw -Encoding UTF8
+$mfJobOrig = $mfJob
+$svcTag = [regex]::Match($mfJob, '<service\s+[^>]*QqbotGuardService[^>]*?/?>')
+if ($svcTag.Success) {
+  $tag = $svcTag.Value
+  $tag2 = $tag
+  if ($tag2 -notmatch 'android:stopWithTask') {
+    if ($tag2.EndsWith('/>')) { $tag2 = $tag2.Substring(0, $tag2.Length - 2) + ' android:stopWithTask="false"/>' }
+    else { $tag2 = $tag2.Substring(0, $tag2.Length - 1) + ' android:stopWithTask="false">' }
+  }
+  if ($tag2 -ne $tag) { $mfJob = $mfJob.Replace($tag, $tag2); Write-Host 'manifest: QqbotGuardService stopWithTask=false' }
+  else { Write-Host 'manifest: QqbotGuardService stopWithTask already set' }
+} else {
+  Write-Host 'manifest: QqbotGuardService tag not found - stopWithTask NOT patched'
+}
+if ($mfJob -notmatch 'KeepAliveJobService') {
+  $jobSvc = '<service android:exported="false" android:name="com.termux.app.KeepAliveJobService" android:permission="android.permission.BIND_JOB_SERVICE"/>'
+  $m2 = [regex]::Match($mfJob, '<service\s+[^>]*QqbotGuardService[^>]*?>')
+  if ($m2.Success) {
+    $mfJob = $mfJob.Insert($m2.Index + $m2.Length, $NL + '        ' + $jobSvc)
+    Write-Host 'manifest: added KeepAliveJobService'
+  } else {
+    Write-Host 'manifest: anchor for KeepAliveJobService missing - NOT added'
+  }
+} else {
+  Write-Host 'manifest: KeepAliveJobService already present'
+}
+if ($mfJob -ne $mfJobOrig) {
+  [System.IO.File]::WriteAllText($mf, $mfJob, (New-Object System.Text.UTF8Encoding($false)))
+}
+# 3c6) QqbotBootReceiver: also listen for USER_UNLOCKED (1.3.3-beta.6).
+#      Some ROMs drop BOOT_COMPLETED on quick-boot; USER_UNLOCKED arrives after the
+#      credential-encrypted storage is unlocked, which is exactly when $PREFIX exists.
+#      LOCKED_BOOT_COMPLETED is deliberately NOT used: the app is not directBootAware and
+#      all of its state lives in credential-encrypted storage.
+$mfBoot = Get-Content $mf -Raw -Encoding UTF8
+if ($mfBoot -notmatch 'android\.intent\.action\.USER_UNLOCKED') {
+  $bootAct = '<action android:name="android.intent.action.BOOT_COMPLETED"/>'
+  if ($mfBoot.Contains($bootAct)) {
+    $mfBoot = $mfBoot.Replace($bootAct, $bootAct + $NL + '                <action android:name="android.intent.action.USER_UNLOCKED"/>')
+    [System.IO.File]::WriteAllText($mf, $mfBoot, (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host 'manifest: QqbotBootReceiver += USER_UNLOCKED'
+  } else {
+    Write-Host 'manifest: BOOT_COMPLETED action missing - USER_UNLOCKED NOT added'
+  }
+} else {
+  Write-Host 'manifest: USER_UNLOCKED already present'
+}
 Remove-Item "$ROOT\_apkwork\smali_classes30" -Recurse -Force -ErrorAction SilentlyContinue
 Copy-Item "$ROOT\ui\smali" "$ROOT\_apkwork\smali_classes30" -Recurse -Force -ErrorAction Stop
 New-Item -ItemType Directory -Force -Path "$ROOT\_apkwork\assets\qqbot" | Out-Null

@@ -89,6 +89,9 @@ public class KeepAlive {
             } else {
                 am.setExact(type, at, pi);
             }
+            // 第二条命：JobScheduler 周期任务。闹钟被 ROM 掐掉、精确闹钟在 Doze 里被
+            // 限流到 9 分钟一次时，这条由系统自己调度的线还在（见 KeepAliveJobService）。
+            scheduleJob(c);
         } catch (Throwable t) {
             // 各家 ROM 对精确闹钟的实现有差异，失败就退回普通闹钟，绝不因此崩掉服务。
             try {
@@ -129,6 +132,57 @@ public class KeepAlive {
                 am.cancel(pi);
                 pi.cancel();
             }
+        } catch (Throwable ignored) {
+        }
+        cancelJob(c);
+    }
+
+    /**
+     * 登记 JobScheduler 周期任务（幂等：已经排过就不动，避免每次都把周期重置、
+     * 让任务永远等不到第一次触发）。
+     * 15 分钟是 JobInfo.setPeriodic 的下限；它只兜「整条链已经断了」的极端场景，
+     * 正常节奏仍是 2 分钟一次的闹钟。
+     */
+    static void scheduleJob(android.content.Context c) {
+        if (c == null) return;
+        try {
+            if (Build.VERSION.SDK_INT < 21) return;
+            android.app.job.JobScheduler js =
+                    (android.app.job.JobScheduler) c.getSystemService(android.content.Context.JOB_SCHEDULER_SERVICE);
+            if (js == null) return;
+            if (Build.VERSION.SDK_INT >= 24 && js.getPendingJob(KeepAliveJobService.JOB_ID) != null) return;
+            android.app.job.JobInfo.Builder b = new android.app.job.JobInfo.Builder(
+                    KeepAliveJobService.JOB_ID,
+                    new android.content.ComponentName(c, KeepAliveJobService.class));
+            b.setPeriodic(15L * 60L * 1000L);
+            // setPersisted 需要清单里的 RECEIVE_BOOT_COMPLETED（已有），重启后任务自动恢复。
+            b.setPersisted(true);
+            // 不要求联网、不要求充电、不要求 idle：这些条件只会让它更少被调度。
+            b.setRequiredNetworkType(android.app.job.JobInfo.NETWORK_TYPE_NONE);
+            b.setRequiresCharging(false);
+            b.setRequiresDeviceIdle(false);
+            int rc = js.schedule(b.build());
+            // 0 = RESULT_SUCCESS。这里必须看返回值：JobScheduler 失败时不抛异常，
+            // 只回一个错误码（比如 RESULT_FAILURE=1），不查的话「第二条命」等于没排上，
+            // 而且日志里一条线索都没有。
+            if (rc != android.app.job.JobScheduler.RESULT_SUCCESS) {
+                android.util.Log.w("QqbotKeepAlive", "登记 JobScheduler 心跳被拒，rc=" + rc);
+            } else {
+                android.util.Log.i("QqbotKeepAlive", "已登记 JobScheduler 心跳（15 分钟一次）");
+            }
+        } catch (Throwable t) {
+            android.util.Log.w("QqbotKeepAlive", "登记 JobScheduler 心跳失败：" + t);
+        }
+    }
+
+    /** 撤掉 JobScheduler 周期任务（用户「关闭进程 / 紧急下线 / 关掉守护」时）。 */
+    static void cancelJob(android.content.Context c) {
+        if (c == null) return;
+        try {
+            if (Build.VERSION.SDK_INT < 21) return;
+            android.app.job.JobScheduler js =
+                    (android.app.job.JobScheduler) c.getSystemService(android.content.Context.JOB_SCHEDULER_SERVICE);
+            if (js != null) js.cancel(KeepAliveJobService.JOB_ID);
         } catch (Throwable ignored) {
         }
     }
