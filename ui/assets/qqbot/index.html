@@ -141,6 +141,8 @@ html{ background: var(--page); }
 
 button, input, select, textarea{ font: inherit; color: inherit; }
 button{ -webkit-appearance: none; appearance: none; border: 0; background: none; cursor: pointer; }
+/* 触摸端去掉双击缩放带来的等待，点下去立刻派发（触控目标一律只做单击） */
+button, [data-act]{ touch-action: manipulation; }
 a{ color: var(--accent); text-decoration: none; }
 h1,h2,h3,h4,p,ul,ol{ margin: 0; }
 ul,ol{ padding-left: 1.15em; }
@@ -1713,21 +1715,10 @@ nav button .ic{
 }
 nav button.on{ color: var(--accent); font-weight: 600; }
 nav button.on .ic{ transform: translateY(-1px) scale(1.03); }
-nav button.on::before{
-  content: "";
-  position: absolute;
-  top: 2px;
-  width: 40px; height: 30px;
-  border-radius: var(--r-full);
-  background: color-mix(in srgb, var(--accent) 13%, transparent);
-  animation: navPop var(--dur-slow) var(--ease-pop) both;
-}
-nav button:active{ transform: scale(.94); }
-nav button:active .ic{ transform: scale(.9); }
-@keyframes navPop{
-  from{ opacity: 0; transform: scale(.7); }
-  to{ opacity: 1; transform: scale(1); }
-}
+/* 选中态不再由每个按钮各画一个 ::before —— 切换时它在新位置「弹」一下，看着像闪。
+   改成一枚跨页签滑动的玻璃滑块（见 Z6.1），这里只留按下时的触感。 */
+nav button:active{ transform: none; background-color: transparent; }
+nav button:active .ic{ transform: scale(.92); }
 
 /* ---------- 20. 杂项工具 ---------- */
 .mono{ font-family: var(--mono); font-size: 11.5px; word-break: break-all; }
@@ -2116,20 +2107,7 @@ nav{
 }
 
 nav button{ border-radius: 20px; font-size: 10.5px; }
-nav button.on::before{
-  top: 50%;
-  height: 34px;
-  width: 46px;
-  transform: translateY(-50%);
-  border-radius: 17px;
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-  box-shadow: inset 0 .5px 0 rgba(255,255,255,.6);
-  animation: navPop2 var(--dur) var(--ease-pop) both;
-}
-@keyframes navPop2{
-  from{ opacity: 0; transform: translateY(-50%) scale(.72); }
-  to{ opacity: 1; transform: translateY(-50%) scale(1); }
-}
+/* 选中滑块只保留一个实例（#navThumb），由 JS 写 transform 定位。 */
 nav button .ic{ width: 22px; height: 22px; }
 nav button.on .ic{ transform: translateY(-1px); }
 
@@ -2308,7 +2286,61 @@ button.tiny{ border-radius: 12px; }
 .dlg{ border-radius: 30px 30px 0 0; }
 nav{ border-radius: var(--mi-nav); }
 nav button{ border-radius: 22px; }
-nav button.on::before{ border-radius: 19px; }
+
+/* ---------- Z6.1 底栏滑块（拖动切页签） ----------
+   选中态由一枚跨页签滑动的玻璃滑块表示：按住拖动时 1:1 跟手，松手吸附到最近页签，
+   轻点仍然直接切页。位移只走 transform，不触发重排；拖动期间关掉 transition 免得跟手发飘。 */
+nav{
+  touch-action: none;
+  -webkit-user-select: none; user-select: none;
+}
+nav button{
+  z-index: 1;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  touch-action: none;   /* 底栏上只做横拖，别让浏览器抢去滚页面 */
+}
+/* 底部页签不要按钮全局那条灰底 —— 真机上就是它闪出一个灰方块 */
+nav button:active{ transform: none; background-color: transparent; }
+nav .nav-thumb{
+  position: absolute;
+  top: 50%; left: 0;
+  z-index: 0;
+  width: 60px;
+  height: calc(var(--nav-h) - 14px);
+  border-radius: calc(var(--mi-nav) - 10px);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.62), rgba(255,255,255,0) 58%),
+    color-mix(in srgb, var(--accent) 14%, var(--glass-tint-c) 78%);
+  box-shadow:
+    inset 0 .5px 0 rgba(255,255,255,.9),
+    inset 0 -.5px 0 rgba(0,0,0,.05),
+    0 8px 18px -10px color-mix(in srgb, var(--accent) 55%, transparent);
+  opacity: 0;
+  transform: translate3d(0,-50%,0);
+  transition: transform var(--dur) var(--ease), width var(--dur) var(--ease), opacity var(--dur-fast) var(--ease);
+  pointer-events: none;
+  will-change: transform;
+}
+:root[data-theme="dark"] nav .nav-thumb{
+  /* 深色下别做成一块实心蓝：混 transparent，让底栏玻璃透上来 */
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,0) 58%),
+    color-mix(in srgb, var(--accent) 20%, transparent);
+  box-shadow:
+    inset 0 .5px 0 rgba(255,255,255,.22),
+    inset 0 -.5px 0 rgba(0,0,0,.35),
+    0 10px 20px -10px rgba(0,0,0,.65);
+}
+nav.navjs .nav-thumb{ opacity: 1; }
+nav.sleep .nav-thumb{ opacity: 0; }
+nav.dragging .nav-thumb{ transition: none; }
+nav.calib .nav-thumb{ transition: none; }
+nav button.near{ color: var(--accent); }
+nav button.near .ic{ transform: translateY(-1px) scale(1.05); }
+@media (prefers-reduced-motion: reduce){
+  nav .nav-thumb{ transition: none; }
+}
 input[type="text"], input[type="password"], input[type="number"], select, textarea{
   border-radius: var(--mi-ctl);
 }
@@ -3349,6 +3381,7 @@ button.small:active, .btns > button:active, .rowbtn:active, .linkbtn:active{
   </div>
 </div>
 <nav>
+  <span class="nav-thumb" id="navThumb" aria-hidden="true"></span>
   <button class="on" data-tab="home"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.6 12 4l8 6.6V19a1 1 0 0 1-1 1h-4.2v-5.6H9.2V20H5a1 1 0 0 1-1-1z"/></svg>主页</button>
   <button data-tab="bots"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6" width="17" height="12.5" rx="3.4"/><path d="M9.5 6V4.6h5V6"/><circle cx="9.2" cy="11.4" r="1.1" fill="currentColor" stroke="none"/><circle cx="14.8" cy="11.4" r="1.1" fill="currentColor" stroke="none"/><path d="M9.4 15h5.2"/></svg>机器人</button>
   <button data-tab="logs"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3.5" width="16" height="17" rx="3.2"/><path d="M8 8.6h8M8 12h8M8 15.4h5"/></svg>日志</button>
@@ -3962,6 +3995,7 @@ function showTab(t){
   el("tab-" + t).classList.add("on");
   var bs = document.querySelectorAll("nav button");
   for (var j = 0; j < bs.length; j++) bs[j].classList.toggle("on", bs[j].getAttribute("data-tab") === t);
+  try { navSync(); } catch (e) {}   /* 滑块跟着选中页签走 */
   /* 设置页不在底部导航里，用顶栏那个「设置」按钮高亮表示当前在设置页；
      nav 的 .on 逻辑不动（t === "settings" 时上面那个循环会清掉全部 nav 高亮）。 */
   var sb = el("btnSettings");
@@ -3973,6 +4007,151 @@ function showTab(t){
      extOnTab 内部自己 try/catch，桥缺了也只是空态。 */
   extOnTab(t);
   try { fitFoot(); } catch (e) {}  /* v4：切页后立刻重算落款位置 */
+}
+
+/* ---------- 底栏滑块：拖动切页签 ----------
+   顺手解决两件事：
+   1）选中态原来是一枚「弹出来」的药丸，切页时像闪了一下；现在是一枚滑块，
+      按住拖动 1:1 跟手，松手吸附到最近页签，轻点仍然直接切页。
+   2）真机上手指微抖会被浏览器判成滑动、丢掉 click，于是「有时点了没反应」。
+      这里在 pointerup 自己提交页签，不再依赖 click；click 只作为无 pointer 时的兜底。 */
+var NAVS = {
+  nav: null, thumb: null, btns: [], idx: 0, press: 0, hover: 0,
+  dragging: false, moved: 0, startX: 0, baseX: 0,
+  suppress: false, tid: 0, on: false
+};
+
+function navPaint(i){
+  var s = NAVS, b = s.btns[i];
+  if (!b) return;
+  s.thumb.style.width = (b.offsetWidth - 8) + "px";
+  s.thumb.style.transform = "translate3d(" + (b.offsetLeft + 4) + "px,-50%,0)";
+}
+
+function navSync(){
+  var s = NAVS, i = -1;
+  if (!s.nav) return;
+  for (var k = 0; k < s.btns.length; k++){
+    if (s.btns[k].classList.contains("on")) { i = k; break; }
+  }
+  if (i < 0){ s.nav.classList.add("sleep"); return; }   /* 设置页不在底栏里，滑块先藏起来 */
+  s.nav.classList.remove("sleep");
+  if (s.dragging) return;
+  s.idx = i;
+  navPaint(i);
+}
+
+function navCalibrate(){
+  var s = NAVS;
+  if (!s.nav || !s.thumb) return;
+  s.nav.classList.add("calib");
+  navSync();
+  void s.thumb.offsetWidth;            /* 先落一帧，再恢复过渡 */
+  s.nav.classList.remove("calib");
+}
+
+function navNearest(clientX){
+  var s = NAVS, best = 0, bd = 1e9;
+  for (var i = 0; i < s.btns.length; i++){
+    var r = s.btns[i].getBoundingClientRect();
+    var d = Math.abs(clientX - (r.left + r.width / 2));
+    if (d < bd){ bd = d; best = i; }
+  }
+  return best;
+}
+
+function navThumbX(){
+  var s = NAVS;
+  return s.thumb.getBoundingClientRect().left - s.nav.getBoundingClientRect().left;
+}
+
+function navClearNear(){
+  var s = NAVS;
+  for (var i = 0; i < s.btns.length; i++) s.btns[i].classList.remove("near");
+}
+
+function navDown(e){
+  var s = NAVS;
+  if (!s.on || s.dragging) return;
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  var b = e.target && e.target.closest ? e.target.closest("button[data-tab]") : null;
+  var i = b ? s.btns.indexOf(b) : navNearest(e.clientX);
+  if (i < 0) return;
+  s.dragging = true; s.moved = 0; s.press = i; s.hover = i;
+  s.startX = e.clientX;
+  s.baseX = navThumbX();
+  s.nav.classList.add("dragging");
+  s.btns[i].classList.add("near");
+  try { s.nav.setPointerCapture(e.pointerId); } catch (e1) {}
+}
+
+function navMove(e){
+  var s = NAVS;
+  if (!s.dragging) return;
+  var dx = e.clientX - s.startX;
+  if (!s.moved && Math.abs(dx) > 6) s.moved = 1;
+  if (!s.moved) return;
+  if (e.cancelable) e.preventDefault();
+  var x0 = s.btns[0].offsetLeft + 4;
+  var x1 = s.btns[s.btns.length - 1].offsetLeft + 4;
+  var x = s.baseX + dx;
+  if (x < x0) x = x0;
+  if (x > x1) x = x1;
+  s.thumb.style.transform = "translate3d(" + x + "px,-50%,0)";
+  var i = navNearest(e.clientX);
+  if (i !== s.hover){
+    s.btns[s.hover].classList.remove("near");
+    s.hover = i;
+    s.btns[i].classList.add("near");
+  }
+}
+
+function navUp(e){
+  var s = NAVS;
+  if (!s.dragging) return;
+  s.dragging = false;
+  s.nav.classList.remove("dragging");
+  navClearNear();
+  try { s.nav.releasePointerCapture(e.pointerId); } catch (e1) {}
+  var i = s.moved ? s.hover : s.press;
+  var b = s.btns[i];
+  s.suppress = true;
+  clearTimeout(s.tid);
+  s.tid = setTimeout(function(){ s.suppress = false; }, 420);
+  if (b) { try { showTab(b.getAttribute("data-tab")); } catch (e2) {} }
+}
+
+function navCancel(){
+  var s = NAVS;
+  if (!s.dragging) return;
+  s.dragging = false;
+  s.nav.classList.remove("dragging");
+  navClearNear();
+  navSync();
+}
+
+function navInit(){
+  var s = NAVS;
+  s.nav = document.querySelector("nav");
+  s.thumb = document.getElementById("navThumb");
+  if (!s.nav || !s.thumb) return;
+  s.btns = Array.prototype.slice.call(s.nav.querySelectorAll("button[data-tab]"));
+  if (!s.btns.length) return;
+  s.nav.classList.add("navjs");
+  navCalibrate();
+  window.addEventListener("resize", function(){ navCalibrate(); }, { passive: true });
+  window.addEventListener("orientationchange", function(){ setTimeout(navCalibrate, 150); });
+  if (!window.PointerEvent) return;   /* 老 WebView 保持纯点击 */
+  s.on = true;
+  s.nav.addEventListener("pointerdown", navDown);
+  s.nav.addEventListener("pointermove", navMove, { passive: false });
+  s.nav.addEventListener("pointerup", navUp);
+  s.nav.addEventListener("pointercancel", navCancel);
+  s.nav.addEventListener("contextmenu", function(e){ e.preventDefault(); });
+  /* pointerup 已经提交过页签，紧随其后的 click 要吞掉，免得切两次 */
+  s.nav.addEventListener("click", function(e){
+    if (s.suppress){ e.preventDefault(); e.stopPropagation(); }
+  }, true);
 }
 
 function pill(txt, cls){ return '<span class="pill ' + (cls || "") + '">' + esc(txt) + '</span>'; }
@@ -8337,6 +8516,7 @@ loadProxy();
    而扫码窗在 DOM 里排在声明窗后面、同 z-index，会整个盖住声明窗 —— 用户看到的是扫码窗，
    点「我已阅读并同意」全部落在扫码窗上，声明永远关不掉（1.2.6 在 MuMu 上实测）。 */
 try { if (String(Android.disclaimerSeen()) !== "1") showDisclaimer(); } catch (e) {}
+navInit();
 refresh();
 /* 今日概览要读沙盒里的统计文件，晚一拍再取，别跟首屏抢带宽 */
 setTimeout(function(){ refreshToday(); todayStart(); }, 300);

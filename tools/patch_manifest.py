@@ -73,22 +73,24 @@ def patch_manifest_bytes(d):
 def main():
     apk = sys.argv[1]
     tmp = apk + ".tmp"
-    zin = zipfile.ZipFile(apk)
-    zout = zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED)
     changed = 0
-    for i in zin.infolist():
-        data = zin.read(i.filename)
-        if i.filename == "AndroidManifest.xml":
-            data, changed, n = patch_manifest_bytes(data)
-            print("manifest strings=%d changed=%d" % (n, changed))
-        zi = zipfile.ZipInfo(i.filename, date_time=i.date_time)
-        zi.external_attr = i.external_attr
-        zi.internal_attr = i.internal_attr
-        zi.create_system = i.create_system
-        zi.compress_type = i.compress_type
-        zi.comment = i.comment
-        zout.writestr(zi, data)
-    zout.close(); zin.close()
+    with zipfile.ZipFile(apk) as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
+        for i in zin.infolist():
+            zi = zipfile.ZipInfo(i.filename, date_time=i.date_time)
+            zi.external_attr = i.external_attr
+            zi.internal_attr = i.internal_attr
+            zi.create_system = i.create_system
+            zi.compress_type = i.compress_type
+            zi.comment = i.comment
+            if i.filename == "AndroidManifest.xml":
+                data, changed, n = patch_manifest_bytes(zin.read(i.filename))
+                print("manifest strings=%d changed=%d" % (n, changed))
+                zout.writestr(zi, data)
+            else:
+                # 流式搬运：整包里有一个 583 MB 的沙盒镜像，read() 进内存再 writestr
+                # 会在构建机上直接 MemoryError（1.3.3-beta.8 实测），这里按 4 MB 块拷。
+                with zin.open(i.filename) as src, zout.open(zi, "w") as dst:
+                    shutil.copyfileobj(src, dst, 4 * 1024 * 1024)
     shutil.move(tmp, apk)
     print("patched", apk, os.path.getsize(apk), "bytes, changed strings", changed)
 

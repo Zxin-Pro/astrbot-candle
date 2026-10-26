@@ -289,7 +289,7 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 | 1.2.10 | `versionName` / 派生 `versionCode` | `1.2.10` / `10210` |
 | 1.2.9 | `versionName` / 派生 `versionCode` | `1.2.9` / `10209` |
 
-1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.3-beta.7-arm64.apk`，`609,361,733`（约 581 MB，镜像在 APK 里），SHA-256 `E798E947183739EEDCE72BF9D09A4ECE4803809EB103D8B66742A68DB17F3320`；增量包 `AstrBot-1.3.3-beta.7-arm64-update.apk`，`26,181,442`，SHA-256 `F81CBB3CD637E51EB47173DF6D31B6EA9F0FA8F832389F13A0DA07869041916E`。beta.7 沿用旧密钥（_research\debug.keystore）签名，因此可直接覆盖 beta.6 及更早各版。
+1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.3-beta.8-arm64.apk`，`609,361,733`（约 581 MB，镜像在 APK 里），SHA-256 `266FBA3DDB00C2D0FB057E55DE362755ADE81291978CD4D06C1EB9D3632195D2`；增量包 `AstrBot-1.3.3-beta.8-arm64-update.apk`，`26,181,442`，SHA-256 `2A82D2840B4268E47F78488B601E20F7F0844ED219D84845238DB4D829402EE9`。beta.8 沿用旧密钥（_research\debug.keystore）签名，因此可直接覆盖 beta.7 及更早各版。
 
 规则：`versionCode = MAJOR*10000 + MINOR*100 + PATCH`。
 
@@ -377,6 +377,12 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
     验收三件事：保存后 **1 秒内**主页卡片就变；`GET /api/v1/system-config` 里 `agent_runner.config.model.provider_id` 是 `candle`；
     落盘的 `provider[]` 里**没有** `api_base` / `key`（有的话说明写错了地方，下次启动会被迁移覆盖）。
     查问题时开 `~/.qqbot/.webdebug` + CDP 直接读 DOM 最快，测完记得删掉这个文件。
+
+15. **改 `tools/patch_manifest.py` 时别把整包读进内存。**
+    全量包里有一个 583 MB 的沙盒镜像，旧写法 `zin.read()` + `writestr()` 会在内存紧张的机器上
+    直接 `MemoryError`（1.3.3-beta.8 构建时踩到，当时 MuMu 模拟器占着 24 GB 提交内存）。
+    现在除 `AndroidManifest.xml` 走小字节数组外，其余条目一律 `zin.open()` → `zout.open()` 分块拷贝，
+    峰值内存只有几 MB；签名前的 zipalign 由 uber-apk-signer 负责，不需要在这里补对齐。
 
 ---
 
