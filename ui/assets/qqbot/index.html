@@ -2250,6 +2250,167 @@ html, body{ overflow-x: hidden; }
 #btnStatDetail{ min-height: 32px !important; }
 #glassRange{ height: 32px !important; }
 .seg button, .rowbtn{ min-height: 32px !important; }
+
+
+/* ============================================================================
+   Q. 收尾层（v9.3）：滚动修复 + 小米大 R 角 + 提示条重排 + 按压/收起动效
+   1) 真机上「划不动」：根因见 Q1 注释
+   2) 省电/风控横幅文字被挤成一列：根因见 Q3 注释
+   3) 大 R 角：向 HyperOS 的圆角尺度靠（卡片 26 / 内块 20 / 控件 16 / 底栏 30）
+   4) 按钮与提示条：滑动进、滑动出，不再一闪就没
+   ============================================================================ */
+
+/* ---------- Q1. 滚动修复（真机反馈「界面划不动」） ----------
+   a.css 给 body 写了 overscroll-behavior-y:none，z.css 又给 html,body 写了
+   overflow-x:hidden。overflow-x:hidden 会把 body 变成滚动容器（overflow-y 被
+   计算成 auto），而正文高度就等于 body 高度，它内部没有可滚的距离；此时
+   overscroll-behavior-y:none 又禁止把滚动链传给根滚动容器 —— 手指划、滚轮滚
+   全部无效，只有脚本 scrollTo 还能动（这正是模拟器测不出来、真机一上手就废的原因）。
+   改法：横向改用 clip（只裁剪、不创建滚动容器），overscroll 只压在最外层 html 上。 */
+html{
+  overflow-x: clip;
+  overscroll-behavior-y: none;
+}
+body{
+  overflow-x: clip;
+  overflow-y: visible;
+  overscroll-behavior-y: auto;
+}
+
+/* ---------- Q2. 大 R 角令牌 ---------- */
+:root{
+  --r-xs: 10px;
+  --r-sm: 14px;
+  --r-md: 18px;
+  --r-lg: 26px;
+  --mi-card: 26px;    /* 卡片 */
+  --mi-hero: 30px;    /* 首屏大卡 */
+  --mi-inner: 20px;   /* 卡内小块 */
+  --mi-ctl: 16px;     /* 按钮 / 输入框 */
+  --mi-bar: 24px;     /* 提示条 */
+  --mi-nav: 30px;     /* 底栏胶囊 */
+}
+
+.card{ border-radius: var(--mi-card); }
+.card.hero{ border-radius: var(--mi-hero); }
+#riskBar, #powBar, .bootbar, .notichip{ border-radius: var(--mi-bar); }
+.tile{ border-radius: var(--mi-inner); }
+.rebox{ border-radius: var(--mi-inner); }
+.qk{ border-radius: var(--mi-inner); }
+.qk .qi{ border-radius: 14px; }
+.lkic{ border-radius: 12px; }
+.tokbox{ border-radius: 14px; }
+.qbox, .qimg, .qrwrap{ border-radius: var(--mi-inner); }
+button.small{ border-radius: var(--mi-ctl); }
+button.tiny{ border-radius: 12px; }
+.dtgl{ border-radius: 12px; }
+.btns > button, .rowbtn{ border-radius: var(--mi-ctl); }
+.dlg{ border-radius: 30px 30px 0 0; }
+nav{ border-radius: var(--mi-nav); }
+nav button{ border-radius: 22px; }
+nav button.on::before{ border-radius: 19px; }
+input[type="text"], input[type="password"], input[type="number"], select, textarea{
+  border-radius: var(--mi-ctl);
+}
+
+/* ---------- Q3. 省电 / 风控横幅：文字被挤成一列 ----------
+   病因：这三条是 display:flex 的行，.rb 又写了 width:100%，行不换行时 .rt 只剩
+   min-content 宽（中文的 min-content 就是「一个字」），于是整段话竖着排下来，
+   卡片高度飙到 1000px+，把页面顶满。
+   改法：换成两列 grid —— 图标 | 正文，按钮固定占第二行整行，正文永远有整行宽。 */
+#riskBar, #powBar{
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 12px;
+  row-gap: 0;
+  padding: 16px 16px 14px;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+#riskBar > .ri, #powBar > .ri{
+  grid-column: 1; grid-row: 1;
+  width: 34px; height: 34px;
+  border-radius: 12px;
+}
+#riskBar > .ri svg, #powBar > .ri svg{ width: 19px; height: 19px; }
+#riskBar > .rt, #powBar > .rt{
+  grid-column: 2; grid-row: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+#riskBar > .rb, #powBar > .rb{
+  grid-column: 1 / -1; grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+  width: auto;
+}
+#riskBar > .rb button, #powBar > .rb button{
+  min-height: 34px;
+  padding: 0 16px;
+  font-size: 13px;
+  border-radius: 14px;
+}
+
+/* ---------- Q4. 按压：平滑内缩，不做「闪一下」 ---------- */
+button.small, button.tiny, .btns > button, .rowbtn, .linkbtn, .qk, .mcbtn{
+  transition:
+    transform .2s var(--ease),
+    background-color .2s var(--ease),
+    box-shadow .2s var(--ease),
+    color .2s var(--ease),
+    opacity .2s var(--ease);
+}
+button.small:active, .btns > button:active, .rowbtn:active, .linkbtn:active{
+  transform: scale(.95);
+}
+.card > .btns > button:active{ transform: scale(.975); }
+
+/* ---------- Q5. 提示条进出场：滑下来 / 滑上去 ---------- */
+@keyframes barIn{
+  from{ opacity: 0; transform: translate3d(0, -10px, 0) scale(.985); }
+  to  { opacity: 1; transform: none; }
+}
+@keyframes barOut{
+  from{ opacity: 1; transform: none; }
+  to  { opacity: 0; transform: translate3d(0, -10px, 0) scale(.985); }
+}
+#riskBar.bar-in, #powBar.bar-in, .bootbar.bar-in, .notichip.bar-in{
+  animation: barIn .34s var(--ease) both;
+}
+#riskBar.bar-out, #powBar.bar-out, .bootbar.bar-out, .notichip.bar-out{
+  animation: barOut .3s var(--ease) forwards;
+  pointer-events: none;
+}
+
+/* ---------- Q6. 无障碍：减少动态效果 ---------- */
+@media (prefers-reduced-motion: reduce){
+  #riskBar.bar-in, #powBar.bar-in, .bootbar.bar-in, .notichip.bar-in,
+  #riskBar.bar-out, #powBar.bar-out, .bootbar.bar-out, .notichip.bar-out{
+    animation: none !important;
+  }
+  button.small, button.tiny, .btns > button, .rowbtn, .linkbtn, .qk, .mcbtn{
+    transition-duration: .01ms !important;
+  }
+}
+
+/* ---------- Q7. 深色下的提示条：别让暖色把玻璃染成土黄 ---------- */
+:root[data-theme="dark"] #powBar{
+  background-color: color-mix(in srgb, #ff9f0a 7%,
+    color-mix(in srgb, var(--glass-tint-c) calc(var(--glass-alpha) * 72%), transparent));
+}
+:root[data-theme="dark"] #riskBar{
+  background-color: color-mix(in srgb, #ff3b30 7%,
+    color-mix(in srgb, var(--glass-tint-c) calc(var(--glass-alpha) * 72%), transparent));
+}
+:root[data-theme="dark"] #powBar > .ri{ background: color-mix(in srgb, var(--warn) 22%, transparent); }
+:root[data-theme="dark"] #riskBar > .ri{ background: color-mix(in srgb, var(--bad) 22%, transparent); }
 </style>
 </head>
 <body>
@@ -3959,23 +4120,42 @@ function riskToast(msg){
 
 /* 展开 / 收起都走这里：display 与 opacity 分开控制，收起要等淡出走完再 display:none，
    否则元素瞬间消失、那 200ms 就白写了。系统开了「减少动态效果」就立刻收。 */
+/* v9.3：提示条统一走这里 —— 出现时滑下来、收起时滑上去，不再「一闪就没」。
+   display 交给 CSS（#powBar/#riskBar 是 grid），JS 只切 class，
+   否则 inline 的 display:flex 会把 Q3 的 grid 布局盖回去（真机上文字竖排就是这么来的）。 */
+function barShow(node){
+  if (!node) return;
+  try { clearTimeout(node._bhT); } catch (e) {}
+  node.hidden = false;
+  node.style.display = "";
+  node.classList.remove("bar-out");
+  node.classList.add("bar-in");
+  node._bhT = setTimeout(function(){ node.classList.remove("bar-in"); }, 420);
+}
+function barHide(node){
+  if (!node) return;
+  var cs = null;
+  try { cs = window.getComputedStyle(node); } catch (e) {}
+  if (cs && cs.display === "none") return;
+  var reduce = false;
+  try { reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (e) {}
+  try { clearTimeout(node._bhT); } catch (e) {}
+  node.classList.remove("bar-in");
+  if (reduce){ node.style.display = "none"; return; }
+  node.classList.add("bar-out");
+  node._bhT = setTimeout(function(){
+    node.classList.remove("bar-out");
+    node.style.display = "none";
+  }, 300);
+}
+
 function riskBarShow(on){
   var bar = el("riskBar");
   if (!bar || on === RISK_ON) return;
   RISK_ON = on;
   try { clearTimeout(RISK_TM); } catch (e) {}
-  if (on) {
-    bar.style.display = "flex";
-    bar.style.opacity = "0";
-    void bar.offsetWidth;   /* 先让浏览器记住 opacity:0，同一帧改成 1 才会真的走过渡 */
-    bar.style.opacity = "1";
-    return;
-  }
-  var reduce = false;
-  try { reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (e) {}
-  bar.style.opacity = "0";
-  if (reduce) { bar.style.display = "none"; return; }
-  RISK_TM = setTimeout(function(){ if (!RISK_ON) bar.style.display = "none"; }, 220);
+  if (on) { barShow(bar); return; }
+  barHide(bar);
 }
 
 function renderRisk(r){
@@ -5754,8 +5934,7 @@ document.addEventListener("click", function(ev){
   }
   else if (act === "powack") {
     try { Android.powerAck(); } catch (e3) {}
-    var pbb = el("powBar");
-    if (pbb) pbb.style.display = "none";
+    barHide(el("powBar"));
     extToast("已记录，不再重复提示");
     try { refreshExtras(); } catch (e4) {}
   }
@@ -8010,7 +8189,7 @@ function refreshExtras(st){
         var pb = el("powBar");
         if (pb){
           var show = !ps.shown;
-          pb.style.display = show ? "flex" : "none";
+          if (show) barShow(pb); else barHide(pb);
           if (show){
             var ptt = el("powTitle");
             if (ptt) ptt.textContent = "省电策略" + (manu && manu !== "unknown" ? "（" + manu + "）" : "");
