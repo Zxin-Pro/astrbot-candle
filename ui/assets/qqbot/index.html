@@ -230,7 +230,11 @@ body::after{
   z-index: 6;
   pointer-events: none;
   opacity: .035;
-  mix-blend-mode: overlay;
+  /* B9-A：这行原来是 mix-blend-mode: overlay。混合模式会把它所在的整页（含文档滚动面）
+     合成成同一个 render surface，安卓 WebView 上 position:fixed 的 #bgLayer 和底栏就会
+     被卷进内容一起滚 —— 正是用户说的「背景和下面的框框因为页面滚动而动」。
+     3.5% 的灰噪点用 normal 叠出来肉眼几乎没差别，不值得为它冒这个险。 */
+  mix-blend-mode: normal;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='140' height='140' filter='url(%23n)'/></svg>");
   background-size: 140px 140px;
 }
@@ -531,16 +535,23 @@ button.tiny{
   background: var(--fill-1);
 }
 
+/* B9-A：这两个小按钮原来写死 28×28，而「复制日志」四个字根本塞不下（scrollWidth 与
+   clientWidth 都是 28，文字被压成一团溢出），用户看到的就是「显示错误、按钮太小」。
+   改成 iOS 最小可点高度 44、宽度跟着文字走；只让第一个吃掉左侧剩余空间，
+   两个按钮一起贴右边界，标题照旧靠左。 */
 .dtgl{
-  width: 28px; height: 28px;
-  min-height: 28px;
-  padding: 0;
-  margin-left: auto;
-  border-radius: 9px;
-  font-size: 13px;
+  flex: none;
+  width: auto; min-width: 44px;
+  height: 44px; min-height: 44px;
+  padding: 0 10px;
+  margin-left: 0;          /* 间距交给 h2 的 gap，两个按钮之间不会比别处宽 */
+  border-radius: 12px;
+  font-size: 12.5px;
+  white-space: nowrap;
   color: var(--label-2);
   background: var(--fill-1);
 }
+#btnCopyLog{ margin-left: auto; }
 
 .linkbtn{
   min-height: 32px;
@@ -866,8 +877,12 @@ input::placeholder, textarea::placeholder{ color: var(--label-3); }
 }
 .tt{ font-size: 11.5px; color: var(--label-2); }
 .tv{ margin-top: 3px; font-size: 16px; font-weight: 620; letter-spacing: -.3px; }
-.tp{ height: 4px; margin-top: 8px; border-radius: var(--r-full); background: var(--fill-3); overflow: hidden; }
-.tp > i{ display: block; height: 100%; width: 0; border-radius: inherit; background: var(--accent); transition: width var(--dur-slow) var(--ease); }
+/* B9-A：这一块原本是按「进度条」写的（高 4px + overflow:hidden），可 JS 的 setTile()
+   往 #p-* 里写的是文字（端口号 / 已完成 / 未安装），那行字就被裁成 4px —— 正是用户报的
+   「详情展开后每个小卡片底下的字没显示出来」。改成一行正常小字；没内容时 :empty 不占位。 */
+.tp{ margin-top: 4px; font-size: 11.5px; line-height: 1.35; color: var(--label-2); overflow: visible; overflow-wrap: anywhere; }
+.tp:empty{ display: none; }
+.tp > i{ display: block; height: 4px; width: 0; border-radius: var(--r-full); background: var(--accent); transition: width var(--dur-slow) var(--ease); }
 
 .lkrow{
   display: flex;
@@ -1217,6 +1232,94 @@ pre{
 .dfoot button{ flex: 0 0 auto; }
 .dfoot button.primary{ flex: 1; }
 
+/* ---------- 14b. 背景裁剪（§B9-C 自定义图片裁剪，层在弹窗体系之上） ----------
+   整页黑的取景器：上面一行标题，中间按屏幕比例（9:20~20:9）取 cover 预览，
+   下面缩放滑块 + 重置/取消/确定。框外只靠遮罩压暗，不用 box-shadow 扩散 ——
+   那样会把标题一起盖掉。确定后按框内可视区域换回原图坐标，canvas 重画。 */
+#bgCrop{
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: none;
+  flex-direction: column;
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px calc(env(safe-area-inset-bottom, 0px) + 14px);
+  background: radial-gradient(120% 90% at 50% 0%, #101318 0%, #000 60%);
+  color: #fff;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+#bgCrop.on{ display: flex; animation: cropIn var(--dur) var(--ease) both; }
+@keyframes cropIn{ from{ opacity: 0; } to{ opacity: 1; } }
+html.bgcroplock{ overflow: hidden; }
+.crop-hd{ flex: none; padding: 0 2px 10px; }
+.crop-t{ font-size: 17px; font-weight: 620; letter-spacing: -.2px; }
+.crop-s{ margin-top: 3px; font-size: 12px; color: rgba(255,255,255,.58); }
+#cropStage{ flex: 1; min-height: 0; display: grid; place-items: center; }
+#cropFrame{
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #0b0d11;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.30), 0 22px 50px -18px rgba(0,0,0,.9);
+  touch-action: none;
+  cursor: grab;
+}
+#cropFrame:active{ cursor: grabbing; }
+#cropImg{
+  display: block;
+  max-width: none;
+  max-height: none;
+  transform-origin: 0 0;
+  will-change: transform;
+  -webkit-user-drag: none;
+  user-select: none;
+  pointer-events: none;
+}
+.crop-grid{ position: absolute; inset: 0; pointer-events: none; }
+.crop-grid i{ position: absolute; background: rgba(255,255,255,.32); }
+.crop-grid i:nth-child(1){ left: 33.333%; top: 0; bottom: 0; width: .5px; }
+.crop-grid i:nth-child(2){ left: 66.666%; top: 0; bottom: 0; width: .5px; }
+.crop-grid i:nth-child(3){ top: 33.333%; left: 0; right: 0; height: .5px; }
+.crop-grid i:nth-child(4){ top: 66.666%; left: 0; right: 0; height: .5px; }
+.crop-ft{ flex: none; padding-top: 12px; }
+.crop-zoom{ display: flex; align-items: center; gap: 10px; }
+.crop-zoom > span{ flex: none; font-size: 12px; color: rgba(255,255,255,.58); }
+.crop-zoom .rng{ flex: 1; }
+#bgCrop .rng::-webkit-slider-runnable-track{
+  height: 5px;
+  border-radius: var(--r-full);
+  background: linear-gradient(90deg, var(--accent) 0%, var(--accent) var(--fill, 0%), rgba(255,255,255,.26) var(--fill, 0%), rgba(255,255,255,.26) 100%);
+}
+#bgCrop .rng::-webkit-slider-thumb{
+  -webkit-appearance: none;
+  width: 27px; height: 27px;
+  margin-top: -11px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,.4), 0 0 0 .5px rgba(0,0,0,.06);
+}
+.crop-acts{ display: flex; gap: 9px; margin-top: 12px; }
+.crop-acts button{
+  flex: 1;
+  min-height: 48px;
+  margin: 0;
+  border-radius: var(--mi-ctl, 16px);
+  font-size: 15px;
+  font-weight: 590;
+  color: #fff;
+  background: rgba(255,255,255,.14);
+  box-shadow: inset 0 0 0 .5px rgba(255,255,255,.22);
+  transition: transform .2s var(--ease), background-color .2s var(--ease);
+}
+.crop-acts button:active{ transform: scale(.97); }
+.crop-acts button.primary{
+  flex: 1.5;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 94%, #fff) 0%, var(--accent) 64%, color-mix(in srgb, var(--accent) 88%, #000) 100%);
+  box-shadow: inset 0 .5px 0 rgba(255,255,255,.35), 0 8px 18px -12px color-mix(in srgb, var(--accent) 85%, transparent);
+}
+
 .confirm{
   margin-top: 12px;
   padding: 12px 14px;
@@ -1341,7 +1444,10 @@ pre{
   box-shadow: none;
   transition: background-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
-.mcbtn:active{ transform: scale(.985); background: var(--fill-1); }
+.mcbtn:active{ background: var(--fill-1); }
+/* 内层文字/图标一律不接事件：点到 b/span/svg 时 ev.target 直接是 button，
+   否则 data-act 取不到，按下去就像没反应。 */
+.mcbtn > *{ pointer-events: none; }
 
 .mci{
   flex: none;
@@ -1401,18 +1507,23 @@ pre{
 
 .morewrap{ display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 2px 0 0; }
 
+/* B9-A：入口原来是 83×34 的一小条，命中区不到 44，手指经常擦边（"按好几下才有反应"）。
+   撑到 44 高、至少 44 宽；内层 span / svg 不吃指针事件，点文字、点箭头都算点在按钮上。 */
 .moretoggle{
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
-  min-height: 34px;
-  padding: 0 8px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 14px;
   font-size: 12.5px;
   font-weight: 500;
   color: var(--label-2);
   background: none;
   box-shadow: none;
 }
+.moretoggle > *{ pointer-events: none; }
 .moretoggle svg{ width: 14px; height: 14px; transition: transform var(--dur) var(--ease); opacity: .75; }
 .moretoggle[aria-expanded="true"] svg{ transform: rotate(180deg); }
 .morehint{
@@ -1728,10 +1839,13 @@ nav button:active .ic{ transform: scale(.92); }
 
 ::selection{ background: color-mix(in srgb, var(--accent) 30%, transparent); }
 
-/* 滚动条：细、无轨道 */
-*::-webkit-scrollbar{ width: 6px; height: 6px; }
+/* 滚动条：一条都不画（安卓 WebView 上这条 6px 细轨道就是用户说的「右边的滚条」）。
+   scrollbar-width / -ms-overflow-style 管标准属性，::-webkit-scrollbar 管 WebView；
+   三处一起写才能保证任何引擎都不画，且只隐藏外观、不影响滚动（拖动 / 惯性 / 滚动锚定都不变）。 */
+*{ scrollbar-width: none; -ms-overflow-style: none; }
+*::-webkit-scrollbar{ width: 0; height: 0; display: none; }
 *::-webkit-scrollbar-track{ background: transparent; }
-*::-webkit-scrollbar-thumb{ background: color-mix(in srgb, var(--label-3) 45%, transparent); border-radius: 3px; }
+*::-webkit-scrollbar-thumb{ background: transparent; }
 
 /* 减少动态效果 */
 @media (prefers-reduced-motion: reduce){
@@ -2250,7 +2364,11 @@ html{
   overscroll-behavior-y: none;
 }
 body{
-  overflow-x: clip;
+  /* B9-A：body 上这一条 overflow-x: clip 是多余的 —— 根上的 clip 已经把横向裁掉了，
+     而它会让 body 变成「裁剪容器」，安卓 WebView 里 position:fixed 的背景层 / 底栏
+     会跟着内容一起滚（用户原话：「背景和下面的框框不要因为页面滚动而动」）。
+     退回 visible，既不产生滚动容器（Q1 要的效果不变），也不再包住 fixed 元素。 */
+  overflow-x: visible;
   overflow-y: visible;
   overscroll-behavior-y: auto;
 }
@@ -2443,6 +2561,46 @@ button.small:active, .btns > button:active, .rowbtn:active, .linkbtn:active{
 }
 :root[data-theme="dark"] #powBar > .ri{ background: color-mix(in srgb, var(--warn) 22%, transparent); }
 :root[data-theme="dark"] #riskBar > .ri{ background: color-mix(in srgb, var(--bad) 22%, transparent); }
+/* ---------- B9-B：模型与人格整屏 ----------
+   人格提示词经常几十行，抽屉里只露出两行（textarea 才 52px），
+   所以这个弹窗单独改成整屏：高度跟随视口、正文内部滚动、底部按钮贴安全区，
+   右上角补一个 44px 的关闭按钮；抽屉的顶部抓手在整屏下没有意义，隐藏掉。 */
+#dlgAstr{ align-items: stretch; }
+#dlgAstr .dlg{
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  border: 0;
+  border-radius: 0;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  box-shadow: none;
+}
+#dlgAstr .dlg::before{ display: none; }
+#dlgAstr .dlg h3{ padding: 0 46px; }
+#dlgAstr .dlgx{
+  position: absolute;
+  top: calc(6px + env(safe-area-inset-top, 0px));
+  right: 8px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--label-2);
+  font-size: 19px;
+  line-height: 1;
+}
+#dlgAstr .dlgx > *{ pointer-events: none; }
+#dlgAstr .dlgx:active{ background: var(--fill-2); }
+#dlgAstr #astrPersona{
+  height: 34dvh;
+  min-height: 34dvh;
+  max-height: 34dvh;
+  resize: none;
+}
 </style>
 </head>
 <body>
@@ -2760,6 +2918,62 @@ button.small:active, .btns > button:active, .rowbtn:active, .linkbtn:active{
 
   <section class="tab" id="tab-more">
 
+    <div class="card">
+      <h2>关于与支持</h2>
+      <div class="lkrow">
+        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.6"/><path d="M3.4 12h17.2"/><path d="M12 3.4c2.3 2.4 3.5 5.4 3.5 8.6S14.3 18.2 12 20.6c-2.3-2.4-3.5-5.4-3.5-8.6S9.7 5.8 12 3.4z"/></svg></span>
+        <div class="lkbd"><div class="lkt">官方网站</div><div class="lkv">烛心.xyz</div></div>
+        <div class="lkbtns">
+          <button class="small" data-act="copyurl" data-arg="https://xn--15t839a.xyz">复制</button>
+          <button class="small primary" data-act="openurl" data-arg="https://xn--15t839a.xyz">打开</button>
+        </div>
+      </div>
+      <div class="lkrow">
+        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9.2" cy="8.4" r="3.3"/><path d="M3.2 20c0-3.3 2.7-5.6 6-5.6s6 2.3 6 5.6"/><path d="M16.4 5.6a3.2 3.2 0 0 1 0 6.3"/><path d="M17.6 14.9c2.2.5 3.7 2.3 3.7 4.6"/></svg></span>
+        <div class="lkbd"><div class="lkt">本软件官方群</div><div class="lkv">1127997343</div></div>
+        <div class="lkbtns">
+          <button class="small" data-act="copytext" data-arg="1127997343">复制</button>
+          <button class="small primary" data-act="openqq" data-arg="1127997343">加群</button>
+        </div>
+      </div>
+      <div class="lkrow">
+        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 12a8.4 8.4 0 1 1-2.6-6"/><path d="M20.4 3.6V9.3h-5.7"/></svg></span>
+        <div class="lkbd"><div class="lkt">检查更新</div><div class="lkv" id="updText">点右边按钮看看有没有新版本</div><div class="lkv" id="updBeta" style="display:none"></div><div class="lkv" id="siteVer">官网版本：读取中…</div></div>
+        <div class="lkbtns">
+          <button class="small primary" data-act="checkupdate" id="updBtn">检查更新</button>
+        </div>
+      </div>
+      <!-- 两个自动提醒开关：只管「查完要不要自己弹窗」，手动点「检查更新」永远弹。
+           存 localStorage，缺省都开（'0' 才算关）—— 用户装了新版本后不点回来，
+           下一次打开还能被提醒到。 -->
+      <div class="updsw">
+        <div class="swrow">
+          <div class="swinfo">
+            <div class="swname">正式版提醒<span class="swtag on" id="updSwStableTag">已开</span></div>
+            <div class="swdesc">有新版时自动弹窗提醒</div>
+          </div>
+          <button class="tgl on" id="updSwStable" data-act="updremind" data-arg="stable" title="点击切换正式版自动提醒"></button>
+        </div>
+        <div class="swrow">
+          <div class="swinfo">
+            <div class="swname">测试版提醒<span class="swtag on" id="updSwBetaTag">已开</span></div>
+            <div class="swdesc">有新版时自动弹窗提醒</div>
+          </div>
+          <button class="tgl on" id="updSwBeta" data-act="updremind" data-arg="beta" title="点击切换测试版自动提醒"></button>
+        </div>
+      </div>
+      <div class="lkrow">
+        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 5 6v5.4c0 4.2 2.9 7.6 7 8.8 4.1-1.2 7-4.6 7-8.8V6z"/><path d="M9.4 12.1l1.9 1.9 3.4-3.6"/></svg></span>
+        <div class="lkbd"><div class="lkt">隐私政策</div><div class="lkv">数据收集范围与权限用途</div></div>
+        <div class="lkbtns">
+          <button class="small primary" data-act="privacy">查看</button>
+        </div>
+      </div>
+      <div class="hint" id="updNote" style="display:none"></div>
+      <div class="hint">当前版本 <b id="v-appver">-</b></div>
+      <div class="hint">本软件官方群 <b>1127997343</b>，发现 bug 及时反馈。</div>
+    </div>
+
     <!-- AstrBot 模型与人格（v1.2.0）：把模型和人格直接预置到沙盒里，
          用户只需要贴一把中转站密钥。写的是 cmd_config.json / data_v4.db，
          保存时先停沙盒再落盘，所以不会被运行时覆盖。 -->
@@ -2866,6 +3080,7 @@ button.small:active, .btns > button:active, .rowbtn:active, .linkbtn:active{
         <span class="fxlabel">背景图片</span>
         <div class="btns">
           <button class="small primary" data-act="pickbg">选择本机图片</button>
+          <button class="small" data-act="cropbg" id="btnBgCrop" hidden>调整裁剪</button>
           <button class="small" data-act="clearbg">恢复默认</button>
         </div>
       </div>
@@ -2973,63 +3188,6 @@ button.small:active, .btns > button:active, .rowbtn:active, .linkbtn:active{
       <div class="btns" style="margin-top:10px">
         <button class="primary" style="flex:1" data-act="terminal">打开终端</button>
       </div>
-    </div>
-
-
-    <div class="card">
-      <h2>关于与支持</h2>
-      <div class="lkrow">
-        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.6"/><path d="M3.4 12h17.2"/><path d="M12 3.4c2.3 2.4 3.5 5.4 3.5 8.6S14.3 18.2 12 20.6c-2.3-2.4-3.5-5.4-3.5-8.6S9.7 5.8 12 3.4z"/></svg></span>
-        <div class="lkbd"><div class="lkt">官方网站</div><div class="lkv">烛心.xyz</div></div>
-        <div class="lkbtns">
-          <button class="small" data-act="copyurl" data-arg="https://xn--15t839a.xyz">复制</button>
-          <button class="small primary" data-act="openurl" data-arg="https://xn--15t839a.xyz">打开</button>
-        </div>
-      </div>
-      <div class="lkrow">
-        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9.2" cy="8.4" r="3.3"/><path d="M3.2 20c0-3.3 2.7-5.6 6-5.6s6 2.3 6 5.6"/><path d="M16.4 5.6a3.2 3.2 0 0 1 0 6.3"/><path d="M17.6 14.9c2.2.5 3.7 2.3 3.7 4.6"/></svg></span>
-        <div class="lkbd"><div class="lkt">本软件官方群</div><div class="lkv">1127997343</div></div>
-        <div class="lkbtns">
-          <button class="small" data-act="copytext" data-arg="1127997343">复制</button>
-          <button class="small primary" data-act="openqq" data-arg="1127997343">加群</button>
-        </div>
-      </div>
-      <div class="lkrow">
-        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 12a8.4 8.4 0 1 1-2.6-6"/><path d="M20.4 3.6V9.3h-5.7"/></svg></span>
-        <div class="lkbd"><div class="lkt">检查更新</div><div class="lkv" id="updText">点右边按钮看看有没有新版本</div><div class="lkv" id="updBeta" style="display:none"></div><div class="lkv" id="siteVer">官网版本：读取中…</div></div>
-        <div class="lkbtns">
-          <button class="small primary" data-act="checkupdate" id="updBtn">检查更新</button>
-        </div>
-      </div>
-      <!-- 两个自动提醒开关：只管「查完要不要自己弹窗」，手动点「检查更新」永远弹。
-           存 localStorage，缺省都开（'0' 才算关）—— 用户装了新版本后不点回来，
-           下一次打开还能被提醒到。 -->
-      <div class="updsw">
-        <div class="swrow">
-          <div class="swinfo">
-            <div class="swname">正式版提醒<span class="swtag on" id="updSwStableTag">已开</span></div>
-            <div class="swdesc">有新版时自动弹窗提醒</div>
-          </div>
-          <button class="tgl on" id="updSwStable" data-act="updremind" data-arg="stable" title="点击切换正式版自动提醒"></button>
-        </div>
-        <div class="swrow">
-          <div class="swinfo">
-            <div class="swname">测试版提醒<span class="swtag on" id="updSwBetaTag">已开</span></div>
-            <div class="swdesc">有新版时自动弹窗提醒</div>
-          </div>
-          <button class="tgl on" id="updSwBeta" data-act="updremind" data-arg="beta" title="点击切换测试版自动提醒"></button>
-        </div>
-      </div>
-      <div class="lkrow">
-        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 5 6v5.4c0 4.2 2.9 7.6 7 8.8 4.1-1.2 7-4.6 7-8.8V6z"/><path d="M9.4 12.1l1.9 1.9 3.4-3.6"/></svg></span>
-        <div class="lkbd"><div class="lkt">隐私政策</div><div class="lkv">数据收集范围与权限用途</div></div>
-        <div class="lkbtns">
-          <button class="small primary" data-act="privacy">查看</button>
-        </div>
-      </div>
-      <div class="hint" id="updNote" style="display:none"></div>
-      <div class="hint">当前版本 <b id="v-appver">-</b></div>
-      <div class="hint">本软件官方群 <b>1127997343</b>，发现 bug 及时反馈。</div>
     </div>
 
     <div class="pagefoot">
@@ -3306,6 +3464,7 @@ button.small:active, .btns > button:active, .rowbtn:active, .linkbtn:active{
      模型可以「获取列表」让中转站自己报，省得用户手打字。 -->
 <div class="dlgmask" id="dlgAstr">
   <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="astrDlgTitle">
+    <button class="dlgx" data-act="astrclose" aria-label="关闭">&times;</button>
     <h3 id="astrDlgTitle">模型与人格</h3>
     <div class="dbody">
       <div class="field"><label for="astrBase">接口地址</label><input id="astrBase" autocomplete="off" spellcheck="false" placeholder="https://worldcodes.online/v1"></div>
@@ -3348,6 +3507,34 @@ button.small:active, .btns > button:active, .rowbtn:active, .linkbtn:active{
     </div>
     <div class="dfoot">
       <button class="small quiet" style="flex:1" data-act="alclose">知道了</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 背景裁剪（§B9-C） =====
+     选图后原生会整页重载，syncBgFromAndroid() 比对指纹发现换了新图，
+     会等首屏落稳再把这张遮罩弹出来。预览框按屏幕比例（9:20~20:9）取 cover，
+     确定时按框内可视区域换算回原图坐标，用 canvas 重画一张 JPEG 存本地。 -->
+<div id="bgCrop" role="dialog" aria-modal="true" aria-labelledby="cropTitle" aria-hidden="true">
+  <div class="crop-hd">
+    <div class="crop-t" id="cropTitle">裁剪背景</div>
+    <div class="crop-s">拖动调整位置 · 双指或滚轮缩放</div>
+  </div>
+  <div id="cropStage">
+    <div id="cropFrame">
+      <img id="cropImg" alt="背景预览" draggable="false">
+      <div class="crop-grid" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    </div>
+  </div>
+  <div class="crop-ft">
+    <div class="crop-zoom">
+      <span aria-hidden="true">缩放</span>
+      <input class="rng" type="range" id="cropZoom" min="100" max="500" step="1" value="100" aria-label="背景缩放">
+    </div>
+    <div class="crop-acts">
+      <button data-act="cropreset">重置</button>
+      <button data-act="cropcancel">取消</button>
+      <button class="primary" data-act="cropok">确定</button>
     </div>
   </div>
 </div>
@@ -3501,23 +3688,48 @@ function applyBg(){
   // 照片有亮有暗，预设渐变都是深色；亮照片上浅色文字会糊掉，
   // 所以用图片时给整页加深遮罩并补文字阴影（CSS 见 body.hasimg 那几条）。
   try { document.body.classList.toggle("hasimg", !!img); } catch (e) {}
+  // 没有图片就藏掉「调整裁剪」，省得点进去只看到一句提示
+  var bc = el("btnBgCrop");
+  if (bc) bc.hidden = !img;
 }
 
-/* 只在需要时调用：Android.bgImage() 会读文件做 base64，开销大 */
+/* 只在需要时调用：Android.bgImage() 会读文件做 base64，开销大。
+   选图成功后 Java 会整页 reload，「选完图进裁剪」只能放在这里做：
+   点「选择本机图片」时先记下当时的原生指纹（qqbot.bgpick），
+   这次启动读到的原生图指纹若和它不同，就说明刚换了新图 → 首屏画完自动进裁剪。 */
 function syncBgFromAndroid(){
   var r = null;
   try { r = JSON.parse(Android.bgImage()); } catch (e) { r = null; }
-  if (r && r.ok && r.data) {
-    S.bgImg = r.data;
-    // 图片已由 Java 侧缩到长边 1600 并转 JPEG，正常只有几百 KB；
-    // 万一还是很大就别写 localStorage（配额约 5MB，超了会静默失败）。
-    if (r.data.length < 2000000) lsSet("qqbot.bgimg", r.data); else lsDel("qqbot.bgimg");
+  var native = (r && r.ok && r.data) ? String(r.data) : "";
+  var pend = String(lsGet("qqbot.bgpick", "") || "");
+  var sig = native ? bgSrcSig(native) : "";
+  /* bgpick 存的是 "p|"+当时指纹：没有旧图时也有非空标记，不能拿空串当"没点过" */
+  var fresh = !!native && pend !== "" && pend !== ("p|" + sig);
+  if (native) {
+    // 本地已有同一张源图的裁剪结果 → 保留裁剪，否则每次启动都被原生原图顶掉
+    var crop = lsGet("qqbot.bgimg", "");
+    var keep = lsGet("qqbot.bgcrop", "") === "1" && !!crop && lsGet("qqbot.bgcropsrc", "") === sig;
+    if (keep) {
+      S.bgImg = crop;
+    } else {
+      S.bgImg = native;
+      // 图片已由 Java 侧缩到长边 1600 并转 JPEG，正常只有几百 KB；
+      // 万一还是很大就别写 localStorage（配额约 5MB，超了会静默失败）。
+      if (native.length < 2000000) lsSet("qqbot.bgimg", native); else lsDel("qqbot.bgimg");
+      lsDel("qqbot.bgcrop");
+      lsDel("qqbot.bgcropsrc");
+    }
+    lsSet("qqbot.bgsrc", sig);
   } else if (r && r.ok === false) {
     S.bgImg = "";
     lsDel("qqbot.bgimg");
+    bgCropForget();
   }
+  if (pend !== "") lsDel("qqbot.bgpick");
   applyBg();
   renderPresets();
+  // 等首屏（外观 / 图标 / 免责声明）画完再盖裁剪层，避免白闪与层级打架
+  if (fresh) setTimeout(function(){ bgCropOpen(native); }, 340);
 }
 
 /* 六宫格预设色块 */
@@ -3549,11 +3761,400 @@ function setPreset(id){
   S.bgPreset = id;
   lsSet("qqbot.bgpreset", id);
   lsDel("qqbot.bgimg");
+  bgCropForget();
   // 只清内存和 localStorage 不够：磁盘上的 bg.img 还在，下次启动
   // syncBgFromAndroid() 会把它读回来顶掉刚选的预设，用户看到的是「选了没用」。
   try { Android.clearBg(); } catch (e) {}
   applyBg();
   renderPresets();
+}
+
+/* ===== 背景裁剪（§B9-C） =====
+   持久化只走 localStorage，不动 Java：原生 pickBg 选完图会整页 reload，
+   所以「选图 → 进裁剪」靠启动时比对指纹完成（见 syncBgFromAndroid）。
+   键位：
+   qqbot.bgimg     裁剪结果 dataURL（沿用旧键，applyBg 直接读）
+   qqbot.bgcrop    "1" = bgimg 是裁剪产物
+   qqbot.bgsrc     原生 bg.img 的指纹
+   qqbot.bgcropsrc 裁剪时用的源图指纹（与 bgsrc 相同才认为裁剪仍有效）
+   qqbot.bgcroppos 构图 JSON {z,x,y}，再次进裁剪时恢复
+   qqbot.bgpick    点「选择本机图片」时的原生指纹，用来认出 reload 后的新图
+   指纹只采样首/中/末各 64 字符：完整 dataURL 几百 KB，逐字符哈希会卡主线程。 */
+var CR = {
+  open: false, seq: 0, src: "",
+  nw: 0, nh: 0, frameW: 0, frameH: 0,
+  base: 1, z: 1, ox: 0, oy: 0, k: 1, tx: 0, ty: 0,
+  pos: null, drag: null, pinch: null, mouse: null, wired: false
+};
+
+/* 取景框比例 = 屏幕比例（背景最终铺满整屏），极端平板比例夹到 9:20~20:9 */
+function cropRatio(){
+  var w = window.innerWidth || 360, h = window.innerHeight || 640;
+  var r = w / h;
+  if (!isFinite(r) || r <= 0) r = 9 / 16;
+  return Math.max(9 / 20, Math.min(20 / 9, r));
+}
+
+/* 图片指纹：长度 + 三段采样做 djb2，几微秒就够 */
+function bgSrcSig(s){
+  s = String(s || "");
+  var h = 5381;
+  var parts = [s.length, s.slice(0, 64), s.slice(Math.max(0, (s.length >> 1) - 32), (s.length >> 1) + 32), s.slice(-64)];
+  for (var p = 0; p < parts.length; p++) {
+    var t = String(parts[p]);
+    for (var i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0;
+  }
+  return s.length.toString(36) + "." + h.toString(36);
+}
+
+function bgCropForget(){
+  lsDel("qqbot.bgcrop");
+  lsDel("qqbot.bgcropsrc");
+  lsDel("qqbot.bgcroppos");
+  lsDel("qqbot.bgsrc");
+  lsDel("qqbot.bgpick");
+}
+
+function cropPoint(t){
+  var f = el("cropFrame");
+  var r = f ? f.getBoundingClientRect() : { left: 0, top: 0 };
+  return { x: t.clientX - r.left, y: t.clientY - r.top };
+}
+
+/* 取景框尺寸：stage 里留 24px 边距，按屏幕比例尽量撑满 */
+function cropLayout(){
+  var stage = el("cropStage"), frame = el("cropFrame");
+  if (!stage || !frame || !CR.nw) return;
+  var r = cropRatio();
+  var sw = Math.max(80, stage.clientWidth - 24), sh = Math.max(80, stage.clientHeight - 24);
+  var w = sw, h = w / r;
+  if (h > sh) { h = sh; w = h * r; }
+  w = Math.max(160, Math.floor(w));
+  h = Math.max(160, Math.floor(h));
+  /* 取整后比例会差一像素，按宽回算一次高，保证导出比例就是屏幕比例 */
+  h = Math.max(160, Math.round(w / r));
+  if (h > sh) { h = Math.floor(sh); w = Math.max(160, Math.round(h * r)); }
+  frame.style.width = w + "px";
+  frame.style.height = h + "px";
+  CR.frameW = w;
+  CR.frameH = h;
+  CR.base = Math.max(w / CR.nw, h / CR.nh);   /* cover */
+  var img = el("cropImg");
+  if (img) { img.style.width = CR.nw + "px"; img.style.height = CR.nh + "px"; }
+}
+
+/* 把 z / 平移写回 transform（origin 0 0，便于反算裁剪区） */
+function paintCrop(){
+  var img = el("cropImg");
+  if (!img || !CR.nw) return;
+  var k = CR.base * CR.z;
+  var dw = CR.nw * k, dh = CR.nh * k;
+  var mx = Math.max(0, (dw - CR.frameW) / 2), my = Math.max(0, (dh - CR.frameH) / 2);
+  CR.ox = Math.max(-mx, Math.min(mx, CR.ox));
+  CR.oy = Math.max(-my, Math.min(my, CR.oy));
+  var tx = (CR.frameW - dw) / 2 + CR.ox;
+  var ty = (CR.frameH - dh) / 2 + CR.oy;
+  img.style.transform = "translate(" + tx.toFixed(2) + "px," + ty.toFixed(2) + "px) scale(" + k.toFixed(6) + ")";
+  CR.tx = tx; CR.ty = ty; CR.k = k;
+  var zr = el("cropZoom");
+  if (zr) {
+    var v = Math.round(CR.z * 100);
+    if (String(v) !== zr.value) zr.value = String(v);
+    zr.style.setProperty("--fill", ((CR.z - 1) / 4 * 100).toFixed(1) + "%");
+  }
+}
+
+/* 以画面内某个点为焦点缩放：先求该点在原图上的坐标，缩放后再放回原处 */
+function cropZoomAt(z, px, py){
+  if (!CR.nw) return;
+  z = Math.max(1, Math.min(5, z));
+  var k0 = CR.base * CR.z, k1 = CR.base * z;
+  var tx0 = (CR.frameW - CR.nw * k0) / 2 + CR.ox;
+  var ty0 = (CR.frameH - CR.nh * k0) / 2 + CR.oy;
+  var ix = (px - tx0) / k0, iy = (py - ty0) / k0;
+  CR.z = z;
+  CR.ox = px - ix * k1 - (CR.frameW - CR.nw * k1) / 2;
+  CR.oy = py - iy * k1 - (CR.frameH - CR.nh * k1) / 2;
+  paintCrop();
+}
+
+function cropReset(){
+  CR.z = 1;
+  CR.ox = 0;
+  CR.oy = 0;
+  paintCrop();
+}
+
+function bgCropWire(){
+  if (CR.wired) return;
+  var ov = el("bgCrop"), stage = el("cropStage"), frame = el("cropFrame"), zr = el("cropZoom");
+  if (!ov || !stage || !frame) return;
+  CR.wired = true;
+
+  function dragFrom(t){
+    var p = cropPoint(t);
+    CR.drag = { x: p.x, y: p.y, ox: CR.ox, oy: CR.oy };
+    CR.pinch = null;
+  }
+  function pinchFrom(a, b){
+    var pa = cropPoint(a), pb = cropPoint(b);
+    var dx = pb.x - pa.x, dy = pb.y - pa.y;
+    CR.pinch = {
+      d: Math.sqrt(dx * dx + dy * dy) || 1,
+      mx: (pa.x + pb.x) / 2, my: (pa.y + pb.y) / 2,
+      z: CR.z, ox: CR.ox, oy: CR.oy
+    };
+    CR.drag = null;
+  }
+  function pinchMove(a, b){
+    var p = CR.pinch;
+    if (!p || !CR.nw) return;
+    var pa = cropPoint(a), pb = cropPoint(b);
+    var dx = pb.x - pa.x, dy = pb.y - pa.y;
+    var d = Math.sqrt(dx * dx + dy * dy) || 1;
+    var mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
+    var z = Math.max(1, Math.min(5, p.z * d / p.d));
+    var k0 = CR.base * p.z, k1 = CR.base * z;
+    var tx0 = (CR.frameW - CR.nw * k0) / 2 + p.ox;
+    var ty0 = (CR.frameH - CR.nh * k0) / 2 + p.oy;
+    var ix = (p.mx - tx0) / k0, iy = (p.my - ty0) / k0;
+    CR.z = z;
+    CR.ox = mx - ix * k1 - (CR.frameW - CR.nw * k1) / 2;
+    CR.oy = my - iy * k1 - (CR.frameH - CR.nh * k1) / 2;
+    paintCrop();
+  }
+
+  frame.addEventListener("touchstart", function(e){
+    if (!CR.open) return;
+    e.preventDefault();
+    var t = e.touches;
+    if (t.length >= 2) pinchFrom(t[0], t[1]);
+    else if (t.length === 1) dragFrom(t[0]);
+  }, { passive: false });
+
+  frame.addEventListener("touchmove", function(e){
+    if (!CR.open) return;
+    e.preventDefault();
+    var t = e.touches;
+    if (t.length >= 2) {
+      if (!CR.pinch) pinchFrom(t[0], t[1]);
+      else pinchMove(t[0], t[1]);
+    } else if (t.length === 1 && CR.drag) {
+      var p = cropPoint(t[0]);
+      CR.ox = CR.drag.ox + (p.x - CR.drag.x);
+      CR.oy = CR.drag.oy + (p.y - CR.drag.y);
+      paintCrop();
+    }
+  }, { passive: false });
+
+  function tEnd(e){
+    if (!CR.open) return;
+    var t = e.touches;
+    if (t.length >= 2) pinchFrom(t[0], t[1]);
+    else if (t.length === 1) dragFrom(t[0]);
+    else { CR.drag = null; CR.pinch = null; }
+  }
+  frame.addEventListener("touchend", tEnd);
+  frame.addEventListener("touchcancel", function(){ CR.drag = null; CR.pinch = null; });
+
+  /* 桌面 / 模拟器：鼠标拖动 + 滚轮缩放 */
+  frame.addEventListener("mousedown", function(e){
+    if (!CR.open || e.button !== 0) return;
+    e.preventDefault();
+    CR.mouse = { x: e.clientX, y: e.clientY, ox: CR.ox, oy: CR.oy };
+  });
+  window.addEventListener("mousemove", function(e){
+    if (!CR.open || !CR.mouse) return;
+    CR.ox = CR.mouse.ox + (e.clientX - CR.mouse.x);
+    CR.oy = CR.mouse.oy + (e.clientY - CR.mouse.y);
+    paintCrop();
+  });
+  window.addEventListener("mouseup", function(){ CR.mouse = null; });
+
+  frame.addEventListener("wheel", function(e){
+    if (!CR.open) return;
+    e.preventDefault();
+    var p = cropPoint(e);
+    cropZoomAt(CR.z * Math.pow(1.0018, -e.deltaY), p.x, p.y);
+  }, { passive: false });
+
+  if (zr) zr.addEventListener("input", function(){
+    cropZoomAt((+zr.value || 100) / 100, CR.frameW / 2, CR.frameH / 2);
+  });
+
+  window.addEventListener("resize", function(){
+    if (!CR.open || !CR.nw) return;
+    var nx = CR.frameW ? CR.ox / CR.frameW : 0;
+    var ny = CR.frameH ? CR.oy / CR.frameH : 0;
+    cropLayout();
+    CR.ox = nx * CR.frameW;
+    CR.oy = ny * CR.frameH;
+    paintCrop();
+  });
+
+  document.addEventListener("keydown", function(e){
+    if (!CR.open) return;
+    if (e.key === "Escape") { e.preventDefault(); bgCropClose(); }
+    else if (e.key === "Enter") { e.preventDefault(); bgCropApply(); }
+  });
+}
+
+function bgCropOpen(src){
+  var ov = el("bgCrop"), im = el("cropImg");
+  src = String(src || "");
+  if (!ov || !im) return;
+  if (!src) { extToast("还没有背景图片，先选一张"); return; }
+  bgCropWire();
+  CR.open = true;
+  CR.src = src;
+  CR.seq++;
+  CR.nw = 0;
+  CR.nh = 0;
+  CR.z = 1;
+  CR.ox = 0;
+  CR.oy = 0;
+  CR.pos = null;
+  CR.srcImg = null;
+  CR.drag = null;
+  CR.pinch = null;
+  CR.mouse = null;
+  /* 只有源图没换过才恢复上次构图（避免把 A 图的取景套到 B 图上） */
+  try {
+    if (lsGet("qqbot.bgcropsrc", "") === lsGet("qqbot.bgsrc", "")) {
+      var p = JSON.parse(lsGet("qqbot.bgcroppos", "") || "null");
+      if (p && isFinite(p.z)) CR.pos = { z: +p.z || 1, x: +p.x || 0, y: +p.y || 0 };
+    }
+  } catch (e) { CR.pos = null; }
+  var seq = CR.seq;
+  im.removeAttribute("src");
+  /* 用离屏 Image 先解码：dataURL 解码是异步的，直接给可见 img 设 src 时，
+     老 WebView 上 naturalWidth 可能还是上一张图的值，取景尺寸会算错。 */
+  var pre = new Image();
+  pre.onload = function(){
+    if (seq !== CR.seq || !CR.open) return;
+    CR.nw = pre.naturalWidth || pre.width || 1;
+    CR.nh = pre.naturalHeight || pre.height || 1;
+    CR.srcImg = pre;   /* 导出时直接画这张已解码的图，不依赖可见 img 的解码时机 */
+    im.src = src;
+    try { document.documentElement.classList.add("bgcroplock"); } catch (e) {}
+    ov.classList.add("on");
+    ov.setAttribute("aria-hidden", "false");
+    cropLayout();
+    if (CR.pos) {
+      CR.z = Math.max(1, Math.min(5, CR.pos.z));
+      CR.ox = CR.pos.x * CR.frameW;
+      CR.oy = CR.pos.y * CR.frameH;
+    }
+    paintCrop();
+  };
+  pre.onerror = function(){
+    if (seq !== CR.seq) return;
+    bgCropClose();
+    extToast("这张图读不出来，换一张试试");
+  };
+  pre.src = src;
+}
+
+function bgCropClose(){
+  if (!CR.open) return;
+  CR.open = false;
+  CR.seq++;
+  CR.drag = null;
+  CR.pinch = null;
+  CR.mouse = null;
+  var ov = el("bgCrop");
+  if (ov) {
+    ov.classList.remove("on");
+    ov.setAttribute("aria-hidden", "true");
+  }
+  try { document.documentElement.classList.remove("bgcroplock"); } catch (e) {}
+  var im = el("cropImg");
+  if (im) setTimeout(function(){ if (!CR.open) im.removeAttribute("src"); }, 260);
+}
+
+/* 「调整裁剪」：优先拿原生原图重新取景（画质比再裁一次本地 JPEG 好），
+   原生不可用 / 指纹对不上时退回当前显示的图。 */
+function bgCropOpenCurrent(){
+  var src = "";
+  var sig = String(lsGet("qqbot.bgsrc", "") || "");
+  if (brHas("bgImage")) {
+    var r = null;
+    try { r = JSON.parse(Android.bgImage()); } catch (e) { r = null; }
+    if (r && r.ok && r.data && (!sig || bgSrcSig(String(r.data)) === sig)) src = String(r.data);
+  }
+  if (!src) src = S.bgImg || lsGet("qqbot.bgimg", "");
+  if (!src) { extToast("还没有背景图片，先选一张"); return; }
+  bgCropOpen(src);
+}
+
+/* 按框内可视区从原图取样，长边 1600，JPEG 0.85；超 2MB 先降质量再降尺寸 */
+function cropCanvas(){
+  var img = CR.srcImg || el("cropImg");
+  if (!img || !CR.nw) return null;
+  var k = CR.k || (CR.base * CR.z);
+  var sx = -CR.tx / k, sy = -CR.ty / k;
+  var sw = CR.frameW / k, sh = CR.frameH / k;
+  /* 浮点误差可能让取样区越界一像素，越界处 drawImage 会给透明边 */
+  sx = Math.max(0, Math.min(CR.nw - 1, sx));
+  sy = Math.max(0, Math.min(CR.nh - 1, sy));
+  sw = Math.max(1, Math.min(CR.nw - sx, sw));
+  sh = Math.max(1, Math.min(CR.nh - sy, sh));
+  var ratio = CR.frameW / CR.frameH;
+  var w, h;
+  if (ratio >= 1) { w = 1600; h = Math.max(1, Math.round(1600 / ratio)); }
+  else { h = 1600; w = Math.max(1, Math.round(1600 * ratio)); }
+  var c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  var ctx = c.getContext("2d");
+  if (!ctx) return null;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
+  return c;
+}
+
+function cropEncode(c){
+  var cur = c, q = 0.85, url = "";
+  for (var n = 0; n < 4; n++) {
+    try { url = cur.toDataURL("image/jpeg", q); } catch (e) { return ""; }
+    if (!url || url.indexOf("data:image/jpeg") !== 0) return "";
+    if (url.length <= 2000000) return url;
+    if (q > 0.7) { q = 0.7; continue; }
+    var c2 = document.createElement("canvas");
+    c2.width = Math.max(1, Math.round(cur.width * 0.75));
+    c2.height = Math.max(1, Math.round(cur.height * 0.75));
+    var x2 = c2.getContext("2d");
+    if (!x2) return url;
+    x2.imageSmoothingEnabled = true;
+    x2.imageSmoothingQuality = "high";
+    x2.drawImage(cur, 0, 0, c2.width, c2.height);
+    cur = c2;
+    q = 0.82;
+  }
+  return url;
+}
+
+function bgCropApply(){
+  if (!CR.open || !CR.nw) return;
+  var c = cropCanvas();
+  if (!c) { extToast("裁剪失败，换一张图再试"); return; }
+  var url = cropEncode(c);
+  if (!url) { extToast("图片处理失败，换一张再试"); return; }
+  /* 先落地再关层：写失败（配额满）也至少让本次显示生效 */
+  S.bgImg = url;
+  var ok = lsSet("qqbot.bgimg", url);
+  lsSet("qqbot.bgcrop", "1");
+  lsSet("qqbot.bgcropsrc", String(lsGet("qqbot.bgsrc", "") || ""));
+  lsSet("qqbot.bgcroppos", JSON.stringify({
+    z: Math.round(CR.z * 1000) / 1000,
+    x: Math.round((CR.frameW ? CR.ox / CR.frameW : 0) * 1000) / 1000,
+    y: Math.round((CR.frameH ? CR.oy / CR.frameH : 0) * 1000) / 1000
+  }));
+  bgCropClose();
+  applyBg();
+  renderPresets();
+  extToast(ok ? "背景已应用" : "已应用，但本地空间不足，重启后可能丢失");
 }
 
 function applyGlass(mode){
@@ -3794,6 +4395,7 @@ function setTint(id){
   lsSet("qqbot.bgtint", id);
   S.bgImg = "";
   lsDel("qqbot.bgimg");
+  bgCropForget();
   applyBg();
   renderTints();
   renderPresets();
@@ -4190,7 +4792,7 @@ var NO_LOCK_ACTS = [
      而失败弹窗里的那个入口只有部署失败/卡住时才会出现，正好错开了最需要它的场景。 */
   "uploadlogs",
   "settings", "backhome", "showlogs",
-  "pickbg", "clearbg", "bgpreset", "glass", "theme",
+  "pickbg", "clearbg", "cropbg", "cropreset", "cropcancel", "cropok", "bgpreset", "glass", "theme",
   "reload", "slim", "rmcard",
   /* 更新弹窗里每条卡片的「详情 / 下载」和两个自动提醒开关，全是纯前端动作
      （读 localStorage、展开说明、把链接交给系统浏览器），跟容器装没装好无关。 */
@@ -5105,11 +5707,14 @@ function paintHero(st, installed){
   if (!installed){
     k = "idle"; t = "还没部署";
     sub = "第一次使用，先点「开始部署」，装好大约 8 分钟";
-  } else if (st.offline){
+  } else if (st.offline && !napUp && !astrUp){
     /* 走到这里只剩「紧急下线」这一种：用户自己在界面上把后台停了，标记就是
        「别再自己起来」的意思。通知栏的「关闭进程」不落这个分支 —— 它会写一张
        state/closed 便条，下次进应用时由 QqbotActivity 清掉标记、照常自动启动。
-       这时候也绝不能说「正在启动」——那会让人以为等 40 秒就好，其实谁都不会拉它。 */
+       这时候也绝不能说「正在启动」——那会让人以为等 40 秒就好，其实谁都不会拉它。
+       B9-A：标记文件会残留（换启动方式、测试时用过「重启式保存」都会留下），而端口
+       在听就说明容器其实在跑 —— 这时还红着说「已下线」，就成了用户报的「NapCat 和
+       AstrBot 明明在线、上面却说离线」。所以只要两个端口都活着就不再走这一支。 */
     k = "bad"; t = "已下线";
     sub = "已按「紧急下线」停掉后台，不会自己拉起；要恢复点下面的「启动服务」";
   } else if (!botCount(st)){
@@ -5117,7 +5722,7 @@ function paintHero(st, installed){
        不说「一切正常」——那句话会让用户以为能用了。 */
     k = "warn"; t = "还没有实例";
     sub = "到「机器人」页新增一个实例，填 QQ 号和 Token 后会自动登录";
-  } else if (napUp && astrUp && obUp){
+  } else if (napUp && astrUp && obUp && !napOff && !astrOff){
     /* 全绿优先于「启动中」：BOOT 窗口有 120 秒，以前它会把已经全绿的真实状态盖住，
        用户盯着「正在启动」两分钟，以为卡死了。服务真的都在线就直接说「一切正常」，
        启动窗口只用来解释「还没起来」。 */
@@ -5128,9 +5733,17 @@ function paintHero(st, installed){
        按字面会报「服务已停止」，但用户其实只是在等冷启动。 */
     k = "warn"; t = "正在启动";
     sub = "冷启动通常 40–60 秒，就绪后会自动变过来";
-  } else if (st.supervisorAlive === false){
+  } else if (st.supervisorAlive === false && !napUp && !astrUp){
+    /* B9-A：supervisor.pid 查不到不等于容器没跑（pid 文件过期、守护被重启过都会这样）。
+       端口还活着时这一支必须让位给下面的判定，否则首屏红着「服务已停止」，
+       而正下方的磁贴写着 NapCat / AstrBot 在线 —— 正是用户报的那条矛盾。 */
     k = "bad"; t = "服务已停止";
     sub = "守护进程没在跑，沙盒里的容器不会被自动拉起";
+  } else if (isClosing(napOff, napUp) || isClosing(astrOff, astrUp)){
+    /* 开关已经落下去、容器还在收尾的十几秒：磁贴写「正在关闭…」，首屏也说同一句话，
+       别一边说「一切正常」一边说「正在关闭」。 */
+    k = "warn"; t = "正在关闭…";
+    sub = "组件开关已经关掉，容器还在收尾，十几秒后端口会自己停";
   } else if (napOff && astrOff){
     k = "warn"; t = "组件都已关闭";
     sub = "在「更多工具」的组件开关里重新打开";
@@ -6068,6 +6681,15 @@ document.addEventListener("click", function(ev){
   var t = ev.target;
   while (t && t !== document.body && !t.getAttribute) t = t.parentNode;
   if (!t || t === document.body) return;
+  /* 点在按钮内部的 <span> / <svg> 上时，ev.target 是个没有 data-act 的子节点：
+     原来这里只读 t 自己的属性，读不到 act 就 return —— 这一下就白点了（要正好点在
+     按钮边缘的空白上才生效，于是表现为「按好几下才有反应」）。改成先往上找最近的
+     [data-act] / [data-tab]（就近优先，按钮里的图标、文字都算点在这个按钮上），
+     再照原样往下走，后面的守门与分支一个字都不动。 */
+  if (t.getAttribute && !t.getAttribute("data-act") && !t.getAttribute("data-tab") && t.closest){
+    var tca = t.closest("[data-act],[data-tab]");
+    if (tca) t = tca;
+  }
   var tab = t.getAttribute("data-tab");
   if (tab) { showTab(tab); return; }
   /* 未部署守门：除白名单里的部署相关 act 以外，一律弹提示后吞掉这次点击。
@@ -6259,15 +6881,26 @@ else if (act === "uploadlogs") doUploadLogs();
   else if (act === "gorestart") { showTab("more"); restartAsk(true); }
   else if (act === "savebot") saveBot();
   else if (act === "cancelbot") cancelBot();
-  else if (act === "pickbg") { Android.toast("请在系统图库里选择图片…"); Android.pickBg(); }
+  else if (act === "pickbg") {
+    // 记下当前原生指纹：选图成功后 Java 会整页 reload，启动时靠它认出「换了新图」并自动进裁剪；
+    // 用户在系统图库里点取消则原生图没变、指纹相同，不会误弹裁剪层。
+    lsSet("qqbot.bgpick", "p|" + String(lsGet("qqbot.bgsrc", "") || ""));
+    Android.toast("请在系统图库里选择图片…");
+    Android.pickBg();
+  }
   else if (act === "clearbg") {
     try { Android.clearBg(); } catch (e) {}
     S.bgImg = "";
     lsDel("qqbot.bgimg");
+    bgCropForget();
     applyBg();
     renderPresets();
     Android.toast("已删掉自定义图片，改回上次选的预设背景");
   }
+  else if (act === "cropbg") { bgCropOpenCurrent(); }
+  else if (act === "cropreset") { cropReset(); }
+  else if (act === "cropcancel") { bgCropClose(); }
+  else if (act === "cropok") { bgCropApply(); }
   else if (act === "bgpreset") { setPreset(arg || "space"); Android.toast("已切换背景：" + presetName(arg)); }
   else if (act === "glass") { var _gp = glassPctOf(arg); setGlassPct(_gp); lsSet("qqbot.glass", arg || "mid"); Android.toast("玻璃强度：" + glassName(arg)); }
   else if (act === "accent") { setAccent(arg || "blue"); Android.toast("强调色已切换"); }
