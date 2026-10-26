@@ -59,7 +59,28 @@ sv_alive() {
   case "$_p" in ''|*[!0-9]*) return 1 ;; esac
   [ -d "/proc/$_p" ] || return 1
   _c=$(tr '\0' ' ' < "/proc/$_p/cmdline" 2>/dev/null)
-  case "$_c" in *proot*run-all.sh*) return 0 ;; *) return 1 ;; esac
+  # 三种都算“沙盒在”：proot 已经跑起来（*proot*run-all.sh*）、容器里的守护进程、
+  # 以及 start-sandbox.sh 自己（supervisor.pid 是在 exec proot 之前写的，写完到 exec
+  # 之间要跑 loader 探测、残留清扫、resolv.conf 兜底，慢机上一不留神就超过 15 秒）。
+  # 少了第三种，看门狗会把“正在启动”判成“已经死了”，接着 stop-sandbox.sh 把那个
+  # 还在启动的 supervisor（当时还是 bash）TERM + KILL —— 真机日志里 deploy.sh: line 290
+  # 的「23963 Killed」就是这么来的，紧接着又是一路新的 start-sandbox.sh，日志里
+  # 看到两遍「[start] 自动启动」和一遍「服务已在运行（PID …）」。
+  case "$_c" in *proot*run-all.sh*|*sandbox/run-all.sh*|*start-sandbox.sh*) return 0 ;; *) return 1 ;; esac
+}
+
+# 启动流程是否正在进行（start-sandbox.sh 用 mkdir 原子锁 $QQBOT_HOME/start.lock，
+# 并把持有者 pid 写在锁目录里）。持有者还活着就说明有人在启动，这一轮什么都别做：
+# 上面 sv_alive 的第三种情形只覆盖“supervisor.pid 已经写出来了”的那一段，
+# 而从 mkdir 锁到写 supervisor.pid 之间还有好几秒（qq_tz_sync、loader 探测、清扫），
+# 这段时间里 supervisor.pid 还是上一轮的旧值或干脆不存在。
+start_in_progress() {
+  [ -f "$QQBOT_HOME/start.lock/pid" ] || return 1
+  _sp=$(cat "$QQBOT_HOME/start.lock/pid" 2>/dev/null)
+  case "$_sp" in ''|*[!0-9]*) return 1 ;; esac
+  [ -d "/proc/$_sp" ] || return 1
+  _sc=$(tr '\0' ' ' < "/proc/$_sp/cmdline" 2>/dev/null)
+  case "$_sc" in *start-sandbox.sh*) return 0 ;; *) return 1 ;; esac
 }
 
 # 部署是否正在进行中。部署期间必须暂停守护，理由不是洁癖：
@@ -110,6 +131,7 @@ restart_sandbox() {
 say "看门狗启动（pid $$，系统时区 $(qq_tz)）"
 WAS_OFF=""
 WAS_DEPLOY=""
+WAS_STARTING=""
 FAILS=0
 DEGRADE=""
 RISK_BLK=""
@@ -175,6 +197,16 @@ while true; do
     continue
   fi
   if [ -n "$WAS_DEPLOY" ]; then say "部署已结束，恢复守护"; WAS_DEPLOY=""; fi
+  # 启动中：既不判活也不重启。这里必须放在 sv_alive 之前 —— 见 start_in_progress 的说明。
+  if start_in_progress; then
+    if [ -z "$WAS_STARTING" ]; then
+      say "沙盒正在启动（start.lock 持有者 $(cat "$QQBOT_HOME/start.lock/pid" 2>/dev/null)），本轮不判活"
+      WAS_STARTING=1
+    fi
+    sleep "$SLEEP"
+    continue
+  fi
+  WAS_STARTING=""
   if ! sv_alive; then
     restart_sandbox "supervisor 不存在或已退出" || FAILS=$((FAILS + 1))
     [ "$FAILS" -eq 0 ] && FAILS=0

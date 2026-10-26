@@ -266,6 +266,10 @@ if [ -z "$FAILED" ]; then
     # setsid 让 proot 脱离本脚本所在进程组：本脚本若被调用方的 destroy()
     # 按进程组 kill 掉，同组的 proot 会被连带杀死。pid 由 start-sandbox.sh 自己写。
     nohup setsid bash "$QQBOT_OPT/start-sandbox.sh" >> "$QQBOT_LOGS/supervisor.log" 2>&1 < /dev/null &
+    # 从本 shell 的作业表里摘掉。不摘的话脚本收尾时 bash 会补一行
+    # 「deploy.sh: line 290: <pid> Killed」——那是作业状态通知，不是错误，
+    # 但错误报告里看着就像「服务刚启动就被杀了」。真死假死由下面的 kill -0 判定。
+    disown %+ 2>/dev/null || disown 2>/dev/null || true
     # start-sandbox.sh 要先进 proot 再写 pid，慢的机器上 3 秒不够 —— 原来这里直接 cat，
     # 结果日志里打出「服务已启动（supervisor pid ）」，pid 是空的。等文件出现（最多 12 秒）。
     SUP=""
@@ -276,8 +280,13 @@ if [ -z "$FAILED" ]; then
         [ -n "$SUP" ] && break
       fi
     done
-    if [ -n "$SUP" ]; then
+    if [ -n "$SUP" ] && kill -0 "$SUP" 2>/dev/null; then
       qqok "服务已启动（supervisor pid $SUP）"
+    elif [ -n "$SUP" ]; then
+      # pid 写出来了、进程却已经没了：不要假报成功（09:13 那次就是打出
+      # 「服务已启动（supervisor pid 23963）」之后紧跟一行 Killed）。
+      qqerr "服务启动后立刻退出（supervisor pid $SUP 已不存在）"
+      qqlog "详情见 $QQBOT_LOGS/supervisor.log"
     else
       qqok "服务已启动（沙盒还在拉起，稍等一会儿刷新页面）"
     fi

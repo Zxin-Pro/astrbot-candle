@@ -64,8 +64,46 @@ is_sandbox_proc() {
 is_deploy_proc() {
   case "$1" in
     */qqbot-opt/steps/*) return 0 ;;
+    # 启动流程本身也放过：start-sandbox.sh 正在做 loader 探测 / 清扫 / 写 resolv.conf，
+    # 这时候把它砍掉，沙盒就停在「半个」状态。
+    */start-sandbox.sh*) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+# supervisor.pid 指向的进程还活着吗？活着就记下来，下面的 sweep 要避开它那棵树。
+# supervisor.pid 是在 exec proot 之前就写下的（start-sandbox.sh:81），所以这个 pid
+# 可能是 proot，也可能还是 start-sandbox.sh 自己 —— 两种都算「正在运行的沙盒」。
+SUP_PID=""
+if [ -f "$PIDF" ]; then
+  _supp=$(cat "$PIDF" 2>/dev/null)
+  case "$_supp" in
+    ''|*[!0-9]*) : ;;
+    *) [ -d "/proc/$_supp" ] && SUP_PID="$_supp" ;;
+  esac
+fi
+
+# 取父进程 pid。不能用 awk/sed：清扫是热路径，每进程 fork 一次在手机上要几十秒。
+# /proc/<pid>/stat 的第 2 字段 comm 允许带空格和括号，所以先砍到最后一个 ") "，
+# 剩下的第 1 个字段是 state、第 2 个就是 ppid。
+proc_ppid() {
+  local s
+  { s=$(<"/proc/$1/stat"); } 2>/dev/null || { echo ""; return; }
+  s=${s##*) }
+  set -- $s
+  echo "${2:-}"
+}
+
+# 进程是否属于 $SUP_PID 这棵树（含自己）。只在 SWEEP_ONLY 时用。
+in_sup_tree() {
+  local p="$1" i=0
+  [ -z "$SUP_PID" ] && return 1
+  while [ -n "$p" ] && [ "$p" != "0" ] && [ "$p" != "1" ] && [ "$i" -lt 12 ]; do
+    [ "$p" = "$SUP_PID" ] && return 0
+    p=$(proc_ppid "$p")
+    i=$((i + 1))
+  done
+  return 1
 }
 
 # 返回杀掉的进程数
@@ -91,6 +129,15 @@ sweep() {
     [ -n "$c" ] || continue
     is_sandbox_proc "$c" || continue
     is_deploy_proc "$c" && continue
+    # --sweep-only 的语义是「启动前清残留」，不是「停掉正在跑的沙盒」。
+    # 另一路 start-sandbox.sh 已经把 supervisor.pid 写出来、proot 正在跑的时候，
+    # 它的 proot / run-all.sh / Xvfb / QQ 全都命中上面的匹配表；照扫不误就等于
+    # 把刚拉起来的沙盒当场砍死，紧接着再来一路启动 —— 用户看到的就是沙盒反复
+    # 重启、二维码一直换。所以只要 supervisor.pid 还指向活进程，就跳过它整棵树。
+    if [ "$SWEEP_ONLY" = "1" ] && [ -n "$SUP_PID" ]; then
+      [ "$num" = "$SUP_PID" ] && continue
+      in_sup_tree "$num" && continue
+    fi
     kill -"$sig" "$num" 2>/dev/null && n=$((n + 1))
   done
   echo "$n"
@@ -98,6 +145,21 @@ sweep() {
 
 if [ "$SWEEP_ONLY" = "0" ] && [ -f "$PIDF" ]; then
   PID=$(cat "$PIDF" 2>/dev/null)
+  if [ -n "$PID" ] && [ -d "/proc/$PID" ]; then
+    # 看门狗内部重启（--no-offline）特有的竞态：它读 supervisor.pid 看到「有 pid 但
+    # cmdline 不是 proot+run-all.sh」就判死，于是 TERM + KILL。可 supervisor.pid 是
+    # start-sandbox.sh 在 exec proot 之前写的，此时进程还在做 loader 探测 —— 一刀下去
+    # 半启动状态留在原地（真机日志 supervisor.log 里连着两遍「[start] 自动启动」、
+    # deploy.sh: line 290 的「23963 Killed」都是这条路径）。启动中就不杀，让它跑完。
+    if [ "$NO_OFFLINE" = "1" ]; then
+      { _pc=$(<"/proc/$PID/cmdline"); } 2>/dev/null
+      case "$_pc" in
+        *start-sandbox.sh*)
+          echo "[stop] supervisor（PID $PID）仍在启动中，跳过本轮停止"
+          PID="" ;;
+      esac
+    fi
+  fi
   if [ -n "$PID" ] && [ -d "/proc/$PID" ]; then
     echo "[stop] 通知 supervisor 退出（PID $PID）"
     kill -TERM "$PID" 2>/dev/null

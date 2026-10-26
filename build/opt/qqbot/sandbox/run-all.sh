@@ -189,9 +189,48 @@ GRACE=180
 MAXDOWN=3
 PROBE_EVERY=45
 
+# ---------- 网络现场采样 / 登录服务抖动检测 ----------
+# 真机 09:13 那次 AstrBot 出网全部 EBUSY（Cannot connect to host … [Device or resource busy]），
+# 而沙盒里事后一点线索都没有；同一份日志里 NapCat 的登录服务又在 15~20 秒一轮地掉线重连。
+# 这里补两件事，都是只读、很轻的：
+#   1. netdiag —— 启动时一次、之后每 10 分钟一次，把 socket/fd/代理/errno 采样进 netdiag.log
+#   2. flap_check —— 每 30 秒数一次 NapCat 日志尾部「登录服务已断开」的条数，30 秒涨 3 条以上
+#      就说明登录服务在打转，打一行警告，并顺带抓一次 netdiag（10 分钟内最多一次）
+NETDIAG=/qqbot-opt/sandbox/netdiag.sh
+netdiag() {
+  [ -f "$NETDIAG" ] || return 0
+  bash "$NETDIAG" >> /qqbot-cache/logs/netdiag.log 2>&1
+}
+FLAP_PREV=""
+FLAP_AT=0
+flap_check() {
+  local n=0 f c
+  for f in /qqbot-cache/logs/qq-*.log; do
+    [ -f "$f" ] || continue
+    c=$(tail -n 400 "$f" 2>/dev/null | grep -c "登录服务已断开" 2>/dev/null)
+    n=$((n + ${c:-0}))
+  done
+  if [ -n "$FLAP_PREV" ] && [ "$n" -gt "$FLAP_PREV" ] && [ $((n - FLAP_PREV)) -ge 3 ]; then
+    echo "[supervisor] 警告：NapCat 登录服务在反复断开（30 秒内新增 $((n - FLAP_PREV)) 次），疑似网络层抖动"
+    if [ $(( $(date +%s) - FLAP_AT )) -ge 600 ]; then
+      FLAP_AT=$(date +%s)
+      echo "[supervisor] 抓取网络现场 -> /qqbot-cache/logs/netdiag.log"
+      netdiag
+    fi
+  fi
+  FLAP_PREV=$n
+}
+LAST_NET=0
+LAST_FLAP=0
+
 while true; do
   beat
   NOW=$(date +%s)
+
+  # 每 10 分钟采一次网络现场；每 30 秒查一次登录服务是否在打转。
+  # LAST_* 初值 0，所以启动后第一轮就会各跑一次。
+  if [ $((NOW - LAST_NET)) -ge 600 ]; then LAST_NET=$NOW; netdiag; fi
+  if [ $((NOW - LAST_FLAP)) -ge 30 ]; then LAST_FLAP=$NOW; flap_check; fi
 
   # ---------- NapCat ----------
   if off napcat; then
