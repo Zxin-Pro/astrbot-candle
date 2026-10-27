@@ -51,6 +51,11 @@ if [ -f "$QQBOT_HOME/supervisor.pid" ]; then
   fi
 fi
 
+# 走到这里说明现在没有活着的 supervisor。上一次如果留了启动标记、pid 却已经没了，
+# 那就是被系统直接杀掉的（低内存 / 省电策略）—— 记一行到 supervisor-killed.log，
+# 上传的错误报告里就能解释「上次为什么突然断了」，而不是只剩一句 Killed。
+qq_start_mark_check
+
 # $QQBOT_STATE 必须真实存在：下面要把它绑进沙盒（-b .../state:/qqbot-state），
 # proot 绑定一个不存在的宿主目录会直接失败，整个沙盒就起不来了。
 mkdir -p "$QQBOT_CACHE/logs" "$QQBOT_PTMP" "$QQBOT_DEVDIR/shm" "$QQBOT_STATE"
@@ -66,7 +71,7 @@ if [ -x "$QQBOT_OPT/watchdog.sh" ]; then
   if [ -f "$QQBOT_HOME/watchdog.pid" ] && [ -d "/proc/$(cat "$QQBOT_HOME/watchdog.pid" 2>/dev/null)" ]; then
     :
   else
-    nohup setsid bash "$QQBOT_OPT/watchdog.sh" >> "$QQBOT_HOME/logs/watchdog.log" 2>&1 < /dev/null &
+    qq_spawn_detached "$QQBOT_HOME/logs/watchdog.log" bash "$QQBOT_OPT/watchdog.sh"
   fi
 fi
 
@@ -79,6 +84,10 @@ fi
 # 那样 $! 指向 setsid 而不是真正的 proot。
 mkdir -p "$QQBOT_HOME"
 echo $$ > "$QQBOT_HOME/supervisor.pid"
+# 启动标记和 pid 一起写：pid 变成 proot 之后，这个文件就是「上一次启动」的唯一物证。
+# 正常停止时由 stop-sandbox.sh 删；被系统杀掉时它会留下来，下次启动由上面的
+# qq_start_mark_check 认出来。
+qq_start_mark_set $$
 # exec 会替换掉进程映像、不跑 EXIT trap，锁必须在这里手动放掉，
 # 否则下一个 qqbot-start 会一直等到超时。
 rm -rf "$LOCK" 2>/dev/null

@@ -1,0 +1,1854 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<script>
+/* 主题必须在样式表解析前落定：读 localStorage 的 qqbot_theme（auto/light/dark），
+   auto 交给系统的 prefers-color-scheme。和 index.html 用同一个键，用户在首页选过的
+   深浅色在这里接着用，不会一进插件页就跳一下。 */
+(function () {
+  var pref = "auto";
+  try { pref = String(localStorage.getItem("qqbot_theme") || "auto"); } catch (e) {}
+  if (pref !== "light" && pref !== "dark") pref = "auto";
+  var dark = pref === "dark";
+  if (pref === "auto") {
+    try { dark = !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches); } catch (e) {}
+  }
+  var root = document.documentElement;
+  root.setAttribute("data-theme", dark ? "dark" : "light");
+  root.setAttribute("data-theme-pref", pref);
+})();
+</script>
+<title>插件管理</title>
+<style>
+/* ============================================================================
+   插件管理 / 模型测试 / 控制台 —— 单页，无外部依赖。
+   设计令牌与 index.html 保持一致（同一套 :root），所有控件自带 44px 触控高度、
+   :active 只做缩放不改成灰底、SVG 图标不用 emoji。
+   ============================================================================ */
+
+:root{
+  --font: -apple-system, "SF Pro Text", "SF Pro Display", system-ui, "PingFang SC", "HarmonyOS Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+
+  --r-xs: 8px;
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 22px;
+
+  --ease: cubic-bezier(.32,.72,0,1);
+  --dur-fast: .18s;
+  --dur: .28s;
+  --dur-slow: .4s;
+  --press: 120ms;
+
+  --hdr-h: 56px;
+  --gap: 14px;
+
+  --accent: #007aff;
+  --accent-2: #5e5ce6;
+  --ok: #34c759;
+  --warn: #ff9f0a;
+  --bad: #ff3b30;
+}
+
+:root[data-theme="light"]{
+  --label: #09090b;
+  --label-2: rgba(60,60,67,.62);
+  --label-3: rgba(60,60,67,.34);
+  --sep: rgba(60,60,67,.15);
+  --fill-1: rgba(120,120,128,.10);
+  --fill-2: rgba(120,120,128,.16);
+  --fill-3: rgba(118,118,128,.22);
+  --page: #eef1f7;
+  --field-bg: rgba(255,255,255,.66);
+  --field-line: rgba(120,120,128,.26);
+}
+
+:root[data-theme="dark"]{
+  --label: #ffffff;
+  --label-2: rgba(235,235,245,.62);
+  --label-3: rgba(235,235,245,.32);
+  --sep: rgba(120,120,128,.34);
+  --fill-1: rgba(120,120,128,.20);
+  --fill-2: rgba(120,120,128,.28);
+  --fill-3: rgba(120,120,128,.38);
+  --page: #05060a;
+  --field-bg: rgba(28,30,38,.62);
+  --field-line: rgba(120,120,128,.42);
+}
+
+*,*::before,*::after{ box-sizing: border-box; }
+
+html{
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  background: var(--page);
+  scroll-behavior: smooth;
+}
+
+body{
+  margin: 0;
+  padding: 0 16px calc(24px + env(safe-area-inset-bottom, 0px));
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--label);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;   /* 别把下拉刷新/橡皮筋带进 WebView */
+}
+
+button, input, select, textarea{ font: inherit; color: inherit; }
+button{
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  touch-action: manipulation;    /* 点下去立刻派发，不等双击判定 */
+}
+input, textarea, select{ touch-action: manipulation; }
+h1, h2, h3, p{ margin: 0; }
+svg{ display: block; }
+:focus{ outline: none; }
+:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
+[hidden]{ display: none !important; }
+
+/* ---------- 顶栏 ---------- */
+.hdr{
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--hdr-h);
+  margin: 0 -16px;
+  padding: 0 8px 0 4px;
+  background: var(--page);
+  border-bottom: 1px solid var(--sep);
+}
+@supports (background: color-mix(in srgb, red 50%, transparent)){
+  .hdr{
+    background: color-mix(in srgb, var(--page) 82%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(18px);
+    backdrop-filter: saturate(180%) blur(18px);
+  }
+}
+.hdr-t{ flex: 1; min-width: 0; }
+.hdr h1{ font-size: 17px; font-weight: 630; letter-spacing: -.2px; line-height: 1.25; }
+.hdr-s{ font-size: 11.5px; color: var(--label-3); line-height: 1.3; }
+.iconbtn{
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  color: var(--label-2);
+  transition: transform var(--press) var(--ease), opacity var(--press) var(--ease);
+}
+.iconbtn svg{ width: 22px; height: 22px; }
+.iconbtn:active{ transform: scale(.92); opacity: .62; }
+
+/* ---------- 分区胶囊 ---------- */
+.tabs{
+  position: sticky;
+  top: var(--hdr-h);
+  z-index: 25;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin: 0 -16px;
+  padding: 10px 16px;
+  background: var(--page);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scroll-snap-type: x proximity;
+}
+.tabs::-webkit-scrollbar{ display: none; }
+@supports (background: color-mix(in srgb, red 50%, transparent)){
+  .tabs{
+    background: color-mix(in srgb, var(--page) 88%, transparent);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+  }
+}
+.tab{
+  flex: none;
+  display: flex;
+  align-items: center;
+  min-height: 44px;              /* 触摸目标：分段导航也要够 44 高 */
+  padding: 0 15px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 560;
+  letter-spacing: -.1px;
+  color: var(--label-2);
+  background: var(--fill-1);
+  scroll-snap-align: start;
+  transition: transform var(--press) var(--ease),
+              background-color var(--dur) var(--ease),
+              color var(--dur) var(--ease);
+}
+.tab[aria-selected="true"]{
+  color: #fff;
+  background: var(--accent);
+  box-shadow: 0 8px 18px -12px rgba(0,122,255,.95);
+}
+.tab:active{ transform: scale(.95); }
+
+/* ---------- 分区容器 ---------- */
+.pane{ padding: 14px 0 10px; animation: paneIn var(--dur-slow) var(--ease) both; }
+@keyframes paneIn{ from{ opacity: 0; transform: translateY(8px); } to{ opacity: 1; transform: none; } }
+
+.demoBar{
+  margin: 12px 0 0;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in srgb, var(--warn) 34%, transparent);
+  background: color-mix(in srgb, var(--warn) 13%, transparent);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--label-2);
+}
+
+/* ---------- 卡片 ---------- */
+.card{
+  padding: 14px;
+  margin-bottom: 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--sep);
+  background: var(--fill-1);
+  animation: cardIn var(--dur-slow) var(--ease) both;
+}
+@keyframes cardIn{ from{ opacity: 0; transform: translateY(6px); } to{ opacity: 1; transform: none; } }
+.card h2{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 630;
+  letter-spacing: -.1px;
+}
+.card h2 svg{ width: 16px; height: 16px; color: var(--label-2); }
+.hint{ font-size: 12.5px; line-height: 1.62; color: var(--label-2); }
+.hint + .hint{ margin-top: 6px; }
+.hint b{ color: var(--label); font-weight: 600; }
+.mono{ font-family: var(--mono); font-size: 12px; letter-spacing: -.2px; }
+.muted{ font-size: 12.5px; color: var(--label-3); }
+
+/* ---------- 搜索 ---------- */
+.search{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  margin-bottom: 10px;
+  padding: 0 8px 0 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--field-line);
+  background: var(--field-bg);
+  transition: border-color var(--dur) var(--ease);
+}
+.search:focus-within{ border-color: color-mix(in srgb, var(--accent) 55%, var(--field-line)); }
+.search svg{ width: 17px; height: 17px; flex: none; color: var(--label-3); }
+.search input{
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: none;
+  font-size: 16px;              /* 小于 16px 安卓 WebView 会放大页面 */
+  letter-spacing: -.1px;
+}
+.search input::placeholder{ color: var(--label-3); }
+.search input::-webkit-search-cancel-button{ display: none; }
+.clr{
+  position: relative;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--label-3);
+}
+.clr svg{ width: 15px; height: 15px; }
+/* 圆点视觉只有 32，但可点区域撑到 44：手指不会点空 */
+.clr::after{ content: ""; position: absolute; inset: -6px; border-radius: 50%; }
+
+.rowbtw{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 2px 2px 10px;
+}
+.chip{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 540;
+  color: var(--label-2);
+  background: var(--fill-1);
+  transition: transform var(--press) var(--ease), color var(--press) var(--ease);
+}
+.chip svg{ width: 15px; height: 15px; }
+.chip:active{ transform: scale(.95); color: var(--label); }
+.chip .spin{ width: 14px; height: 14px; border-width: 2px; }
+
+/* ---------- 列表行 ---------- */
+.plug{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  margin-bottom: 10px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--sep);
+  background: var(--fill-1);
+  animation: cardIn var(--dur-slow) var(--ease) both;
+}
+.plug.col{ flex-direction: column; align-items: stretch; gap: 10px; }
+.plug-top{ display: flex; align-items: flex-start; gap: 12px; }
+.plug-t{ flex: 1; min-width: 0; }
+.plug-n{
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -.1px;
+  word-break: break-word;
+}
+.plug-d{
+  margin-top: 2px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--label-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+.plug-m{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+  font-size: 11.5px;
+  color: var(--label-3);
+}
+.tag{
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--fill-1);
+  white-space: nowrap;
+}
+.plug-acts{ display: flex; gap: 9px; }
+
+.act{
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 44px;
+  padding: 0 15px;
+  border-radius: var(--r-sm);
+  font-size: 13.5px;
+  font-weight: 560;
+  color: var(--label);
+  background: var(--fill-2);
+  transition: transform var(--press) var(--ease), opacity var(--press) var(--ease);
+}
+.act svg{ width: 16px; height: 16px; }
+.act:active{ transform: scale(.96); }
+.act.go{ color: #fff; background: var(--accent); }
+.act.danger{ color: var(--bad); background: color-mix(in srgb, var(--bad) 13%, transparent); }
+.act.danger.on{ color: #fff; background: var(--bad); }
+.act.done{ color: var(--label-3); background: transparent; border: 1px solid var(--sep); }
+.act.grow{ flex: 1; }
+.act[disabled]{ opacity: .42; pointer-events: none; }
+
+/* ---------- 按钮 ---------- */
+.btns{ display: flex; flex-wrap: wrap; gap: 9px; margin-top: 10px; }
+.btn{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--r-sm);
+  font-size: 14.5px;
+  font-weight: 560;
+  letter-spacing: -.1px;
+  color: var(--label);
+  background: var(--fill-1);
+  transition: transform var(--press) var(--ease), opacity var(--press) var(--ease);
+}
+.btn svg{ width: 17px; height: 17px; flex: none; }
+.btn:active{ transform: scale(.965); }
+.btn.primary{
+  color: #fff;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 86%, #fff), var(--accent));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 10px 22px -16px rgba(0,122,255,1);
+}
+.btn.ghost{ background: transparent; border: 1px solid var(--sep); }
+.btn.wide{ width: 100%; }
+.btn[disabled]{ opacity: .45; pointer-events: none; }
+
+/* ---------- 开关 ---------- */
+.sw{
+  position: relative;
+  flex: none;
+  width: 52px;
+  height: 32px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: var(--fill-3);
+  transition: background-color var(--dur) var(--ease);
+}
+/* 开关本体高 32，上下各借 8px 当可点区域（视觉不变，手感变宽） */
+.sw::after{ content: ""; position: absolute; inset: -8px -4px; border-radius: 999px; }
+.sw span{
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.26);
+  transition: transform var(--dur) var(--ease);
+}
+.sw[aria-checked="true"]{ background: var(--ok); }
+.sw[aria-checked="true"] span{ transform: translateX(20px); }
+.sw:active span{ transform: scale(.94); }
+.sw[aria-checked="true"]:active span{ transform: translateX(20px) scale(.94); }
+.sw[disabled]{ opacity: .4; pointer-events: none; }
+
+/* ---------- 空态 / 载入 ---------- */
+.empty{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  padding: 34px 20px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--label-3);
+}
+.empty svg{ width: 30px; height: 30px; opacity: .8; }
+.empty b{ color: var(--label-2); font-weight: 600; }
+
+.sk{
+  height: 74px;
+  margin-bottom: 10px;
+  border-radius: var(--r-md);
+  background: linear-gradient(100deg, var(--fill-1) 30%, var(--fill-2) 50%, var(--fill-1) 70%);
+  background-size: 220% 100%;
+  animation: shimmer 1.15s linear infinite;
+}
+@keyframes shimmer{ from{ background-position: 130% 0; } to{ background-position: -30% 0; } }
+
+/* 纯 transform 动画：JS 被桥调用卡住时它仍然会转（跑在合成线程上） */
+.spin{
+  width: 17px;
+  height: 17px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--fill-3);
+  border-top-color: var(--accent);
+  animation: spin .8s linear infinite;
+}
+@keyframes spin{ to{ transform: rotate(360deg); } }
+
+/* ---------- 配置 ---------- */
+.field{ display: flex; align-items: center; gap: 10px; }
+.field .lbl{ flex: none; font-size: 13px; color: var(--label-2); }
+select{
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 32px 0 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--field-line);
+  background-color: var(--field-bg);
+  -webkit-appearance: none;
+  appearance: none;
+  font-size: 16px;              /* >=16px：安卓 WebView 聚焦时才不会把整页放大 */
+  color: var(--label);
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%23888' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5L6 6.5l5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  text-overflow: ellipsis;
+}
+select:disabled{ opacity: .5; }
+textarea{
+  display: block;
+  width: 100%;
+  min-height: 250px;
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--field-line);
+  background: var(--field-bg);
+  font-family: var(--mono);
+  font-size: 16px;              /* 编辑框必须 >=16px：小于这个值，安卓点进输入框会放大整页 */
+  line-height: 1.6;
+  letter-spacing: -.3px;
+  color: var(--label);
+  resize: vertical;
+  tab-size: 2;
+}
+textarea:focus{ border-color: color-mix(in srgb, var(--accent) 55%, var(--field-line)); }
+.pathrow{
+  margin-top: 10px;
+  padding: 7px 10px;
+  border-radius: var(--r-xs);
+  background: var(--fill-1);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--label-3);
+  overflow-wrap: anywhere;
+}
+.cfgst{
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 18px;
+  margin-top: 9px;
+  font-size: 12px;
+  color: var(--label-3);
+}
+.cfgst.on{ color: var(--warn); }
+.cfgst.bad{ color: var(--bad); }
+.cfgst.good{ color: var(--ok); }
+.dot{ width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+
+/* ---------- 模型测试 ---------- */
+.res{ display: flex; flex-direction: column; gap: 10px; }
+.resline{ display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 560; }
+.resline svg{ width: 18px; height: 18px; flex: none; }
+.resline.ok{ color: var(--ok); }
+.resline.bad{ color: var(--bad); }
+.resline.run{ color: var(--label-2); }
+.chips{ display: flex; flex-wrap: wrap; gap: 6px; }
+.chips .tag{ font-size: 12px; padding: 3px 9px; background: var(--fill-2); color: var(--label-2); }
+.reply{
+  padding: 11px 12px;
+  border-radius: var(--r-sm);
+  background: var(--fill-1);
+  font-size: 13.5px;
+  line-height: 1.62;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow: auto;
+}
+.errbox{
+  padding: 11px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent);
+  background: color-mix(in srgb, var(--bad) 9%, transparent);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--label);
+  word-break: break-word;
+}
+
+/* ---------- 控制台 iframe ---------- */
+.urlrow{
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: var(--r-xs);
+  background: var(--fill-1);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--label-2);
+  overflow-wrap: anywhere;
+}
+.frame{
+  position: relative;
+  height: 64vh;
+  min-height: 340px;
+  margin-top: 2px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--sep);
+  overflow: hidden;
+  background: var(--page);
+}
+.frame iframe{ display: block; width: 100%; height: 100%; border: 0; background: transparent; }
+.fb{
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 26px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.62;
+  color: var(--label-2);
+  background: var(--page);
+}
+.fb svg{ width: 30px; height: 30px; color: var(--label-3); }
+.spinwrap{
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--page);
+}
+
+/* ---------- 轻提示 ---------- */
+#toast{
+  position: fixed;
+  left: 50%;
+  bottom: calc(26px + env(safe-area-inset-bottom, 0px));
+  z-index: 60;
+  max-width: calc(100vw - 44px);
+  padding: 11px 16px;
+  border-radius: 14px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-align: center;
+  color: #fff;
+  background: rgba(28,28,32,.94);
+  box-shadow: 0 12px 30px -14px rgba(0,0,0,.7);
+  opacity: 0;
+  transform: translate(-50%, 14px);
+  pointer-events: none;
+  transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+#toast.on{ opacity: 1; transform: translate(-50%, 0); }
+
+/* 用户要求减少动效时：只留状态变化，不做位移与循环动画 */
+@media (prefers-reduced-motion: reduce){
+  *{ animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+  .spin{ animation-duration: .8s !important; animation-iteration-count: infinite !important; }
+  .sk{ animation: none !important; background: var(--fill-1) !important; }
+}
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <button class="iconbtn" id="btnBack" aria-label="返回">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+  </button>
+  <div class="hdr-t">
+    <h1>插件管理</h1>
+    <p class="hdr-s" id="hdrSub">市场 · 已装 · 配置 · 模型 · 控制台</p>
+  </div>
+  <button class="iconbtn" id="btnTheme" aria-label="切换深浅色"></button>
+</header>
+
+<nav class="tabs" role="tablist" aria-label="分区">
+  <button class="tab" role="tab" id="tabbtn-market" data-tab="market" aria-selected="true" aria-controls="pane-market">市场</button>
+  <button class="tab" role="tab" id="tabbtn-installed" data-tab="installed" aria-selected="false" aria-controls="pane-installed" tabindex="-1">已装</button>
+  <button class="tab" role="tab" id="tabbtn-config" data-tab="config" aria-selected="false" aria-controls="pane-config" tabindex="-1">配置</button>
+  <button class="tab" role="tab" id="tabbtn-model" data-tab="model" aria-selected="false" aria-controls="pane-model" tabindex="-1">模型</button>
+  <button class="tab" role="tab" id="tabbtn-webui" data-tab="webui" aria-selected="false" aria-controls="pane-webui" tabindex="-1">控制台</button>
+</nav>
+
+<main>
+  <div class="demoBar" id="demoBar" hidden></div>
+
+  <!-- ============ 市场 ============ -->
+  <section class="pane" id="pane-market" role="tabpanel" aria-labelledby="tabbtn-market">
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+      <input id="q" type="search" placeholder="搜插件：名字 / 作者 / 说明" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" aria-label="搜索插件">
+      <button class="clr" id="qClear" aria-label="清空搜索" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="rowbtw">
+      <span class="muted" id="mktCount">—</span>
+      <button class="chip" id="mktRefresh" data-ic="refresh">刷新市场</button>
+    </div>
+    <div id="mktList"></div>
+  </section>
+
+  <!-- ============ 已装 ============ -->
+  <section class="pane" id="pane-installed" role="tabpanel" aria-labelledby="tabbtn-installed" hidden>
+    <div class="rowbtw">
+      <span class="muted" id="instCount">—</span>
+      <button class="chip" id="instReload" data-ic="refresh">重新读取</button>
+    </div>
+    <div id="instList"></div>
+    <p class="hint" id="instNote" hidden></p>
+  </section>
+
+  <!-- ============ 配置 ============ -->
+  <section class="pane" id="pane-config" role="tabpanel" aria-labelledby="tabbtn-config" hidden>
+    <div class="card">
+      <div class="field">
+        <label class="lbl" for="cfgSel">插件</label>
+        <select id="cfgSel"></select>
+      </div>
+      <div class="pathrow" id="cfgPath">—</div>
+      <textarea id="cfgText" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" aria-label="插件配置 JSON"></textarea>
+      <div class="cfgst" id="cfgSt"><span class="dot"></span><span id="cfgStT">—</span></div>
+      <div class="btns">
+        <button class="btn primary" id="cfgSave">保存</button>
+        <button class="btn" id="cfgFmt">格式化</button>
+        <button class="btn ghost" id="cfgReset">还原</button>
+      </div>
+    </div>
+    <p class="hint">保存前会校验 JSON：格式不对不会写盘，插件的配置文件是它启动时直接读的。<b>保存后会自动尝试重载插件</b>，失败就等重启生效。</p>
+  </section>
+
+  <!-- ============ 模型 ============ -->
+  <section class="pane" id="pane-model" role="tabpanel" aria-labelledby="tabbtn-model" hidden>
+    <div class="card">
+      <h2>测一下模型</h2>
+      <p class="hint">在沙盒里真的发一句「你好，请回复 OK」给 AstrBot 当前的默认模型，8 秒没回应就算超时。读的是 AstrBot 自己的配置，换模型之后重新测一次就行。</p>
+      <div class="btns">
+        <button class="btn primary wide" id="mRun">开始测试</button>
+      </div>
+      <p class="hint" id="mNoBridge" hidden>这个环境没有模型桥（AndroidModel）：点按钮只会演示一次假结果。</p>
+    </div>
+    <div class="card" id="mResultCard" hidden>
+      <div class="res" id="mResult"></div>
+    </div>
+  </section>
+
+  <!-- ============ 控制台 ============ -->
+  <section class="pane" id="pane-webui" role="tabpanel" aria-labelledby="tabbtn-webui" hidden>
+    <div class="card">
+      <h2>控制台</h2>
+      <p class="hint">AstrBot 自己的网页控制台。第一次进来要在网页里登录一次，账号 <b>astrbot</b>，密码是你设置过的那个。</p>
+      <div class="urlrow" id="wfUrl">—</div>
+      <div class="btns">
+        <button class="btn" id="wfReload" data-ic="refresh">刷新</button>
+        <button class="btn ghost" id="wfOpen" data-ic="open">新窗口打开</button>
+      </div>
+    </div>
+    <div class="frame">
+      <iframe id="wf" title="AstrBot 控制台" referrerpolicy="no-referrer"></iframe>
+      <div class="fb" id="wfFb" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M9 21h6M12 17v4"/></svg>
+        <p id="wfFbMsg">正在读取控制台地址…</p>
+        <div class="btns"><button class="btn" id="wfRetry" data-ic="refresh">重试</button></div>
+      </div>
+      <div class="spinwrap" id="wfSpin" hidden><div class="spin"></div></div>
+    </div>
+    <p class="hint">控制台在 iframe 里偶尔会被内核限制（快捷键、弹窗）。加载不出来就点「新窗口打开」，用系统浏览器看。</p>
+  </section>
+</main>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ======================= 小工具 ======================= */
+  function $(id) { return document.getElementById(id); }
+  function mk(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = String(text);
+    return n;
+  }
+  function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+  function txt(v) { return (v === undefined || v === null) ? "" : String(v).trim(); }
+  function num(v, d) {
+    var n = parseFloat(v);
+    return (isFinite(n) ? n : (d === undefined ? 0 : d));
+  }
+  function jsonOf(s) {
+    try {
+      var o = JSON.parse(String(s));
+      return (o && typeof o === "object") ? o : null;
+    } catch (e) { return null; }
+  }
+  function isArrayLike(o) { return o && typeof o === "object" && typeof o.length === "number"; }
+  function spinner() { return mk("span", "spin"); }
+  function setHidden(el, on) {
+    if (!el) return;
+    if (on) el.setAttribute("hidden", ""); else el.removeAttribute("hidden");
+  }
+
+  var ICON = {
+    back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',
+    x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+    refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.2 5.6"/><path d="M20 5v6h-6"/></svg>',
+    retry: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.7-5.6"/><path d="M4 5v6h6"/><path d="M20 12a8 8 0 0 1-13.7 5.6"/><path d="M20 19v-6h-6"/></svg>',
+    open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M19 14v5.5A1.5 1.5 0 0 1 17.5 21h-12A1.5 1.5 0 0 1 4 19.5v-12A1.5 1.5 0 0 1 5.5 6H11"/></svg>',
+    download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M7 12l5 5 5-5"/><path d="M5 20h14"/></svg>',
+    box: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.4v9.2L12 21l-8-4.4V7.4z"/><path d="M12 12l8-4.4M12 12v9M12 12L4 7.6"/></svg>',
+    search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>',
+    warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg>',
+    check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>',
+    moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.6 8.6 0 1 0 11.1 11.1z"/></svg>',
+    sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.4 1.4M17.6 17.6L19 19M19 5l-1.4 1.4M6.4 17.6L5 19"/></svg>',
+    cpu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3v2M14 3v2M10 19v2M14 19v2M3 10h2M3 14h2M19 10h2M19 14h2"/></svg>'
+  };
+
+  /* ======================= 主题 ======================= */
+  var THEME_KEY = "qqbot_theme";
+  function themePref() {
+    try { return String(localStorage.getItem(THEME_KEY) || "auto"); } catch (e) { return "auto"; }
+  }
+  function applyTheme(pref) {
+    var dark = (pref === "dark");
+    if (pref !== "light" && pref !== "dark") {
+      pref = "auto";
+      try { dark = !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches); } catch (e) {}
+    }
+    var root = document.documentElement;
+    root.setAttribute("data-theme", dark ? "dark" : "light");
+    root.setAttribute("data-theme-pref", pref);
+    $("btnTheme").innerHTML = dark ? ICON.sun : ICON.moon;
+    $("btnTheme").setAttribute("aria-label", dark ? "切到浅色" : "切到深色");
+  }
+  function toggleTheme() {
+    var dark = document.documentElement.getAttribute("data-theme") === "dark";
+    var next = dark ? "light" : "dark";
+    try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+    applyTheme(next);
+    toast(dark ? "已切到浅色" : "已切到深色");
+  }
+
+  /* ======================= 轻提示 ======================= */
+  var toastTimer = 0;
+  function toast(msg) {
+    var t = $("toast");
+    if (!t) return;
+    t.textContent = String(msg);
+    t.classList.add("on");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove("on"); }, 2600);
+  }
+
+  /* ======================= 桥 =======================
+     所有桥调用都包一层：桥不存在（浏览器里打开页面）时不能抛异常；
+     桥在 but 某个方法不存在时也只是返回空串，让界面走「失败」分支。 */
+  var HAS_PLUGINS = false, HAS_MODEL = false, HAS_OPEN = false;
+  try {
+    HAS_PLUGINS = (typeof AndroidPlugins !== "undefined") && AndroidPlugins !== null
+      && typeof AndroidPlugins.installed === "function";
+    HAS_MODEL = (typeof AndroidModel !== "undefined") && AndroidModel !== null
+      && typeof AndroidModel.start === "function";
+    HAS_OPEN = HAS_PLUGINS && typeof AndroidPlugins.openExternal === "function";
+  } catch (e) { HAS_PLUGINS = false; HAS_MODEL = false; HAS_OPEN = false; }
+
+  function pInstalled() {
+    try { return String(AndroidPlugins.installed() || ""); } catch (e) { return ""; }
+  }
+  function pMarket(force) {
+    try { AndroidPlugins.market(!!force); return true; } catch (e) { return false; }
+  }
+  function pMarketPoll() {
+    try { return String(AndroidPlugins.marketPoll() || ""); } catch (e) { return ""; }
+  }
+  function pInstall(id) { try { AndroidPlugins.install(String(id)); return true; } catch (e) { return false; } }
+  function pToggle(name, on) { try { AndroidPlugins.toggle(String(name), !!on); return true; } catch (e) { return false; } }
+  function pUninstall(name) { try { AndroidPlugins.uninstall(String(name)); return true; } catch (e) { return false; } }
+  function pReload(name) { try { AndroidPlugins.reloadPlugin(String(name || "")); return true; } catch (e) { return false; } }
+  function pTaskPoll() {
+    try { return String(AndroidPlugins.taskPoll() || ""); } catch (e) { return ""; }
+  }
+  function pReadConfig(name) {
+    try { return String(AndroidPlugins.readConfig(String(name)) || ""); } catch (e) { return ""; }
+  }
+  function pWriteConfig(name, text) {
+    try { AndroidPlugins.writeConfig(String(name), String(text)); return true; } catch (e) { return false; }
+  }
+  function pDashboard() {
+    try { return String(AndroidPlugins.dashboardUrl() || ""); } catch (e) { return ""; }
+  }
+  function pOpenExternal(url) {
+    try { return String(AndroidPlugins.openExternal(String(url)) || ""); } catch (e) { return ""; }
+  }
+  function mStart() { try { AndroidModel.start(); return true; } catch (e) { return false; } }
+  function mPoll() { try { return String(AndroidModel.poll() || ""); } catch (e) { return ""; } }
+
+  /* ======================= 状态 ======================= */
+  var mkt = { state: "idle", plugins: [], error: "", at: 0, loaded: false };
+  var task = { busy: false, id: "", action: "", msg: "" };
+  var inst = { loaded: false, loading: false, plugins: [], note: "", error: "", at: 0 };
+  var cfg = { name: "", path: "", text: "", orig: "", exists: false, loading: false, saving: false, error: "" };
+  var model = {
+    state: "idle", provider: "", model: "", ms: 0, reply: "", error: "",
+    startAt: 0, ticks: 0, at: 0, watchdog: 0
+  };
+  var wf = { loaded: false, loading: false, ready: false, url: "", up: false, error: "", timer: 0 };
+  var armUninstall = null;
+
+  var tickId = 0;
+  function ensureTick() { if (!tickId) tickId = setInterval(pump, 400); }
+  function stopTick() { if (tickId) { clearInterval(tickId); tickId = 0; } }
+
+  /* ======================= 分区切换 ======================= */
+  var PANES = ["market", "installed", "config", "model", "webui"];
+  var cur = "market";
+
+  function showTab(name) {
+    if (PANES.indexOf(name) < 0) name = "market";
+    cur = name;
+    for (var i = 0; i < PANES.length; i++) {
+      var p = PANES[i];
+      var btn = $("tabbtn-" + p), pane = $("pane-" + p);
+      var on = (p === name);
+      if (btn) {
+        btn.setAttribute("aria-selected", on ? "true" : "false");
+        btn.tabIndex = on ? 0 : -1;
+      }
+      if (pane) setHidden(pane, !on);
+    }
+    if (name === "market" && !mkt.loaded && !mkt.state.match(/^(running)$/)) loadMarket(false);
+    if (name === "installed" && !inst.loaded) loadInstalled(false);
+    if (name === "config") { if (!inst.loaded) loadInstalled(false); else fillConfigSelect(); }
+    if (name === "webui" && !wf.loaded) loadDashboard();
+    try { history.replaceState(null, "", "#" + name); } catch (e) {}
+  }
+
+  /* ======================= 市场 ======================= */
+  var DEMO_MARKET = [
+    { id: "astrbot_plugin_daily_news", name: "每日早报", desc: "每天早上推一条新闻摘要，时间和口吻都能设", author: "RavenHogWarts", version: "0.9.1", stars: 88, installed: true },
+    { id: "astrbot_plugin_meme", name: "表情包生成", desc: "根据聊天内容生成表情包，群里斗图用", author: "Soulter", version: "1.4.2", stars: 236, installed: false },
+    { id: "astrbot_plugin_translate", name: "随手翻译", desc: "回复消息并翻译，支持「/tr 你好」和引用翻译", author: "anka", version: "2.0.0", stars: 164, installed: false },
+    { id: "astrbot_plugin_weather", name: "查天气", desc: "今天和未来三天，带一句穿衣建议", author: "zhx", version: "1.1.0", stars: 42, installed: false },
+    { id: "astrbot_plugin_blacklist", name: "黑名单", desc: "按 QQ 号屏蔽，命中就不回复", author: "moe", version: "1.0.5", stars: 61, installed: true },
+    { id: "astrbot_plugin_roll", name: "掷骰子", desc: "跑团用的骰子与判定，支持 .r 3d6", author: "tt", version: "0.3.1", stars: 12, installed: false }
+  ];
+  var DEMO_INSTALLED = [
+    { name: "每日早报", version: "0.9.1", desc: "每天早上推一条新闻摘要，时间和口吻都能设", author: "RavenHogWarts", enabled: true, dir: "astrbot_plugin_daily_news", hasConfig: true },
+    { name: "黑名单", version: "1.0.5", desc: "按 QQ 号屏蔽，命中就不回复", author: "moe", enabled: false, dir: "astrbot_plugin_blacklist", hasConfig: false }
+  ];
+
+  function normMarket(arr) {
+    var out = [];
+    if (!arr) return out;
+    for (var i = 0; i < arr.length; i++) {
+      var e = arr[i];
+      if (!e) continue;
+      var name = txt(e.name) || txt(e.id);
+      if (!name) continue;
+      out.push({
+        id: txt(e.id) || name,
+        name: name,
+        desc: txt(e.desc),
+        author: txt(e.author),
+        version: txt(e.version),
+        stars: num(e.stars),
+        installed: !!e.installed
+      });
+    }
+    return out;
+  }
+
+  function loadMarket(force) {
+    if (!HAS_PLUGINS) {
+      mkt.plugins = normMarket(DEMO_MARKET);
+      mkt.state = "ok";
+      mkt.loaded = true;
+      mkt.at = Date.now();
+      mkt.error = "";
+      renderMarket();
+      return;
+    }
+    if (mkt.state === "running") return;
+    mkt.state = "running";
+    mkt.error = "";
+    renderMarket();
+    if (!pMarket(force)) {
+      mkt.state = "fail";
+      mkt.error = "调不起市场请求：杀掉 App 重开一次";
+      renderMarket();
+      return;
+    }
+    ensureTick();
+  }
+
+  function filteredMarket() {
+    var q = txt($("q").value).toLowerCase();
+    if (!q) return mkt.plugins;
+    var out = [];
+    for (var i = 0; i < mkt.plugins.length; i++) {
+      var p = mkt.plugins[i];
+      var hay = (p.name + " " + p.desc + " " + p.author + " " + p.id).toLowerCase();
+      if (hay.indexOf(q) >= 0) out.push(p);
+    }
+    return out;
+  }
+
+  function syncMarketInstalled() {
+    if (!mkt.plugins.length || !inst.plugins.length) return;
+    var have = {}, i;
+    for (i = 0; i < inst.plugins.length; i++) {
+      have[txt(inst.plugins[i].name)] = 1;
+      have[txt(inst.plugins[i].dir)] = 1;
+    }
+    for (i = 0; i < mkt.plugins.length; i++) {
+      var p = mkt.plugins[i];
+      if (have[p.name] || have[p.id]) p.installed = true;
+    }
+  }
+
+  function renderMarketHead() {
+    var c = $("mktCount");
+    var running = (mkt.state === "running");
+    if (running) { c.textContent = "正在拉市场列表…"; }
+    else if (mkt.state === "fail") { c.textContent = "市场没拉到"; }
+    else if (mkt.plugins.length) {
+      var n = 0;
+      for (var i = 0; i < mkt.plugins.length; i++) if (mkt.plugins[i].installed) n++;
+      c.textContent = "共 " + mkt.plugins.length + " 个插件 · 已装 " + n;
+    } else { c.textContent = "还没有数据"; }
+
+    var btn = $("mktRefresh");
+    clear(btn);
+    if (running) { btn.appendChild(spinner()); btn.appendChild(mk("span", null, "刷新中")); }
+    else { btn.innerHTML = ICON.refresh; btn.appendChild(mk("span", null, "刷新市场")); }
+  }
+
+  function renderMarket() {
+    renderMarketHead();
+    var list = $("mktList");
+    clear(list);
+
+    if (mkt.state === "running" && !mkt.plugins.length) {
+      for (var s = 0; s < 3; s++) list.appendChild(mk("div", "sk"));
+      return;
+    }
+    if (mkt.state === "fail" && !mkt.plugins.length) {
+      var box = mk("div", "empty");
+      box.innerHTML = ICON.warn;
+      box.appendChild(mk("b", null, "市场列表没拉下来"));
+      box.appendChild(mk("span", null, mkt.error || "网络不通，或者插件源暂时打不开"));
+      var again = mk("button", "btn", "重试一次");
+      again.addEventListener("click", function () { loadMarket(true); });
+      box.appendChild(again);
+      list.appendChild(box);
+      return;
+    }
+    if (mkt.error && mkt.plugins.length) {
+      var warn = mk("div", "errbox", "可能不是最新的：" + mkt.error);
+      warn.style.marginBottom = "10px";
+      list.appendChild(warn);
+    }
+
+    var rows = filteredMarket();
+    if (!rows.length) {
+      var e2 = mk("div", "empty");
+      e2.innerHTML = ICON.search;
+      if (mkt.plugins.length) {
+        e2.appendChild(mk("b", null, "没找到匹配的插件"));
+        e2.appendChild(mk("span", null, "换个关键词，或者清空搜索看看全部"));
+      } else {
+        e2.appendChild(mk("b", null, "市场里还没有插件"));
+        e2.appendChild(mk("span", null, "点右上角「刷新市场」再拉一次"));
+      }
+      list.appendChild(e2);
+      return;
+    }
+    for (var i = 0; i < rows.length; i++) {
+      var row = buildMarketRow(rows[i]);
+      if (i < 8) row.style.animationDelay = (i * 22) + "ms";
+      list.appendChild(row);
+    }
+  }
+
+  function buildMarketRow(p) {
+    var row = mk("div", "plug");
+    var t = mk("div", "plug-t");
+    t.appendChild(mk("div", "plug-n", p.name));
+    if (p.desc) t.appendChild(mk("div", "plug-d", p.desc));
+    var m = mk("div", "plug-m");
+    if (p.author) m.appendChild(mk("span", "tag", p.author));
+    if (p.version) m.appendChild(mk("span", "tag", "v" + p.version));
+    if (p.stars > 0) m.appendChild(mk("span", "tag", "★ " + Math.round(p.stars)));
+    if (m.firstChild) t.appendChild(m);
+    row.appendChild(t);
+
+    var mine = task.busy && (task.action === "install") && (task.id === p.id);
+    var btn;
+    if (p.installed) {
+      btn = mk("button", "act done", "已装");
+      btn.disabled = true;
+    } else if (mine) {
+      btn = mk("button", "act");
+      btn.appendChild(spinner());
+      btn.appendChild(mk("span", null, "安装中"));
+      btn.disabled = true;
+    } else {
+      btn = mk("button", "act go", "安装");
+      btn.addEventListener("click", function () { startInstall(p); });
+    }
+    row.appendChild(btn);
+    return row;
+  }
+
+  function startInstall(p) {
+    if (!HAS_PLUGINS) { toast("演示模式：真机上才会真的下载安装"); return; }
+    if (task.busy) { toast("上一个操作还没做完，等它一下"); return; }
+    task.busy = true;
+    task.id = p.id;
+    task.action = "install";
+    task.msg = "正在下载 " + p.name;
+    renderMarket();
+    ensureTick();
+    if (!pInstall(p.id)) { task.busy = false; task.id = ""; toast("安装没启动：重开一次 App"); renderMarket(); }
+  }
+
+  /* ======================= 已装 ======================= */
+  function loadInstalled(silent) {
+    if (!HAS_PLUGINS) {
+      inst.plugins = DEMO_INSTALLED.slice(0);
+      inst.loaded = true;
+      inst.loading = false;
+      inst.note = "";
+      inst.at = Date.now();
+      renderInstalled();
+      syncMarketInstalled();
+      return;
+    }
+    inst.loading = true;
+    inst.error = "";
+    if (!silent) renderInstalled();
+    // 桥方法是同步的（可能走 HTTP 或扫盘），先让「读取中」画出来再叫它
+    setTimeout(function () {
+      var o = jsonOf(pInstalled());
+      inst.loading = false;
+      inst.loaded = true;
+      inst.at = Date.now();
+      if (!o || o.ok === false) {
+        inst.plugins = inst.plugins || [];
+        inst.error = (o && txt(o.error)) || "读不到已装列表：AstrBot 可能没在运行，重开 App 再试";
+        renderInstalled();
+        return;
+      }
+      inst.plugins = normInstalled(o.plugins);
+      inst.note = txt(o.note);
+      renderInstalled();
+      syncMarketInstalled();
+      if (cur === "market") renderMarket();
+      fillConfigSelect();
+    }, 30);
+  }
+
+  function normInstalled(arr) {
+    var out = [];
+    if (!arr) return out;
+    for (var i = 0; i < arr.length; i++) {
+      var e = arr[i];
+      if (!e) continue;
+      var name = txt(e.name);
+      if (!name) continue;
+      out.push({
+        name: name,
+        version: txt(e.version),
+        desc: txt(e.desc),
+        author: txt(e.author),
+        enabled: (e.enabled !== false),   // 桥扫盘时给 true，别把「不知道」显示成停用
+        dir: txt(e.dir),
+        hasConfig: !!e.hasConfig
+      });
+    }
+    return out;
+  }
+
+  function renderInstalled() {
+    var c = $("instCount");
+    if (inst.loading) c.textContent = "正在读…";
+    else if (inst.plugins.length) c.textContent = "已装 " + inst.plugins.length + " 个";
+    else c.textContent = "一个插件都没装";
+
+    var note = $("instNote");
+    if (inst.note) { note.textContent = inst.note; setHidden(note, false); }
+    else setHidden(note, true);
+
+    var list = $("instList");
+    clear(list);
+
+    if (inst.loading && !inst.plugins.length) {
+      for (var s = 0; s < 2; s++) list.appendChild(mk("div", "sk"));
+      return;
+    }
+    if (inst.error) {
+      var box = mk("div", "empty");
+      box.innerHTML = ICON.warn;
+      box.appendChild(mk("b", null, "读不到已装插件"));
+      box.appendChild(mk("span", null, inst.error));
+      var again = mk("button", "btn", "重新读取");
+      again.addEventListener("click", function () { loadInstalled(false); });
+      box.appendChild(again);
+      list.appendChild(box);
+      return;
+    }
+    if (!inst.plugins.length) {
+      var e2 = mk("div", "empty");
+      e2.innerHTML = ICON.box;
+      e2.appendChild(mk("b", null, "还什么都没装"));
+      e2.appendChild(mk("span", null, "去「市场」挑一个，装完会出现在这里"));
+      var go = mk("button", "btn", "去市场看看");
+      go.addEventListener("click", function () { showTab("market"); });
+      e2.appendChild(go);
+      list.appendChild(e2);
+      return;
+    }
+    for (var i = 0; i < inst.plugins.length; i++) {
+      var row = buildInstalledRow(inst.plugins[i]);
+      if (i < 8) row.style.animationDelay = (i * 22) + "ms";
+      list.appendChild(row);
+    }
+  }
+
+  function buildInstalledRow(p) {
+    var row = mk("div", "plug col");
+    var top = mk("div", "plug-top");
+    var t = mk("div", "plug-t");
+    t.appendChild(mk("div", "plug-n", p.name));
+    if (p.desc) t.appendChild(mk("div", "plug-d", p.desc));
+    var m = mk("div", "plug-m");
+    if (p.author) m.appendChild(mk("span", "tag", p.author));
+    if (p.version) m.appendChild(mk("span", "tag", "v" + p.version));
+    m.appendChild(mk("span", "tag", p.hasConfig ? "有配置" : "无配置"));
+    t.appendChild(m);
+    top.appendChild(t);
+
+    var sw = mk("button", "sw");
+    sw.setAttribute("role", "switch");
+    sw.setAttribute("aria-checked", p.enabled ? "true" : "false");
+    sw.setAttribute("aria-label", (p.enabled ? "停用 " : "启用 ") + p.name);
+    sw.appendChild(mk("span"));
+    sw.addEventListener("click", function () { startToggle(p); });
+    top.appendChild(sw);
+    row.appendChild(top);
+
+    var acts = mk("div", "plug-acts");
+    var rl = mk("button", "act grow", "重载");
+    rl.addEventListener("click", function () { startReload(p); });
+    acts.appendChild(rl);
+
+    var armed = armUninstall && armUninstall.name === p.name;
+    var un = mk("button", "act grow danger" + (armed ? " on" : ""), armed ? "再点一次" : "卸载");
+    un.addEventListener("click", function () { startUninstall(p, un); });
+    acts.appendChild(un);
+    row.appendChild(acts);
+    return row;
+  }
+
+  function startToggle(p) {
+    if (!HAS_PLUGINS) { toast("演示模式：真机上才会真的改启停"); return; }
+    if (task.busy) { toast("上一个操作还没做完，等它一下"); return; }
+    var next = !p.enabled;
+    p.enabled = next;                    // 先在界面上翻过去，失败再退回来
+    task.busy = true;
+    task.id = p.name;
+    task.action = "toggle";
+    task.msg = next ? "正在启用 " + p.name : "正在停用 " + p.name;
+    renderInstalled();
+    ensureTick();
+    if (!pToggle(p.name, next)) { task.busy = false; task.id = ""; p.enabled = !next; renderInstalled(); toast("调不起桥：重开一次 App"); }
+  }
+
+  function startReload(p) {
+    if (!HAS_PLUGINS) { toast("演示模式：真机上才会真的重载"); return; }
+    if (task.busy) { toast("上一个操作还没做完，等它一下"); return; }
+    task.busy = true;
+    task.id = p.name;
+    task.action = "reload";
+    task.msg = "正在重载 " + p.name;
+    ensureTick();
+    if (!pReload(p.name)) { task.busy = false; task.id = ""; toast("调不起桥：重开一次 App"); return; }
+    toast("已让 AstrBot 重载 " + p.name);
+  }
+
+  function startUninstall(p, btn) {
+    if (!HAS_PLUGINS) { toast("演示模式：真机上才会真的删除"); return; }
+    if (task.busy) { toast("上一个操作还没做完，等它一下"); return; }
+    var now = Date.now();
+    if (!armUninstall || armUninstall.name !== p.name || (now - armUninstall.at) > 4000) {
+      armUninstall = { name: p.name, at: now };
+      renderInstalled();
+      toast("再点一次「卸载」就真的删掉（配置会保留）");
+      setTimeout(function () {
+        if (armUninstall && armUninstall.name === p.name && (Date.now() - armUninstall.at) >= 3800) {
+          armUninstall = null;
+          renderInstalled();
+        }
+      }, 4100);
+      return;
+    }
+    armUninstall = null;
+    task.busy = true;
+    task.id = p.name;
+    task.action = "uninstall";
+    task.msg = "正在卸载 " + p.name;
+    renderInstalled();
+    ensureTick();
+    if (!pUninstall(p.name)) { task.busy = false; task.id = ""; toast("调不起桥：重开一次 App"); renderInstalled(); }
+  }
+
+  /* ======================= 任务完成 ======================= */
+  function taskDone(ok, msg, action) {
+    var wasToggle = (action === "toggle");
+    task.busy = false;
+    task.id = "";
+    task.action = "";
+    if (action === "config") { cfg.saving = false; }
+    if (msg) toast(msg);
+    if (action === "install" || action === "uninstall" || wasToggle) {
+      loadInstalled(true);
+      if (cur === "market" && mkt.loaded) renderMarket();
+      else renderInstalled();
+      return;
+    }
+    if (action === "config") {
+      renderCfg();
+      if (ok) loadConfig(cfg.name, true);
+      return;
+    }
+    renderInstalled();
+  }
+
+  /* ======================= 轮询 ======================= */
+  function pump() {
+    var busy = false;
+    var i;
+
+    if (mkt.state === "running") {
+      busy = true;
+      var o = jsonOf(pMarketPoll());
+      if (o) {
+        var st = txt(o.state);
+        if (st && st !== "running") {
+          mkt.state = st;
+          mkt.plugins = normMarket(o.plugins);
+          mkt.error = txt(o.error);
+          mkt.loaded = true;
+          mkt.at = Date.now();
+          syncMarketInstalled();
+          renderMarket();
+        } else if (o.plugins && o.plugins.length) {
+          mkt.plugins = normMarket(o.plugins);
+          renderMarketHead();
+        }
+      }
+    }
+
+    if (task.busy) {
+      busy = true;
+      var t = jsonOf(pTaskPoll());
+      if (t) {
+        var ts = txt(t.state);
+        var tm = txt(t.msg);
+        if (tm) task.msg = tm;
+        if (ts === "ok" || ts === "fail") {
+          taskDone(ts === "ok", tm, txt(t.action) || task.action);
+        } else if (ts && ts !== "running") {
+          taskDone(false, tm || "AstrBot 那边没接住这个操作，再试一次", txt(t.action) || task.action);
+        }
+      }
+    }
+
+    if (model.state === "running") {
+      busy = true;
+      model.ticks++;
+      var mm = jsonOf(mPoll());
+      if (mm) {
+        var ms = txt(mm.state);
+        if (ms === "ok") {
+          model.state = "ok";
+          model.provider = txt(mm.provider);
+          model.model = txt(mm.model);
+          model.ms = num(mm.ms);
+          model.reply = (mm.reply === undefined || mm.reply === null) ? "" : String(mm.reply);
+          model.at = Date.now();
+          model.ticks = 0;
+          renderModelCard();
+        } else if (ms === "fail") {
+          model.state = "fail";
+          model.error = txt(mm.error) || "测试失败：再点一次试试";
+          model.ticks = 0;
+          renderModelCard();
+        } else if (model.ticks % 3 === 0) {
+          renderModelCard();      // 刷新一下「已等 N 秒」
+        }
+      }
+      if (model.state === "running" && (Date.now() - model.startAt) > 32000) {
+        model.state = "fail";
+        model.error = "等了 32 秒还没回话：沙盒可能卡住了，回首页看一眼状态再试";
+        renderModelCard();
+      }
+    }
+
+    if (!busy) {
+      for (i = 0; i < 1; i++) { /* 占位，保持循环结构清晰 */ }
+      stopTick();
+    }
+  }
+
+  /* ======================= 配置 ======================= */
+  function fillConfigSelect() {
+    var sel = $("cfgSel");
+    clear(sel);
+    if (!inst.plugins.length) {
+      var o0 = mk("option", null, HAS_PLUGINS ? "（还没装插件）" : "（演示数据里没有）");
+      o0.value = "";
+      sel.appendChild(o0);
+      sel.disabled = true;
+      cfg.name = "";
+      cfg.text = "";
+      cfg.orig = "";
+      cfg.path = "";
+      renderCfg();
+      return;
+    }
+    sel.disabled = false;
+    for (var i = 0; i < inst.plugins.length; i++) {
+      var p = inst.plugins[i];
+      var op = mk("option", null, p.name + (p.hasConfig ? "" : " · 没配置"));
+      op.value = p.name;
+      sel.appendChild(op);
+    }
+    var want = cfg.name;
+    var found = false;
+    for (var j = 0; j < inst.plugins.length; j++) if (inst.plugins[j].name === want) found = true;
+    if (!found) want = inst.plugins[0].name;
+    sel.value = want;
+    if (want !== cfg.name) loadConfig(want, false);
+    else renderCfg();
+  }
+
+  function loadConfig(name, silent) {
+    cfg.name = name;
+    cfg.loading = true;
+    cfg.error = "";
+    if (!silent) { cfg.text = ""; cfg.orig = ""; cfg.exists = false; }
+    renderCfg();
+
+    if (!HAS_PLUGINS) {
+      cfg.loading = false;
+      cfg.exists = true;
+      cfg.path = "/opt/AstrBot/data/config/" + (name || "demo") + "_config.json";
+      cfg.text = '{\n  "enabled": true,\n  "api_key": "",\n  "timeout": 15,\n  "prompt": "早上好"\n}';
+      cfg.orig = cfg.text;
+      $("cfgText").value = cfg.text;
+      renderCfg();
+      return;
+    }
+    setTimeout(function () {
+      var o = jsonOf(pReadConfig(name));
+      cfg.loading = false;
+      if (!o || o.ok === false) {
+        cfg.error = (o && txt(o.error)) || "读不到这个插件的配置";
+        renderCfg();
+        return;
+      }
+      cfg.path = txt(o.path);
+      cfg.exists = !!o.exists;
+      cfg.text = (o.text === undefined || o.text === null) ? "" : String(o.text);
+      if (!cfg.exists) {
+        cfg.text = '{\n\n}';
+        cfg.orig = "";
+      } else {
+        cfg.orig = cfg.text;
+      }
+      $("cfgText").value = cfg.text;
+      renderCfg();
+    }, 20);
+  }
+
+  function renderCfg() {
+    $("cfgPath").textContent = cfg.path || (cfg.name ? "（还没读到路径）" : "—");
+    var ta = $("cfgText");
+    if (ta.value !== cfg.text && document.activeElement !== ta) ta.value = cfg.text;
+    ta.disabled = cfg.loading || cfg.saving || !cfg.name;
+
+    var st = $("cfgSt"), t = $("cfgStT");
+    st.className = "cfgst";
+    if (cfg.error) { st.className = "cfgst bad"; t.textContent = cfg.error; }
+    else if (cfg.loading) { t.textContent = "正在读配置…"; }
+    else if (!cfg.name) { t.textContent = "上面选一个插件"; }
+    else if (cfg.saving) { st.className = "cfgst on"; t.textContent = "正在保存…"; }
+    else if (!cfg.exists) { st.className = "cfgst on"; t.textContent = "这个插件还没有配置文件，保存一次就会建好"; }
+    else if (isDirty()) { st.className = "cfgst on"; t.textContent = "有改动没保存"; }
+    else { st.className = "cfgst good"; t.textContent = "和磁盘上的一致"; }
+
+    $("cfgSave").disabled = !cfg.name || cfg.loading || cfg.saving || !!cfg.error;
+  }
+
+  function isDirty() { return String($("cfgText").value) !== String(cfg.orig); }
+
+  function onCfgInput() {
+    cfg.text = String($("cfgText").value);
+    renderCfgStatusOnly();
+  }
+  function renderCfgStatusOnly() {
+    var st = $("cfgSt"), t = $("cfgStT");
+    if (cfg.error) return;
+    if (cfg.loading || cfg.saving) return;
+    st.className = "cfgst";
+    if (!cfg.exists) { st.className = "cfgst on"; t.textContent = "这个插件还没有配置文件，保存一次就会建好"; return; }
+    if (isDirty()) { st.className = "cfgst on"; t.textContent = "有改动没保存"; }
+    else { st.className = "cfgst good"; t.textContent = "和磁盘上的一致"; }
+  }
+
+  function saveConfig() {
+    if (!HAS_PLUGINS) { toast("演示模式：真机上才会写文件"); return; }
+    if (!cfg.name) return;
+    if (task.busy) { toast("上一个操作还没做完，等它一下"); return; }
+    var body = String($("cfgText").value);
+    var probe;
+    try { probe = JSON.parse(body); } catch (e) {
+      toast("JSON 有语法错误，先点「格式化」看看卡在哪");
+      return;
+    }
+    if (!probe || typeof probe !== "object" || isArrayLike(probe)) {
+      toast("配置最外层要是对象 { }，不能是数组或单个值");
+      return;
+    }
+    task.busy = true;
+    task.action = "config";
+    task.id = cfg.name;
+    cfg.saving = true;
+    renderCfg();
+    ensureTick();
+    if (!pWriteConfig(cfg.name, body)) { task.busy = false; cfg.saving = false; toast("调不起桥：重开一次 App"); renderCfg(); }
+  }
+
+  function fmtConfig() {
+    var v = String($("cfgText").value);
+    try {
+      var o = JSON.parse(v);
+      if (!o || typeof o !== "object" || isArrayLike(o)) throw new Error("最外层要是对象 { }");
+      var pretty = JSON.stringify(o, null, 2);
+      $("cfgText").value = pretty;
+      cfg.text = pretty;
+      renderCfgStatusOnly();
+      toast("已格式化");
+    } catch (e) {
+      toast("格式化失败：" + (e && e.message ? e.message : "JSON 读不出来"));
+    }
+  }
+
+  function resetConfig() {
+    $("cfgText").value = cfg.orig;
+    cfg.text = cfg.orig;
+    renderCfgStatusOnly();
+    toast("已还原成读进来的内容");
+  }
+
+  /* ======================= 模型 ======================= */
+  function runModel() {
+    if (model.state === "running") return;
+    if (!HAS_MODEL) { demoModelRun(); return; }
+    model.state = "running";
+    model.error = "";
+    model.reply = "";
+    model.provider = "";
+    model.model = "";
+    model.ms = 0;
+    model.startAt = Date.now();
+    model.ticks = 0;
+    renderModelCard();
+    ensureTick();
+    if (!mStart()) {
+      model.state = "fail";
+      model.error = "模型测试没启动：杀掉 App 重开一次";
+      renderModelCard();
+    }
+  }
+
+  function demoModelRun() {
+    if (model.state === "running") return;
+    model.state = "running";
+    model.startAt = Date.now();
+    model.ticks = 0;
+    model.error = "";
+    model.reply = "";
+    renderModelCard();
+    setTimeout(function () {
+      model.state = "ok";
+      model.provider = "示例服务商";
+      model.model = "demo-model";
+      model.ms = 874;
+      model.reply = "OK";
+      model.at = Date.now();
+      renderModelCard();
+    }, 900);
+  }
+
+  function renderModelCard() {
+    var card = $("mResultCard");
+    var box = $("mResult");
+    var btn = $("mRun");
+    clear(box);
+    btn.disabled = (model.state === "running");
+
+    if (model.state === "idle") {
+      setHidden(card, true);
+      btn.textContent = "开始测试";
+      return;
+    }
+    setHidden(card, false);
+
+    var line = mk("div", "resline");
+    if (model.state === "running") {
+      var secs = Math.max(0, Math.floor((Date.now() - model.startAt) / 1000));
+      line.className = "resline run";
+      line.appendChild(spinner());
+      line.appendChild(mk("span", null, "正在请求模型" + (secs ? "（已等 " + secs + " 秒）" : "…")));
+      box.appendChild(line);
+      btn.textContent = "测试中…";
+      return;
+    }
+    if (model.state === "ok") {
+      line.className = "resline ok";
+      line.innerHTML = ICON.check;
+      line.appendChild(mk("span", null, "通了，模型回了话"));
+      box.appendChild(line);
+
+      var chips = mk("div", "chips");
+      if (model.provider) chips.appendChild(mk("span", "tag", model.provider));
+      if (model.model) chips.appendChild(mk("span", "tag", model.model));
+      if (model.ms > 0) chips.appendChild(mk("span", "tag", Math.round(model.ms) + " ms"));
+      if (chips.firstChild) box.appendChild(chips);
+      if (model.reply) box.appendChild(mk("div", "reply", model.reply));
+      btn.textContent = "再测一次";
+      return;
+    }
+    line.className = "resline bad";
+    line.innerHTML = ICON.warn;
+    line.appendChild(mk("span", null, "没通"));
+    box.appendChild(line);
+    box.appendChild(mk("div", "errbox", model.error || "不知道哪儿出问题了，再试一次"));
+    btn.textContent = "再试一次";
+  }
+
+  /* ======================= 控制台 ======================= */
+  function loadDashboard() {
+    wf.loaded = true;
+    wf.loading = true;
+    wf.error = "";
+    renderWebui();
+    if (!HAS_PLUGINS) {
+      wf.loading = false;
+      wf.url = "http://127.0.0.1:6185/";
+      wf.up = false;
+      wf.error = "演示模式：App 里这里会嵌真正的控制台。AstrBot 跑起来之后、回首页确认状态，再点「重试」。";
+      renderWebui();
+      return;
+    }
+    setTimeout(function () {
+      var o = jsonOf(pDashboard());
+      wf.loading = false;
+      if (!o || o.ok === false) {
+        wf.error = (o && txt(o.error)) || "拿不到控制台地址：重开一次 App";
+        wf.up = false;
+        renderWebui();
+        return;
+      }
+      wf.url = txt(o.url);
+      wf.up = !!o.up;
+      if (!wf.up) {
+        wf.error = "AstrBot 没在运行：回首页把它启动，再回到这里点「重试」";
+        renderWebui();
+        return;
+      }
+      renderWebui();
+      mountFrame();
+    }, 20);
+  }
+
+  function mountFrame() {
+    if (!wf.url) return;
+    wf.ready = false;
+    setHidden($("wfFb"), true);
+    setHidden($("wfSpin"), false);
+    clearTimeout(wf.timer);
+    wf.timer = setTimeout(function () {
+      if (wf.ready) return;
+      setHidden($("wfSpin"), true);
+      $("wfFbMsg").textContent = "控制台 12 秒还没加载出来：可能还在启动，或者这个内核不允许嵌入。点「新窗口打开」用系统浏览器看。";
+      setHidden($("wfFb"), false);
+    }, 12000);
+    try {
+      $("wf").src = wf.url;
+    } catch (e) {
+      setHidden($("wfSpin"), true);
+      $("wfFbMsg").textContent = "这个内核不认这个地址，点「新窗口打开」试试";
+      setHidden($("wfFb"), false);
+    }
+  }
+
+  function renderWebui() {
+    $("wfUrl").textContent = wf.url || (wf.loading ? "正在读地址…" : "—");
+    $("wfOpen").disabled = !wf.url;
+    if (wf.loading) {
+      setHidden($("wfFb"), true);
+      setHidden($("wfSpin"), false);
+      return;
+    }
+    if (!wf.up) {
+      setHidden($("wfSpin"), true);
+      $("wfFbMsg").textContent = wf.error || "控制台还不可用";
+      setHidden($("wfFb"), false);
+      return;
+    }
+    if (!wf.ready) return;    // 正在加载，转圈由 mountFrame 管
+    setHidden($("wfFb"), true);
+    setHidden($("wfSpin"), true);
+  }
+
+  function openWebui() {
+    if (!wf.url) { toast("还没有控制台地址"); return; }
+    if (HAS_OPEN) {
+      var r = txt(pOpenExternal(wf.url));
+      if (r === "ok" || r === "") toast("已经交给系统浏览器了");
+      else toast(r || "打不开这个地址");
+      return;
+    }
+    var w = null;
+    try { w = window.open(wf.url, "_blank"); } catch (e) {}
+    if (!w) toast("这个环境不支持新窗口，把地址复制到浏览器打开");
+  }
+
+  /* ======================= 事件绑定 ======================= */
+  function boot() {
+    applyTheme(themePref());
+    if (window.matchMedia) {
+      try {
+        var mq = window.matchMedia("(prefers-color-scheme: dark)");
+        mq.addEventListener("change", function () { if (themePref() === "auto") applyTheme("auto"); });
+      } catch (e) {
+        try {
+          window.matchMedia("(prefers-color-scheme: dark)").addListener(function () {
+            if (themePref() === "auto") applyTheme("auto");
+          });
+        } catch (e2) {}
+      }
+    }
+
+    // 静态图标：data-ic 的元素在启动时补上 SVG
+    var ics = document.querySelectorAll("[data-ic]");
+    for (var i = 0; i < ics.length; i++) {
+      var key = ics[i].getAttribute("data-ic");
+      if (ICON[key]) ics[i].insertAdjacentHTML("afterbegin", ICON[key]);
+    }
+
+    $("btnBack").addEventListener("click", function () {
+      if (history.length > 1) history.back();
+      else toast("这是第一页了");
+    });
+    $("btnTheme").addEventListener("click", toggleTheme);
+
+    var tabs = document.querySelectorAll(".tab");
+    for (var j = 0; j < tabs.length; j++) {
+      (function (b) {
+        b.addEventListener("click", function () { showTab(b.getAttribute("data-tab")); });
+      })(tabs[j]);
+    }
+
+    // 市场
+    var q = $("q");
+    q.addEventListener("input", function () {
+      setHidden($("qClear"), !txt(q.value));
+      renderMarket();
+    });
+    q.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" || ev.keyCode === 13) { q.blur(); ev.preventDefault(); }
+    });
+    $("qClear").addEventListener("click", function () {
+      q.value = "";
+      setHidden($("qClear"), true);
+      renderMarket();
+      q.focus();
+    });
+    $("mktRefresh").addEventListener("click", function () {
+      if (mkt.state === "running") return;
+      if (!HAS_PLUGINS) { toast("演示模式：真机上才会真的去拉市场"); return; }
+      loadMarket(true);
+      toast("正在重新拉市场…");
+    });
+
+    // 已装
+    $("instReload").addEventListener("click", function () {
+      if (inst.loading) return;
+      loadInstalled(false);
+    });
+
+    // 配置
+    $("cfgSel").addEventListener("change", function () {
+      var v = $("cfgSel").value;
+      if (v && v !== cfg.name) loadConfig(v, false);
+    });
+    $("cfgText").addEventListener("input", onCfgInput);
+    $("cfgSave").addEventListener("click", saveConfig);
+    $("cfgFmt").addEventListener("click", fmtConfig);
+    $("cfgReset").addEventListener("click", resetConfig);
+
+    // 模型
+    $("mRun").addEventListener("click", runModel);
+    if (!HAS_MODEL) setHidden($("mNoBridge"), false);
+
+    // 控制台
+    $("wfReload").addEventListener("click", function () {
+      if (!wf.up && !wf.loading) { wf.loaded = false; loadDashboard(); return; }
+      if (!wf.up) { toast("控制台还没起来：先回首页启动 AstrBot"); return; }
+      mountFrame();
+      toast("正在刷新控制台");
+    });
+    $("wfOpen").addEventListener("click", openWebui);
+    $("wfRetry").addEventListener("click", function () {
+      wf.loaded = false;
+      wf.up = false;
+      loadDashboard();
+    });
+    $("wf").addEventListener("load", function () {
+      var f = $("wf");
+      if (!f.src || f.src === "about:blank") return;
+      wf.ready = true;
+      clearTimeout(wf.timer);
+      setHidden($("wfSpin"), true);
+      setHidden($("wfFb"), true);
+    });
+
+    // 演示提示
+    if (!HAS_PLUGINS) {
+      var bar = $("demoBar");
+      bar.innerHTML = "";
+      bar.appendChild(mk("b", null, "演示模式"));
+      bar.appendChild(mk("span", null, " 这个页面没连上 App 的桥，下面的列表是样例数据，安装/启停/保存都只会弹提示。装到手机上就正常了。"));
+      setHidden(bar, false);
+    }
+
+    var start = txt(location.hash).replace("#", "");
+    if (PANES.indexOf(start) < 0) start = "market";
+    showTab(start);
+    if (start === "market" && !mkt.loaded) loadMarket(false);
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+  else boot();
+})();
+</script>
+</body>
+</html>

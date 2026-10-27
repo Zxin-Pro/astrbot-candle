@@ -1720,6 +1720,74 @@ html.bgcroplock{ overflow: hidden; }
 .csig{ font-family: var(--mono); font-size: 11.5px; word-break: break-all; color: var(--label); }
 .cmeta{ margin-top: 3px; font-size: 11px; color: var(--label-3); }
 
+/* 健康体检（1.3.4-beta.2）：出网 / 内核 / 诊断包三行 + 结果区。
+   结果区沿用 .askup 的浅底观感，状态字用 --ok / --bad，和崩溃卡保持一致。 */
+.hrow{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0 0;
+}
+.hbd{ flex: 1; min-width: 0; }
+.hres{
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 13px;
+  background: var(--fill-1);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--label-2);
+}
+.hres .hi{
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 2px 0;
+}
+.hres .hi .hs{ flex: none; font-weight: 600; color: var(--label-3); }
+.hres .hi.good .hs{ color: var(--ok); }
+.hres .hi.bad .hs{ color: var(--bad); }
+.hres .hi > span + span{ flex: 1; min-width: 0; word-break: break-all; }
+.hres .htip{ margin-top: 5px; color: var(--label-3); }
+.hres .hpath{ margin-top: 4px; font-family: var(--mono); font-size: 11.5px; word-break: break-all; color: var(--label-2); }
+
+/* 整机占用条：比五个目录的细条粗一点，因为它是「总量」；
+   85% 转黄、90% 转红，只改渐变色不改高度，避免布局跳动。 */
+.usagebar{
+  height: 8px;
+  border-radius: var(--r-full);
+  background: var(--fill-2);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 .5px var(--sep);
+}
+.usagebar > i{
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 62%, #fff), var(--accent));
+  transition: width var(--dur-slow) var(--ease);
+}
+.usagebar.warn > i{ background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 72%, #fff), var(--warn)); }
+.usagebar.bad > i{ background: linear-gradient(90deg, color-mix(in srgb, var(--bad) 74%, #fff), var(--bad)); }
+.usagetx{
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--label-2);
+}
+.usagetx b{ font-variant-numeric: tabular-nums; color: var(--label); }
+.usagetx.warn b{ color: var(--warn); }
+.usagetx.bad b{ color: var(--bad); }
+
+/* Top10 一行：左侧路径可断行（路径没有空格，必须 anywhere，否则整页被撑宽），右侧容量不换行 */
+.stgf{ display: flex; align-items: baseline; gap: 10px; padding: 3px 0; font-size: 12.5px; line-height: 1.45; }
+.stgf > span:first-child{ flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; word-break: break-all; color: var(--label-2); }
+.stgf > span:last-child{ flex: none; font-variant-numeric: tabular-nums; color: var(--label); white-space: nowrap; }
+
 .sec{ /* 折叠组：只是容器语义 */ }
 
 /* 更新卡片 */
@@ -1895,6 +1963,10 @@ nav button:active .ic{ transform: scale(.92); }
 .moretoggle[aria-expanded="true"] + .morehint{ display: none; }
 
 #diagFold[hidden]{ display: none; }
+
+/* 健康体检里的「开始 / 检查 / 生成」是独立触摸目标，视觉上仍保持小按钮，
+   但可点区补到 44px —— 320 宽窄屏下 .hrow 会把按钮压到 34px，容易点空。 */
+#healthCard .hrow .small{ min-height: 44px; min-width: 56px; }
 
 /* 未部署锁定态：看得出不能点，但点下去仍有提示（所以不给 pointer-events:none） */
 .locked{ opacity: .42; filter: saturate(.35); }
@@ -2718,6 +2790,28 @@ html.devnotelock{ overflow: hidden; }
 .dn-cnt{ flex: 1; font-size: 11.5px; color: var(--label-3); font-variant-numeric: tabular-nums; }
 .dn-ft button{ flex: none; padding: 0 16px; border-radius: var(--r-md); font-size: 14.5px; }
 .dn-ft button.primary{ min-width: 104px; }
+  /* ===== 1.3.4-beta.2 新增：启动五态 / 扫码倒计时 / 通知开关 / 测试模型 / 日志分享 ===== */
+  .startrow{ display: flex; gap: 9px; margin-top: 12px; }
+  .startrow > button{ flex: 1; min-height: 46px; }
+  .startrow > button[disabled]{ opacity: .6; }
+  .startrow > button[disabled]:active{ transform: none; }
+  .startnote{ margin-top: 8px; font-size: 12.5px; line-height: 1.55; color: var(--label-2); }
+  .startnote b{ color: var(--label); font-weight: 600; }
+  .qrttl{ margin-top: 6px; font-size: 11.5px; color: var(--label-3); font-variant-numeric: tabular-nums; }
+  .qrttl.hot{ color: var(--warn); }
+  .qrfall{ margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--fill-1); font-size: 12.5px; line-height: 1.55; color: var(--label-2); }
+  .qrfall .btns{ margin-top: 8px; }
+  #logCardQr.qrhl{ box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent), 0 12px 34px -16px color-mix(in srgb, var(--accent) 75%, transparent); }
+  .shlmeta{ margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--fill-1); font-size: 12.5px; line-height: 1.6; color: var(--label-2); }
+  .shlmeta b{ color: var(--label); }
+  .mtout{ flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.5; color: var(--label-2); }
+  .mtout.ok{ color: var(--ok); }
+  .mtout.bad{ color: var(--bad); }
+  /* 开关的可见尺寸沿用设计系统（51x31），但可点区域按 44 抬一圈，拇指按得中。 */
+  .swrow .tgl{ position: relative; }
+  .swrow .tgl::before{ content: ""; position: absolute; left: -8px; right: -8px; top: -7px; bottom: -7px; border-radius: 999px; }
+  #qrFall .btns > button{ min-height: 44px; }
+  @media (prefers-reduced-motion: reduce){ .startrow .spin{ animation: none !important; } }
 </style>
 </head>
 <body>
@@ -2800,6 +2894,13 @@ html.devnotelock{ overflow: hidden; }
         <button class="linkbtn" data-act="statdetail" id="btnStatDetail" aria-expanded="false">状态详情</button>
         <span class="h3up" id="h3up" aria-label="本次运行时长"></span>
       </div>
+      <!-- 启动动作（1.3.4-beta.2 §1）：五种处境各一句话 + 该点的按钮，由 paintStartRow 推导。
+           启动中会真的禁用按钮挡住连点；启动中/失败都由这里出，用户不用再去别处找。 -->
+      <div class="startrow" id="startRow">
+        <button class="primary" id="btnStartMain" data-act="startmain"><span class="spin" id="startSpin" style="display:none" aria-hidden="true"></span><span id="startMainTxt">启动服务</span></button>
+        <button class="small" id="btnStartSide" data-act="startlogs" style="display:none">看日志</button>
+      </div>
+      <div class="startnote" id="startNote" role="status" aria-live="polite" style="display:none"></div>
     </div>
 
       <!-- 进程崩溃提示（功能 58 的入口）：跟风控红横幅刻意用两种颜色 —— 崩溃是琥珀 #EA580C，
@@ -2823,6 +2924,11 @@ html.devnotelock{ overflow: hidden; }
         <span class="mrv" id="mcRelayHost"></span>
         <button class="small" id="mcCopyRelay" data-act="copyrelay" aria-label="复制中转站地址">复制</button>
         <button class="small" id="mcRelayOpen" data-act="openrelay" aria-label="打开中转站注册页">打开</button>
+      </div>
+      <!-- 测试模型（1.3.4-beta.2 §4）：不用钻进设置就能确认「现在配的这个到底通不通」。 -->
+      <div class="btns" id="mcTestRow" style="margin-top:10px">
+        <button class="small" id="btnModelTest" data-act="modeltest" style="min-height:44px">测试模型</button>
+        <span class="mtout" id="mcTestOut"></span>
       </div>
     </div>
 
@@ -2983,6 +3089,15 @@ html.devnotelock{ overflow: hidden; }
           </div>
         </div>
       </div>
+      <!-- 二维码拿不到图的兜底（1.3.4-beta.2 §2）：NapCat 有时只抛一个可解码的链接、不落图文件，
+           这里把「复制链接」递到手上；连链接都没有就只给下一步，不让用户对着空白框发呆。 -->
+      <div class="qrfall" id="qrFall" style="display:none">
+        <div id="qrFallTx"></div>
+        <div class="btns">
+          <button class="small" id="qrCopyUrl" data-act="qrcopyurl" style="display:none">复制链接</button>
+          <button class="small" data-act="qrrefresh">重新获取</button>
+        </div>
+      </div>
     </div>
 
     <div class="card" id="logCardDuo">
@@ -3130,6 +3245,16 @@ html.devnotelock{ overflow: hidden; }
       <div class="hint" id="restartHint" style="display:none"></div>
     </div>
 
+    <!-- 插件与扩展（v1.3.4-beta.2）：市场、已装插件、配置编辑、模型测试、内置控制台
+         都在独立页面 plugins.html 里，主页只留一个入口，避免 tab-more 越堆越长。 -->
+    <div class="card" id="pluginCard">
+      <h2>插件与扩展</h2>
+      <div class="hint" style="margin-top:0">从官方插件源装插件、启用或卸载，直接改插件配置，也可以在应用里打开 AstrBot 控制台。</div>
+      <div class="btns" style="margin-top:10px">
+        <button class="primary" data-act="openplugins" id="btnPlugins" style="flex:1">打开插件管理</button>
+      </div>
+    </div>
+
     <!-- 功能 9：紧急下线。App / 通知栏 / 小组件 / 磁贴四处最终都落到这一张确认卡上：
          先把面板叫到前台弹确认，点了「确认下线」才真跑 Android.emergencyStop()
          （写 state/offline + stop-sandbox.sh）。只停进程，登录态、配置、AstrBot data 一律不动。
@@ -3271,19 +3396,54 @@ html.devnotelock{ overflow: hidden; }
     <div id="diagFold" hidden>
 <div class="card" id="storageCard">
       <h2><span class="dot" id="d-storage"></span>存储占用</h2>
-      <div class="hint" style="margin-top:0">沙盒里最占地方的五个目录。缓存可以直接清，只删可再生成的临时文件，不动登录数据与配置。</div>
+      <div class="hint" style="margin-top:0">沙盒里最占地方的目录和文件。缓存可以直接清，只删可再生成的临时文件，不动登录数据与配置。</div>
+      <div id="stgUsage" style="display:none;margin-top:10px">
+        <div class="usagebar" id="stgUsageBar"><i style="width:0"></i></div>
+        <div class="usagetx" id="stgUsageTx"></div>
+      </div>
+      <div class="hint" id="stgUsageWarn" style="display:none;margin-top:6px"></div>
       <div class="hint" id="bundleStat" style="margin-top:8px">内置离线包：检测中…</div>
       <div id="stgDirs" style="margin-top:6px"></div>
       <div class="hint" id="stgTotal" style="margin-top:8px">正在统计…</div>
       <div class="stgtop" id="stgTopWrap" style="display:none">
-        <div class="lkt" style="font-size:12px;margin-bottom:2px">最大的 10 个文件</div>
+        <div class="lkt" style="font-size:12px;margin-bottom:2px">最大的 10 项（文件 / 目录）</div>
         <div id="stgTop"></div>
       </div>
       <div class="btns" style="margin-top:10px">
         <button class="small primary" data-act="stgclean" id="stgBtnClean">清理缓存</button>
         <button class="small" data-act="stgrefresh">重新统计</button>
       </div>
+      <div class="confirm" id="stgConfirm" style="display:none">
+        <div class="ct">只删可再生成的临时文件：日志、缩略图缓存、下载包解压的临时目录、旧版本残留。登录状态、配置、插件和聊天数据都不会动。确定清理吗？</div>
+        <div class="btns" style="margin-top:8px">
+          <button class="small danger" data-act="stgcleanyes" id="stgBtnCleanOk">开始清理</button>
+          <button class="small" data-act="stgcleancancel">取消</button>
+        </div>
+      </div>
       <div class="hint" id="stgHint" style="display:none"></div>
+    </div>
+
+    <!-- 健康体检（1.3.4-beta.2）：不往设置总列表加行，只藏在「诊断信息」折叠区里。
+         三项都走 window.AndroidDiag：start(what) 开跑、poll(what) 取结果。
+         老安装包没有这个桥时整张卡不显示，绝不报错。 -->
+    <div class="card" id="healthCard" style="display:none">
+      <h2><span class="dot" id="d-health"></span>健康体检</h2>
+      <div class="hint" style="margin-top:0">三样当场查：能不能连外网（外网模型必需）、沙盒内核能不能跑 proot/fork、以及把诊断信息打包发给作者。</div>
+      <div class="hrow" id="hrowNet">
+        <div class="hbd"><div class="lkt">出网体检</div><div class="lkv" id="netSub">查 DNS 解析、443 端口、代理三项</div></div>
+        <button class="small" data-act="netdiag" id="netBtn">开始</button>
+      </div>
+      <div class="hres" id="netOut" style="display:none"></div>
+      <div class="hrow" id="hrowKernel">
+        <div class="hbd"><div class="lkt">内核能力</div><div class="lkv" id="kernelSub">看本机能不能跑 proot / fork</div></div>
+        <button class="small" data-act="kerneldiag" id="kernelBtn">检查</button>
+      </div>
+      <div class="hres" id="kernelOut" style="display:none"></div>
+      <div class="hrow" id="hrowBundle">
+        <div class="hbd"><div class="lkt">诊断包</div><div class="lkv" id="bundleSub2">把版本、日志尾部、自检结果打成一个压缩包</div></div>
+        <button class="small" data-act="bundlediag" id="bundleBtn">生成</button>
+      </div>
+      <div class="hres" id="bundleOut" style="display:none"></div>
     </div>
 
     <!-- 崩溃看板（功能 58）：同一签名聚合成一条，按次数排序。上传默认关闭，
@@ -3365,6 +3525,45 @@ html.devnotelock{ overflow: hidden; }
       </div>
     </div>
 
+    <!-- 消息通知（1.3.4-beta.2 §3）：桥上有 AndroidNotify 才显示，旧安装包整块隐藏。
+         总开关关掉后下面三项置灰但保留，用户能看出是被总开关关了、不是坏了。 -->
+    <div class="card" id="notifyCard" style="display:none">
+      <h2><span class="dot" id="d-notify"></span>消息通知</h2>
+      <div class="hint" style="margin-top:0">机器人在后台跑的时候，用系统通知告诉你它上线了、掉线了、或者需要你扫码。</div>
+      <div class="swrow">
+        <div class="swinfo">
+          <div class="swname">接收通知</div>
+          <div class="swdesc">总开关。关掉之后下面三项都静音，但设置会留着。</div>
+        </div>
+        <button class="tgl" id="ntfMaster" data-act="ntftoggle" data-arg="master" title="点击切换通知总开关" aria-label="接收通知总开关"></button>
+      </div>
+      <div class="swrow">
+        <div class="swinfo">
+          <div class="swname">上线提醒</div>
+          <div class="swdesc">QQ 登录成功、可以聊天时发一条。</div>
+        </div>
+        <button class="tgl" id="ntfOnline" data-act="ntftoggle" data-arg="online" title="点击切换上线提醒" aria-label="上线提醒"></button>
+      </div>
+      <div class="swrow">
+        <div class="swinfo">
+          <div class="swname">掉线提醒</div>
+          <div class="swdesc">容器退出、QQ 掉线、后台被系统清掉时发一条。</div>
+        </div>
+        <button class="tgl" id="ntfOffline" data-act="ntftoggle" data-arg="offline" title="点击切换掉线提醒" aria-label="掉线提醒"></button>
+      </div>
+      <div class="swrow">
+        <div class="swinfo">
+          <div class="swname">需扫码提醒</div>
+          <div class="swdesc">登录过期、二维码还没扫的时候提醒一次，免得久等。</div>
+        </div>
+        <button class="tgl" id="ntfQr" data-act="ntftoggle" data-arg="qr" title="点击切换需扫码提醒" aria-label="需扫码提醒"></button>
+      </div>
+      <div class="btns" style="margin-top:10px">
+        <button class="small primary" id="btnNtfTest" data-act="ntftest">发一条测试通知</button>
+      </div>
+      <div class="hint" id="ntfHint" style="margin-top:8px">测试会立刻发一条通知。如果没看到，去系统设置里允许本应用发送通知，或者检查「勿扰模式」。</div>
+    </div>
+
     <div class="card">
       <h2>组件重装</h2>
       <div class="hint" style="margin-top:0">重装会先停掉对应容器、删掉已安装的文件再重新下载安装，耗时几分钟，期间那个容器不可用。端口与登录数据保留。进度见日志页「其它日志文件」里的 reinstall.log。</div>
@@ -3418,6 +3617,8 @@ html.devnotelock{ overflow: hidden; }
         <button class="small danger" data-act="resetdeploy">重置部署标记</button>
       </div>
       <pre id="cmdOut" style="max-height:30vh"></pre>
+      <button class="rowmore" id="autoDocBtn" data-act="autodocfold" style="display:none"><span id="autoDocTitle">自动检查</span><span class="arw" id="autoDocArw">展开</span></button>
+      <pre id="autoDocOut" style="max-height:30vh;display:none"></pre>
     </div>
 
     <div class="card">
@@ -3596,6 +3797,14 @@ html.devnotelock{ overflow: hidden; }
       </div>
       <div class="field"><label for="astrPersona">人格提示词</label><textarea id="astrPersona" spellcheck="false"></textarea></div>
       <div class="hint" id="astrSaveHint">保存会直接写进正在运行的 AstrBot，立刻生效，不用重启沙盒。</div>
+      <!-- 测试模型（1.3.4-beta.2 §4）：真发一次极短的补全，成功给延迟和回复摘要，
+           失败按原因说人话并给下一步，别让人对着一个红叉猜。 -->
+      <div class="field" style="margin-top:6px">
+        <div style="display:flex;gap:9px;align-items:center">
+          <button class="small" id="btnAstrTest" data-act="modeltest" style="min-height:44px">测试模型</button>
+          <span class="mtout" id="astrTestOut"></span>
+        </div>
+      </div>
     </div>
     <div class="dfoot">
       <button class="small" data-act="astrclose">关闭</button>
@@ -3624,6 +3833,25 @@ html.devnotelock{ overflow: hidden; }
     </div>
     <div class="dfoot">
       <button class="small quiet" style="flex:1" data-act="alclose">知道了</button>
+    </div>
+  </div>
+</div>
+
+<!-- 日志分享（1.3.4-beta.2 §5）：上传成功后顺口问一句要不要发到群里，
+     编号 + 版本 + 机型摘要一起带上，客服一眼能对上号。 -->
+<div class="dlgmask" id="dlgShareLog" role="dialog" aria-modal="true" aria-labelledby="shlTitle">
+  <div class="dlg">
+    <h3 id="shlTitle">日志已上传</h3>
+    <div class="dbody">
+      <div class="hint" style="margin-top:0">编号已经生成好了。要不要顺手发给我们？群里有人看着，发出去能更快定位问题。</div>
+      <div class="shlmeta" id="shlMeta"></div>
+    </div>
+    <div class="dfoot" style="display:flex;flex-wrap:wrap;gap:9px">
+      <button class="small primary" style="flex:1 1 45%;min-height:44px" data-act="shlqq">分享到 QQ 群</button>
+      <button class="small" style="flex:1 1 45%;min-height:44px" data-act="shlsys">系统分享</button>
+      <button class="small" style="flex:1 1 100%;min-height:44px" data-act="shllog">分享日志文件</button>
+      <button class="small" style="flex:1 1 45%;min-height:44px" data-act="shlcopy">复制编号</button>
+      <button class="small quiet" style="flex:1 1 45%;min-height:44px" data-act="shlno">不用了</button>
     </div>
   </div>
 </div>
@@ -4807,6 +5035,7 @@ function showTab(t){
   /* 页面滚动是四个页签共用的，不重置的话从滚到一半的主页切到日志页会落在页面中间 */
   window.scrollTo(0, 0);
   if (t === "logs") { fillQrSelect(); loadQr(); loadLog(); loadDuo(); }
+  if (t === "settings") { try { ntfPaint(true); } catch (e9) {} }   /* 1.3.4-beta.2：进设置页现取一次通知配置 */
   /* v1.1.30：切到哪页就立刻补一次那页的数据，不用干等下一个 4 秒轮询。
      extOnTab 内部自己 try/catch，桥缺了也只是空态。 */
   extOnTab(t);
@@ -5096,6 +5325,8 @@ var NO_LOCK_ACTS = [
      部署没成功时正是最需要它的时刻，绝不能因为未部署就把「直接上传」吞掉。 */
   "devnoteok", "devnotecancel", "devnotex",
   "settings", "backhome", "showlogs",
+  /* 插件页是独立页面，切过去看一眼不该被「部署未完成」挡住。 */
+  "openplugins",
   "pickbg", "clearbg", "cropbg", "cropreset", "cropcancel", "cropok", "bgpreset", "glass", "theme",
   "reload", "slim", "rmcard",
   /* 更新弹窗里每条卡片的「详情 / 下载」和两个自动提醒开关，全是纯前端动作
@@ -5114,6 +5345,9 @@ var NO_LOCK_ACTS = [
   "instopen", "crashopen",
   "bkstart", "bkexport", "bkrestoreask", "bkcancel", "bkrestore",
   "stgclean", "stgrefresh", "crashclear",
+  /* beta.2 健康体检：这些按钮只读 / 只在用户确认后动作，部署没完成也该能点 */
+  "stgcleanyes", "stgcleancancel", "autodocfold",
+  "netdiag", "kerneldiag", "bundlediag", "bundleshare",
   "statstoggle", "statsok", "statscancel", "statsreset",
   /* v1.1.31 局域网开关：它只是一个标记文件，跟容器装没装好完全无关，
      部署没完成时也该能设 —— 用户可能正是想先在电脑上看着装。 */
@@ -5128,7 +5362,11 @@ var NO_LOCK_ACTS = [
      部署没完成时也该能开（用户常常正是想在装之前先把密钥准备好）。 */
   "algo", "alclose", "alcopyuser", "alcopypass", "copyrelay", "openrelay",
   /* 二维码分享也只是把已有的图片交给系统面板，部署没完成时同样不该置灰 */
-  "qrshare"
+  "qrshare",
+  /* 1.3.4-beta.2：启动卡上的「去部署 / 看日志」必须能点 —— 未部署时那正是要点的时刻，
+     置灰等于把唯一入口堵死。二维码兜底的「复制链接」只是复制文本；
+     日志分享弹窗只在上传成功后才出现，跟容器装没装好无关。 */
+  "startmain", "startlogs", "qrcopyurl", "shlqq", "shlsys", "shllog", "shlcopy", "shlno"
 ];
 
 /* 这个 act 在未部署时要不要拦 */
@@ -5704,9 +5942,12 @@ function refreshDeploy(){
   el("d-deploying").className = "dot " + (d.done ? "ok" : (d.running ? "warn" : "bad"));
   var h = [];
   var curStep = null;
-  for (var i = 0; i < d.steps.length; i++) {
-    if (!d.steps[i].done && !curStep) curStep = d.steps[i];
-    var s = d.steps[i];
+  /* 部署状态是老桥读文件拼出来的，字段缺失时（例如刚升级、或 steps 文件正被换）
+     不能让整页刷新炸在 .length 上 —— 那样整套界面会停在「界面出错了」。 */
+  var steps = d.steps || [];
+  for (var i = 0; i < steps.length; i++) {
+    if (!steps[i].done && !curStep) curStep = steps[i];
+    var s = steps[i];
     var tip = (!s.done && SLOW_STEP[s.key]) ? ' <i class="slow">' + SLOW_STEP[s.key] + '</i>' : '';
     h.push('<div class="step' + (s.done ? " done" : "") + '"><span class="mk">' + (s.done ? "✓" : "○") + '</span><span>' + esc(s.label) + tip + '</span></div>');
   }
@@ -5999,6 +6240,463 @@ function botCount(st){
     if (!b || typeof b.length !== "number") return 1;
     return b.length;
   } catch (e) { return 1; }
+}
+
+/* ===== 1.3.4-beta.2 §1：首页启动按钮五态 ===================================
+   真机上两类投诉都在这里：
+   1) supervisor 明明还活着，界面又去调 action("start") —— 脚本原样回一句
+      「服务已在运行（PID N）」，用户当成报错；
+   2) 只看 action 的返回值就宣布成功 —— 沙盒起来了但 QQ 没登上，用户干等。
+   对策：先读 state().supervisorAlive，活着绝不重复启动；启动后进 90 秒观察窗，
+   轮询到 napcatUp && astrbotUp 才算成功，超时如实说「等了 90 秒端口还是没通」。 */
+var START = { until: 0, fail: "", failAt: 0 };
+var START_WATCH = 90000;      /* 观察窗：启动脚本自己就要 20–40 秒，再留余量 */
+var START_FAIL_HOLD = 120000; /* 失败态挂两分钟，够用户看清再点重试 */
+
+function startBusy(){ return START.until > 0 && Date.now() < START.until; }
+function startStateKey(st){
+  st = st || {};
+  if (startBusy()) return "busy";
+  if (st.napcatUp && st.astrbotUp) return "running";
+  if (!st.deployDone) return "nodeploy";
+  if (START.fail && Date.now() - START.failAt < START_FAIL_HOLD) return "fail";
+  return "down";
+}
+/* 把原生的英文/脚本味原话翻成人话；翻不动就截断原文，绝不吞掉原因 */
+function startFailHuman(raw){
+  var s = String(raw == null ? "" : raw).replace(/^启动失败\s*[:：]\s*/, "").trim();
+  if (!s) return "没拿到具体原因";
+  if (/already running|已在运行|已经在跑/i.test(s)) return "后台其实一直在跑，不用再启动";
+  if (/address already in use|EADDRINUSE|端口.*占用/i.test(s)) return "端口被占着，先停一次再启动";
+  if (/permission|denied|权限/i.test(s)) return "文件权限不对，建议重新部署";
+  if (/no space|空间不足|空间不够/i.test(s)) return "存储空间不够了，清点空间再试";
+  if (/not found|no such file|缺失/i.test(s)) return "沙盒文件不完整，建议重新部署";
+  return s.length > 110 ? s.slice(0, 110) + "…" : s;
+}
+function paintStartRow(st){
+  var row = el("startRow");
+  if (!row) return;
+  st = st || S.st || {};
+  var key = startStateKey(st);
+  var btn = el("btnStartMain"), side = el("btnStartSide"), txt = el("startMainTxt"), spin = el("startSpin"), note = el("startNote");
+  if (!btn || !txt) return;
+  /* 已经起来了就把失败/忙碌状态收干净，别让下一轮刷新又翻回「启动中」 */
+  if (key === "running") { START.until = 0; START.fail = ""; START.failAt = 0; }
+  var busy = (key === "busy");
+  if (spin) spin.style.display = busy ? "" : "none";
+  btn.disabled = busy;
+  var t = "启动服务", s = "", sideAct = "startlogs", sideTxt = "看日志", sideShow = true;
+  if (key === "nodeploy") {
+    t = "去部署";
+    s = "<b>还没装好。</b>点左边这颗按钮会走到部署卡，全程大约 8 分钟，中途别退出应用。";
+  } else if (busy) {
+    t = "启动中…";
+    s = "正在拉起沙盒，20–40 秒。已经在做了，不用重复点，起好会自动变成「运行中」。";
+  } else if (key === "running") {
+    t = "运行中";
+    sideAct = "gorestart"; sideTxt = "重启服务";
+    s = "<b>QQ 和 AstrBot 都在线</b>，可以直接聊天了。";
+  } else if (key === "fail") {
+    t = "再试一次";
+    s = "<b>上次没起来：</b>" + esc(startFailHuman(START.fail)) + "。先点右边「看日志」确认；如果是端口被占，先在下面停一次服务再回来启动。";
+  } else {
+    t = "启动服务";
+    if (st.supervisorAlive) {
+      sideAct = "gorestart"; sideTxt = "重启服务";
+      s = "<b>后台进程还在、端口没通。</b>这时候再点启动只会得到一句「服务已在运行」，先点右边「重启服务」。";
+    } else if (st.offline) {
+      s = "<b>现在是手动下线状态。</b>点启动会重新拉起沙盒；不想被自动拉起就保持现状。";
+    } else {
+      s = "<b>后台没在跑。</b>点一下启动，通常 20–40 秒；需要扫码的话会自动弹出来。";
+    }
+  }
+  txt.textContent = t;
+  btn.setAttribute("data-act", "startmain");
+  if (side) {
+    side.style.display = sideShow ? "" : "none";
+    side.textContent = sideTxt;
+    side.setAttribute("data-act", sideAct);
+  }
+  if (note) { note.innerHTML = s; note.style.display = ""; }
+  row.style.display = "";
+}
+function startMain(){
+  var st = {};
+  try { st = normJson(Android.state()) || {}; } catch (e) { st = {}; }
+  if (!st.deployDone) { startGoDeploy(); return; }
+  if (startBusy()) { extToast("已经在启动了，等它起好"); return; }
+  if (st.napcatUp && st.astrbotUp) { extToast("QQ 和 AstrBot 都在线，不用再启动"); return; }
+  /* 关键守门：supervisor 活着时绝不再调 start，否则用户就会看到那句吓人的 PID 提示 */
+  if (st.supervisorAlive) {
+    START.until = 0;
+    START.fail = "后台进程还在（supervisor 没退出），但端口没起来";
+    START.failAt = Date.now();
+    paintStartRow(st);
+    extToast("后台已经在跑了，不会再启动一次；点「重启服务」能重新拉起");
+    return;
+  }
+  START.fail = ""; START.failAt = 0;
+  START.until = Date.now() + START_WATCH;
+  paintStartRow(st);
+  /* action("start") 是同步阻塞的（原生侧可能等几十秒），直接调会把「启动中」这一帧
+     一起堵死，按钮看起来像没反应。先让这一帧画出去，再进桥。 */
+  setTimeout(function(){
+    var r = "";
+    try { r = String(Android.action("start")); } catch (e) { r = "启动失败：" + e; }
+    var s = String(r || "").trim();
+    if (/服务已启动|已经在跑|已在运行/.test(s)) { startWatch(); return; }
+    START.until = 0;
+    START.fail = startFailHuman(s);
+    START.failAt = Date.now();
+    paintStartRow(null);
+    extToast("启动没成功，原因写在按钮下面了");
+    try { refreshAll(); } catch (e2) {}
+  }, 60);
+}
+/* 观察窗：3 秒探一次，端口真的通了才算成功；90 秒还没通就如实报失败 */
+function startWatch(){
+  var t0 = Date.now();
+  (function tick(){
+    var st = {};
+    try { st = normJson(Android.state()) || {}; } catch (e) { st = {}; }
+    if (st.napcatUp && st.astrbotUp) {
+      START.until = 0; START.fail = ""; START.failAt = 0;
+      paintStartRow(st);
+      extToast("起来了：QQ 和 AstrBot 都在线");
+      return;
+    }
+    if (Date.now() - t0 > START_WATCH) {
+      START.until = 0;
+      START.fail = "等了 90 秒，端口还是没通";
+      START.failAt = Date.now();
+      paintStartRow(st);
+      extToast("没等到端口响应，先去看日志");
+      return;
+    }
+    START.until = Date.now() + 8000;
+    paintStartRow(st);
+    setTimeout(tick, 3000);
+  })();
+}
+function startGoDeploy(){
+  try { showTab("home"); } catch (e) {}
+  var c = el("deployCard");
+  if (c && c.scrollIntoView) {
+    try { c.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e2) { try { c.scrollIntoView(); } catch (e3) {} }
+  }
+  extToast("还没装好：点这张卡里的「开始部署」，全程约 8 分钟");
+}
+function showStartLogs(){
+  try { showLogCards(); } catch (e) {}
+  try { showTab("logs"); } catch (e2) {}
+  var c = el("logCardQr");
+  if (c && c.scrollIntoView) {
+    try { c.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e3) { try { c.scrollIntoView(); } catch (e4) {} }
+  }
+}
+
+/* ===== 1.3.4-beta.2 §2：扫码一条龙（倒计时 + 拿不到图的兜底） ===============
+   二维码有效期就两分钟，原来只写「N 秒前更新」，用户没法判断还剩多久；
+   NapCat 偶尔只给一条可解码的链接、不落图文件，卡片上就永远空白。 */
+var QR_TTL = 120000;
+var QR_META = null, qrMetaTimer = 0, QR_URL = "", qrHintAt = 0;
+
+function qrMetaTick(m){
+  m = m || el("qrMeta");
+  if (!m) return;
+  if (!QR_META) { if (m.textContent) m.textContent = ""; return; }
+  var age = Math.max(0, Math.round((Date.now() - QR_META.mt) / 1000));
+  var left = Math.round((QR_META.mt + QR_TTL - Date.now()) / 1000);
+  var s, hot = left <= 20;
+  if (left <= 0) {
+    s = "实例 " + QR_META.id + " · 二维码已过期，点「刷新二维码」换一张";
+    hot = true;
+  } else {
+    var ls = left >= 60 ? (Math.floor(left / 60) + " 分 " + (left % 60) + " 秒") : (left + " 秒");
+    s = "实例 " + QR_META.id + " · 还剩 " + ls + " 有效 · " + (age < 90 ? age + " 秒前更新" : Math.round(age / 60) + " 分钟前更新");
+  }
+  if (m.textContent !== s) m.textContent = s;
+  m.className = "hint qrttl" + (hot ? " hot" : "");
+}
+/* 二维码换了就重算倒计时；ok 为假表示「这张卡上没有可用二维码」 */
+function paintQrMeta(r){
+  var ok = !!(r && r.ok && r.data);
+  QR_META = ok ? { id: r.id || "", mt: Number(r.mtime) || Date.now() } : null;
+  var m = el("qrMeta");
+  if (m) { qrMetaTick(m); if (!QR_META) { m.textContent = ""; m.className = "hint"; } }
+  qrMetaStart();
+  try { qrFallPaint(ok); } catch (e) {}
+}
+function qrMetaStart(){
+  if (qrMetaTimer) return;
+  qrMetaTimer = setInterval(function(){
+    if (!QR_META) return;
+    var t = el("tab-logs");
+    if (!t || !t.classList || !t.classList.contains("on")) return;   /* 看不见就别算 */
+    qrMetaTick();
+  }, 1000);
+}
+/* NapCat 只给链接不给图时的兜底：从日志里把那个可解码的地址捞出来 */
+function qrUrlFromLogs(){
+  var t = "";
+  try { t = String((el("logNap") && el("logNap").textContent) || ""); } catch (e) { t = ""; }
+  if (!t) return "";
+  var m = t.match(/https?:\/\/[^\s]+/g);
+  if (!m || !m.length) return "";
+  for (var k = 0; k < m.length; k++) m[k] = m[k].replace(/[，。；）)】》]+$/, "");
+  for (var i = m.length - 1; i >= 0; i--) {
+    if (/qrcode|qq\.com|napcat|login|二维码/i.test(m[i])) return m[i];
+  }
+  return m[m.length - 1];
+}
+function qrFallPaint(ok){
+  var box = el("qrFall");
+  if (!box) return;
+  if (ok) { box.style.display = "none"; QR_URL = ""; return; }
+  QR_URL = qrUrlFromLogs();
+  var tx = el("qrFallTx"), btn = el("qrCopyUrl");
+  if (tx) {
+    tx.textContent = QR_URL
+      ? "图还没生成出来。NapCat 这次只给了一条链接 —— 点「复制链接」发到另一台手机，用浏览器打开就是同一张二维码。"
+      : "图还没生成出来。先确认 NapCat 容器在跑；如果刚启动，等 20–60 秒再点「重新获取」。";
+  }
+  if (btn) btn.style.display = QR_URL ? "" : "none";
+  box.style.display = QR_URL ? "" : "none";
+}
+function qrCopyUrl(){
+  var u = QR_URL || qrUrlFromLogs();
+  if (!u) { extToast("日志里还没找到链接，先点「重新获取」"); return; }
+  try { Android.copy(u); } catch (e) { extToast("复制失败，可以长按日志里的链接手动选"); return; }
+  extToast("链接已复制，发到另一台手机用浏览器打开就是这张二维码");
+}
+/* 用户把扫码弹窗关掉之后，别让二维码继续藏在日志页：滚到那张卡并高亮 6 秒。
+   60 秒最多提醒一次，避免每轮轮询都抢页面。 */
+function qrCardHint(){
+  var now = Date.now();
+  if (now - qrHintAt < 60000) return;
+  var bs = (S.bots && S.bots.bots) ? S.bots.bots : [];
+  var id = (S.bots && S.bots.active) || (bs[0] && bs[0].id) || "";
+  if (!id) return;
+  if (!qrFresh(qrProbe(id))) return;
+  var card = el("logCardQr");
+  if (!card) return;
+  qrHintAt = now;
+  try { showTab("logs"); } catch (e) {}
+  try { card.classList.add("qrhl"); } catch (e2) {}
+  if (card.scrollIntoView) {
+    try { card.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e3) { try { card.scrollIntoView(); } catch (e4) {} }
+  }
+  setTimeout(function(){ try { card.classList.remove("qrhl"); } catch (e5) {} }, 6000);
+}
+
+/* ===== 1.3.4-beta.2 §3：消息通知开关 ======================================
+   桥上有 AndroidNotify 才显示整块；旧安装包直接隐藏，不留一个点了没反应的开关。 */
+var NTF = { ok: false, master: true, online: true, offline: true, qr: true, at: 0 };
+function ntfAvail(){
+  try {
+    return (typeof AndroidNotify !== "undefined") && AndroidNotify && typeof AndroidNotify.config === "function";
+  } catch (e) { return false; }
+}
+function ntfSet(id, on, locked){
+  var b = el(id);
+  if (!b) return;
+  b.classList.toggle("on", !!on);
+  b.classList.toggle("locked", !!locked);
+  b.setAttribute("aria-checked", on ? "true" : "false");
+  b.style.opacity = locked ? ".55" : "";
+}
+function ntfPaint(force){
+  var card = el("notifyCard");
+  if (!card) return;
+  if (!ntfAvail()) { card.style.display = "none"; return; }
+  if (force !== false) {
+    var c = null;
+    try { c = normJson(AndroidNotify.config()); } catch (e) { c = null; }
+    if (c && c.ok !== false) {
+      NTF.master = !!c.master; NTF.online = !!c.online; NTF.offline = !!c.offline; NTF.qr = !!c.qr;
+      NTF.at = Date.now();
+    }
+  }
+  card.style.display = "";
+  var on = NTF.master && (NTF.online || NTF.offline || NTF.qr);
+  var d = el("d-notify");
+  if (d) d.className = "dot " + (on ? "ok" : (NTF.master ? "warn" : "bad"));
+  ntfSet("ntfMaster", NTF.master);
+  ntfSet("ntfOnline", NTF.online, !NTF.master);
+  ntfSet("ntfOffline", NTF.offline, !NTF.master);
+  ntfSet("ntfQr", NTF.qr, !NTF.master);
+}
+function ntfToggle(kind){
+  if (!ntfAvail()) { extToast("这个版本还不支持通知开关"); return; }
+  var key = "master";
+  if (kind === "online") key = "online";
+  else if (kind === "offline") key = "offline";
+  else if (kind === "qr") key = "qr";
+  if (key !== "master" && !NTF.master) { extToast("先把上面的总开关打开"); return; }
+  var want = !NTF[key];
+  var r = null;
+  try { r = normJson(AndroidNotify.set(key, want)); } catch (e) { r = null; }
+  if (r && r.ok === false) { extToast(r.err ? String(r.err) : "改不动，稍后再试"); return; }
+  NTF[key] = want;
+  if (key === "master") ntfPaint(false);
+  ntfPaint(false);
+  extToast(want ? "已打开" : "已关闭");
+}
+function ntfTest(){
+  if (!ntfAvail()) { extToast("这个版本还不支持测试通知"); return; }
+  var r = null;
+  try { r = normJson(AndroidNotify.test("")); } catch (e) { r = null; }
+  if (r && r.ok === false) {
+    extToast(r.err ? String(r.err) : "系统没让通知发出来，去系统设置里允许本应用通知");
+    return;
+  }
+  extToast("已发出一条测试通知；没看到就去系统设置里允许通知、关掉勿扰");
+}
+
+/* ===== 1.3.4-beta.2 §4：测试模型 ==========================================
+   以前只能「配完自己发一句话试试」。这里真发一次极短补全，成功给延迟和回复摘要，
+   失败按 401/403/超时/模型名 四类翻译成人话，每类都带下一步。 */
+var MT = { busy: false, t0: 0, timer: 0 };
+function mtOuts(){ return [el("mcTestOut"), el("astrTestOut")]; }
+function mtPaint(cls, txt){
+  var a = mtOuts();
+  for (var i = 0; i < a.length; i++) {
+    if (!a[i]) continue;
+    a[i].className = "mtout" + (cls ? " " + cls : "");
+    a[i].textContent = txt || "";
+  }
+}
+function mtErr(raw){
+  var s = String(raw == null ? "" : raw).trim();
+  if (!s) return "没成功：先检查密钥有没有保存、手机能不能上网，再试一次";
+  if (/401|unauthorized|invalid.?key|api.?key|鉴权|密钥/i.test(s)) return "密钥不对或还没生效：重新贴一次密钥，保存后再测";
+  if (/403|forbidden|quota|insufficient|额度|余额/i.test(s)) return "这个密钥没权限或额度用完了：换一个密钥或充值后再测";
+  if (/404|model|模型/i.test(s)) return "模型名不对：点「获取列表」挑一个，或改成服务商给的准确名字";
+  if (/timeout|timed out|ETIMEDOUT|ECONN|ENOTFOUND|网络|connect/i.test(s)) return "连不上服务商：检查网络，或看接口地址是不是少了 https、多了斜杠";
+  if (/429|rate|频繁/i.test(s)) return "请求太频繁被限流了，等一会儿再测";
+  return "没通：" + (s.length > 90 ? s.slice(0, 90) + "…" : s) + "。先检查密钥和网络。";
+}
+function modelTest(){
+  if (MT.busy) { extToast("正在测，等结果出来"); return; }
+  var ok = false;
+  try { ok = (typeof AndroidModel !== "undefined") && AndroidModel && typeof AndroidModel.start === "function"; } catch (e) { ok = false; }
+  if (!ok) { mtPaint("bad", "这个版本还没接入测试功能，升级到最新版再试"); return; }
+  MT.busy = true; MT.t0 = Date.now();
+  mtPaint("", "正在测…（最多 40 秒）");
+  var s = null;
+  try { s = normJson(AndroidModel.start()); } catch (e) { s = null; }
+  if (s && s.ok === false && String(s.state || "") !== "running") {
+    MT.busy = false;
+    mtPaint("bad", mtErr(s.error || s.err || ""));
+    return;
+  }
+  modelTestPoll();
+}
+function modelTestPoll(){
+  if (MT.timer) { clearTimeout(MT.timer); MT.timer = 0; }
+  MT.timer = setTimeout(function(){
+    if (Date.now() - MT.t0 > 40000) {
+      MT.busy = false;
+      mtPaint("bad", "40 秒没等到结果：检查网络，或看接口地址是不是填错了");
+      return;
+    }
+    var p = null;
+    try { p = normJson(AndroidModel.poll()); } catch (e) { p = null; }
+    var st = p ? String(p.state || "") : "";
+    if (st === "ok") {
+      MT.busy = false;
+      var head = (p.ms ? String(p.ms) + " ms · " : "");
+      var rep = String(p.reply || "").replace(/\s+/g, " ").slice(0, 60);
+      var who = p.provider ? ("（" + p.provider + (p.model ? " / " + p.model : "") + "）") : "";
+      mtPaint("ok", "通了：" + head + (rep || "有回复") + who);
+      return;
+    }
+    if (st === "fail") {
+      MT.busy = false;
+      mtPaint("bad", mtErr(p && (p.error || p.err || "")));
+      return;
+    }
+    modelTestPoll();
+  }, 600);
+}
+
+/* ===== 1.3.4-beta.2 §5：上传日志之后的分享弹窗 ============================
+   上传成功只弹一个 toast，编号长得看不清、也留不住。改成问一句「要不要分享」，
+   编号 + 版本 + 机型一起带上，发到群里客服一眼能对上号。 */
+var QQ_GROUP_ID = "1127997343";
+var SHL = { rid: "", title: "", text: "" };
+function shlDevice(){
+  var ua = "";
+  try { ua = String(navigator.userAgent || ""); } catch (e) { ua = ""; }
+  var m = ua.match(/Android\s+[\d.]+;\s*([^;)]+)/);
+  if (m && m[1]) {
+    // 真机 UA 的机型后面常跟 " Build/TP1A.xxx"，只留机型本身
+    var md = String(m[1]).split(" Build/")[0].trim();
+    if (md && md !== "K") return md;
+  }
+  if (ua.indexOf("Android") >= 0) return "安卓设备";
+  return "未知机型";
+}
+function shlOpen(first){
+  var src = String(first || "");
+  var m = src.match(/编号\s*[:：]?\s*([A-Za-z0-9_-]{4,})/);
+  var rid = m ? m[1] : "";
+  var ver = "";
+  try { ver = (S.st && S.st.appVersion) ? String(S.st.appVersion) : ""; } catch (e) { ver = ""; }
+  var dev = shlDevice();
+  SHL.rid = rid;
+  SHL.title = "AstrBot 安卓烛版 日志 " + (rid || "");
+  SHL.text = "日志编号：" + (rid || "（没抓到）") + "\n" +
+    "版本：" + (ver || "未知") + "\n" +
+    "机型：" + dev + "\n" +
+    "上传的是本机部署与运行日志，不含聊天内容。";
+  var meta = el("shlMeta");
+  if (meta) setHtml(meta, "编号 <b>" + esc(rid || "—") + "</b> · 版本 " + esc(ver || "未知") + " · " + esc(dev));
+  var d = el("dlgShareLog");
+  if (d) d.classList.add("on");
+}
+function shlClose(){ var d = el("dlgShareLog"); if (d) d.classList.remove("on"); }
+function shlQq(){
+  var tag = "fail";
+  try { tag = String(Android.openQqGroup(QQ_GROUP_ID)); } catch (e) { tag = "fail"; }
+  try { Android.copy(SHL.text); } catch (e2) {}
+  shlClose();
+  if (tag === "ok") extToast("内容已复制，粘到群里发出去就行");
+  else extToast("没打开 QQ 群，内容已经复制；在 QQ 里搜群号 " + QQ_GROUP_ID + " 粘进去");
+}
+function shlSys(){
+  var ok = false;
+  try { ok = (typeof AndroidShare !== "undefined") && AndroidShare && typeof AndroidShare.text === "function"; } catch (e) { ok = false; }
+  if (!ok) {
+    try { Android.copy(SHL.text); extToast("这个版本不支持系统分享，已经帮你复制"); } catch (e2) {}
+    shlClose();
+    return;
+  }
+  try { AndroidShare.text(SHL.title, SHL.text); } catch (e3) {
+    try { Android.copy(SHL.text); extToast("分享面板打不开，已经帮你复制"); } catch (e4) {}
+  }
+  shlClose();
+}
+/* 直接把最近一次 errreport.txt 交给系统分享面板：客服要的就是这个文件，
+   比复制一段文字有用。没有文件时原生会自己 toast，这里只负责调起来。 */
+function shlLog(){
+  var ok = false;
+  try { ok = (typeof AndroidShare !== "undefined") && AndroidShare && typeof AndroidShare.log === "function"; } catch (e) { ok = false; }
+  if (!ok) {
+    if (SHL.rid) { try { Android.copy(SHL.rid); } catch (e2) {} }
+    extToast("这个版本还不能直接发文件，编号已经复制好了");
+    shlClose();
+    return;
+  }
+  try { AndroidShare.log(); extToast("选一个聊天窗口发出去就行"); } catch (e3) {
+    extToast("分享面板没打开，先点「复制编号」发群里");
+  }
+  shlClose();
+}
+function shlCopy(){
+  if (!SHL.rid) { extToast("这次没抓到编号，去日志页看一眼上传结果"); shlClose(); return; }
+  try { Android.copy(SHL.rid); extToast("编号已复制：" + SHL.rid); } catch (e) { extToast("复制失败，手动选一下编号"); }
+  shlClose();
 }
 
 function paintHero(st, installed){
@@ -6477,6 +7175,7 @@ function runUploadLog(note){
     Android.toast(first.slice(0, 90));
     if (first.indexOf("已上传") === 0) {
       if (box) { lsSet("qqbot.errskip", box._sig || ""); box.style.display = "none"; }
+      try { shlOpen(first); } catch (e5) {}   /* 1.3.4-beta.2 §5 */
     }
   }, 60);
 }
@@ -6512,6 +7211,7 @@ function runUploadLogs(note){
     if (out) out.textContent = r || "没有回音";
     var first = String(r || "").split("\n")[0] || "没有回音";
     Android.toast(first.slice(0, 90));
+    if (first.indexOf("已上传") === 0) { try { shlOpen(first); } catch (e6) {} }   /* 1.3.4-beta.2 §5 */
   }, 60);
 }
 
@@ -6895,13 +7595,12 @@ function loadQr(){
     img.src = r.data;
     img.style.display = "";
     none.style.display = "none";
-    var age = Math.max(0, Math.round((Date.now() - r.mtime) / 1000));
-    el("qrMeta").textContent = "实例 " + r.id + " · 二维码 " + (age < 90 ? age + " 秒前更新" : Math.round(age / 60) + " 分钟前更新");
+    paintQrMeta(r);   /* 1.3.4-beta.2：改由倒计时统一画（含过期提示与兜底块） */
     el("d-qr").className = "dot ok";
   } else {
     img.style.display = "none";
     none.style.display = "";
-    el("qrMeta").textContent = "";
+    paintQrMeta(r);
     el("d-qr").className = "dot warn";
   }
 }
@@ -7032,7 +7731,7 @@ function qrReload(){
 function qrAutoCheck(st){
   var stt = qrState();
   if (stt.open) return;
-  if (Date.now() < stt.until) return;
+  if (Date.now() < stt.until) { try { qrCardHint(); } catch (e0) {} return; }   /* 1.3.4-beta.2：关掉弹窗后改提示卡片 */
   if (!st || !st.deployDone) return;
   /* 已经有别的弹窗开着（协议 / 更新 / 统计）就先别插队，等它关掉下一轮再来 */
   try {
@@ -7168,6 +7867,11 @@ document.addEventListener("click", function(ev){
     }
     else Android.openPanel(arg || "");
   }
+  /* 插件与扩展：独立页面 plugins.html，用同目录相对路径（file:///android_asset/qqbot/），
+     返回靠页面自带的 history.back()，不占主页 DOM。 */
+  else if (act === "openplugins") {
+    try { location.href = "plugins.html"; } catch (e) { extToast("打不开插件页"); }
+  }
   else if (act === "algo") { astrLoginClose(); Android.openPanel(astrPanelUrl()); }
   else if (act === "alclose") astrLoginClose();
   else if (act === "alcopyuser") { astrLoginPaint(); Android.copy(el("alUser").textContent); }
@@ -7223,7 +7927,14 @@ document.addEventListener("click", function(ev){
   }
   else if (act === "bkcancel") { var bcc = el("bkConfirm"); if (bcc) bcc.style.display = "none"; }
   else if (act === "bkrestore") { var bco = el("bkConfirm"); if (bco) bco.style.display = "none"; bkRestore(); }
-  else if (act === "stgclean") stgClean();
+  else if (act === "stgclean") stgCleanAsk();
+  else if (act === "stgcleanyes") stgCleanYes();
+  else if (act === "stgcleancancel") stgCleanCancel();
+  else if (act === "netdiag") runNetDiag();
+  else if (act === "kerneldiag") runKernelDiag();
+  else if (act === "bundlediag") runBundleDiag();
+  else if (act === "bundleshare") bundleShare();
+  else if (act === "autodocfold") autoDocFold();
   else if (act === "askstop") stopAsk(true);
   else if (act === "stopnow") stopDo();
   else if (act === "stopcancel") stopAsk(false);
@@ -7280,6 +7991,18 @@ document.addEventListener("click", function(ev){
   else if (act === "diagfold") diagFold();
   /* 首屏的「重启」先跳到更多页并展开二次确认，确认流程只有一份 */
   else if (act === "gorestart") { showTab("more"); restartAsk(true); }
+  /* ---------- 1.3.4-beta.2：启动五态 / 通知开关 / 测试模型 / 日志分享 ---------- */
+  else if (act === "startmain") startMain();
+  else if (act === "startlogs") showStartLogs();
+  else if (act === "ntftoggle") ntfToggle(arg || "master");
+  else if (act === "ntftest") ntfTest();
+  else if (act === "modeltest") modelTest();
+  else if (act === "shlqq") shlQq();
+  else if (act === "shlsys") shlSys();
+  else if (act === "shllog") shlLog();
+  else if (act === "shlcopy") shlCopy();
+  else if (act === "shlno") shlClose();
+  else if (act === "qrcopyurl") qrCopyUrl();
   else if (act === "savebot") saveBot();
   else if (act === "cancelbot") cancelBot();
   else if (act === "pickbg") {
@@ -8781,6 +9504,8 @@ function refreshStorage(force){
   if (!force && E.stg.at && now - E.stg.at < 60000) return;
   E.stg.at = now;
   E.stg.data = brCall(["storageStats", "storageInfo"]);
+  /* 整机占用要 diskTop 的 total/free；老包没这个桥就退回「只有五个目录」的旧样子 */
+  try { if (diagHas("diskTop")) diagDiskTop(!!force); } catch (e8) {}
   renderStorage();
   try { renderBundle(); } catch (e9) {}
 }
@@ -8824,6 +9549,8 @@ function renderStorage(){
     setHtml(box, '<div class="empty">这个安装包还没有提供存储统计接口</div>');
     if (tot) tot.textContent = "统计不可用";
     if (topWrap) topWrap.style.display = "none";
+    /* 目录统计没有、但 diskTop 有：整机占用条照样能画 */
+    try { stgPaintUsage(); } catch (e10) {}
     return;
   }
   var dirs = stgDirsOf(r), i;
@@ -8839,17 +9566,64 @@ function renderStorage(){
   }
   setHtml(box, h.join(""));
   if (tot) tot.textContent = "合计 " + extBytes(total) + (r.stale ? "（数据略旧，点「重新统计」）" : "");
+  stgPaintUsage();
 
-  var tops = (r.top && r.top.length) ? r.top.slice(0, 10) : [];
+  /* Top10 优先用 diskTop（整机最大的文件/目录，能看到沙盒外的胖文件）；
+     原生没实现时退回 storageStats 自带的 top。 */
+  var dt = diagDiskTop(false);
+  var tops = (dt && dt.items && dt.items.length) ? dt.items.slice(0, 10)
+           : ((r.top && r.top.length) ? r.top.slice(0, 10) : []);
   if (tops.length && topWrap && top){
     var h2 = [];
     for (i = 0; i < tops.length; i++){
       var t = tops[i] || {};
-      h2.push('<div class="stgf"><span>' + esc(String(t.path || "")) + '</span><span>' + esc(extBytes(t.bytes)) + '</span></div>');
+      var nm = String(t.path || t.name || "");
+      if (t.kind === "dir" && nm && nm.charAt(nm.length - 1) !== "/") nm += "/";
+      var by = Number(t.bytes || t.size || 0);
+      h2.push('<div class="stgf"><span>' + esc(nm) + '</span><span>' + esc(extBytes(by)) + '</span></div>');
     }
     top.innerHTML = h2.join("");
     topWrap.style.display = "";
   } else if (topWrap) topWrap.style.display = "none";
+}
+
+/* 清理是破坏性操作，先确认一次：以前点一下就直接删，用户来不及看清范围。 */
+var STG_CLEAN_BEFORE = 0;
+function stgCleanAsk(){
+  var cf = el("stgConfirm"), hint = el("stgHint");
+  if (!cf){ stgClean(); return; }
+  if (ext().stg.busy){ extToast("正在清理…"); return; }
+  cf.style.display = "";
+  if (hint) hint.style.display = "none";
+  /* 记下清理前的整机已用量，清完用差值说「省了多少」 */
+  var d = null;
+  try { d = diagDiskTop(false); } catch (e) {}
+  STG_CLEAN_BEFORE = (d && Number(d.total || 0) > 0) ? Math.max(0, Number(d.total) - Number(d.free || 0)) : 0;
+  if (cf.scrollIntoView){ try { cf.scrollIntoView({ behavior: "smooth", block: "nearest" }); } catch (e2) {} }
+}
+function stgCleanCancel(){
+  var cf = el("stgConfirm");
+  if (cf) cf.style.display = "none";
+}
+function stgCleanYes(){
+  var cf = el("stgConfirm");
+  if (cf) cf.style.display = "none";
+  stgClean();
+}
+/* 清理前后对比：桥给不出 total/free 就不显示，别编数字 */
+function stgCleanDiff(){
+  var hint = el("stgHint");
+  if (!hint || !STG_CLEAN_BEFORE) return;
+  var d = null;
+  try { d = diagDiskTop(false); } catch (e) {}
+  if (!d || !(Number(d.total || 0) > 0)) return;
+  var after = Math.max(0, Number(d.total) - Number(d.free || 0));
+  var saved = STG_CLEAN_BEFORE - after;
+  if (!(saved > 0)) return;
+  hint.style.display = "";
+  hint.textContent = "清理完成：省了 " + extBytes(saved)
+    + "（清理前 " + extBytes(STG_CLEAN_BEFORE) + " → 现在 " + extBytes(after) + "）";
+  STG_CLEAN_BEFORE = 0;
 }
 
 function stgClean(){
@@ -8883,8 +9657,447 @@ function stgClean(){
   /* 原生重扫一盘（异步），过一会儿再取结果，别立刻拿旧数据覆盖 */
   if (brHas("storageRefreshStart")) { try { Android.storageRefreshStart(); } catch (e) {} }
   E.stg.at = 0;
-  setTimeout(function(){ try { refreshStorage(true); } catch (e) {} }, 900);
+  if (diagHas("diskTop")){ try { diagDiskTop(true); } catch (e2) {} }
+  setTimeout(function(){ try { refreshStorage(true); } catch (e) {}; try { stgCleanDiff(); } catch (e3) {} }, 900);
+  /* 慢机型上 0.9 秒还没扫完，再补一次 */
+  setTimeout(function(){ try { refreshStorage(true); } catch (e) {}; try { stgCleanDiff(); } catch (e4) {} }, 4200);
 }
+
+/* ===================== 1.3.4-beta.2：健康体检（出网 / 内核 / 诊断包） =====================
+   新桥是独立挂在 window 上的全局对象（window.AndroidDiag / AndroidShare），不在老
+   Android 对象上。所以必须单独探测：老安装包上 typeof AndroidDiag === "undefined"，
+   整张卡直接不显示，更不能抛错把页面带崩。 */
+function diagApi(){
+  try { return (typeof AndroidDiag !== "undefined" && AndroidDiag) ? AndroidDiag : null; }
+  catch (e) { return null; }
+}
+function diagHas(name){
+  var d = diagApi();
+  try { return !!(d && typeof d[name] === "function"); } catch (e) { return false; }
+}
+/* start/poll 抛异常一律当「没跑起来」：页面不能因为一个未实现的桥白屏 */
+function diagStart(what){
+  var d = diagApi();
+  if (!d || typeof d.start !== "function") return false;
+  try { d.start(String(what)); return true; } catch (e) { return false; }
+}
+function diagPoll(what){
+  var d = diagApi();
+  if (!d || typeof d.poll !== "function") return null;
+  var v = null;
+  try { v = d.poll(String(what)); } catch (e) { v = null; }
+  return normJson(v);
+}
+/* 各桥的 items 字段名不统一（name/label、ok/pass/state），这里统一成
+   { name, ok: true|false|null, detail }，缺字段也不会画出 "undefined"。 */
+function diagItems(r){
+  var src = (r && r.items && r.items.length) ? r.items : [], out = [], i;
+  for (i = 0; i < src.length; i++){
+    var it = src[i] || {};
+    if (typeof it === "string"){ out.push({ name: it, ok: null, detail: "" }); continue; }
+    var okv = it.ok;
+    if (okv === undefined) okv = it.pass;
+    if (okv === undefined && it.state !== undefined) okv = (String(it.state) === "ok" || String(it.state) === "pass");
+    out.push({
+      name: String(it.name || it.label || it.title || it.item || ""),
+      ok: (okv === undefined || okv === null) ? null : !!okv,
+      detail: String(it.detail || it.text || it.msg || it.value || "")
+    });
+  }
+  return out;
+}
+/* 原生报错只用来判断「是不是一坨 shell 输出」，不直接展示给用户：
+   "sh: proot: not found" 这种给用户看只会更慌。 */
+function diagNoise(s){
+  return /error|not found|No such file|denied|sh:|line \d+|proc\/|sys\/|exit code/i.test(String(s || ""));
+}
+
+/* 整机占用（diskTop）：60 秒缓存；桥没实现或返回坏数据一律 null */
+function diagDiskTop(force){
+  var E = ext(), now = Date.now();
+  if (!E.stg.disk) E.stg.disk = { at: 0, data: null };
+  if (!force && E.stg.disk.at && now - E.stg.disk.at < 60000) return E.stg.disk.data;
+  E.stg.disk.at = now;
+  var r = null;
+  if (diagHas("diskTop")){
+    try { r = normJson(diagApi().diskTop(10)); } catch (e) { r = null; }
+  }
+  if (!r || r.ok === false) r = null;
+  E.stg.disk.data = r;
+  return r;
+}
+/* 整机占用条：85% 黄、90% 红，各配一句人话；拿不到 total/free 就整块隐藏 */
+function stgPaintUsage(){
+  var usage = el("stgUsage"), bar = el("stgUsageBar"), tx = el("stgUsageTx"), warn = el("stgUsageWarn");
+  if (!usage || !bar || !tx) return;
+  var d = diagDiskTop(false);
+  var total = d ? Number(d.total || 0) : 0, free = d ? Number(d.free || 0) : 0;
+  if (!(total > 0)){
+    usage.style.display = "none";
+    if (warn) warn.style.display = "none";
+    return;
+  }
+  var used = Math.max(0, total - free);
+  var pct = Math.min(100, Math.round(used / total * 100));
+  var cls = pct >= 90 ? "bad" : (pct >= 85 ? "warn" : "");
+  usage.style.display = "";
+  bar.className = "usagebar" + (cls ? " " + cls : "");
+  var fill = bar.querySelector("i");
+  if (fill) fill.style.width = Math.max(used > 0 ? 2 : 0, pct) + "%";
+  tx.className = "usagetx" + (cls ? " " + cls : "");
+  setHtml(tx, '<span>整机占用</span><span><b>' + pct + '%</b> · 已用 '
+    + esc(extBytes(used)) + ' / 共 ' + esc(extBytes(total)) + '</span>');
+  if (!warn) return;
+  if (cls === "bad"){
+    warn.style.display = "";
+    warn.style.color = "var(--bad)";
+    warn.textContent = "磁盘快满了（" + pct + "%）：系统会开始清后台进程，QQ 可能被直接杀掉。先点下面「清理缓存」，再删掉不用的插件和日志。";
+  } else if (cls === "warn"){
+    warn.style.display = "";
+    warn.style.color = "var(--warn)";
+    warn.textContent = "磁盘已用 " + pct + "%：再装东西可能失败，建议清一次缓存。";
+  } else {
+    warn.style.display = "none";
+  }
+}
+
+/* health()：崩溃看板可信度用；60 秒缓存，桥没有就 null */
+function diagHealth(force){
+  var E = ext(), now = Date.now();
+  if (!E.cr.health) E.cr.health = { at: 0, data: null };
+  if (!force && E.cr.health.at && now - E.cr.health.at < 60000) return E.cr.health.data;
+  E.cr.health.at = now;
+  var h = null;
+  if (diagHas("health")){
+    try { h = normJson(diagApi().health()); } catch (e) { h = null; }
+  }
+  if (!h || h.ok === false) h = null;
+  E.cr.health.data = h;
+  return h;
+}
+
+/* ===================== 崩溃记录可信度（三态） =====================
+   用户眼里的「没有崩溃记录」其实是三种情况：
+     noso    —— 这个安装包根本没编崩溃记录器，看不到不代表没崩
+     clean   —— 记录器就绪，这段时间确实没崩
+     sigkill —— 记录器正常，但一种崩溃它抓不到：被系统/省电策略 SIGKILL 的进程
+   buildLogBytes>0 说明记录器启动过、写过日志，却没抓到崩溃 —— 正是 SIGKILL 的典型特征。 */
+function crashState(){
+  var h = diagHealth(false);
+  if (!h || !h.crash) return { kind: "unknown" };
+  var c = h.crash;
+  var so = !!c.so, recs = Number(c.records || 0), bl = Number(c.buildLogBytes || 0);
+  if (!so) return { kind: "noso" };
+  if (recs > 0) return { kind: "has", n: recs };
+  if (bl > 0) return { kind: "sigkill" };
+  return { kind: "clean" };
+}
+function crashEmptyText(s){
+  s = s || crashState();
+  if (s.kind === "noso") return "这个安装包没带崩溃记录器";
+  if (s.kind === "sigkill") return "没有崩溃记录（记录器正常）";
+  if (s.kind === "clean") return "崩溃记录器已就绪，这段时间没有崩溃记录";
+  return "还没有崩溃记录";
+}
+function crashWhyText(s){
+  s = s || crashState();
+  if (s.kind === "noso") return "下面的空白不代表没崩过，只是这个包没有记录器。想定位闪退，点「上传错误日志」把系统日志发给作者。";
+  if (s.kind === "sigkill") return "记录器起过、也写过启动日志，却一条崩溃都没抓到：被系统或省电策略直接杀掉（SIGKILL）的进程不会留下记录。所以「没有记录」不等于「绝对没崩过」。";
+  if (s.kind === "clean") return "记录器就绪，也没有被系统强杀过：可以认为这段时间确实没崩。";
+  return "";
+}
+
+/* ---------- 出网体检 / 内核能力 / 诊断包：共用「开跑 → 900ms 轮询」 ---------- */
+var DIAG_TIMERS = {};
+function diagRun(what, btn, labels, paint){
+  if (DIAG_TIMERS[what]) return;
+  if (!diagHas("start") || !diagHas("poll")){ extToast("这个安装包没有提供健康检查接口"); return; }
+  paint({ state: "running" }, 0);
+  var t0 = Date.now(), ticks = 0;
+  if (btn){ btn.disabled = true; btn.textContent = labels.busy || "检测中…"; }
+  if (!diagStart(what)){
+    if (btn){ btn.disabled = false; btn.textContent = labels.again || "重试"; }
+    paint({ state: "fail" }, 0);
+    return;
+  }
+  function stop(p){
+    clearInterval(DIAG_TIMERS[what]);
+    DIAG_TIMERS[what] = 0;
+    if (btn){ btn.disabled = false; btn.textContent = labels.again || "重新检查"; }
+    paint(p, Date.now() - t0);
+  }
+  DIAG_TIMERS[what] = setInterval(function(){
+    ticks++;
+    var p = diagPoll(what);
+    if (!p){ if (ticks > 40) stop({ state: "fail", timedout: true }); return; }
+    var st = String(p.state || "");
+    if (st === "running" || st === "idle" || st === "queued" || st === "started"){
+      if (ticks > 40) stop({ state: "fail", timedout: true });
+      return;
+    }
+    stop(p);
+  }, 900);
+}
+
+/* 出网体检：三项（DNS / 443 / 代理）各自通过或失败，失败给一句能照做的话 */
+function netAdvice(it){
+  var n = String(it.name || "").toLowerCase();
+  if (n.indexOf("dns") >= 0) return "DNS 解析失败：切一下 Wi-Fi / 移动数据，或者换个 DNS 再试。";
+  if (n.indexOf("443") >= 0 || n.indexOf("tcp") >= 0 || n.indexOf("端口") >= 0) return "443 连不上：校园网 / 公司网经常挡这个端口，换移动数据或配代理。";
+  if (n.indexOf("代理") >= 0) return "代理没连上：到「设置 → 代理」核对地址和端口，或者先清空代理直连。";
+  return "这一项没通过：换一个网络再试一次。";
+}
+function paintNet(p){
+  var box = el("netOut"), sub = el("netSub");
+  if (!box) return;
+  box.style.display = "";
+  if (p && p.state === "running"){
+    setHtml(box, '<div class="htip">正在检测：DNS、443、代理各试一次…</div>');
+    if (sub) sub.textContent = "检测中…";
+    return;
+  }
+  var items = diagItems(p), h = [], bad = 0, i;
+  if (!items.length){
+    setHtml(box, '<div class="hi"><span class="hs">提示</span><span>这次没查出结果</span></div>'
+      + '<div class="htip">外网模型需要联网：先确认手机能上网，再点「重新检查」。</div>');
+    if (sub) sub.textContent = "没拿到结果";
+    return;
+  }
+  for (i = 0; i < items.length; i++){
+    var it = items[i];
+    var cls = it.ok === true ? "good" : (it.ok === false ? "bad" : "");
+    if (it.ok === false) bad++;
+    h.push('<div class="hi ' + cls + '"><span class="hs">'
+      + (it.ok === true ? "通过" : it.ok === false ? "失败" : "未知") + '</span><span>'
+      + esc(it.name) + (it.detail ? " · " + esc(it.detail) : "") + '</span></div>');
+  }
+  if (bad){
+    h.push('<div class="htip">外网模型需要联网，先按下面处理，再点「重新检查」：</div>');
+    for (i = 0; i < items.length; i++) if (items[i].ok === false) h.push('<div class="htip">· ' + esc(netAdvice(items[i])) + '</div>');
+  } else {
+    h.push('<div class="htip">都通过：外网模型可以正常连。</div>');
+  }
+  setHtml(box, h.join(""));
+  if (sub) sub.textContent = bad ? (bad + " 项没通过") : "全部通过";
+}
+
+/* 内核能力：只给「可用 / 不可用」的结论，原生 detail 里的 proot 报错一律不渲染 */
+function paintKernel(p){
+  var box = el("kernelOut"), sub = el("kernelSub");
+  if (!box) return;
+  box.style.display = "";
+  if (p && p.state === "running"){
+    setHtml(box, '<div class="htip">正在检查：proot 能不能起、fork 能不能用…</div>');
+    if (sub) sub.textContent = "检查中…";
+    return;
+  }
+  var items = diagItems(p), h = [], prootOk = null, forkOk = null, i;
+  for (i = 0; i < items.length; i++){
+    var it = items[i], n = String(it.name || "").toLowerCase();
+    if (n.indexOf("proot") >= 0) prootOk = it.ok;
+    if (n.indexOf("fork") >= 0) forkOk = it.ok;
+    var cls = it.ok === true ? "good" : (it.ok === false ? "bad" : "");
+    h.push('<div class="hi ' + cls + '"><span class="hs">'
+      + (it.ok === true ? "可用" : it.ok === false ? "不可用" : "未知") + '</span><span>'
+      + esc(it.name) + '</span></div>');
+  }
+  var kAdv = '<div class="htip">可以试：① 别开「应用分身 / 工作资料」，卸载后重装；② 换一个系统版本更新一点的机型；③ 点「检查运行环境」，把结果「上传错误日志」发给作者并附上机型。</div>';
+  if (!items.length){
+    h.push('<div class="htip">结论：这次没拿到内核检查结果，点「重新检查」再试一次。</div>');
+    if (sub) sub.textContent = "没拿到检查结果";
+  } else if (prootOk === false && forkOk === false){
+    h.push('<div class="htip">结论：proot 和 fork 都不可用，这台手机上沙盒内核起不来，QQ 和 AstrBot 都跑不了，不是网络问题。</div>');
+    h.push(kAdv);
+    if (sub) sub.textContent = "proot / fork 都不可用";
+  } else if (prootOk === false){
+    h.push('<div class="htip">结论：fork 能用，但 proot 不可用——沙盒内核靠 proot 起，AstrBot 还是会启动失败。</div>');
+    h.push(kAdv);
+    if (sub) sub.textContent = "proot 不可用";
+  } else if (forkOk === false){
+    h.push('<div class="htip">结论：proot 能起，但 fork 不可用——后台子进程拉不起来，沙盒会不稳。</div>');
+    h.push(kAdv);
+    if (sub) sub.textContent = "fork 不可用";
+  } else if (prootOk === true && forkOk === true){
+    h.push('<div class="htip">结论：proot 与 fork 都可用，沙盒能正常起。</div>');
+    if (sub) sub.textContent = "proot / fork 都可用";
+  } else {
+    h.push('<div class="htip">结论：没发现明显的内核限制。沙盒还是起不来的话，点「检查运行环境」看完整自检。</div>');
+    if (sub) sub.textContent = "检测完成";
+  }
+  setHtml(box, h.join(""));
+}
+
+/* 诊断包：路径可能藏在 path/file/zip/out，也可能只出现在一段 text 里 */
+function bundlePath(p){
+  if (!p) return "";
+  var c = String(p.path || p.file || p.zip || p.out || "");
+  if (!c && p.items && p.items.length){
+    for (var i = 0; i < p.items.length; i++){
+      var it = p.items[i] || {};
+      var m = String(it.path || it.file || it.text || "").match(/\/[^\s"'<>]+\.(zip|tar\.gz|tgz)/i);
+      if (m){ c = m[0]; break; }
+    }
+  }
+  if (!c){
+    var m2 = String(p.text || "").match(/\/[^\s"'<>]+\.(zip|tar\.gz|tgz)/i);
+    if (m2) c = m2[0];
+  }
+  return c;
+}
+function bundleSize(p){
+  if (!p) return 0;
+  var n = Number(p.size || p.bytes || p.sizeBytes || p.byteSize || 0);
+  if (n > 0) return n;
+  var m = (String(p.text || "") + " " + String(p.hint || "")).match(/([\d.]+)\s*(GB|MB|KB|B)\b/i);
+  if (!m) return 0;
+  var v = parseFloat(m[1]), u = m[2].toUpperCase();
+  return Math.round(v * (u === "GB" ? 1073741824 : u === "MB" ? 1048576 : u === "KB" ? 1024 : 1));
+}
+function paintBundle(p, ms){
+  var box = el("bundleOut"), sub = el("bundleSub2");
+  if (!box) return;
+  box.style.display = "";
+  if (p && p.state === "running"){
+    setHtml(box, '<div class="htip">正在打包：收集版本、日志尾部和自检结果…</div>');
+    if (sub) sub.textContent = "打包中…";
+    return;
+  }
+  var st = String((p && p.state) || "");
+  if (st === "fail" || (p && p.ok === false)){
+    /* 原生失败文案可能是一坨 shell 报错，先过滤成人话 */
+    var raw = String((p && p.text) || "");
+    var msg = (p && p.timedout) ? "打包超时：沙盒可能没在跑"
+      : ((!raw || diagNoise(raw)) ? "打包失败：沙盒可能没在跑，或临时目录写不进去" : raw);
+    setHtml(box, '<div class="hi bad"><span class="hs">失败</span><span>' + esc(msg) + '</span></div>'
+      + '<div class="htip">先去主页点「启动服务」确认沙盒在跑，再点「重新生成」。</div>');
+    if (sub) sub.textContent = "生成失败";
+    return;
+  }
+  var path = bundlePath(p), size = bundleSize(p);
+  window.__bundleLast = { path: path, size: size };
+  var h = [];
+  h.push('<div class="hi good"><span class="hs">已生成</span><span>'
+    + (size ? esc(extBytes(size)) : "打包完成")
+    + (ms > 0 ? ' · 用时 ' + Math.max(1, Math.round(ms / 1000)) + ' 秒' : '') + '</span></div>');
+  if (path) h.push('<div class="hpath">' + esc(path) + '</div>');
+  h.push('<div class="btns" style="margin-top:8px"><button class="small primary" data-act="bundleshare">分享诊断包</button></div>');
+  h.push('<div class="htip">里面有版本、日志尾部和自检结果，不含聊天内容与 QQ 号。发给作者前可以先自己看一眼路径。</div>');
+  setHtml(box, h.join(""));
+  if (sub) sub.textContent = "已生成" + (size ? "（" + extBytes(size) + "）" : "");
+}
+function bundleShare(){
+  var L = window.__bundleLast;
+  if (!L || !L.path){ extToast("还没生成诊断包"); return; }
+  var txt = L.path + (L.size ? "（" + extBytes(L.size) + "）" : "");
+  try {
+    if (typeof AndroidShare !== "undefined" && AndroidShare && typeof AndroidShare.text === "function"){
+      AndroidShare.text("诊断包路径", txt);
+      return;
+    }
+  } catch (e) {}
+  try { if (brHas("copy")) { Android.copy(txt); extToast("这个安装包不支持分享，路径已复制"); return; } } catch (e2) {}
+  extToast("这个安装包不支持分享");
+}
+
+function runNetDiag(){
+  diagRun("net", el("netBtn"), { busy: "检测中…", again: "重新检查" }, paintNet);
+}
+function runKernelDiag(){
+  diagRun("kernel", el("kernelBtn"), { busy: "检查中…", again: "重新检查" }, paintKernel);
+}
+function runBundleDiag(){
+  diagRun("bundle", el("bundleBtn"), { busy: "打包中…", again: "重新生成" }, paintBundle);
+}
+/* 整张健康卡只在真的有 AndroidDiag 时出现：老安装包上没有这个桥 */
+function paintHealthCard(){
+  var card = el("healthCard");
+  if (!card) return;
+  card.style.display = (diagHas("start") && diagHas("poll")) ? "" : "none";
+}
+
+/* ---------- 启动后自动跑一次自检 ----------
+   用户「起不来」时最缺的就是这份结果，但让他自己去点按钮往往问不出来。
+   只在「从没跑过（doctorAt=0）或超过 7 天」时静默跑一次：结果折叠在维护卡里，不弹窗。 */
+var AUTODOC_RUNNING = false, AUTODOC_DONE = false, AUTODOC_TIMER = null;
+var AUTODOC_TICKS = 0, AUTODOC_TITLE = "", AUTODOC_LAST = 0;
+function autoDocCount(t){
+  var lines = String(t || "").split(/\r?\n/), pass = 0, fail = 0, i;
+  for (i = 0; i < lines.length; i++){
+    var l = lines[i];
+    if (/起得来\s*[:：]\s*是/.test(l)) pass++;
+    else if (/起得来\s*[:：]\s*否/.test(l)) fail++;
+    else if (/端口\s*\d+\s*[:：]\s*在听/.test(l)) pass++;
+    else if (/端口\s*\d+\s*[:：]\s*没听/.test(l)) fail++;
+    else if (/已部署\s*[:：]\s*是/.test(l)) pass++;
+    else if (/已部署\s*[:：]\s*否/.test(l)) fail++;
+    else if (/写\s*\/tmp\s*[:：]\s*可以/.test(l)) pass++;
+    else if (/写\s*\/tmp\s*[:：]\s*不行/.test(l)) fail++;
+  }
+  return { pass: pass, fail: fail };
+}
+function autoDocPaint(running){
+  var btn = el("autoDocBtn"), title = el("autoDocTitle");
+  if (!btn) return;
+  btn.style.display = "";
+  if (title) title.textContent = running ? "自动检查：正在跑…" : (AUTODOC_TITLE || "自动检查");
+}
+function autoDocMaybe(){
+  if (AUTODOC_RUNNING || AUTODOC_DONE) return;
+  var now = Math.floor(Date.now() / 1000);
+  if (now - AUTODOC_LAST < 20) return;   /* refresh 循环会反复调到，20 秒内只判定一次 */
+  AUTODOC_LAST = now;
+  if (!diagHas("health") || !brHas("doctorStart")) return;
+  if (!S.deployDone) return;
+  var h = diagHealth(false);
+  var at = h ? Number(h.doctorAt || 0) : 0;
+  if (at > 0 && now - at < 7 * 86400) return;
+  /* 原生还没实现 doctorAt 回写的包也不会每次启动都跑：localStorage 再兜一层 */
+  var last = 0;
+  try { last = Number(lsGet("qqbot.autodoc.at") || 0); } catch (e0) { last = 0; }
+  if (last > 0 && now - last < 7 * 86400) return;
+  AUTODOC_RUNNING = true;
+  AUTODOC_TICKS = 0;
+  try { Android.doctorStart(); }
+  catch (e) { AUTODOC_RUNNING = false; return; }
+  autoDocPaint(true);
+  var out = el("autoDocOut");
+  if (out){ out.style.display = ""; out.textContent = "正在自动自检：沙盒里会真起三次 Xvfb，大约 20~60 秒…"; }
+  AUTODOC_TIMER = setInterval(function(){
+    AUTODOC_TICKS++;
+    var t = "";
+    try { t = String(Android.doctorText() || ""); } catch (e) { t = ""; }
+    if (out && t) out.textContent = t;
+    if (t && t.indexOf("（自检结束）") >= 0){
+      clearInterval(AUTODOC_TIMER); AUTODOC_TIMER = null;
+      AUTODOC_RUNNING = false; AUTODOC_DONE = true;
+      var n = autoDocCount(t);
+      AUTODOC_TITLE = "已自动检查：" + n.pass + " 项通过" + (n.fail ? "，" + n.fail + " 项没通过" : "");
+      autoDocPaint(false);
+      if (out) out.style.display = "none";
+      try { lsSet("qqbot.autodoc.at", String(Math.floor(Date.now() / 1000))); } catch (e3) {}
+      try { diagHealth(true); } catch (e4) {}
+      return;
+    }
+    if (AUTODOC_TICKS > 60){
+      clearInterval(AUTODOC_TIMER); AUTODOC_TIMER = null;
+      AUTODOC_RUNNING = false; AUTODOC_DONE = true;
+      AUTODOC_TITLE = "自动检查没跑完（沙盒可能没在跑）";
+      autoDocPaint(false);
+      if (out){
+        out.style.display = "";
+        out.textContent = t || "自检没有产出结果。先去主页点「启动服务」，再手动点「检查运行环境」。";
+      }
+    }
+  }, 1500);
+}
+function autoDocFold(){
+  var out = el("autoDocOut"), arw = el("autoDocArw");
+  if (!out) return;
+  var hidden = (out.style.display === "none" || !out.style.display);
+  out.style.display = hidden ? "" : "none";
+  if (arw) arw.textContent = hidden ? "收起" : "展开";
+}
+try { paintHealthCard(); } catch (e) {}
 
 /* ===================== 功能 58：崩溃看板 ===================== */
 function crashList(){
@@ -8910,7 +10123,10 @@ function renderCrash(){
   if (!box) return;
   var cls = crashList(), i;
   if (!cls.length){
-    setHtml(box, '<div class="empty">还没有崩溃记录</div>');
+    /* 「没有崩溃记录」有三种完全不同的含义，混成一句会让用户以为「从没崩过」 */
+    var s = crashState(), txt = crashEmptyText(s), why = crashWhyText(s);
+    setHtml(box, '<div class="empty">' + esc(txt) + '</div>'
+      + (why ? '<div class="hint" style="margin-top:2px">' + esc(why) + '</div>' : ""));
     crashBarPaint();
     return;
   }
@@ -9241,6 +10457,10 @@ function resumeDo(){
     try { Android.action("start"); } catch (e3) {}
   }
   extToast("已确认启动：正在拉起沙盒，通常需要 20–40 秒");
+  /* 1.3.4-beta.2：从别处（下线卡 / 磁贴）启动时，把首屏启动行也切到「启动中」，
+     免得同一屏上一处说正在启动、另一处还写着已停止。 */
+  START.until = Date.now() + START_WATCH;
+  try { paintStartRow(null); } catch (e4) {}
   setTimeout(function(){ try { refreshAll(); } catch (e2) {} }, 1500);
 }
 /* 小组件 / 磁贴带来的「启动」在下线状态下统一打到这里 */
@@ -9261,6 +10481,10 @@ window.askToggle = function(){
   try { r = Android.action("start"); } catch (e1) { r = ""; }
   if (!r){ extToast("启动失败：原生没有响应，请稍后重试"); return; }
   extToast("正在启动沙盒，通常需要 20–40 秒");
+  /* 1.3.4-beta.2：从别处（下线卡 / 磁贴）启动时，把首屏启动行也切到「启动中」，
+     免得同一屏上一处说正在启动、另一处还写着已停止。 */
+  START.until = Date.now() + START_WATCH;
+  try { paintStartRow(null); } catch (e4) {}
   setTimeout(function(){ try { refreshAll(); } catch (e2) {} }, 1500);
 };
 
@@ -9389,6 +10613,9 @@ function refreshExtras(st){
     try { renderBundle(); } catch (e6b) {}
     try { refreshCrash(false); } catch (e7) {}
     try { refreshRestartCard(st); } catch (e8) {}
+    /* 1.3.4-beta.2：启动五态与通知开关跟着同一轮刷新走，不额外加定时器 */
+    try { paintStartRow(st); } catch (e8b) {}
+    try { ntfPaint(true); } catch (e8c) {}
   }
   /* 省电提醒条 + 省电卡状态：60 秒问一次就够（只读一个小文件）。横幅挂在所有页，
      因为「收不到消息」正是用户随手打开应用时最该看到的一句话。 */
@@ -9486,6 +10713,8 @@ setInterval(function(){
     try { refreshStorage(false); } catch (e2) {}
     try { refreshCrash(false); } catch (e3) {}
   }
+  /* 部署状态要等 refresh() 回来才知道；这里每轮顺手看一眼要不要补跑自动自检 */
+  try { autoDocMaybe(); } catch (e4) {}
 }, 15000);
 
 /* 轮询节流（1.2.6）：原来固定 4 秒一轮，闲着也在跑；这里按现场情况给间隔——
@@ -9507,6 +10736,8 @@ function refreshLoop(){
   refreshTimer = setTimeout(refreshLoop, refreshPeriod());
 }
 refreshTimer = setTimeout(refreshLoop, 4000);
+/* 启动 3 秒后判定一次：这台机器要不要自动跑一次自检（结果折叠在维护卡里，不弹窗） */
+setTimeout(function(){ try { autoDocMaybe(); } catch (e) {} }, 3000);
 
 /* 从后台切回前台立刻刷一次，不用干等下一轮轮询 */
 document.addEventListener("visibilitychange", function(){
@@ -9607,7 +10838,7 @@ function astrHomePaint(){
       if (sub) sub.textContent = "读不到密钥，点这里重贴一次就能修好";
     } else {
       if (m) m.textContent = "还没配置模型";
-      if (sub) sub.textContent = "点这里贴上中转站密钥，配好就能开始聊";
+      if (sub) sub.textContent = "点这里贴上模型密钥，配好就能开始聊";   /* 1.3.4-beta.2 §6：这里要填的是模型密钥 */
     }
     return;
   }

@@ -11,10 +11,10 @@
 | --- | --- |
 | 应用名 | **AstrBot烛版** |
 | 控制台标题 | **烛之控制台** |
-| 安装包 | `AstrBot-1.3.4-beta.1-arm64.apk`（`609,386,309`，约 581 MB；**自带装好的运行环境镜像，第一次部署就是解压它，全程不用联网**） |
+| 安装包 | `AstrBot-1.3.4-beta.2-arm64.apk`（`609,480,588`，约 581 MB；**自带装好的运行环境镜像，第一次部署就是解压它，全程不用联网**） |
 | 包名 | `zhuxin.astrbot`（1.2.1 及更早为 `com.termux`） |
-| 当前版本 | **v1.3.4-beta.1（测试版）**（versionCode `10304`，可直接覆盖 1.3.3 正式版、1.3.3-beta.10 / beta.9 / beta.8 / beta.7 / beta.6 / beta.5 / beta.4 / beta.3 / beta.2 / beta.1 或 1.3.2 安装） |
-| 安装包 SHA-256 | `09BA5223B8390E64B26C210401E72ED68B598AA90C4D1E4B6CFC25733A68F30E` |
+| 当前版本 | **v1.3.4-beta.2（测试版）**（versionCode `10304`，可直接覆盖 1.3.3 正式版、1.3.4-beta.1、1.3.3-beta.10 / beta.9 / beta.8 / beta.7 / beta.6 / beta.5 / beta.4 / beta.3 / beta.2 / beta.1 或 1.3.2 安装） |
+| 安装包 SHA-256 | `DA98272E60B54D6BE3628E4F6C7B9287C63211ED714E932B3F9B9842D01DC9CB` |
 | 签名证书 SHA-256 | `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3） |
 | 项目地址 | [github.com/Zxin-Pro/astrbot-candle](https://github.com/Zxin-Pro/astrbot-candle) |
 | 下载安装包 | 官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的 AstrBot 下载页与 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 提供**正式版**（约 581 MB，**站内直接下载，不用跳 GitHub**）；`-beta.N` 测试版只手动发给验收的人，不进官网、不进 latest |

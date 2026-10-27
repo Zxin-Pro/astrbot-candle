@@ -1390,6 +1390,74 @@ qq_risk_clear() {
 qq_json_esc() { qq_risk_esc "${1:-}"; }
 
 # ---------------------------------------------------------------------------
+# 后台拉起长驻进程 / supervisor 启动标记（1.3.4-beta.2）
+# ---------------------------------------------------------------------------
+
+# 语义等价于「nohup setsid <cmd> >>日志 2>&1 &」，但不会再往调用方的 stderr
+# 打「<pid> Killed <cmd>」这行作业通知。
+#
+# 为什么原来那句话会漏出来：bash 收到子进程被 SIGKILL 的通知后，会在下一个命令
+# 边界把「Killed」打到**调用方自己的 stderr**（deploy.sh 的 stderr 就是部署日志），
+# 而 disown %+ 往往在子进程已经死掉之后才执行，摘不干净。用户的错误报告里于是
+# 出现「deploy.sh: line 268: 23963 Killed nohup setsid bash ...」，看起来像启动失败。
+# 把作业放进一个「拉起即退出」的子 shell，作业表随子 shell 消亡，通知再也打不出来；
+# 子 shell 自己的 stderr 也一并丢掉，兜住最后那一瞬的竞争。
+# 用法：qq_spawn_detached 「日志路径」 「命令」 [参数...]
+qq_spawn_detached() {
+  local _log="${1:-}"
+  shift 2>/dev/null || true
+  [ "$#" -ge 1 ] || return 1
+  [ -n "$_log" ] || _log=/dev/null
+  if [ "$_log" != /dev/null ]; then
+    mkdir -p "$(dirname "$_log")" 2>/dev/null
+  fi
+  ( nohup setsid "$@" >>"$_log" 2>&1 </dev/null & ) 2>/dev/null
+  return 0
+}
+
+# supervisor 的「启动标记」：记下这次由 start-sandbox.sh 拉起的 pid 与时间。
+# 正常停止时由 stop-sandbox.sh 删掉；下次启动若发现标记还在、pid 却已经不在 /proc，
+# 就说明上一次不是被 stop 停的（典型是系统低内存清理 / 省电策略直接 SIGKILL），
+# 在 supervisor-killed.log 里留一行 —— 上传的错误报告里就能写「上次被系统终止」，
+# 而不是只留一堆没人看得懂的 Killed。
+QQ_START_MARK="${QQ_START_MARK:-$QQBOT_STATE/supervisor.start}"
+QQ_KILLED_LOG="${QQ_KILLED_LOG:-$QQBOT_LOGS/supervisor-killed.log}"
+
+qq_start_mark_check() {
+  [ -s "$QQ_START_MARK" ] || return 0
+  local _opid _otime
+  _opid=$(sed -n 's/^pid=//p' "$QQ_START_MARK" 2>/dev/null | head -n 1)
+  _otime=$(sed -n 's/^started=//p' "$QQ_START_MARK" 2>/dev/null | head -n 1)
+  case "$_opid" in ''|*[!0-9]*) rm -f "$QQ_START_MARK" 2>/dev/null; return 0 ;; esac
+  # 还活着 —— 是同一轮启动（或另一条路径同时拉起的），不算被杀
+  [ -d "/proc/$_opid" ] && return 0
+  mkdir -p "$(dirname "$QQ_KILLED_LOG")" 2>/dev/null
+  printf '%s 上次 supervisor（pid %s，启动于 %s）不是被 stop-sandbox 停掉的，可能被系统清理（低内存 / 省电策略）\n' \
+    "$(date '+%F %T')" "$_opid" "${_otime:-?}" >> "$QQ_KILLED_LOG" 2>/dev/null
+  # 只留最近 50 行，别让这份记录自己长大
+  if [ -f "$QQ_KILLED_LOG" ]; then
+    _tailtmp="$QQ_KILLED_LOG.tmp.$$"
+    tail -n 50 "$QQ_KILLED_LOG" > "$_tailtmp" 2>/dev/null && mv -f "$_tailtmp" "$QQ_KILLED_LOG" 2>/dev/null
+    rm -f "$_tailtmp" 2>/dev/null
+  fi
+  rm -f "$QQ_START_MARK" 2>/dev/null
+  return 0
+}
+
+qq_start_mark_set() {
+  local _pid="${1:-$$}"
+  mkdir -p "$(dirname "$QQ_START_MARK")" 2>/dev/null
+  {
+    printf 'pid=%s\n' "$_pid"
+    printf 'started=%s\n' "$(date '+%F %T')"
+  } > "$QQ_START_MARK" 2>/dev/null
+  return 0
+}
+
+qq_start_mark_clear() { rm -f "$QQ_START_MARK" 2>/dev/null; }
+
+
+# ---------------------------------------------------------------------------
 # 上传日志脱敏（v1.1.31）
 #
 # 背景：错误报告是用户主动提交的，但报告里难免夹着真实账号。以前只把 bots.json

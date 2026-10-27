@@ -118,7 +118,7 @@ restart_sandbox() {
   # 不能写紧急下线标记。
   bash "$QQBOT_OPT/stop-sandbox.sh" --no-offline >> "$LOG" 2>&1
   sleep 3
-  nohup setsid bash "$QQBOT_OPT/start-sandbox.sh" >> "$QQBOT_HOME/logs/supervisor.log" 2>&1 < /dev/null &
+  qq_spawn_detached "$QQBOT_HOME/logs/supervisor.log" bash "$QQBOT_OPT/start-sandbox.sh"
   sleep 25
   if sv_alive; then
     sayw "沙盒已恢复（supervisor PID $(cat "$QQBOT_HOME/supervisor.pid" 2>/dev/null)）"

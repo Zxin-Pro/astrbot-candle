@@ -274,7 +274,8 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 | 版本 | 字段 | 值 |
 | --- | --- | --- |
-| **1.3.4-beta.1（当前，测试版）** | `versionName` / 派生 `versionCode` | `1.3.4-beta.1` / `10304` |
+| **1.3.4-beta.2（当前，测试版）** | `versionName` / 派生 `versionCode` | `1.3.4-beta.2` / `10304` |
+| 1.3.4-beta.1 | `versionName` / 派生 `versionCode` | `1.3.4-beta.1` / `10304` |
 | 1.3.3（正式版） | `versionName` / 派生 `versionCode` | `1.3.3` / `10303` |
 | 1.3.3-beta.10 | `versionName` / 派生 `versionCode` | `1.3.3-beta.10` / `10303` |
 | 1.3.3-beta.9 | `versionName` / 派生 `versionCode` | `1.3.3-beta.9` / `10303` |
@@ -294,7 +295,9 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 | 1.2.10 | `versionName` / 派生 `versionCode` | `1.2.10` / `10210` |
 | 1.2.9 | `versionName` / 派生 `versionCode` | `1.2.9` / `10209` |
 
-1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.4-beta.1-arm64.apk`，`609,386,309`（约 581 MB，镜像在 APK 里），SHA-256 `09BA5223B8390E64B26C210401E72ED68B598AA90C4D1E4B6CFC25733A68F30E`；增量包 `AstrBot-1.3.4-beta.1-arm64-update.apk`，`26,206,018`，SHA-256 `E3D60C4A59A05C40CAAFFFFAA911B83FDAB0049CBC6790382B3C46ABE5B06E3A`。1.3.4-beta.1 沿用旧密钥（_research\debug.keystore）签名，`versionCode 10304` 高于 1.3.3 及全部 1.3.3 测试版的 `10303`，因此可直接覆盖安装；本版没有 Java / 界面改动，增量包里只有 `assets/qqbot-scripts.zip` 等脚本资源变化（实测增量 `26,206,018` 字节，比 1.3.3 的 `26,201,922` 多 4,096 字节）。
+1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.4-beta.2-arm64.apk`，`609,480,588`（约 581 MB，镜像在 APK 里），SHA-256 `DA98272E60B54D6BE3628E4F6C7B9287C63211ED714E932B3F9B9842D01DC9CB`；增量包 `AstrBot-1.3.4-beta.2-arm64-update.apk`，`26,300,297`，SHA-256 `E74B9D73E4590D26DF657833F760E3EBA1B62B398B2081C16E8BA15DF48BFD77`。1.3.4-beta.2 沿用旧密钥（_research\debug.keystore）签名，`versionCode 10304` 高于 1.3.3 及全部 1.3.3 测试版的 `10303`，因此可直接覆盖安装。
+
+本版同时改了 Java、界面和脚本，增量包不再是「只有脚本」：新增 5 个 Java 桥（`QqbotNotifyBridge` / `QqbotShare` / `QqbotPluginBridge` / `QqbotModelBridge` / `QqbotDiagBridge`）、新页面 `ui/assets/qqbot/plugins.html`、脚本 `build/opt/qqbot/diagnose.sh` 与 `model-test.py`，所以增量从 `26,206,018` 涨到 `26,300,297`。`build-ui.ps1` 的资产复制也从「点名拷 `index.html` + `appicon.png`」改成整目录 `Copy-Item ui\assets\qqbot\*`——以前新增页面会静默漏包（APK 里没有、真机白屏），以后往 `ui/assets/qqbot/` 加文件不用再改脚本。自查命令：`python out/b2_apkcheck3.py` 会核对 APK 内 `assets/qqbot/index.html` 与源码同哈希、`qqbot-scripts.zip` 里的脚本与 `build/opt/qqbot/` 同哈希。
 
 规则：`versionCode = MAJOR*10000 + MINOR*100 + PATCH`。
 

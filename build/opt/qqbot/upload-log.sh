@@ -48,6 +48,55 @@ have() { command -v "$1" >/dev/null 2>&1; }
   ls -1 "$QQBOT_STEPS" 2>/dev/null
   echo "deploy.done: $([ -f "$QQBOT_HOME/deploy.done" ] && echo yes || echo no)"
   echo
+  # beta.2：用户报「服务自己没了」「连不上网」时，作者最想知道三件事：
+  # 上次启动有没有留标记、是不是被系统清理掉的、这台机器此刻能不能出网。
+  # 三块都放在报告靠前的位置（脱敏在后面统一跑，留言/日志里的账号一样会被打码）。
+  echo "----- 服务启动 / 被杀记录 -----"
+  echo "启动标记  : $(tr '\n' ' ' < "$QQBOT_STATE/supervisor.start" 2>/dev/null || echo '(无)')"
+  echo "supervisor.pid: $(cat "$QQBOT_HOME/supervisor.pid" 2>/dev/null || echo '(无)')"
+  if [ -f "$QQBOT_LOGS/supervisor-killed.log" ]; then
+    echo "被杀记录  : $(wc -l < "$QQBOT_LOGS/supervisor-killed.log" 2>/dev/null | tr -d ' ') 次"
+    tail -n 10 "$QQBOT_LOGS/supervisor-killed.log" 2>/dev/null
+  else
+    echo "被杀记录  : 无（没有被系统清理过的痕迹）"
+  fi
+  echo
+  # 体检结果最多用 10 分钟内的缓存：上传本身已经在沙盒里跑，再等两次 DNS/端口探测
+  # 会让「上传中…」卡更久；真过期了才现场跑一次（脚本自己会把结果写回缓存）。
+  _age=999999
+  _t="$QQBOT_CACHE/diag-net.txt"
+  [ -f "$_t" ] && _age=$(( $(date +%s) - $(date -r "$_t" +%s 2>/dev/null || echo 0) ))
+  echo "----- 出网体检（diagnose.sh netcheck）-----"
+  if [ -f "$_t" ] && [ "$_age" -lt 600 ]; then
+    cat "$_t" 2>/dev/null
+    echo "（${_age} 秒前的缓存结果）"
+  elif [ -f "$QQBOT_OPT/diagnose.sh" ]; then
+    if command -v timeout >/dev/null 2>&1; then
+      timeout 20 bash "$QQBOT_OPT/diagnose.sh" netcheck --text 2>&1 || echo "(体检没跑完，超时)"
+    else
+      bash "$QQBOT_OPT/diagnose.sh" netcheck --text 2>&1 || echo "(体检没跑完)"
+    fi
+  else
+    echo "(这台机器上还没有 diagnose.sh)"
+  fi
+  echo
+  _age=999999
+  _t="$QQBOT_CACHE/diag-kernel.txt"
+  [ -f "$_t" ] && _age=$(( $(date +%s) - $(date -r "$_t" +%s 2>/dev/null || echo 0) ))
+  echo "----- 内核探测（diagnose.sh kernelcheck）-----"
+  if [ -f "$_t" ] && [ "$_age" -lt 600 ]; then
+    cat "$_t" 2>/dev/null
+    echo "（${_age} 秒前的缓存结果）"
+  elif [ -f "$QQBOT_OPT/diagnose.sh" ]; then
+    if command -v timeout >/dev/null 2>&1; then
+      timeout 25 bash "$QQBOT_OPT/diagnose.sh" kernelcheck --text 2>&1 || echo "(探测没跑完，超时)"
+    else
+      bash "$QQBOT_OPT/diagnose.sh" kernelcheck --text 2>&1 || echo "(探测没跑完)"
+    fi
+  else
+    echo "(这台机器上还没有 diagnose.sh)"
+  fi
+  echo
   echo "----- 目录体检 (fs-probe.txt) -----"
   cat "$QQBOT_HOME/fs-probe.txt" 2>/dev/null || echo "(无)"
   echo
@@ -179,9 +228,24 @@ have() { command -v "$1" >/dev/null 2>&1; }
     fi
     echo
   done
-  [ "$_found_crash" = 1 ] || echo "(没有崩溃记录：可能是正常退出，或这版还没带 crashwatch)"
+  # 三态：抓到现场 / 记录器在位但没崩过 / 记录器没编出来 / 这版还没初始化。
+  # 以前只有「没有崩溃记录」一句话，作者分不清是「没崩」还是「记录器根本没工作」。
+  _cso="$QQBOT_CACHE/crashwatch.so"
+  if [ "$_found_crash" = 1 ]; then
+    echo "崩溃记录器状态 : 有现场（已抓到），记录器文件 $([ -f "$_cso" ] && echo 在位 || echo 不见了)"
+  elif [ -f "$_cso" ]; then
+    echo "崩溃记录器状态 : 已就位，但一次都没抓到（进程没崩过，属正常）"
+  elif [ -s "$QQBOT_CACHE/crashes/cw-build.log" ]; then
+    echo "崩溃记录器状态 : 编译失败（so 没生成，详见下面的 cw-build.log）—— 真崩了也不会有现场"
+  else
+    echo "崩溃记录器状态 : 这版还没初始化（服务跑起来之后才会生成，刚部署完属正常）"
+  fi
   echo "----- 崩溃记录器编译日志 (cw-build.log) -----"
-  tail -n 20 "$QQBOT_CACHE/crashes/cw-build.log" 2>/dev/null || echo "(无)"
+  if [ -f "$QQBOT_CACHE/crashes/cw-build.log" ]; then
+    tail -n 20 "$QQBOT_CACHE/crashes/cw-build.log" 2>/dev/null
+  else
+    echo "(无)"
+  fi
   echo
   echo "----- 重装日志尾部 150 行 (reinstall.log) -----"
   # 「重装失败（退出码 1）」以前只留一个退出码，看不出死在哪一步；

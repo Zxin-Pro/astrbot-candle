@@ -290,6 +290,13 @@ public class QqbotActivity extends Activity {
         web.setWebViewClient(new QqClient(this));
         bridge = new QqbotBridge(this);
         web.addJavascriptInterface(bridge, "Android");
+        // 1.3.4-beta.2 起新增一组旁路桥（状态通知 / 系统分享 / 插件市场 / 模型测试 / 诊断），
+        // 拆成独立类是为了不把 QqbotBridge 撑到不可维护，注册顺序与老桥无关。
+        web.addJavascriptInterface(new QqbotNotifyBridge(this), "AndroidNotify");
+        web.addJavascriptInterface(new QqbotShare(this), "AndroidShare");
+        web.addJavascriptInterface(new QqbotPluginBridge(this), "AndroidPlugins");
+        web.addJavascriptInterface(new QqbotModelBridge(this), "AndroidModel");
+        web.addJavascriptInterface(new QqbotDiagBridge(this), "AndroidDiag");
         setContentView(web);
         // 通知栏点进来的 tab 要在第一次 loadUi 之前就记下来（singleTask 重入走 onNewIntent）
         pendingTab = tabOfIntent(getIntent());

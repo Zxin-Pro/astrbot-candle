@@ -296,9 +296,9 @@ if ($mfBoot -notmatch 'android\.intent\.action\.USER_UNLOCKED') {
 Remove-Item "$ROOT\_apkwork\smali_classes30" -Recurse -Force -ErrorAction SilentlyContinue
 Copy-Item "$ROOT\ui\smali" "$ROOT\_apkwork\smali_classes30" -Recurse -Force -ErrorAction Stop
 New-Item -ItemType Directory -Force -Path "$ROOT\_apkwork\assets\qqbot" | Out-Null
-Copy-Item "$ROOT\ui\assets\qqbot\index.html" "$ROOT\_apkwork\assets\qqbot\index.html" -Force
-# header logo: the app's own icon, served from assets so the WebView can load it.
-Copy-Item "$ROOT\ui\assets\qqbot\appicon.png" "$ROOT\_apkwork\assets\qqbot\appicon.png" -Force
+# 整目录复制：index.html 之外还有 appicon.png、plugins.html（插件管理页）等，
+# 以前只点名拷两个文件，新增页面会静默漏包（APK 里没有、真机白屏）。
+Copy-Item "$ROOT\ui\assets\qqbot\*" "$ROOT\_apkwork\assets\qqbot\" -Recurse -Force -ErrorAction Stop
 Write-Host 'smali + asset copied'
 
 # 3c-2) rename the Termux package id inside the decoded smali (com.termux -> zhuxin.astrbot).

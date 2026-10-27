@@ -7,11 +7,15 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
 
 import java.io.File;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 /**
  * 最外层防掉线：一个常驻前台服务。
@@ -35,6 +39,15 @@ public class QqbotGuardService extends Service {
 
     public static final String CHANNEL_ID = "qqbot_guard";
     public static final int NOTI_ID = 42310;
+
+    /**
+     * 状态通知（上线 / 掉线 / 需要重新扫码）走独立渠道：常驻卡片的 qqbot_guard 是
+     * IMPORTANCE_MIN 的静音渠道（常驻通知本来就不该响），而掉线必须能响一声、能上锁屏、
+     * 能弹出悬浮提醒，所以另建 qqbot_status（IMPORTANCE_HIGH）。
+     * 两个渠道互不影响：用户在系统里把状态通知关掉，常驻守护卡片照旧存在。
+     */
+    public static final String CH_STATUS = "qqbot_status";
+    public static final int STATUS_ID = 42320;
 
     /** 通知栏「重启」：PendingIntent.getService 打回本服务（协议里也写作 com.termux.qqbot.ACTION_RESTART）。 */
     public static final String ACTION_RESTART = "com.termux.app.GUARD_RESTART";
@@ -68,6 +81,9 @@ public class QqbotGuardService extends Service {
     private PowerManager.WakeLock lock;
     private QqbotGuardTask task;
     private Thread thread;
+    /** 上线/掉线/扫码 的检查线程（见 StatusWatch），跟服务同生共死。 */
+    private StatusWatch statusWatch;
+    private Thread statusThread;
 
     /* 通知节流：同一条文案 30 秒内不重复 notify()，换文案立刻发（协议：30 秒或状态变化时更新）。 */
     private String lastNotiText = "";
@@ -371,6 +387,15 @@ public class QqbotGuardService extends Service {
         thread = new Thread(task, "qqbot-guard");
         thread.setDaemon(true);
         thread.start();
+        // 状态检查是另一条线程：自检循环遇到风控 / 部署中 / 回退会提前 return，
+        // 那些时候端口状态反而最需要盯（见 StatusWatch 的注释）。
+        try {
+            statusWatch = new StatusWatch(getApplicationContext());
+            statusThread = new Thread(statusWatch, "qqbot-status");
+            statusThread.setDaemon(true);
+            statusThread.start();
+        } catch (Throwable ignored) {
+        }
     }
 
     public int onStartCommand(Intent i, int flags, int startId) {
@@ -477,6 +502,7 @@ public class QqbotGuardService extends Service {
     public void onDestroy() {
         guardRunning = false;
         if (task != null) task.stop();
+        if (statusWatch != null) statusWatch.stop();
         try { NetworkWatch.stop(); } catch (Throwable ignored) {}
         try { BatteryMon.stop(this); } catch (Throwable ignored) {}
         try { ScreenMode.stop(this); } catch (Throwable ignored) {}
@@ -652,5 +678,394 @@ public class QqbotGuardService extends Service {
         } catch (Throwable ignored) {
         }
         return b.build();
+    }
+
+    /* ================= 上线 / 掉线 / 需要重新扫码（v1.3.4-beta.2） ================= */
+
+    /**
+     * 这三种提醒共用 qqbot_status 渠道和同一个通知 id：
+     * 同一个 id 的好处是「掉线了」被「已上线」直接替换，通知栏不会堆一串过期状态；
+     * 扫码提醒也是状态的一种，扫码成功之后自然被「已上线」顶掉。
+     */
+    private static final String PREF_NOTIFY = "qqbot_notify";
+
+    /** 一次跃迁检查的间隔（秒）。比守护自检的 60 秒快一点，掉线能在一分半内报出来。 */
+    private static final int STATUS_PERIOD = 45;
+
+    /** 掉线要连续这么久才算数：proot 重启一般 30~60 秒，抖动期间别连发假警报。 */
+    private static final long OFFLINE_DWELL_MS = 120000L;
+
+    /** 状态快照：$HOME/.qqbot/state/notify.json，记上一次的结论与掉线起点。 */
+    private static final String NOTIFY_STATE = "notify.json";
+
+    /** 三个 kind 共用一个检查锁：服务线程和桥上的 test() 可能同时进来。 */
+    private static final Object STATUS_LOCK = new Object();
+
+    /**
+     * 读开关：master 关掉就全部不发，各 kind 再各有一票；默认全开。
+     * prefs 读失败按「开」处理——宁可多提醒一次，也别因为一个读异常的偶发问题
+     * 把「掉线了」这种关键提醒静音掉。
+     */
+    public static boolean statusOn(Context c, String kind) {
+        try {
+            SharedPreferences sp = c.getSharedPreferences(PREF_NOTIFY, Context.MODE_PRIVATE);
+            if (!sp.getBoolean("notify.master", true)) return false;
+            return sp.getBoolean("notify." + kind, true);
+        } catch (Throwable t) {
+            return true;
+        }
+    }
+
+    /** 建状态渠道（幂等）。IMPORTANCE_HIGH = 有声音、能悬浮、能上锁屏。 */
+    private static void ensureStatusChannel(Context c) {
+        if (Build.VERSION.SDK_INT < 26) return;
+        try {
+            NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null) return;
+            if (nm.getNotificationChannel(CH_STATUS) != null) return;
+            NotificationChannel ch = new NotificationChannel(CH_STATUS, "机器人状态", NotificationManager.IMPORTANCE_HIGH);
+            ch.setDescription("机器人上线、掉线、需要重新扫码时提醒");
+            ch.setShowBadge(true);
+            ch.enableVibration(true);
+            // 锁屏上也要能看见正文：掉线是一条「现在就得处理」的通知
+            ch.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+            nm.createNotificationChannel(ch);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * 三选一的通知内容。全部用平台 API（Notification.Builder），minSdk 24 可用，
+     * 不引入 androidx。
+     */
+    public static Notification buildStatusNoti(Context c, String kind) {
+        String title;
+        String text;
+        if ("online".equals(kind)) {
+            title = "机器人已上线";
+            text = "QQ 和 AstrBot 都连上了，消息通道已恢复";
+        } else if ("qr".equals(kind)) {
+            title = "需要重新扫码";
+            text = "QQ 登录状态失效了，点开应用扫一下码就能恢复";
+        } else {
+            title = "机器人掉线了";
+            text = "和 QQ 的连接断了，正在自动恢复；一直不回来就点开看看";
+        }
+        // 点通知就进主界面：和常驻卡片同一个落地页（tab=bot），用户不用再自己找
+        Intent main = new Intent(c, QqbotActivity.class);
+        main.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        main.putExtra("tab", "bot");
+        PendingIntent pi = PendingIntent.getActivity(c, 31, main, PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder b;
+        if (Build.VERSION.SDK_INT >= 26) b = new Notification.Builder(c, CH_STATUS);
+        else b = new Notification.Builder(c);
+        b.setContentTitle(title);
+        b.setContentText(text);
+        b.setAutoCancel(true);
+        b.setOnlyAlertOnce(false);
+        b.setShowWhen(true);
+        b.setWhen(System.currentTimeMillis());
+        b.setContentIntent(pi);
+        if (Build.VERSION.SDK_INT < 26) {
+            // 24/25 没有渠道，声音与震动只能在 Builder 上给
+            b.setPriority(Notification.PRIORITY_HIGH);
+            b.setDefaults(Notification.DEFAULT_SOUND | Notification.DEFAULT_VIBRATE);
+        }
+        // 小图标必须是纯白剪影：彩色启动图标在 8+ 上会被渲染成色块（同常驻卡片）
+        try {
+            int res = c.getResources().getIdentifier("ic_stat_qqbot", "drawable", c.getPackageName());
+            b.setSmallIcon(res != 0 ? res : c.getApplicationInfo().icon);
+        } catch (Throwable t) {
+            try {
+                b.setSmallIcon(android.R.drawable.stat_notify_error);
+            } catch (Throwable ignored) {
+            }
+        }
+        return b.build();
+    }
+
+    /**
+     * 发一条状态通知。force=true 时忽略开关与渠道重要度，给界面上「试一下」用。
+     * 渠道被用户在系统里关掉（IMPORTANCE_NONE）时直接返回：notify() 本身不抛，
+     * 但白白走一遍构建没有意义；这里也顺手把「渠道被关」这种正常情况挡在异常之外。
+     */
+    public static void postStatus(Context c, String kind, boolean force) {
+        if (c == null) return;
+        try {
+            if (!force && !statusOn(c, kind)) return;
+            NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null) return;
+            ensureStatusChannel(c);
+            if (!force && Build.VERSION.SDK_INT >= 26) {
+                NotificationChannel ch = nm.getNotificationChannel(CH_STATUS);
+                if (ch != null && ch.getImportance() == NotificationManager.IMPORTANCE_NONE) return;
+            }
+            nm.notify(STATUS_ID, buildStatusNoti(c, kind));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * 一次跃迁检查。必须跑在后台线程（要连 socket、要读盘），由 StatusWatch 每 45 秒调一次。
+     *
+     * 判定口径：
+     *   上线 = NapCat 端口通 且 AstrBot 端口通（NapCat 挂着但 AstrBot 没起来，一样是离线）；
+     *   掉线 = 连续 OFFLINE_DWELL_MS 都不满足「上线」，且不处于「用户主动下线 / 部署中」；
+     *   扫码 = cache/qrcode.png 的 mtime 变了（NapCat 每次出新码都会重写这个文件）。
+     * 只在跃迁的那一次发通知：结论记在 notify.json 里，重启服务也接着上次的结论算，
+     * 不会因为服务重启就把同一件事再报一遍。
+     */
+    public static void statusTick(Context c) {
+        if (c == null) return;
+        synchronized (STATUS_LOCK) {
+            try {
+                statusTickLocked(c);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    private static void statusTickLocked(Context c) {
+        File files = c.getFilesDir();
+        File qq = QqbotShell.qqbotDir(files);
+        JSONObject root = readBotsRoot(qq);
+        boolean napUp = QqbotShell.portOpen(napcatPortOf(root), 300);
+        boolean astUp = QqbotShell.portOpen(astrbotPortOf(root), 300);
+        boolean up = napUp && astUp;
+        long qrMt = qrMtime(files, root);
+        // 「重启中」的两种情形：用户按了紧急下线 / 沙盒还没部署完。
+        // 这时候端口本来就该是关的，报掉线只会打扰用户，所以只静默记状态。
+        boolean quiet = StateIO.file(files, "offline").isFile() || !QqbotShell.bootstrapReady(files);
+
+        JSONObject prev = null;
+        String raw = StateIO.read(files, NOTIFY_STATE);
+        if (raw != null) {
+            try {
+                prev = new JSONObject(raw);
+            } catch (Throwable ignored) {
+            }
+        }
+
+        JSONObject out = new JSONObject();
+        try {
+            out.put("nap", napUp);
+            out.put("ast", astUp);
+            out.put("qr", qrMt);
+        } catch (Throwable ignored) {
+        }
+
+        if (prev == null) {
+            // 服务刚起来：这一刻的端口状态只能当基线，不能当「跃迁」。
+            // 否则每次开机、每次服务被系统拉起来都会先报一遍掉线。
+            putSt(out, up ? "up" : "down", 0L);
+            StateIO.write(files, NOTIFY_STATE, out.toString());
+            return;
+        }
+
+        String pst = prev.optString("st", "down");
+        long since = prev.optLong("since", 0L);
+        long prevQr = prev.optLong("qr", 0L);
+        long now = System.currentTimeMillis();
+
+        // 跃迁判定全在 decide() 里：它是纯函数，能脱离 Android 单独跑（见 out/b134b2_native_check.py）
+        String[] d = decide(pst, since, up, quiet, now, prevQr, qrMt);
+        if (d[2].length() > 0) {
+            int from = 0;
+            while (from < d[2].length()) {
+                int at = d[2].indexOf(',', from);
+                if (at < 0) at = d[2].length();
+                postStatus(c, d[2].substring(from, at), false);
+                from = at + 1;
+            }
+        }
+        putSt(out, d[0], Long.parseLong(d[1]));
+
+        StateIO.write(files, NOTIFY_STATE, out.toString());
+    }
+
+    /**
+     * 纯决策函数：给定上一轮结论和本轮探测结果，算这轮该发什么、新的状态是什么。
+     * 返回值 { 新状态, 新起点(ms), 要发的通知(空串=不发, 多个用逗号连) }。
+     *
+     * 抽成独立函数是因为整块逻辑里只有它有分支，而且不碰 Android / 磁盘 / socket，
+     * 可以原样抠出来在普通 JVM 上跑回归（tests 见 out/b134b2_native_check.py）。
+     */
+    static String[] decide(String pst, long since, boolean up, boolean quiet, long now, long prevQr, long qrMt) {
+        String st;
+        String kind = "";
+        if (up) {
+            // 真正的「掉线 → 上线」才发；抖动期间 pst 一直是 up，不会多报
+            if (!"up".equals(pst) && !quiet) kind = "online";
+            st = "up";
+            since = 0L;
+        } else if ("up".equals(pst)) {
+            if (since <= 0L) {
+                // 刚掉下来：先起表，不马上报。KeepAlive / 自检把沙盒拉回来时端口会重新亮，
+                // 这一格里就不会留下一条假警报。起表时间必须落盘，否则下一轮还是 since<=0，
+                // 表永远起不来，掉线通知也就永远不会发。
+                st = "up";
+                since = now;
+            } else if (now - since >= OFFLINE_DWELL_MS) {
+                if (!quiet) kind = "offline";
+                st = "down";
+                since = 0L;
+            } else {
+                st = "up";
+            }
+        } else {
+            st = "down";
+            since = 0L;
+        }
+        // 二维码：NapCat 每次生成新码都会重写 qrcode.png，mtime 变了就说明
+        // 「该去扫码」或者「上一次的码已经过期被换新」，各提醒一次。
+        // 它和上线/掉线可以同一轮同时命中（刚掉线就出新码），所以允许叠加。
+        if (qrMt > 0 && qrMt != prevQr && !quiet) {
+            kind = kind.length() == 0 ? "qr" : (kind + ",qr");
+        }
+        return new String[] { st, String.valueOf(since), kind };
+    }
+
+    private static void putSt(JSONObject o, String st, long since) {
+        try {
+            o.put("st", st);
+            o.put("since", since);
+            o.put("ts", System.currentTimeMillis());
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 读 bots.json：先 home 后 cache，与界面同一口径；读不到返回 null（按默认端口探）。 */
+    private static JSONObject readBotsRoot(File qq) {
+        String s = StateIO.read(new File(qq, "bots.json"));
+        if (s == null) s = StateIO.read(new File(new File(qq, "cache"), "bots.json"));
+        if (s == null) return null;
+        try {
+            return new JSONObject(s);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 第一个实例的 napcatPort（非法/缺失回落 6099）。 */
+    private static int napcatPortOf(JSONObject root) {
+        try {
+            if (root != null) {
+                JSONArray arr = root.optJSONArray("bots");
+                if (arr != null) {
+                    for (int i = 0; i < arr.length(); i++) {
+                        JSONObject b = arr.optJSONObject(i);
+                        if (b == null) continue;
+                        int p = b.optInt("napcatPort", 0);
+                        if (p > 0 && p < 65536) return p;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return 6099;
+    }
+
+    /** AstrBot 控制台端口：顶层写的就用它，0/非法回落 6185（与 astrbotPort() 一致）。 */
+    private static int astrbotPortOf(JSONObject root) {
+        try {
+            if (root != null) {
+                int p = root.optInt("astrbotPort", 0);
+                if (p > 0 && p < 65536) return p;
+            }
+        } catch (Throwable ignored) {
+        }
+        return 6185;
+    }
+
+    /**
+     * 二维码文件的最近修改时间（0 = 没有）。
+     * 路径和界面的 qrFind() 一致：主实例在 $HOME/opt/QQ/...，多实例在
+     * $HOME/opt/qqbot-inst/<id>/QQ/...；两处都可能存在，取最新的那个。
+     */
+    private static long qrMtime(File files, JSONObject root) {
+        long best = 0L;
+        try {
+            File ub = new File(QqbotShell.homeDir(files), "ubuntu");
+            best = newer(best, new File(ub, "opt/QQ/resources/app/app_launcher/napcat/cache/qrcode.png"));
+            if (root != null) {
+                JSONArray arr = root.optJSONArray("bots");
+                if (arr != null) {
+                    for (int i = 0; i < arr.length() && i < 8; i++) {
+                        JSONObject b = arr.optJSONObject(i);
+                        if (b == null) continue;
+                        String id = safeId(b.optString("id", ""));
+                        if (id.length() == 0) continue;
+                        best = newer(best, new File(ub, "opt/qqbot-inst/" + id
+                                + "/QQ/resources/app/app_launcher/napcat/cache/qrcode.png"));
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return best;
+    }
+
+    private static long newer(long cur, File f) {
+        try {
+            if (f.isFile() && f.length() > 0) {
+                long m = f.lastModified();
+                return m > cur ? m : cur;
+            }
+        } catch (Throwable ignored) {
+        }
+        return cur;
+    }
+
+    /** 实例 id 白名单：只留字母数字和 _-，挡住 bots.json 里混进 ../ 之类的路径。 */
+    private static String safeId(String s) {
+        if (s == null) return "";
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < s.length() && b.length() < 32; i++) {
+            char ch = s.charAt(i);
+            if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')
+                    || (ch >= '0' && ch <= '9') || ch == '_' || ch == '-') {
+                b.append(ch);
+            }
+        }
+        return b.toString();
+    }
+
+    /**
+     * 状态检查线程：服务一开就跟着跑，20 秒后首次取样，之后每 45 秒一轮。
+     *
+     * 为什么单独一条线程，而不是塞进 QqbotGuardTask 的每轮收尾：自检循环遇到
+     * 「紧急下线 / 风控暂停 / 部署中 / 回退等待」会提前 return，而这些时候恰恰
+     * 最容易需要「掉线了」这条提醒；两种关心的事情不同，命也就别绑在一起。
+     */
+    public static final class StatusWatch implements Runnable {
+        private final Context ctx;
+        private volatile boolean run = true;
+
+        StatusWatch(Context c) {
+            ctx = c;
+        }
+
+        public void stop() {
+            run = false;
+        }
+
+        public void run() {
+            // 服务常被开机广播拉起，这时沙盒往往还在起，先等二十秒再取样
+            sleep(20);
+            while (run) {
+                statusTick(ctx);
+                sleep(STATUS_PERIOD);
+            }
+        }
+
+        private void sleep(int sec) {
+            for (int i = 0; i < sec && run; i++) {
+                try {
+                    Thread.sleep(1000L);
+                } catch (InterruptedException e) {
+                    return;
+                }
+            }
+        }
     }
 }

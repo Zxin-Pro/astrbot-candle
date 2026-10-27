@@ -59,7 +59,7 @@ sha_of() {
 restart_if_needed() {
   [ "$WAS_RUNNING" = "1" ] || return 0
   mkdir -p "$QQBOT_LOGS" 2>/dev/null
-  nohup setsid bash "$QQBOT_OPT/start-sandbox.sh" >> "$QQBOT_LOGS/supervisor.log" 2>&1 < /dev/null &
+  qq_spawn_detached "$QQBOT_LOGS/supervisor.log" bash "$QQBOT_OPT/start-sandbox.sh"
 }
 
 # 从快照整体回滚。回滚本身再失败也没别的办法了：只在 stderr 说明，stdout 仍由

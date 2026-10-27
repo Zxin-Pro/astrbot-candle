@@ -225,6 +225,9 @@ if [ "$SWEEP_ONLY" = "0" ]; then
   N3=$(sweep KILL)
   [ "$N3" -gt 0 ] 2>/dev/null && echo "[stop] 收尾清理残留进程 $N3 个"
   rm -f "$PIDF" 2>/dev/null
+  # 正常停止 = 不是被系统杀的：把启动标记一起删掉，否则下次启动会把这次
+  # 主动停止误记成「上次被系统终止」（qq_start_mark_check 只认 pid 在不在）。
+  qq_start_mark_clear
   rm -f "$QQBOT_CACHE/run"/*.pid 2>/dev/null
   if ! wait_ports_closed; then
     echo "[stop] 警告：端口仍被占用，可能有别的程序的进程占着 6099/6185/6199"

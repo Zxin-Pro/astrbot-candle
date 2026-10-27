@@ -200,8 +200,10 @@ fi
 if [ "$PRE_OFF" = 0 ] && [ -f "$QQBOT_HOME/deploy.done" ]; then
   if ! sup_alive; then
     echo "[reinstall] 容器没在跑，顺手启动沙盒"
-    nohup bash "$PREFIX/opt/qqbot/start-sandbox.sh" > "$QQBOT_CACHE/logs/supervisor.log" 2>&1 &
-    echo $! > "$QQBOT_HOME/supervisor.pid"
+    # 统一走 qq_spawn_detached（setsid + 子 shell 收掉作业通知）；原来这里没有 setsid，
+    # 而且写完 $! 又覆盖了一次 supervisor.pid —— 那个 pid 是拉起用的短命 bash，
+    # start-sandbox.sh 自己写进去的真 pid 反而可能被它盖掉。pid 交给 start-sandbox 写。
+    qq_spawn_detached "$QQBOT_CACHE/logs/supervisor.log" bash "$PREFIX/opt/qqbot/start-sandbox.sh"
     sleep 2 2>/dev/null || true
   fi
 fi

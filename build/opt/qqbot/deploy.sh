@@ -265,11 +265,12 @@ if [ -z "$FAILED" ]; then
     mkdir -p "$QQBOT_LOGS" "$QQBOT_PTMP"
     # setsid 让 proot 脱离本脚本所在进程组：本脚本若被调用方的 destroy()
     # 按进程组 kill 掉，同组的 proot 会被连带杀死。pid 由 start-sandbox.sh 自己写。
-    nohup setsid bash "$QQBOT_OPT/start-sandbox.sh" >> "$QQBOT_LOGS/supervisor.log" 2>&1 < /dev/null &
-    # 从本 shell 的作业表里摘掉。不摘的话脚本收尾时 bash 会补一行
-    # 「deploy.sh: line 290: <pid> Killed」——那是作业状态通知，不是错误，
-    # 但错误报告里看着就像「服务刚启动就被杀了」。真死假死由下面的 kill -0 判定。
-    disown %+ 2>/dev/null || disown 2>/dev/null || true
+    # 这里必须走 qq_spawn_detached，不能再裸 nohup + disown：子进程被系统杀掉时
+    # bash 会在下一行之前把「deploy.sh: line N: <pid> Killed nohup setsid bash ...」
+    # 打进部署日志（disown 来不及摘），上传后就变成「服务刚启动就被杀」的假警报 ——
+    # 35 份真机报告里 14 份都有这一行。qq_spawn_detached 把作业塞进立刻退出的子 shell，
+    # 作业表随子 shell 消亡，通知不会再打出来。真死假死仍由下面的 kill -0 判定。
+    qq_spawn_detached "$QQBOT_LOGS/supervisor.log" bash "$QQBOT_OPT/start-sandbox.sh"
     # start-sandbox.sh 要先进 proot 再写 pid，慢的机器上 3 秒不够 —— 原来这里直接 cat，
     # 结果日志里打出「服务已启动（supervisor pid ）」，pid 是空的。等文件出现（最多 12 秒）。
     SUP=""

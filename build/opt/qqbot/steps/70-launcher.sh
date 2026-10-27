@@ -17,7 +17,7 @@ if [ -f "$QQBOT_HOME/supervisor.pid" ]; then
 fi
 # setsid 让 proot 脱离当前 shell 的进程组（进程组被 kill 时不会被连带杀死）；
 # pid 由 start-sandbox.sh 自己写，避免 setsid fork 后 $! 指向错进程
-nohup setsid bash "$QQBOT_OPT/start-sandbox.sh" > "$QQBOT_LOGS/supervisor.log" 2>&1 < /dev/null &
+qq_spawn_detached "$QQBOT_LOGS/supervisor.log" bash "$QQBOT_OPT/start-sandbox.sh"
 sleep 5
 NEWPID=$(cat "$QQBOT_HOME/supervisor.pid" 2>/dev/null)
 if [ -n "$NEWPID" ] && kill -0 "$NEWPID" 2>/dev/null; then
