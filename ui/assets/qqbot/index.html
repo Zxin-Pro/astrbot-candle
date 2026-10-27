@@ -309,7 +309,7 @@ header.scrolled::after{ opacity: 1; }
 .mark{
   flex: none;
   width: 40px; height: 40px;
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
   background: rgba(255,255,255,.5);
   box-shadow:
@@ -628,7 +628,7 @@ input[type="text"], input[type="number"], input[type="password"], input:not([typ
   color: var(--label);
   background: var(--field-bg);
   border: .5px solid var(--field-line);
-  border-radius: 13px;
+  border-radius: var(--btn-r);   /* 1.3.4-beta.6：13 → 22，跟按钮同一档大 R 角 */
   outline: none;
   -webkit-appearance: none;
   appearance: none;
@@ -682,7 +682,7 @@ input::placeholder, textarea::placeholder{ color: var(--label-3); }
   display: flex;
   padding: 3px;
   gap: 2px;
-  border-radius: 12px;
+  border-radius: 999px;   /* 1.3.4-beta.6：分段控件改成胶囊 */
   background: var(--fill-2);
   box-shadow: inset 0 0 0 .5px var(--sep);
 }
@@ -694,7 +694,7 @@ input::placeholder, textarea::placeholder{ color: var(--label-3); }
   font-weight: 500;
   color: var(--label-2);
   background: transparent;
-  border-radius: 9px;
+  border-radius: 999px;
   box-shadow: none;
   transition: color var(--dur-fast) var(--ease), background-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
@@ -1054,7 +1054,7 @@ main > #riskBar, main > #powBar{ margin-bottom: var(--gap); }
   display: grid;
   place-items: center;
   width: 30px; height: 30px;
-  border-radius: 9px;
+  border-radius: 12px;
   background: var(--fill-2);
   color: var(--label);
 }
@@ -1079,7 +1079,7 @@ main > #riskBar, main > #powBar{ margin-bottom: var(--gap); }
   flex: none;
   width: 30px; height: 30px;
   display: grid; place-items: center;
-  border-radius: 9px;
+  border-radius: 12px;
   background: color-mix(in srgb, var(--accent) 15%, transparent);
   color: var(--accent);
 }
@@ -2378,26 +2378,26 @@ pre{
 }
 
 .tile{
-  border-radius: 16px;
+  border-radius: var(--r-lg);
   background: color-mix(in srgb, var(--fill-1) 70%, transparent);
   box-shadow: inset 0 .5px 0 rgba(255,255,255,.5);
 }
 .qk{
-  border-radius: 18px;
+  border-radius: var(--r-lg);
   background: color-mix(in srgb, var(--glass-tint-c) calc(var(--glass-alpha) * 34%), transparent);
   box-shadow: inset 0 .5px 0 rgba(255,255,255,.6), inset 0 0 0 .5px var(--glass-line);
   -webkit-backdrop-filter: blur(calc(var(--glass-blur) * .9)) saturate(170%);
   backdrop-filter: blur(calc(var(--glass-blur) * .9)) saturate(170%);
 }
 .qk .qi{
-  border-radius: 12px;
+  border-radius: 20px;
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 /* 卡片里嵌的白框（二维码、日志框）别再自带一层厚阴影 */
 .qbox, .rebox, .tokbox, .stgbar{
   box-shadow: inset 0 0 0 .5px var(--sep);
-  border-radius: 14px;
+  border-radius: var(--mi-inner);
 }
 
 
@@ -2508,7 +2508,7 @@ body{
   --r-lg: 28px;
   --mi-card: 28px;    /* 卡片 */
   --mi-hero: 32px;    /* 首屏大卡 */
-  --mi-inner: 22px;   /* 卡内小块 */
+  --mi-inner: 24px;   /* 卡内小块（1.3.4-beta.6：22 → 24，卡内块更圆） */
   --mi-ctl: 22px;     /* 按钮 / 输入框 */
   --mi-bar: 26px;     /* 提示条 */
   --mi-nav: 32px;     /* 底栏胶囊 */
@@ -2517,11 +2517,14 @@ body{
 .card{ border-radius: var(--mi-card); }
 .card.hero{ border-radius: var(--mi-hero); }
 #riskBar, #powBar, .bootbar, .notichip{ border-radius: var(--mi-bar); }
-.tile{ border-radius: var(--mi-inner); }
+/* 1.3.4-beta.6：磁贴与快捷键从 22（--mi-inner）提到 28（--r-lg）—— 用户嫌「还是方的」，
+   磁贴是 86×86 的大块，22px 只占 26%，和旁边 44px 高的胶囊按钮摆在一起就显得方。
+   统一到 28 以后整页是同一套大 R 角。内嵌图标块跟着从 16 提到 20。 */
+.tile{ border-radius: var(--r-lg); }
 .rebox{ border-radius: var(--mi-inner); }
-.qk{ border-radius: var(--mi-inner); }
-.qk .qi{ border-radius: var(--r-sm); }
-.lkic{ border-radius: var(--r-xs); }
+.qk{ border-radius: var(--r-lg); }
+.qk .qi{ border-radius: 20px; }
+.lkic{ border-radius: 16px; }
 .tokbox{ border-radius: var(--r-sm); }
 .qbox, .qimg, .qrwrap{ border-radius: var(--mi-inner); }
 button.small{ border-radius: var(--mi-ctl); }
@@ -2874,13 +2877,21 @@ html.devnotelock{ overflow: hidden; }
    不加 !important 会被 base 的 background 简写盖回去。这里只钉 background-image 与
    box-shadow 两条属性，背景色 / 圆角 / 尺寸仍按各自的类走。
    .sw（主题色球）和 .tgl（开关）除外：那不是按钮，保留它自己的颜色与立体感。 */
-button, button.primary, button.danger, button.ok,
+button:not(.sw):not(.tgl), button.primary, button.danger, button.ok,
 button.small, button.small.primary, button.small.danger, button.small.ok,
 button.tiny, button.quiet, .iconbtn, .xdel, .bclose, .dots, .dtgl,
 .linkbtn, .moretoggle, .rowmore, .rowbtn, .qk, .mcbtn, .seg button{
   background-image: none !important;
   box-shadow: none !important;
 }
+/* 1.3.4-beta.6 修：上面那条注释一直写着「.sw / .tgl 除外」，选择器却没真的排除。
+   色球是 <button class="sw">，于是被 background-image:none !important 清成空圈、
+   选中环（.sw.on 的 box-shadow）也被一起清掉。这里显式把两者的渐变与立体感还原。 */
+.sw{
+  /* 颜色由 JS 的内联 background / background-image 提供，这里只补回被清掉的立体感 */
+  box-shadow: inset 0 0 0 .5px rgba(0,0,0,.16), 0 1px 2px rgba(17,24,39,.10);
+}
+.sw.on{ box-shadow: 0 0 0 2px var(--page), 0 0 0 4px var(--accent); }
 
 button{
   border: 1px solid var(--line);
@@ -2896,8 +2907,12 @@ button{
     opacity var(--btn-dur) var(--btn-ease);
 }
 
-/* 次按钮（默认档）：透明底 + 1px 描边。 */
-button:hover{ background-color: var(--fill-1); }
+/* 次按钮（默认档）：透明底 + 1px 描边。
+   1.3.4-beta.6：hover 一律收进「真的有指针悬停」的媒体查询 —— 触摸屏上 :hover
+   在抬手后不会消失，底栏/磁贴会残留一块灰底（用户截图里就是它）。 */
+@media (hover: hover) and (pointer: fine){
+  button:hover{ background-color: var(--fill-1); }
+}
 button:active{ transform: scale(.985); background-color: var(--fill-2); box-shadow: none; }
 
 /* 键盘导航才出现的焦点环，鼠标/触摸不打扰。 */
@@ -2918,7 +2933,9 @@ button.primary{
   background-color: var(--accent);
   border-color: var(--accent);
 }
-button.primary:hover{ background-color: color-mix(in srgb, var(--accent) 94%, #fff); }   /* 提亮 6% */
+@media (hover: hover) and (pointer: fine){
+  button.primary:hover{ background-color: color-mix(in srgb, var(--accent) 94%, #fff); }   /* 提亮 6% */
+}
 button.primary:active{ background-color: color-mix(in srgb, var(--accent) 92%, #000); }  /* 压暗 8% */
 
 /* ---------------------------------------------------------------- 危险 / 成功 */
@@ -2928,7 +2945,9 @@ button.danger{
   background-color: color-mix(in srgb, var(--danger) 10%, transparent);
   border-color: color-mix(in srgb, var(--danger) 26%, transparent);
 }
-button.danger:hover{ background-color: color-mix(in srgb, var(--danger) 15%, transparent); }
+@media (hover: hover) and (pointer: fine){
+  button.danger:hover{ background-color: color-mix(in srgb, var(--danger) 15%, transparent); }
+}
 button.danger:active{ background-color: color-mix(in srgb, var(--danger) 20%, transparent); }
 
 button.ok{
@@ -2936,7 +2955,9 @@ button.ok{
   background-color: color-mix(in srgb, var(--ok) 12%, transparent);
   border-color: color-mix(in srgb, var(--ok) 28%, transparent);
 }
-button.ok:hover{ background-color: color-mix(in srgb, var(--ok) 17%, transparent); }
+@media (hover: hover) and (pointer: fine){
+  button.ok:hover{ background-color: color-mix(in srgb, var(--ok) 17%, transparent); }
+}
 button.ok:active{ background-color: color-mix(in srgb, var(--ok) 22%, transparent); }
 
 /* ---------------------------------------------------------------- 幽灵 / 文字按钮 */
@@ -3020,14 +3041,14 @@ button.small, button.tiny{ border-radius: var(--btn-r-sm); }
 /* ---------------------------------------------------------------- 快捷方块 / 卡片行 */
 .qk{
   border: 1px solid var(--line);
-  border-radius: var(--mi-inner);
+  border-radius: var(--r-lg);   /* 1.3.4-beta.6：22 → 28，和磁贴/卡片统一成大 R 角 */
   background-color: var(--fill-1);
   box-shadow: none;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
 .qk:active{ transform: scale(.98); background-color: var(--fill-2); }
-.qk .qi{ background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.qk .qi{ border-radius: 20px; background: color-mix(in srgb, var(--accent) 12%, transparent); }
 
 .mcbtn{
   border: 1px solid transparent;
@@ -3045,11 +3066,11 @@ button.small, button.tiny{ border-radius: var(--btn-r-sm); }
   background-color: var(--fill-1);
   border: 1px solid var(--line);
   padding: 2px;
-  border-radius: var(--btn-r-sm);
+  border-radius: var(--r-full);   /* 1.3.4-beta.6：分段控件整体做成胶囊 */
 }
 .seg button{
   border: 0;
-  border-radius: calc(var(--btn-r-sm) - 2px);
+  border-radius: var(--r-full);
   background-color: transparent;
   color: var(--label-2);
 }
@@ -3133,10 +3154,28 @@ nav button:active{ transform: none; background-color: transparent; }
 
 /* b10-nav 反馈：.btns > button 与 .rowbtn 被 base 里的
    `.btns > button, .rowbtn{ border-radius: var(--mi-ctl); }`（--mi-ctl: 22px）压住（那边权重 (0,1,1) 高于 button）。
-   这里用同等权重、靠后出现收回圆角：普通按钮 var(--btn-r)=22px（小米大 R 角），
-   小控件（.rowbtn / button.small）var(--btn-r-sm)=16px。不动 --mi-ctl 这个全局令牌。 */
+   这里用同等权重、靠后出现收回圆角：普通按钮 var(--btn-r)=22px（小米大 R 角）。
+   1.3.4-beta.6：.rowbtn 也从 16px 提到 22px，理由见下面那段收口。 */
 .btns > button{ border-radius: var(--btn-r); }
-.rowbtn{ border-radius: var(--btn-r-sm); }
+.rowbtn{ border-radius: var(--btn-r); }
+
+/* ---------------------------------------------------------------- 1.3.4-beta.6 圆角收口
+   用户反馈「有些按钮还是方的」。根因不是令牌，而是历史遗留的两套圆角并存：
+   同一条按钮行里，button.primary 是 22px、button.small 却是 16px，并排看就是一圆一方；
+   输入框、日志 pre、行内小开关也各留着自己的 13/16px。这里在样式表最后统一收口成
+   一套大 R 角，权重大致相同但位置最靠后，能盖住前面所有散落的写法。 */
+button.small, button.tiny, .moretoggle, .rowmore, .rowbtn,
+.dtgl, .dots, .xdel, .bclose, .linkbtn, .iconbtn{
+  border-radius: var(--btn-r);
+}
+/* 输入类控件（设置页那个 337×46 的输入框原来是 13px，一眼就方） */
+input, select, textarea{ border-radius: var(--btn-r); }
+/* 日志/指令的 pre 块、复制框这类「段落级」小格子跟卡内块同一档 */
+pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
+/* 小图标底片：40×40 / 36×36 / 30×30 */
+.mark{ border-radius: 16px; }
+.lkic{ border-radius: 18px; }
+.bi{ border-radius: 12px; }
 </style>
 </head>
 <body>
@@ -4357,6 +4396,20 @@ try {
   else if (themeMQ && themeMQ.addListener) themeMQ.addListener(function(){ if (themePref() === "auto") themePaint(); });
 } catch (e) {}
 
+/* 1.3.4-beta.6：色球预览要「看得出颜色」。
+   背景预设和背景色调本身是刻意压到 .10–.20 的淡色调 —— 铺满整屏刚好，缩成 42px 的
+   小球就成了一颗白球，用户看到的就是「色块是空的」。这里只放大预览用的 alpha
+   （约 3.4 倍、封顶 .72），页面上真正铺开的那层仍然是原来的淡色调。 */
+function previewBoost(css){
+  if (!css) return css;
+  return String(css).replace(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*(0?\.\d+|1)\)/g, function(m, r, g, b, a){
+    var v = parseFloat(a);
+    if (!(v > 0)) return "rgba(" + r + "," + g + "," + b + ",0)";
+    v = Math.min(0.72, v * 3.4);
+    return "rgba(" + r + "," + g + "," + b + "," + v.toFixed(2) + ")";
+  });
+}
+
 function presetCss(id){
   /* 浅色主题必须取 lcss：六套预设原本只有深色底，浅色下直接用会整屏发黑 */
   var dark = themeDark();
@@ -4457,7 +4510,7 @@ function renderPresets(){
   for (var j = 0; j < kids.length; j++) {
     var pid = kids[j].getAttribute("data-arg");
     for (var k = 0; k < BG_PRESETS.length; k++) {
-      if (BG_PRESETS[k].id === pid) { kids[j].style.backgroundImage = presetCss(pid); break; }
+      if (BG_PRESETS[k].id === pid) { kids[j].style.backgroundImage = previewBoost(presetCss(pid)); break; }
     }
   }
 }
@@ -5150,7 +5203,7 @@ function renderTints(){
   var h = [];
   for (var i = 0; i < TINTS.length; i++) {
     var p = TINTS[i];
-    h.push('<div class="swwrap"><button class="sw' + (p.id === cur ? " on" : "") + '" data-act="bgtint" data-arg="' + p.id + '" aria-label="' + esc(p.name) + '" style="background-image:' + tintCss(p.id) + '"></button><span class="swname">' + esc(p.name) + "</span></div>");
+    h.push('<div class="swwrap"><button class="sw' + (p.id === cur ? " on" : "") + '" data-act="bgtint" data-arg="' + p.id + '" aria-label="' + esc(p.name) + '" style="background-image:' + previewBoost(tintCss(p.id)) + '"></button><span class="swname">' + esc(p.name) + "</span></div>");
   }
   setHtml(box, h.join(""));
 }
@@ -5372,6 +5425,10 @@ function showTab(t){
   el("tab-" + t).classList.add("on");
   var bs = document.querySelectorAll("nav button");
   for (var j = 0; j < bs.length; j++) bs[j].classList.toggle("on", bs[j].getAttribute("data-tab") === t);
+  /* 1.3.4-beta.6：切页时顺手清掉拖动残留的 .near 高亮。之前只有 pointerup / pointercancel
+     会清，一旦手势被系统打断（来电、侧边返回手势、WebView 失焦），那块「半透明高亮」
+     就会一直挂在原来那个页签上。 */
+  try { navClearNear(); } catch (e) {}
   try { navSync(); } catch (e) {}   /* 滑块跟着选中页签走 */
   /* 设置页不在底部导航里，用顶栏那个「设置」按钮高亮表示当前在设置页；
      nav 的 .on 逻辑不动（t === "settings" 时上面那个循环会清掉全部 nav 高亮）。 */
@@ -5642,6 +5699,21 @@ function navInit(){
   s.nav.addEventListener("pointerup", navUp);
   s.nav.addEventListener("pointercancel", navCancel);
   s.nav.addEventListener("contextmenu", function(e){ e.preventDefault(); });
+  /* 1.3.4-beta.6：WebView 被系统打断（来电、侧滑返回、切后台）时不会再收到 pointerup /
+     pointercancel，dragging 和 .near 就留在原地，看起来像底栏「粘」着一块高亮。
+     窗口失焦和页面转后台都当成一次取消处理。 */
+  function navAbort(){
+    try { navCancel(); } catch (e) {}
+    try { navClearNear(); } catch (e2) {}
+    /* 滑块可能被拖到半路就断电了：无条件再同步一次，让它回到当前页签上 */
+    try { navSync(); } catch (e3) {}
+  }
+  window.addEventListener("blur", navAbort);
+  document.addEventListener("visibilitychange", function(){
+    if (document.hidden) navAbort();
+  });
+  /* 页面重新可见时也可能停在半路（部分 WebView 不派发 pointercancel） */
+  window.addEventListener("pageshow", function(){ setTimeout(navAbort, 60); });
   /* pointerup 已经提交过页签，紧随其后的 click 要吞掉，免得切两次 */
   s.nav.addEventListener("click", function(e){
     if (s.suppress){ e.preventDefault(); e.stopPropagation(); }

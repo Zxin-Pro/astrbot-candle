@@ -17,6 +17,52 @@
 
 ---
 
+## [1.3.4-beta.6] - 2026-10-27
+
+> **测试版**：这一版照真机截图收拾界面——外观页的配色球只剩一个空圈、点完底栏会留一块半透明高亮、
+> 主页上还有一批方角按钮没跟着改。三处全部修掉，按钮统一到 22px 大圆角。
+> `versionCode` `10304`，可直接覆盖 1.3.4-beta.5 及更早版本。
+
+### 修复
+
+- **外观页的配色球全是空圈**：一条「扁平化」规则 `button, .qk, .mcbtn, .seg button { background-image: none !important;
+  box-shadow: none !important }` 本意只清掉按钮的渐变塑料感，注释里还写着「`.sw` 色球与 `.tgl` 开关除外」，
+  但选择器并没有真的排除——色球本身就是 `button.sw`，于是 JS 写进去的渐变被整条清掉，只剩一圈 1px 描边，
+  `.sw.on` 的选中双环也一起没了。现在首个选择器改成 `button:not(.sw):not(.tgl)`，并给色球单独补回
+  inset 细描边与选中双环（2px 页面底 + 4px 强调色）。
+- **八套背景色调 / 六套渐变预设的色球看着像「没上色」**：这两组给的本来就是 `.10`–`.20` 的极淡色
+  （它们套的是整页背景），缩到 42px 的球里就是一个白球。新增 `previewBoost()` 只在**预览色球**里
+  把 alpha 乘 3.4（封顶 0.72），点下去套用的仍是原值，页面背景不会跟着变浓。
+- **点完底栏和磁贴会留一块半透明高亮**：`button:hover` / `button.primary:hover` / `button.danger:hover` /
+  `button.ok:hover` 四条规则没包媒体查询，WebView 里手指点过之后 `:hover` 会一直粘着，
+  于是底栏按钮和磁贴底下留一块灰底、跟蓝色滑块叠在一起。现在四条全部收进
+  `@media (hover: hover) and (pointer: fine)`，触摸屏上不再产生悬停态。
+- **底栏滑块与高亮可能卡住不回来**：拖拽只挂了 `pointerup` / `pointercancel`，手势被系统打断
+  （来电、切后台、锁屏）时收不到这两个事件，拖拽态与 `.near` 高亮就留在屏上。
+  现在 `window` 的 `blur`、`visibilitychange`（页面隐藏）、`pageshow` 都会走
+  `navAbort()`（`navCancel()` + `navClearNear()` + `navSync()`），切页签时也会先清一次 `.near`。
+
+### 变更
+
+- **还带方角的按钮全部收到 22px**：beta.5 只改了主按钮和卡片，`small` / `tiny` / `rowbtn` / `moretoggle` /
+  `rowmore` / `dtgl` / `dots` / `xdel` / `bclose` / `linkbtn` / `iconbtn` 仍是 16px 甚至 12px，
+  跟旁边的 22px 主按钮并排就显得「方」。现在统一 `--btn-r`（22px）；输入框 / 下拉框 / 多行文本同样 22px；
+  `pre` 与 `.tokbox` / `.qimg` / `.qrwrap` / `.rebox` 用卡内块 24px。
+- **主页四个快捷块与磁贴改 28px**：`.qk`（86×86 的快捷块）原先被后面一条 `border-radius: var(--mi-inner)`
+  压回 24px——这就是截图里「有些按钮还是方的」的正主；现在 `.qk` / `.tile` 统一到 `--r-lg` 28px，
+  块里的小图标 20px。
+- **更多页的分段控件变胶囊**：`.seg` 容器与内部按钮改 `--r-full`，深浅两套主题下都不再切出一块方底。
+- 卡内小块令牌 `--mi-inner` 22px → 24px；`.lkic` 18px、`.mark` 16px、`.bi` 12px、`.ri` 12px。
+
+### 说明
+
+- `versionCode` 保持 `10304`，可直接覆盖 1.3.4-beta.5 / beta.4 / beta.3 / beta.2 / beta.1 与 1.3.3 正式版，签名未变。
+- 自动化验收：`out/b134b5_verify.py` 界面 **32/32 PASS**（A 组色球填充、A3 卡片 28px、A5 按钮圆角与 ≥44px
+  命中区、A6 深色语义色都在内，可见按钮 50 个、圆角违规 0）。脚本里 `btn_violations()` 的 28px 白名单
+  随之加了 `qk` / `tile` 两个卡片类。
+- 换外观后如果还看到旧样子，是 WebView 缓存：设置里「清理缓存」或杀掉重开一次即可。
+- 真机才能看准的仍是那几项：各家 ROM 的挖孔坐标与状态栏遮挡、长按 700ms 微调的手感、大 R 角落在真屏上的观感。
+
 ## [1.3.4-beta.5] - 2026-10-27
 
 > **测试版**：这一版照用户五条反馈重做——扫完码还在显示二维码、按钮与卡片改成小米式大 R 角、
