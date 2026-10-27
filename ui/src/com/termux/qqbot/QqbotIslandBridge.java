@@ -1,15 +1,12 @@
 package com.termux.app;
 
 import android.app.Activity;
-import android.app.Notification;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.BatteryManager;
 import android.os.Build;
-import android.os.Handler;
-import android.os.Looper;
 import android.provider.Settings;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
@@ -17,23 +14,21 @@ import android.widget.Toast;
 import org.json.JSONObject;
 
 /**
- * window.AndroidIsland —— 「实时更新」（Android 16 Live Updates）的 JS 桥（v1.3.4-beta.4）。
+ * window.AndroidIsland —— 灵动岛 v3「摄像头胶囊」的 JS 桥（v1.3.4-beta.5）。
  *
- * 这一版把 beta.3 的悬浮胶囊整份删掉了：那是个画在所有应用上层的悬浮窗，只有长按拖动、
- * 贴边吸附这类自己实现的手感，系统根本不认它是「灵动岛」，用户一眼就看出是假的。
- * 现在改成系统自己的形态——一条 IMPORTANCE_LOW 的常驻通知，在 Android 16 上由系统提升成
- * 状态栏芯片（短文案 + 实时进度），14/15 上就是一条安静的常驻通知。
+ * 用户的原话是「系统级交互，在摄像头那边的那种」：iPhone 灵动岛、HyperOS 胶囊那种。
+ * 所以主体重新变成覆盖层——QqbotIslandCapsule 用 TYPE_APPLICATION_OVERLAY 在挖孔位置
+ * 画一枚黑胶囊，别的应用上也看得见。beta.4 那套 Android 16「实时更新」通知不再当主角，
+ * 只留作兜底（胶囊建不起来时，至少还有一条通知告诉你状态）。
  *
- * 所以本类不再建窗、不再要 SYSTEM_ALERT_WINDOW：桥只负责三件事——
- *   ① 告诉界面「这台设备能不能看到芯片」「用户有没有允许提升」「开关开着没」；
- *   ② 把用户带到系统设置页（36+ 是「实时更新」开关页，老系统是应用通知设置页）；
- *   ③ 发一条 5 秒就撤的演示通知，让用户点一下就知道长什么样。
- *
- * 真正发通知的是 QqbotGuardService（通知的生命周期必须等于前台服务的生命周期，
- * 否则服务被杀、通知还挂着，就成了一条点不开的僵尸）。
+ * 桥只负责四件事，一律不自己建窗（窗口归 QqbotGuardService 持有，服务没了窗也必须没）：
+ *   ① 告诉界面：这台设备能不能建胶囊（canPromote）、授权了没有（granted）、开关开着没；
+ *   ② 开关（set）：写偏好，然后让服务那边同步建/拆胶囊 + 刷新通知兜底；
+ *   ③ 带用户去系统设置（openSettings）：优先「显示在其他应用上层」，已授权再去通知设置；
+ *   ④ 演示（test）：在摄像头位置挂 5 秒胶囊，让用户点一下就知道长什么样。
  *
  * 纯逻辑集中在本文件 ISLAND-PURE 标记块里：不碰任何 Android 类，
- * 能被 out/b4_island_check.py 抠出来在普通 JVM 上跑回归。改这里必须同步改测试。
+ * 能被 out/b134b5_island_check.py 抠出来在普通 JVM 上跑回归。改这里必须同步改测试。
  *
  * 旧包兼容：界面必须 typeof window.AndroidIsland !== "undefined" 才调它。
  * 本类所有方法自己再包一层 try/catch —— 桥方法抛异常在 JS 侧会变成一句看不懂的报错。
@@ -50,9 +45,7 @@ public class QqbotIslandBridge {
     /** 实时更新渠道与通知 ID（契约：qqbot_live / 42330）。 */
     public static final String CH_LIVE = "qqbot_live";
     public static final int LIVE_ID = 42330;
-    /** 演示通知单独一个 ID：不能和真状态条抢同一个槽位，否则点一下「试一下」会把真状态顶掉。 */
-    public static final int TEST_ID = 42331;
-    /** 演示通知活多久（毫秒）。 */
+    /** 演示胶囊活多久（毫秒）：够用户看清楚，又不至于一直挡在摄像头那儿。 */
     private static final long TEST_TTL_MS = 5000L;
 
     private final Activity act;
@@ -162,13 +155,14 @@ public class QqbotIslandBridge {
 
     /**
      * 三态口径（界面卡片直接照着显示）：
-     *   off      —— 用户把开关关了，什么都不发；
-     *   promoted —— 36+ 且系统允许，会出现状态栏芯片；
-     *   plain    —— 开关开着但只能发普通常驻通知（老系统 / 用户关了实时更新 / ROM 不支持）。
+     *   off      —— 用户把开关关了，胶囊和通知都不发；
+     *   capsule  —— 胶囊正挂在摄像头位置（真·灵动岛在跑，这是目标状态）；
+     *   promoted —— 只能退化成通知兜底（没授权 / 建不了窗 / 服务没跑起来）。
+     * 名词沿用契约：promoted 指「通知那条路」，不再特指 Android 16 的芯片。
      */
-    static String modeOf(boolean enabled, boolean canPromote) {
+    static String modeOf(boolean enabled, boolean capsuleShown) {
         if (!enabled) return "off";
-        return canPromote ? "promoted" : "plain";
+        return capsuleShown ? "capsule" : "promoted";
     }
 
     /**
@@ -304,17 +298,24 @@ public class QqbotIslandBridge {
         }
     }
 
-    /** 兼容 beta.3 的旧界面：那时候叫「有没有悬浮窗权限」，现在等同 canPromote()。 */
+    /** 「显示在其他应用上层」权限：胶囊就靠它活着。旧界面叫它 granted。 */
     @JavascriptInterface
     public String granted() {
-        return canPromote();
+        try {
+            return QqbotIslandCapsule.granted(act) ? "true" : "false";
+        } catch (Throwable t) {
+            return "false";
+        }
     }
 
-    /** 现在能不能真的上状态栏芯片（36+ 且用户允许）。 */
+    /**
+     * 现在能不能建胶囊（已授权 + SDK 够 + WindowManager 拿得到）。
+     * 方法名沿用契约里的 canPromote，语义已经不是「能不能发实时更新通知」了。
+     */
     @JavascriptInterface
     public String canPromote() {
         try {
-            return canPromoteNow(act) ? "true" : "false";
+            return QqbotIslandCapsule.canHostNow(act) ? "true" : "false";
         } catch (Throwable t) {
             return "false";
         }
@@ -360,26 +361,30 @@ public class QqbotIslandBridge {
 
     /**
      * 界面渲染用的快照（契约 §3.1）：
-     * {"available":true,"canPromote":false,"sdk":36,"enabled":true,
-     *  "code":"run","text":"运行中","battery":80,"mode":"promoted"}
-     * 额外给 granted（= canPromote，兼容旧界面）与 whitelist（省电白名单有没有开）。
+     * {"available":true,"canPromote":true,"sdk":34,"enabled":true,
+     *  "code":"run","text":"运行中","battery":80,"mode":"capsule"}
+     * 额外给 granted（悬浮窗权限）与 shown（胶囊此刻是否在屏上），
+     * whitelist 是省电白名单有没有开（只读，不弹窗）。
      */
     @JavascriptInterface
     public String info() {
         JSONObject o = new JSONObject();
         try {
             boolean en = isEnabled(act);
-            boolean cp = canPromoteNow(act);
-            o.put("available", notifierOk(act));
-            o.put("canPromote", cp);
+            boolean host = QqbotIslandCapsule.canHostNow(act);
+            boolean shown = QqbotIslandCapsule.isShown();
+            o.put("available", notifierOk(act) || host);
+            o.put("canPromote", host);
             o.put("sdk", Build.VERSION.SDK_INT);
             o.put("enabled", en);
             o.put("code", code);
             o.put("text", labelOf(code));
             o.put("battery", batteryPct());
-            o.put("mode", modeOf(en, cp));
-            // 兼容与补充：旧界面读 granted；whitelist 是省电白名单（只读，不弹窗）
-            o.put("granted", cp);
+            o.put("mode", modeOf(en, shown));
+            o.put("granted", QqbotIslandCapsule.granted(act));
+            o.put("shown", shown);
+            // 通知兜底那条路：36+ 且用户允许才会被系统提升成状态栏芯片（不影响胶囊）
+            o.put("promoted", canPromoteNow(act));
             o.put("whitelist", QqbotGuardService.batteryOk(act));
         } catch (Throwable t) {
             try {
@@ -393,8 +398,8 @@ public class QqbotIslandBridge {
     }
 
     /**
-     * 跳到系统的「实时更新」开关页（36+）；老系统只能跳应用通知设置页。
-     * 用户在这里能单独关掉本应用的实时更新，而不必把整条通知关掉。
+     * 跳到该去的那一页：没授权就先去「显示在其他应用上层」（胶囊靠它），
+     * 已经授权了才知道用户想改什么——直接给通知设置（36+ 是实时更新开关页）。
      */
     @JavascriptInterface
     public void openSettings() {
@@ -411,11 +416,11 @@ public class QqbotIslandBridge {
         openSettings();
     }
 
-    /** 发一条 5 秒后自动撤掉的演示通知：用户点一下就知道「实时更新」长什么样。 */
+    /** 演示：在摄像头位置挂 5 秒胶囊（没授权就先带用户去授权页）。 */
     @JavascriptInterface
     public void test() {
         try {
-            act.runOnUiThread(new UiTest(act));
+            act.runOnUiThread(new UiDemo());
         } catch (Throwable t) {
             // 同上，投递失败就算了
         }
@@ -447,31 +452,67 @@ public class QqbotIslandBridge {
         }
     }
 
-    /** 真正干活的：写偏好 → 让服务立刻按新值重发或撤销。 */
+    /** 真正干活的：写偏好 → 让服务立刻建/拆胶囊，并重发或撤销通知兜底。 */
     private void applyOn(boolean on) {
         try {
             setEnabled(act, on);
+            // 胶囊与通知是两条路，两边都要同步：胶囊建不起来时，通知至少还在说状态
+            QqbotIslandCapsule.sync(act);
             // 服务的「最近状态键」要清掉，否则 postIsland 会认为「没变过」而跳过这次重发
             QqbotGuardService.islandRepost(act);
             if (!on) {
-                toast("实时更新已关闭");
+                toast("灵动岛已关闭");
+                return;
+            }
+            if (!QqbotIslandCapsule.granted(act)) {
+                toast("已打开：还需要允许「显示在其他应用上层」才会出现胶囊");
+                return;
+            }
+            if (!QqbotIslandCapsule.canHostNow(act)) {
+                toast("已打开：这台设备建不了悬浮窗（需要 Android 6 以上）");
                 return;
             }
             if (!QqbotGuardService.guardRunning) {
-                // 通知的载体是前台服务：服务没跑就没有状态可发，不自动去拉沙盒（那是另一个动作）
-                toast("已打开：守护服务运行时会显示运行状态");
+                // 胶囊的载体是前台服务：服务没跑就没人驱动状态，不自动去拉沙盒（那是另一个动作）
+                toast("已打开：守护服务运行时会显示胶囊");
                 return;
             }
-            if (canPromoteNow(act)) {
-                toast("已打开：Android 16 会把它显示在状态栏上");
-            } else if (Build.VERSION.SDK_INT >= 36) {
-                toast("已打开：还没允许实时更新，可以去设置里开");
-            } else {
-                toast("已打开：这台设备只显示为通知栏常驻条");
-            }
+            toast("已打开：胶囊会出现在摄像头位置");
         } catch (Throwable t) {
-            toast("设置实时更新失败：" + t);
+            toast("设置灵动岛失败：" + t);
         }
+    }
+
+    /** 「显示在其他应用上层」的设置页（带 package: 直接落到本应用那一行）。 */
+    private Intent overlayIntent() {
+        Intent i = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION);
+        i.setData(android.net.Uri.parse("package:" + act.getPackageName()));
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        return i;
+    }
+
+    /** 先去要权限，已经给了才轮到通知设置那一页。 */
+    private void gotoPermissionSettings() {
+        String pkg = act.getPackageName();
+        if (!QqbotIslandCapsule.granted(act)) {
+            try {
+                act.startActivity(overlayIntent());
+                return;
+            } catch (Throwable ignored) {
+                // 少数 ROM 没有这一页：退回应用详情页，权限在那里也能找到
+                try {
+                    Intent d = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                    d.setData(android.net.Uri.parse("package:" + pkg));
+                    d.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    act.startActivity(d);
+                    return;
+                } catch (Throwable ignored2) {
+                    toast("这个系统没有权限设置页，请手动到设置里找「显示在其他应用上层」");
+                    return;
+                }
+            }
+        }
+        gotoNotificationSettings();
     }
 
     /** 36+ 找系统那个「实时更新」开关页的 action 名（编译期看不到，只能反射读常量）。 */
@@ -534,49 +575,26 @@ public class QqbotIslandBridge {
 
     private final class UiOpen implements Runnable {
         public void run() {
-            gotoNotificationSettings();
+            gotoPermissionSettings();
         }
     }
 
-    private static final class UiTest implements Runnable {
-        private final Context ctx;
-
-        UiTest(Context c) {
-            ctx = c;
-        }
-
+    /** 演示胶囊：没授权先把用户送到授权页，省得他点了没反应以为坏了。 */
+    private final class UiDemo implements Runnable {
         public void run() {
             try {
-                Notification n = QqbotGuardService.buildIslandNoti(ctx, "run",
-                        System.currentTimeMillis());
-                NotificationManager nm = (NotificationManager)
-                        ctx.getSystemService(Context.NOTIFICATION_SERVICE);
-                if (nm == null) return;
-                nm.notify(TEST_ID, n);
-                // 5 秒后自己撤掉：演示通知不该在通知栏里长期占着位置
-                new Handler(Looper.getMainLooper()).postDelayed(new TestCancel(ctx), TEST_TTL_MS);
-            } catch (Throwable t) {
-                try {
-                    Toast.makeText(ctx, "演示通知发不出来：" + t, Toast.LENGTH_SHORT).show();
-                } catch (Throwable ignored) {
+                if (!QqbotIslandCapsule.canHostNow(act)) {
+                    toast("先允许「显示在其他应用上层」，胶囊才能显示");
+                    try {
+                        act.startActivity(overlayIntent());
+                    } catch (Throwable ignored) {
+                    }
+                    return;
                 }
-            }
-        }
-    }
-
-    private static final class TestCancel implements Runnable {
-        private final Context ctx;
-
-        TestCancel(Context c) {
-            ctx = c;
-        }
-
-        public void run() {
-            try {
-                NotificationManager nm = (NotificationManager)
-                        ctx.getSystemService(Context.NOTIFICATION_SERVICE);
-                if (nm != null) nm.cancel(TEST_ID);
-            } catch (Throwable ignored) {
+                QqbotIslandCapsule.demo(act, TEST_TTL_MS);
+                toast("胶囊会在摄像头位置出现 5 秒");
+            } catch (Throwable t) {
+                toast("演示胶囊失败：" + t);
             }
         }
     }

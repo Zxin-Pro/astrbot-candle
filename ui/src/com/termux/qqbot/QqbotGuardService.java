@@ -416,9 +416,11 @@ public class QqbotGuardService extends Service {
             statusThread.start();
         } catch (Throwable ignored) {
         }
-        // 实时更新：先按「启动中」占位，真实状态由 45 秒后的 statusTick 换上。
-        // 先占位的好处是：用户点完「启动服务」立刻能在通知栏看到一条「AstrBot 启动中」，
+        // 灵动岛（摄像头胶囊）：先按「启动中」占位，真实状态由 45 秒一次的 statusTick 换上。
+        // 先占位的好处是：用户点完「启动服务」立刻能在摄像头位置看到那枚胶囊，
         // 而不是对着常驻卡片上那行「正在检查沙盒…」猜到底动没动。
+        try { QqbotIslandBridge.note("boot", 0L); } catch (Throwable ignored) {}
+        try { QqbotIslandCapsule.sync(this); } catch (Throwable ignored) {}
         try { postIsland(this, "boot", 0L); } catch (Throwable ignored) {}
     }
 
@@ -543,6 +545,9 @@ public class QqbotGuardService extends Service {
             if (nm != null) nm.cancel(ISLAND_ID);
         } catch (Throwable ignored) {}
         try { lastIslandKey = ""; } catch (Throwable ignored) {}
+        // 覆盖层必须在这里就地拆掉（removeViewImmediate）：窗口是服务的，服务没了窗还挂着，
+        // 就是一枚点不掉、也永远停在旧状态的僵尸胶囊。
+        try { QqbotIslandCapsule.hide(); } catch (Throwable ignored) {}
         // ui.json 里的 serviceAlive 要落成 false，但 onDestroy 在主线程，写盘丢后台线程。
         try {
             Thread th = new Thread(new StateFlush(this, UiState.online(), UiState.total(), false), "qqbot-uiflush");
@@ -584,12 +589,13 @@ public class QqbotGuardService extends Service {
             if (nm != null) nm.cancel(NOTI_ID);
         } catch (Throwable ignored) {}
         // 这条路是「关进程 / 紧急下线」的收尾，走的是后台线程：cancel 可以在任意线程调，
-        // 所以不用额外切线程。
+        // 所以不用额外切线程（hide() 自己会 post 到主线程去 removeViewImmediate）。
         try {
             NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm != null) nm.cancel(ISLAND_ID);
         } catch (Throwable ignored) {}
         try { lastIslandKey = ""; } catch (Throwable ignored) {}
+        try { QqbotIslandCapsule.hide(); } catch (Throwable ignored) {}
         try { stopSelf(); } catch (Throwable ignored) {}
     }
 
@@ -1018,13 +1024,15 @@ public class QqbotGuardService extends Service {
     }
 
     /**
-     * 界面刚改完实时更新开关：立刻按当前状态重发或撤销，不等下一轮 45 秒。
-     * 只碰通知，不拉服务、不启沙盒——用户点一下开关不该让后台动起来。
+     * 界面刚改完灵动岛开关：立刻按当前状态建/拆胶囊、重发或撤销通知，不等下一轮 45 秒。
+     * 只碰胶囊和通知，不拉服务、不启沙盒——用户点一下开关不该让后台动起来。
      */
     static void islandRepost(Context c) {
         if (c == null) return;
         try {
             lastIslandKey = "";
+            // 开关一变，胶囊该出现就出现、该消失就消失（sync 内部自己判开关与授权）
+            try { QqbotIslandCapsule.sync(c); } catch (Throwable ignored) {}
             if (!QqbotIslandBridge.isEnabled(c)) {
                 NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
                 if (nm != null) nm.cancel(ISLAND_ID);
@@ -1057,8 +1065,9 @@ public class QqbotGuardService extends Service {
             out.put("battery", batteryOk(c));
         } catch (Throwable ignored) {
         }
-        // 这一版没有悬浮窗，「更新画面」就是把状态交给桥记着（供 info() 读）+ 刷通知
+        // 三处要同步：桥记着状态（info() 读它）、摄像头胶囊换文案、通知兜底刷一遍
         try { QqbotIslandBridge.note(code, upSince); } catch (Throwable ignored) {}
+        try { QqbotIslandCapsule.update(code, upSince); } catch (Throwable ignored) {}
         postIsland(c, code, upSince);
         return code;
     }

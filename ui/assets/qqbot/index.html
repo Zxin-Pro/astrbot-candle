@@ -35,13 +35,16 @@
   --font: -apple-system, "SF Pro Text", "SF Pro Display", system-ui, "PingFang SC", "HarmonyOS Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "Microsoft YaHei", sans-serif;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
 
-  /* 圆角：iOS 连续曲率的感觉靠「外大内小」两档近似 */
-  --r-xs: 8px;
-  --r-sm: 12px;
-  --r-md: 16px;
-  --r-lg: 22px;
-  --r-xl: 28px;
+  /* 圆角：小米式大 R 角（1.3.4-beta.5 契约 §1）—— 外大内小，28/22/16 三档近似连续曲率 */
+  --r-xs: 12px;
+  --r-sm: 16px;
+  --r-md: 20px;
+  --r-lg: 28px;
+  --r-xl: 34px;
   --r-full: 999px;
+  /* 按钮两档：常规 / 小控件。beta.4 按钮层里还有同名的默认值，两处必须一致 */
+  --btn-r: 22px;
+  --btn-r-sm: 16px;
 
   /* 动效：Apple 的 response / damping 思维落到 web —— 快进慢出，可打断 */
   --ease: cubic-bezier(.32,.72,0,1);
@@ -53,11 +56,17 @@
   --nav-h: 64px;
   --gap: 14px;
 
-  --accent: #007aff;
-  --accent-2: #5e5ce6;
-  --ok: #34c759;
-  --warn: #ff9f0a;
-  --bad: #ff3b30;
+  /* AstrBot dashboard（PurpleTheme）：浅色 #3c96ca / 深色 #5ba4d4，主色在主题块里覆盖 */
+  --accent: #3c96ca;
+  --accent-2: #2f86bd;
+  --info: #03c9d7;
+  --ok: #00c853;
+  --warn: #ffc107;
+  --bad: #f44336;
+  --danger: var(--bad);
+  /* 中性描边 / 卡片底色：主题块里按深浅色各给一份 */
+  --line: #d0d0d0;
+  --card-bg: rgba(255,255,255,.86);
 
   /* 玻璃默认值，JS 会按用户滑块覆盖 --glass-alpha / --glass-blur */
   --glass-alpha: .62;
@@ -66,14 +75,19 @@
 }
 
 :root[data-theme="light"]{
-  --label: #09090b;
-  --label-2: rgba(60,60,67,.62);
-  --label-3: rgba(60,60,67,.34);
-  --sep: rgba(60,60,67,.15);
-  --fill-1: rgba(120,120,128,.10);
-  --fill-2: rgba(120,120,128,.16);
-  --fill-3: rgba(118,118,128,.22);
-  --page: #eef1f7;
+  --label: #1b1c1d;
+  --label-2: rgba(0,0,0,.60);
+  --label-3: rgba(0,0,0,.38);
+  --sep: #d0d0d0;
+  --line: #d0d0d0;
+  --fill-1: #eef2f6;
+  --fill-2: #e8f3fa;
+  --fill-3: rgba(60,150,202,.16);
+  --page: #eef2f6;
+  --surface: #ffffff;
+  --card-bg: rgba(255,255,255,.86);
+  --bubble: #e7ebf4;
+  --mcp-card: #ecf2fa;
 
   --glass-tint: 255,255,255;
   /* 供 color-mix 使用的合法颜色形式（上面是 r,g,b 三元组，直接放进 color-mix 属无效值） */
@@ -85,19 +99,32 @@
 
   --field-bg: rgba(255,255,255,.66);
   --field-line: rgba(120,120,128,.26);
-  --code-bg: rgba(28,28,32,.055);
+  --code-bg: #ececec;
   --scrim: rgba(0,0,0,.28);
 }
 
 :root[data-theme="dark"]{
-  --label: #ffffff;
-  --label-2: rgba(235,235,245,.62);
-  --label-3: rgba(235,235,245,.32);
-  --sep: rgba(120,120,128,.34);
-  --fill-1: rgba(120,120,128,.20);
-  --fill-2: rgba(120,120,128,.28);
-  --fill-3: rgba(120,120,128,.38);
-  --page: #05060a;
+  /* beta.5：深色语义色必须跟着 AstrBot PurpleThemeDark 走，
+     否则切到深色后仍用浅色那套 #00c853/#ffc107/#f44336，绿/红在深底上过亮 */
+  --accent: #5ba4d4;
+  --accent-2: #4a95c4;
+  --ok: #52c41a;
+  --warn: #faad14;
+  --bad: #ff4d4f;
+  --danger: var(--bad);
+  --label: #e8eaed;
+  --label-2: rgba(255,255,255,.72);
+  --label-3: rgba(255,255,255,.44);
+  --sep: #333333;
+  --line: #3a3a3a;
+  --fill-1: rgba(91,164,212,.12);
+  --fill-2: rgba(91,164,212,.20);
+  --fill-3: rgba(91,164,212,.28);
+  --page: #1a1a1a;
+  --surface: #242424;
+  --card-bg: rgba(36,36,36,.86);
+  --bubble: #2d2e30;
+  --mcp-card: #2a2a2a;
 
   --glass-tint: 28,30,38;
   --glass-tint-c: rgb(var(--glass-tint));
@@ -108,7 +135,7 @@
 
   --field-bg: rgba(28,30,38,.62);
   --field-line: rgba(120,120,128,.42);
-  --code-bg: rgba(0,0,0,.34);
+  --code-bg: #282833;
   --scrim: rgba(0,0,0,.52);
 }
 
@@ -126,7 +153,7 @@ body{
   padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 26px);
   font-family: var(--font);
   font-size: 15px;
-  line-height: 1.55;
+  line-height: 1.6;
   color: var(--label);
   /* 透明：否则会盖住 z-index 为负的背景色雾层，液态玻璃就没有东西可折射 */
   background: transparent;
@@ -351,9 +378,11 @@ main{
 .card{
   position: relative;
   padding: 18px;
-  border-radius: var(--r-lg);
-  border: .5px solid var(--glass-line);
-  background-color: color-mix(in srgb, var(--glass-tint-c) calc(var(--glass-alpha) * 62%), transparent);
+  border-radius: var(--mi-card);
+  border: 1px solid var(--line);
+  /* 底色用 --card-bg，仍乘玻璃强度滑块（--glass-alpha）：滑到最小能透出背景层，
+     保留 beta.4 之前的玻璃手感；默认 .62 约等于半透明卡面。 */
+  background-color: color-mix(in srgb, var(--card-bg) calc(var(--glass-alpha) * 100%), transparent);
   background-image:
     /* 顶部镜面：模拟环境光从上方打在玻璃上 */
     linear-gradient(180deg, var(--glass-sheen) 0%, rgba(255,255,255,0) 34%),
@@ -394,7 +423,7 @@ main{
   align-items: center;
   gap: 7px;
   font-size: 15px;
-  font-weight: 620;
+  font-weight: 600;
   letter-spacing: -.1px;
   margin: 0 0 10px;
   color: var(--label);
@@ -452,7 +481,7 @@ button{
   gap: 6px;
   min-height: 44px;
   padding: 0 18px;
-  border-radius: 14px;
+  border-radius: var(--btn-r);
   font-size: 15px;
   font-weight: 560;
   letter-spacing: -.1px;
@@ -471,62 +500,54 @@ button svg{ width: 18px; height: 18px; flex: none; }
 }
 button:active{ transform: scale(.965); background-color: var(--fill-3); }
 
+/* 1.3.4-beta.5 契约 §1.3：四档语义都用实底/描边，不再叠渐变和内阴影。
+   这里的 background-color 必须给全 —— beta.4 的按钮层用 !important 清掉了
+   background-image，若只写 background: <渐变> 就会连底色一起变成透明，
+   button.small.primary 会变成「白字透明底」看不见（beta.4 遗留缺陷）。 */
 button.primary{
   color: #fff;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.22), rgba(255,255,255,0) 52%),
-    linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, #fff), var(--accent));
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.45),
-    inset 0 -1px 0 rgba(0,0,0,.12),
-    0 8px 20px -10px color-mix(in srgb, var(--accent) 78%, transparent);
+  background-color: var(--accent);
+  border-color: var(--accent);
 }
-button.primary:active{ background: var(--accent); }
+button.primary:active{ background-color: var(--accent-2); }
 
 button.danger{
-  color: #fff;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.22), rgba(255,255,255,0) 52%),
-    linear-gradient(180deg, #ff5b52, var(--bad));
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.4),
-    0 8px 20px -10px rgba(255,59,48,.6);
+  color: var(--bad);
+  background-color: transparent;
+  border-color: var(--bad);
 }
-button.danger:active{ background: var(--bad); }
+button.danger:active{ background-color: color-mix(in srgb, var(--bad) 12%, transparent); }
 
 button.ok{
-  color: #fff;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.22), rgba(255,255,255,0) 52%),
-    linear-gradient(180deg, #4cd964, var(--ok));
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 8px 20px -10px rgba(52,199,89,.55);
+  color: var(--ok);
+  background-color: transparent;
+  border-color: var(--ok);
 }
+button.ok:active{ background-color: color-mix(in srgb, var(--ok) 14%, transparent); }
 
 button.small{
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 14px;
   font-size: 13.5px;
-  border-radius: 12px;
-  background: var(--fill-1);
-  box-shadow: inset 0 0 0 .5px var(--sep);
+  border-radius: var(--btn-r-sm);
+  background-color: var(--fill-1);
+  border: 1px solid var(--line);
+  color: var(--label);
+  box-shadow: none;
 }
-button.small.primary{ background:
-  linear-gradient(180deg, rgba(255,255,255,.22), rgba(255,255,255,0) 52%),
-  linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, #fff), var(--accent));
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 6px 14px -8px color-mix(in srgb, var(--accent) 75%, transparent);
-  color: #fff;
-}
-button.small.danger{ color: #fff; background: linear-gradient(180deg, #ff5b52, var(--bad)); box-shadow: none; }
-button.small.ok{ color: #fff; background: linear-gradient(180deg, #4cd964, var(--ok)); box-shadow: none; }
-button.small.quiet{ color: var(--label-2); background: transparent; box-shadow: none; }
+button.small.primary{ background-color: var(--accent); border-color: var(--accent); color: #fff; }
+button.small.danger{ color: var(--bad); background-color: transparent; border-color: var(--bad); }
+button.small.ok{ color: var(--ok); background-color: transparent; border-color: var(--ok); }
+button.small.quiet{ color: var(--label-2); background-color: transparent; border-color: transparent; }
 
 button.tiny{
-  min-height: 30px;
+  min-height: 36px;
   padding: 0 10px;
   font-size: 12px;
   font-weight: 500;
-  border-radius: 9px;
-  background: var(--fill-1);
+  border-radius: var(--btn-r-sm);
+  background-color: var(--fill-1);
+  border: 1px solid var(--line);
   color: var(--label-2);
 }
 
@@ -1348,7 +1369,7 @@ html.bgcroplock{ overflow: hidden; }
 .confirm{
   margin-top: 12px;
   padding: 12px 14px;
-  border-radius: 14px;
+  border-radius: var(--mi-inner);
   background: color-mix(in srgb, var(--warn) 12%, transparent);
   box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--warn) 34%, transparent);
 }
@@ -1360,7 +1381,7 @@ html.bgcroplock{ overflow: hidden; }
 .askup{
   margin-top: 10px;
   padding: 11px 13px;
-  border-radius: 14px;
+  border-radius: var(--mi-inner);
   background: var(--fill-1);
   font-size: 12.5px;
   color: var(--label-2);
@@ -1506,7 +1527,7 @@ html.bgcroplock{ overflow: hidden; }
   gap: 8px;
   margin: 2px 6px 6px;
   padding: 8px 10px;
-  border-radius: 12px;
+  border-radius: var(--r-sm);
   background: var(--fill-1);
   box-shadow: inset 0 0 0 .5px var(--sep);
 }
@@ -1694,7 +1715,7 @@ html.bgcroplock{ overflow: hidden; }
 .portrow{
   margin-top: 10px;
   padding: 11px 12px;
-  border-radius: 14px;
+  border-radius: var(--mi-inner);
   background: var(--fill-1);
   box-shadow: inset 0 0 0 .5px var(--sep);
 }
@@ -1800,7 +1821,7 @@ html.bgcroplock{ overflow: hidden; }
 .updcard{
   margin-top: 9px;
   padding: 12px 13px;
-  border-radius: 16px;
+  border-radius: var(--mi-inner);
   background: var(--fill-1);
   box-shadow: inset 0 0 0 .5px var(--sep);
 }
@@ -2027,7 +2048,7 @@ button.locked{ box-shadow: none; }
   width: 38px;
   min-height: 36px;
   padding: 0;
-  border-radius: 12px;
+  border-radius: var(--btn-r-sm);
   font-size: 15px;
   line-height: 1;
   letter-spacing: 1px;
@@ -2040,7 +2061,7 @@ button.locked{ box-shadow: none; }
 
 .bot{
   padding: 13px 14px;
-  border-radius: 16px;
+  border-radius: var(--mi-inner);
   background: var(--fill-1);
   box-shadow: inset 0 0 0 .5px var(--sep);
 }
@@ -2089,8 +2110,8 @@ input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin:
    ============================================================================ */
 
 /* ---------- Z1. 背景：三层色雾 + 顶光 ---------- */
-:root[data-theme="light"]{ --page: #e9eef7; }
-:root[data-theme="dark"]{ --page: #05070d; }
+:root[data-theme="light"]{ --page: #eef2f6; }
+:root[data-theme="dark"]{ --page: #1a1a1a; }
 
 #bgLayer{
   background:
@@ -2120,7 +2141,9 @@ input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin:
 
 /* ---------- Z2. 玻璃：更薄、更透、边缘有镜面环 ---------- */
 .card{
-  background-color: color-mix(in srgb, var(--glass-tint-c) calc(var(--glass-alpha) * 70%), transparent);
+  /* 卡面底色统一取契约里的 --card-bg（浅色白 86% / 深色 #242424 86%），
+     仍乘玻璃强度滑块，保留液态玻璃层次。 */
+  background-color: color-mix(in srgb, var(--card-bg) calc(var(--glass-alpha) * 100%), transparent);
   background-image:
     radial-gradient(130% 90% at 8% -18%, rgba(255,255,255,.82) 0%, rgba(255,255,255,0) 54%),
     linear-gradient(180deg, rgba(255,255,255,.30) 0%, rgba(255,255,255,0) 26%),
@@ -2207,10 +2230,10 @@ header::before{
 
 /* ---------- Z3. 排版：标题更小更稳，正文更轻 ---------- */
 .card h2{
-  font-size: 16.5px;
+  font-size: 15px;
   font-weight: 600;
-  letter-spacing: -.35px;
-  margin: 0 0 11px;
+  letter-spacing: -.2px;
+  margin: 0 0 10px;
 }
 .card h2 + .hint{ margin-top: -2px; }
 
@@ -2317,7 +2340,7 @@ nav{
     0 22px 40px -20px rgba(0,0,0,.9);
 }
 
-nav button{ border-radius: 20px; font-size: 10.5px; }
+nav button{ border-radius: var(--mi-ctl); font-size: 10.5px; }
 /* 选中滑块只保留一个实例（#navThumb），由 JS 写 transform 定位。 */
 nav button .ic{ width: 22px; height: 22px; }
 nav button.on .ic{ transform: translateY(-1px); }
@@ -2349,7 +2372,7 @@ body{ padding-bottom: calc(var(--nav-h) + 10px + env(safe-area-inset-bottom, 0px
 
 pre{
   background: color-mix(in srgb, var(--code-bg) 100%, transparent);
-  border-radius: 14px;
+  border-radius: var(--r-sm);
   font-size: 11.5px;
   line-height: 1.62;
 }
@@ -2479,16 +2502,16 @@ body{
 
 /* ---------- Q2. 大 R 角令牌 ---------- */
 :root{
-  --r-xs: 10px;
-  --r-sm: 14px;
-  --r-md: 18px;
-  --r-lg: 26px;
-  --mi-card: 26px;    /* 卡片 */
-  --mi-hero: 30px;    /* 首屏大卡 */
-  --mi-inner: 20px;   /* 卡内小块 */
-  --mi-ctl: 16px;     /* 按钮 / 输入框 */
-  --mi-bar: 24px;     /* 提示条 */
-  --mi-nav: 30px;     /* 底栏胶囊 */
+  --r-xs: 12px;
+  --r-sm: 16px;
+  --r-md: 20px;
+  --r-lg: 28px;
+  --mi-card: 28px;    /* 卡片 */
+  --mi-hero: 32px;    /* 首屏大卡 */
+  --mi-inner: 22px;   /* 卡内小块 */
+  --mi-ctl: 22px;     /* 按钮 / 输入框 */
+  --mi-bar: 26px;     /* 提示条 */
+  --mi-nav: 32px;     /* 底栏胶囊 */
 }
 
 .card{ border-radius: var(--mi-card); }
@@ -2497,17 +2520,17 @@ body{
 .tile{ border-radius: var(--mi-inner); }
 .rebox{ border-radius: var(--mi-inner); }
 .qk{ border-radius: var(--mi-inner); }
-.qk .qi{ border-radius: 14px; }
-.lkic{ border-radius: 12px; }
-.tokbox{ border-radius: 14px; }
+.qk .qi{ border-radius: var(--r-sm); }
+.lkic{ border-radius: var(--r-xs); }
+.tokbox{ border-radius: var(--r-sm); }
 .qbox, .qimg, .qrwrap{ border-radius: var(--mi-inner); }
 button.small{ border-radius: var(--mi-ctl); }
-button.tiny{ border-radius: 12px; }
-.dtgl{ border-radius: 12px; }
+button.tiny{ border-radius: var(--btn-r-sm); }
+.dtgl{ border-radius: var(--btn-r-sm); }
 .btns > button, .rowbtn{ border-radius: var(--mi-ctl); }
 .dlg{ border-radius: 30px 30px 0 0; }
 nav{ border-radius: var(--mi-nav); }
-nav button{ border-radius: 22px; }
+nav button{ border-radius: var(--mi-ctl); }
 
 /* ---------- Z6.1 底栏滑块（拖动切页签） ----------
    选中态由一枚跨页签滑动的玻璃滑块表示：按住拖动时 1:1 跟手，松手吸附到最近页签，
@@ -2613,7 +2636,7 @@ input[type="text"], input[type="password"], input[type="number"], select, textar
   min-height: 34px;
   padding: 0 16px;
   font-size: 13px;
-  border-radius: 14px;
+  border-radius: var(--btn-r-sm);
 }
 
 /* ---------- Q4. 按压：平滑内缩，不做「闪一下」 ---------- */
@@ -2805,10 +2828,10 @@ html.devnotelock{ overflow: hidden; }
   .startnote b{ color: var(--label); font-weight: 600; }
   .qrttl{ margin-top: 6px; font-size: 11.5px; color: var(--label-3); font-variant-numeric: tabular-nums; }
   .qrttl.hot{ color: var(--warn); }
-  .qrfall{ margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--fill-1); font-size: 12.5px; line-height: 1.55; color: var(--label-2); }
+  .qrfall{ margin-top: 10px; padding: 10px 12px; border-radius: var(--mi-inner); background: var(--fill-1); font-size: 12.5px; line-height: 1.55; color: var(--label-2); }
   .qrfall .btns{ margin-top: 8px; }
   #logCardQr.qrhl{ box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent), 0 12px 34px -16px color-mix(in srgb, var(--accent) 75%, transparent); }
-  .shlmeta{ margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--fill-1); font-size: 12.5px; line-height: 1.6; color: var(--label-2); }
+  .shlmeta{ margin-top: 10px; padding: 10px 12px; border-radius: var(--mi-inner); background: var(--fill-1); font-size: 12.5px; line-height: 1.6; color: var(--label-2); }
   .shlmeta b{ color: var(--label); }
   .mtout{ flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.5; color: var(--label-2); }
   .mtout.ok{ color: var(--ok); }
@@ -2838,8 +2861,8 @@ html.devnotelock{ overflow: hidden; }
 :root{
   --line: color-mix(in srgb, var(--label) 16%, transparent);   /* 1px 描边色（浅色=黑 16%，深色=白 16%） */
   --danger: var(--bad);
-  --btn-r: 12px;          /* 常规按钮圆角 */
-  --btn-r-sm: 10px;       /* 小控件圆角 */
+  --btn-r: 22px;          /* 常规按钮圆角（与 :root 保持一致） */
+  --btn-r-sm: 16px;       /* 小控件圆角 */
   --btn-dur: 120ms;
   --btn-ease: cubic-bezier(.2,.8,.2,1);
 }
@@ -2875,12 +2898,12 @@ button{
 
 /* 次按钮（默认档）：透明底 + 1px 描边。 */
 button:hover{ background-color: var(--fill-1); }
-button:active{ transform: scale(.98); background-color: var(--fill-2); box-shadow: none; }
+button:active{ transform: scale(.985); background-color: var(--fill-2); box-shadow: none; }
 
 /* 键盘导航才出现的焦点环，鼠标/触摸不打扰。 */
 button:focus-visible,
 [role="button"]:focus-visible{
-  outline: 2px solid color-mix(in srgb, var(--accent) 72%, transparent);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -2997,7 +3020,7 @@ button.small, button.tiny{ border-radius: var(--btn-r-sm); }
 /* ---------------------------------------------------------------- 快捷方块 / 卡片行 */
 .qk{
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  border-radius: var(--mi-inner);
   background-color: var(--fill-1);
   box-shadow: none;
   -webkit-backdrop-filter: none;
@@ -3109,8 +3132,9 @@ nav button:active{ transform: none; background-color: transparent; }
 }
 
 /* b10-nav 反馈：.btns > button 与 .rowbtn 被 base 里的
-   `.btns > button, .rowbtn{ border-radius: var(--mi-ctl); }`（--mi-ctl: 16px）压住（那边权重 (0,1,1) 高于 button）。
-   这里用同等权重、靠后出现收回圆角：普通按钮 12px，小控件（.rowbtn）10px。不动 --mi-ctl 这个全局令牌。 */
+   `.btns > button, .rowbtn{ border-radius: var(--mi-ctl); }`（--mi-ctl: 22px）压住（那边权重 (0,1,1) 高于 button）。
+   这里用同等权重、靠后出现收回圆角：普通按钮 var(--btn-r)=22px（小米大 R 角），
+   小控件（.rowbtn / button.small）var(--btn-r-sm)=16px。不动 --mi-ctl 这个全局令牌。 */
 .btns > button{ border-radius: var(--btn-r); }
 .rowbtn{ border-radius: var(--btn-r-sm); }
 </style>
@@ -3552,7 +3576,7 @@ nav button:active{ transform: none; background-color: transparent; }
         <button class="danger" data-act="askstop" id="btnAskStop" style="flex:1">紧急下线</button>
         <button class="small primary" data-act="askresume" id="btnAskResume" style="display:none;flex:1">启动服务</button>
       </div>
-      <div id="stopConfirm" style="display:none;margin-top:12px;padding:12px 14px;border-radius:12px;background:rgba(234,88,12,.10);border:1px solid rgba(234,88,12,.30)">
+      <div id="stopConfirm" style="display:none;margin-top:12px;padding:12px 14px;border-radius:var(--mi-inner);background:color-mix(in srgb, var(--warn) 12%, transparent);border:1px solid color-mix(in srgb, var(--warn) 32%, transparent)">
         <div style="font-weight:600">确定要下线吗？</div>
         <div class="hint" style="margin-top:4px">下线后 NapCat 与 AstrBot 立即停止，常驻通知收起，整个应用进程也结束；看门狗不会自动拉起，下次打开应用也不会自动启动，要回这张卡点启动。登录态不会被清除。</div>
         <div class="btns" style="margin-top:10px">
@@ -3562,7 +3586,7 @@ nav button:active{ transform: none; background-color: transparent; }
       </div>
       <!-- 下线状态下磁贴 / 小组件点了「启动」时弹这张卡：不静默删 offline 标记，
            否则用户刚按的「关闭进程」会被一次磁贴误触抵消掉。 -->
-      <div id="resumeConfirm" style="display:none;margin-top:12px;padding:12px 14px;border-radius:12px;background:rgba(37,99,235,.10);border:1px solid rgba(37,99,235,.30)">
+      <div id="resumeConfirm" style="display:none;margin-top:12px;padding:12px 14px;border-radius:var(--mi-inner);background:color-mix(in srgb, var(--accent) 12%, transparent);border:1px solid color-mix(in srgb, var(--accent) 32%, transparent)">
         <div style="font-weight:600">沙盒还是下线状态，要启动吗？</div>
         <div class="hint" style="margin-top:4px">上次点「关闭进程 / 紧急下线」留下的标记还在，所以不会自己拉起来。点确认启动会清掉标记并启动沙盒，登录状态与配置都保留。</div>
         <div class="btns" style="margin-top:10px">
@@ -3848,21 +3872,21 @@ nav button:active{ transform: none; background-color: transparent; }
       <div class="hint" id="ntfHint" style="margin-top:8px">测试会立刻发一条通知。如果没看到，去系统设置里允许本应用发送通知，或者检查「勿扰模式」。</div>
     </div>
 
-    <!-- 灵动岛（实时更新，1.3.4-beta.4）：走 Android 16 的 Live Updates —— 状态栏常驻一条运行状态，
-         不是悬浮窗小球。AndroidIsland 是这一版新加的桥，老安装包没有，探不到就整块隐藏。
-         能力全部按 info() 的 canPromote / mode 动态判断，不假设任何权限字段。 -->
+    <!-- 灵动岛（摄像头胶囊，1.3.4-beta.5）：不是状态栏通知，而是屏幕顶部挖孔位置的一枚胶囊
+         （TYPE_APPLICATION_OVERLAY，别的应用上也看得见）。AndroidIsland 是这一版新加的桥，
+         老安装包没有，探不到就整块隐藏。状态全部按 info() 的 mode 判断，不假设任何权限字段。 -->
     <div class="card" id="islandCard" style="display:none">
-      <h2><span class="dot" id="d-island"></span>灵动岛（实时更新）</h2>
-      <div class="hint" style="margin-top:0">Android 16 的实时更新：状态栏常驻一条运行状态（运行中 / 待扫码 / 启动中 / 离线），点一下回到应用。系统没开放这个能力时，就退回普通通知。</div>
+      <h2><span class="dot" id="d-island"></span>灵动岛（摄像头胶囊）</h2>
+      <div class="hint" style="margin-top:0">在屏幕顶部摄像头位置显示一枚胶囊，别的应用上也看得见；需要「显示在其他应用上层」权限。</div>
       <div class="swrow">
         <div class="swinfo">
-          <div class="swname">状态栏常驻运行状态</div>
+          <div class="swname">在摄像头位置显示胶囊</div>
           <div class="swdesc" id="islandDesc">正在读取…</div>
         </div>
-        <button class="tgl" id="islandTgl" data-act="islandtoggle" title="点击开关实时更新" aria-label="实时更新开关"></button>
+        <button class="tgl" id="islandTgl" data-act="islandtoggle" title="点击开关摄像头胶囊" aria-label="摄像头胶囊开关"></button>
       </div>
       <div class="btns" id="islandActs" style="margin-top:10px">
-        <button class="small primary" data-act="islandgrant" id="islandGrant">去设置</button>
+        <button class="small primary" data-act="islandgrant" id="islandGrant">去授权</button>
         <button class="small" data-act="islandtest" id="islandTest">发一条试试</button>
       </div>
       <div class="hint" id="islandHint" style="margin-top:8px;display:none"></div>
@@ -4994,7 +5018,9 @@ function initAppearance(){
 /* 强调色八套。只存 id，颜色写死在这里；applyAccent() 把 --accent 系列变量
    覆盖到 <html> 的行内样式上（行内优先级最高，能盖过样式里各层的浅色/深色覆盖）。 */
 var ACCENTS = [
-  { id: "blue",   name: "iOS 蓝", a: "#0a84ff", b: "#5e5cf6" },
+  /* 1.3.4-beta.5：默认色改成 AstrBot dashboard 的蓝（#3c96ca / 深色 #5ba4d4），
+     用户自己挑过的强调色与浅深的对应关系保持原样。 */
+  { id: "blue",   name: "AstrBot 蓝", a: "#3c96ca", b: "#2f86bd", ad: "#5ba4d4", bd: "#4a95c4" },
   { id: "indigo", name: "靛蓝",   a: "#5e5ce6", b: "#bf5af2" },
   { id: "violet", name: "紫",     a: "#a855f7", b: "#ec4899" },
   { id: "pink",   name: "粉",     a: "#ff375f", b: "#ff9f0a" },
@@ -5035,11 +5061,13 @@ function applyAccent(id, quiet){
   if (!cur) { cur = ACCENTS[0]; }
   var dark = themeDark();
   var a = cur.a, b = cur.b;
-  /* 深色下把主色调亮一点，否则 #0a84ff 在近黑底上偏闷 */
-  var at = dark ? a : a;
+  /* 深色下用这套色自己的深色值（ad/bd），没写就沿用浅色值：
+     默认的 AstrBot 蓝深色是 #5ba4d4，其余七套保持原样。 */
+  var at = dark ? (cur.ad || a) : a;
+  var bt = dark ? (cur.bd || b) : b;
   var s = document.documentElement.style;
   s.setProperty("--accent", at);
-  s.setProperty("--accent-2", b);
+  s.setProperty("--accent-2", bt);
   s.setProperty("--acc-txt", dark ? hexA(at, 1).replace(/rgba\(([^)]+),1\)/, "rgb($1)") : a);
   s.setProperty("--acc-line", hexA(at, dark ? .55 : .45));
   s.setProperty("--acc-line-2", hexA(at, dark ? .40 : .30));
@@ -5048,7 +5076,7 @@ function applyAccent(id, quiet){
   /* 背景极光专用的半透明强调色：以前这里直接用 var(--accent)（不透明色）当渐变起点，
      深色下就成了一块"实心蓝"的色块。改成带 alpha 的派生色，光晕才只剩颜色，不出边界。 */
   s.setProperty("--acc-soft", hexA(at, dark ? .30 : .24));
-  s.setProperty("--acc-soft-2", hexA(b, dark ? .26 : .20));
+  s.setProperty("--acc-soft-2", hexA(bt, dark ? .26 : .20));
   S.accent = cur.id;
   if (!quiet) lsSet("qqbot.accent", cur.id);
   var box = el("accentSw");
@@ -5358,6 +5386,18 @@ function showTab(t){
      extOnTab 内部自己 try/catch，桥缺了也只是空态。 */
   extOnTab(t);
   try { fitFoot(); } catch (e) {}  /* v4：切页后立刻重算落款位置 */
+}
+
+/* 1.3.4-beta.5：hash 定位 —— #tab-home / #tab-bots / #tab-logs / #tab-more。
+   插件页是独立页面，它那边的「回主页」落地就是 index.html#tab-home；应用内也可能
+   被 WebView 带着 hash 重新加载，所以开机读一次之外还要听 hashchange。
+   设置页没有 hash：它不在底栏里，深链进去会让人找不到返回路径。 */
+function tabFromHash(){
+  var h = "";
+  try { h = String(location.hash || "").replace(/^#/, ""); } catch (e) { return false; }
+  if (!/^tab-(home|bots|logs|more)$/.test(h)) return false;
+  try { showTab(h.slice(4)); } catch (e2) { return false; }
+  return true;
 }
 
 /* ---------- 底栏滑块：拖动切页签 ----------
@@ -6745,6 +6785,9 @@ var QR_TTL = 120000;
    原生侧 QqbotSession 也是静态字段，进程重启即失效，两边语义一致。 */
 var QR_SKIP = false;
 var QR_META = null, qrMetaTimer = 0, QR_URL = "", qrHintAt = 0;
+/* 空态两种说法（1.3.4-beta.5）：未登录 / 已登录。已登录时不再显示二维码，也不再劝用户扫码。 */
+var QR_NONE_TXT = "暂时没有二维码。<br>等 NapCat 启动并请求登录后会出现（每个实例的二维码不同）。";
+var QR_NONE_LOGGED = "QQ <b>已登录</b>，不用再扫码。<br>要换号请先在 NapCat 面板里退出登录。";
 
 function qrMetaTick(m){
   m = m || el("qrMeta");
@@ -6833,6 +6876,7 @@ function qrCardHint(){
   var id = (S.bots && S.bots.active) || (bs[0] && bs[0].id) || "";
   if (!id) return;
   if (!qrFresh(qrProbe(id))) return;
+  if (qrBotUp(id)) return;   /* 已登录就别把人拽到日志页看一张扫过的图 */
   var card = el("logCardQr");
   if (!card) return;
   qrHintAt = now;
@@ -7097,67 +7141,69 @@ function islandPaint(force){
     avail = !(String(j.available) === "false");
     can = (j.canPromote === true || String(j.canPromote) === "true");
     en = (j.enabled === true || String(j.enabled) === "true");
-    mode = String(j.mode || (en ? "plain" : "off"));
+    mode = String(j.mode || (en ? "promoted" : "off"));
     txt = j.text ? String(j.text) : "";
     if (j.battery != null && j.battery !== "") bat = String(j.battery);
     if (j.sdk != null && j.sdk !== "") sdk = String(j.sdk);
   } else if (hasSet){
-    /* 老桥：没有 info()，只有几个布尔口。按 beta.3 的语义尽力画，canPromote 当作「能自己处理」 */
+    /* 老桥：只问得到「开没开」，胶囊建没建出来不知道，一律按通知兜底（promoted）画 */
     legacy = true; can = true;
     var w = gWin("AndroidIsland");
     if (w){
       try { if (typeof w.available === "function") avail = (String(w.available()) !== "false"); } catch (e) {}
       try { if (typeof w.enabled === "function") en = (String(w.enabled()) === "true"); } catch (e2) {}
     }
-    mode = en ? "plain" : "off";
+    mode = en ? "promoted" : "off";
   }
   if (!avail){ card.style.display = "none"; return; }   /* 系统连通知都没给：不画这张卡 */
-  /* canPromote 为假有两种意思：sdk>=36 是「用户还没允许」（该给去设置入口），sdk<36 才是系统没这能力。 */
+  /* 1.3.4-beta.5：胶囊改用 TYPE_APPLICATION_OVERLAY（Android 8+ 就有），sdk<36 不再是门槛。
+     失败只有两种：canPromote=false = 还没给悬浮窗权限；sdk<26 = 系统太老建不了窗。
+     mode 的新语义：capsule（胶囊在显示）/ promoted（仅通知兜底）/ off。 */
   var sdkN = parseInt(sdk, 10); if (!isFinite(sdkN)) sdkN = 0;
-  var tooOld = (!can && !legacy && sdkN > 0 && sdkN < 36);
+  var noOverlay = (!can && !legacy);
+  var tooOld = (sdkN > 0 && sdkN < 26);
   gTgl("islandTgl", en);
   var ds = el("islandDesc"), hint = el("islandHint"), grant = el("islandGrant");
   if (ds){
-    if (!en) ds.textContent = "关着。打开后状态栏常驻一条运行状态，不用一直切回应用看。";
-    else if (mode === "promoted") ds.textContent = "已常驻状态栏" + (txt ? "：" + txt : "") + (bat ? "（电量 " + bat + "）" : "") + "。";
-    else if (tooOld) ds.textContent = "这个系统版本只有普通通知，状态栏里看不到运行状态。";
-    else if (mode === "plain") ds.textContent = legacy
-      ? (txt ? txt : "已打开。状态栏只显示普通通知。")
-      : "系统还没允许提升为实时更新，点「去设置」把「实时更新」打开。";
+    if (tooOld) ds.textContent = "这个系统版本不支持悬浮窗，胶囊显示不出来，运行状态只能在应用里看。";
+    else if (noOverlay) ds.textContent = "还没给「显示在其他应用上层」权限，胶囊显示不出来。点「去授权」到系统设置里打开。";
+    else if (!en) ds.textContent = "关着。打开后在屏幕顶部摄像头位置显示一枚胶囊，别的应用上也看得见。";
+    else if (mode === "capsule") ds.textContent = "胶囊已显示在屏幕顶部" + (txt ? "：" + txt : "") + (bat ? "（电量 " + bat + "）" : "") + "。";
+    else if (mode === "promoted") ds.textContent = "已打开，但胶囊没建出来，现在是普通通知在兜底" + (txt ? "：" + txt : "") + "。";
     else ds.textContent = txt ? txt : "已打开。";
   }
   if (hint){
-    if (tooOld){ hint.textContent = "实时更新需要 Android 16（API 36）；当前系统版本没有这个能力，运行状态仍然能在应用内和普通通知里看到。"; hint.style.display = ""; }
-    else if (!can && !legacy){ hint.textContent = "系统还没允许提升这条通知，点「去设置」打开" + (sdk ? "（当前 API " + sdk + "）" : "") + "，回来这里会自动更新。"; hint.style.display = ""; }
-    else if (sdk){ hint.textContent = "当前系统 API " + sdk + "；实时更新由系统控制，开关在「设置 → 应用 → 通知 → 实时更新」。"; hint.style.display = ""; }
+    if (tooOld){ hint.textContent = "摄像头胶囊需要 Android 8（API 26）以上的悬浮窗能力；当前系统没有，运行状态仍然能在应用内看到。" + (sdk ? "（当前 API " + sdk + "）" : ""); hint.style.display = ""; }
+    else if (noOverlay){ hint.textContent = "授权路径：设置 → 应用 → 特殊权限 → 显示在其他应用上层。" + (sdk ? "（当前 API " + sdk + "）" : "") + "授权后回到这里会自动更新。"; hint.style.display = ""; }
+    else if (sdk){ hint.textContent = "当前系统 API " + sdk + "；胶囊由系统绘制，收回权限后会退回普通通知。"; hint.style.display = ""; }
     else { hint.textContent = ""; hint.style.display = "none"; }
   }
   if (grant){
-    grant.textContent = tooOld ? "当前系统不支持" : "去设置";
+    grant.textContent = noOverlay ? "去授权" : "去设置";
     if (tooOld){ grant.setAttribute("disabled", "disabled"); } else { grant.removeAttribute("disabled"); }
   }
   var d = el("d-island");
-  if (d) d.className = "dot" + (en && mode === "promoted" ? " ok" : (!en ? "" : (tooOld ? " bad" : " warn")));
+  if (d) d.className = "dot" + (en && mode === "capsule" && !noOverlay ? " ok" : (!en ? "" : (noOverlay ? " bad" : " warn")));
 }
 function islandToggle(){
-  if (!gFn("AndroidIsland", "set")){ extToast("当前版本不支持实时更新"); return; }
+  if (!gFn("AndroidIsland", "set")){ extToast("当前版本不支持摄像头胶囊"); return; }
   var want = !gOn("islandTgl");
   try { gWin("AndroidIsland").set(want ? "true" : "false"); } catch (e) { extToast("切换失败，再点一次"); return; }
   gTgl("islandTgl", want);
-  extToast(want ? "已打开实时更新" : "已关掉实时更新");
+  extToast(want ? "已打开摄像头胶囊" : "已关掉摄像头胶囊");
   setTimeout(function(){ try { islandPaint(true); } catch (e2) {} }, 500);
 }
 function islandGrant(){
   var w = gWin("AndroidIsland");
   var fn = (w && typeof w.openSettings === "function") ? "openSettings" : ((w && typeof w.request === "function") ? "request" : "");
   if (!fn){ extToast("去系统设置里给本应用「显示在其他应用上层」权限"); return; }
-  try { w[fn](); extToast("把「实时更新」打开，回来这里会自动更新"); } catch (e) { extToast("没打开设置，手动去系统设置里找「实时更新」"); }
+  try { w[fn](); extToast("在系统设置里允许「显示在其他应用上层」，回来这里会自动更新"); } catch (e) { extToast("没打开设置，手动去系统设置里找「显示在其他应用上层」"); }
   setTimeout(function(){ try { islandPaint(true); } catch (e2) {} }, 1500);
 }
 function islandTest(){
   var w = gWin("AndroidIsland");
   if (!w || typeof w.test !== "function"){ extToast("当前版本不支持测试实时更新"); return; }
-  try { w.test(); extToast("已发一条测试；状态栏没变化就先去设置里打开实时更新"); } catch (e) { extToast("测试没发出去，再点一次"); }
+  try { w.test(); extToast("已发一条测试；顶部没出现胶囊就先去授权"); } catch (e) { extToast("测试没发出去，再点一次"); }
   setTimeout(function(){ try { islandPaint(true); } catch (e2) {} }, 800);
 }
 
@@ -8048,11 +8094,37 @@ function fillQrSelect(){
   if (!sel.value && S.bots) sel.value = S.bots.active || "";
 }
 
+/* 1.3.4-beta.5：登录态判定（修「扫完还是显示二维码」）
+   qr() 只能证明「二维码文件还在」，不能证明「还没登录」—— NapCat 登录成功后 qrcode.png 往往不删，
+   卡片就一直挂着那张已经扫过的图。可靠信号是端口：napcatPort 只有在 QQ 真正登上之后才监听
+   （run-napcat.sh 与真机实测一致），所以「该实例 up」就是「已登录」。端口读不到时退回顶层 napcatUp；
+   组件被关掉时一律不算已登录（那时是「已停止」，不是登录态）。 */
+function qrBotUp(id){
+  var bs = (S.bots && S.bots.bots) ? S.bots.bots : [];
+  for (var i = 0; i < bs.length; i++){
+    if (String(bs[i].id) === String(id)) return !!bs[i].up;
+  }
+  var st = S.st || {};
+  if (st.napcatOff) return false;
+  return !!st.napcatUp;
+}
+
 function loadQr(){
   var id = el("qrSel").value;
   var r;
   try { r = JSON.parse(Android.qr(id)); } catch (e) { r = { ok: false }; }
   var img = el("qrImg"), none = el("qrNone");
+  /* 1.3.4-beta.5：已登录就把二维码收掉（用户反馈：扫完还是显示二维码） */
+  if (qrBotUp(id)) {
+    img.style.display = "none";
+    img.removeAttribute("src");
+    none.style.display = "";
+    if (none.innerHTML !== QR_NONE_LOGGED) none.innerHTML = QR_NONE_LOGGED;
+    paintQrMeta({ ok: false });
+    el("d-qr").className = "dot ok";
+    return;
+  }
+  if (none.innerHTML !== QR_NONE_TXT) none.innerHTML = QR_NONE_TXT;
   if (r && r.ok) {
     img.src = r.data;
     img.style.display = "";
@@ -8169,6 +8241,8 @@ function qrTick(){
   var stt = qrState();
   if (!stt.open) return;
   var r = qrProbe(stt.id);
+  /* 登录成功立刻收窗：qrTick 每 6 秒跑一次，比等文件消失靠谱（1.3.4-beta.5） */
+  if (qrBotUp(stt.id)) { qrClose(true); extToast("QQ 已登录，二维码已收起"); return; }
   qrApply(r, stt.id);
   if (!stt.at || Date.now() - stt.at < 40000) return;
   /* 两种情况要分开：
@@ -8211,6 +8285,8 @@ function qrAutoCheck(st){
   /* 1.3.4-beta.4：选了「不再提示（本次运行）」就彻底不自动弹（手动点「去扫码」照旧能开）。
      只放内存，下次启动重新算。 */
   if (QR_SKIP) return;
+  /* 已登录就不再自动弹（1.3.4-beta.5）：文件可能还在，只看文件会把扫过的二维码又弹一次 */
+  try { if (qrBotUp((qrState().id) || (S.bots && S.bots.active) || "")) return; } catch (eL) {}
   var stt = qrState();
   if (stt.open) return;
   if (Date.now() < stt.until) { try { qrCardHint(); } catch (e0) {} return; }   /* 1.3.4-beta.2：关掉弹窗后改提示卡片 */
@@ -11280,6 +11356,8 @@ loadProxy();
    点「我已阅读并同意」全部落在扫码窗上，声明永远关不掉（1.2.6 在 MuMu 上实测）。 */
 try { if (String(Android.disclaimerSeen()) !== "1") showDisclaimer(); } catch (e) {}
 navInit();
+/* 1.3.4-beta.5：带 hash 打开时先落到对应页签（插件页返回主页、外部深链都走这里） */
+try { tabFromHash(); window.addEventListener("hashchange", tabFromHash); } catch (eh) {}
 refresh();
 /* 今日概览要读沙盒里的统计文件，晚一拍再取，别跟首屏抢带宽 */
 setTimeout(function(){ refreshToday(); todayStart(); }, 300);
