@@ -117,9 +117,12 @@ elif command -v timeout >/dev/null 2>&1; then
     qqerr "proot 自检失败：$QQBOT_PROOT"
     qq_proot_selftest_log
     qqerr "这台设备上的 proot 跑不起来，部署无法继续。"
+    # beta.5：按日志关键字给具体下一步（内核拦 seccomp / 组件缺失 / 权限限制），
+    # 不再一句「重新部署一次」把用户打回去重来。
+    qq_proot_fail_rows
     exit 1
   fi
-  qqok "proot 自检通过"
+  qqok "proot 自检通过（档位 ${QQBOT_PROOT_MODE:-default}）"
 else
   qqwarn "未找到 timeout，跳过 proot 自检（步骤 10 后会补检）"
 fi

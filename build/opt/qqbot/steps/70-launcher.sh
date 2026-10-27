@@ -89,7 +89,11 @@ _px_env=""
 if [ -n "$_px" ]; then
   _px_env="http_proxy=$_px https_proxy=$_px all_proxy=$_px HTTP_PROXY=$_px HTTPS_PROXY=$_px ALL_PROXY=$_px no_proxy=127.0.0.1,localhost,::1 NO_PROXY=127.0.0.1,localhost,::1"
 fi
-exec "$QQBOT_PROOT" --kill-on-exit -0 -r "$QQBOT_ROOTFS" -b /dev -b "$QQBOT_DEVDIR/shm:/dev/shm" -b /proc -b /sys -b "$QQBOT_CACHE:/qqbot-cache" -b "$QQBOT_OPT:/qqbot-opt" -w /root /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin QQBOT_ARCH="$QQBOT_ARCH" _PYTHON_HOST_PLATFORM="$QQBOT_GUEST_PLATFORM" TERM="$TERM" LANG=C.UTF-8 LC_ALL=C.UTF-8 TMPDIR=/tmp $_px_env /bin/bash -l
+# beta.5：探针证明这台机器必须加 --link2symlink 时（标记见 common.sh 的
+# qq_proot_probe），交互 shell 也要带上，否则沙盒里的 link(2) 依旧 EPERM。
+_l2s=""
+if [ -f "$QQBOT_HOME/link2symlink" ]; then _l2s="--link2symlink"; fi
+exec "$QQBOT_PROOT" --kill-on-exit -0 -r "$QQBOT_ROOTFS" $_l2s -b /dev -b "$QQBOT_DEVDIR/shm:/dev/shm" -b /proc -b /sys -b "$QQBOT_CACHE:/qqbot-cache" -b "$QQBOT_OPT:/qqbot-opt" -w /root /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin QQBOT_ARCH="$QQBOT_ARCH" _PYTHON_HOST_PLATFORM="$QQBOT_GUEST_PLATFORM" TERM="$TERM" LANG=C.UTF-8 LC_ALL=C.UTF-8 TMPDIR=/tmp $_px_env /bin/bash -l
 EOS
 
 cat > "$PREFIX/bin/qqbot-help" <<'EOS'

@@ -45,9 +45,10 @@ if qq_termux_ready; then
   if ! qq_proot_selftest; then
     qqerr "proot 自检失败：$QQBOT_PROOT（架构 $QQBOT_ARCH）"
     qq_proot_selftest_log
+    qq_proot_fail_rows
     exit 1
   fi
-  qqok "proot 自检通过：$QQBOT_PROOT"
+  qqok "proot 自检通过：$QQBOT_PROOT（档位 ${QQBOT_PROOT_MODE:-default}）"
   exit 0
 fi
 
@@ -103,7 +104,8 @@ command -v curl >/dev/null 2>&1 || { qqerr "curl 未安装成功"; exit 1; }
 if ! qq_proot_selftest; then
   qqerr "proot 自检失败：$QQBOT_PROOT（架构 $QQBOT_ARCH）"
   qq_proot_selftest_log
+  qq_proot_fail_rows
   exit 1
 fi
-qqok "proot 自检通过：$QQBOT_PROOT"
+qqok "proot 自检通过：$QQBOT_PROOT（档位 ${QQBOT_PROOT_MODE:-default}）"
 qqok "curl 已就绪"

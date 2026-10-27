@@ -257,6 +257,7 @@ dg_kernelcheck() {
   local proot_bin="${QQBOT_PROOT:-$PREFIX/bin/proot}"
   local log="$DG_CACHE/kernelcheck.log"
   local probe="fail" fork="fail" fork_out="" detail="" verdict hint text items
+  local mode="${QQBOT_PROOT_MODE:-default}"
   local miss=""
 
   mkdir -p "$DG_CACHE" 2>/dev/null
@@ -273,6 +274,10 @@ dg_kernelcheck() {
     if qq_proot_probe 8 qqbot-diag-probe "$log" >/dev/null 2>&1; then
       probe="ok"
     fi
+    # 第一级可能刚把档位探出来（写了标记），fork 这段直接调 proot，先按标记刷新环境，
+    # 否则 noseccomp 的机器上这一级会拿默认档去跑，白失败一次。
+    qq_proot_export_mode >/dev/null 2>&1 || true
+    mode="${QQBOT_PROOT_MODE:-default}"
     # 第二级：容器里 fork（proot 启动任何程序都走它）
     fork_out=$(
       unset LD_PRELOAD 2>/dev/null
@@ -306,11 +311,23 @@ dg_kernelcheck() {
     hint="proot 能执行，但在容器里创建子进程被系统拒绝，沙盒起不来。先重启手机再试一次；仍不行的话，这台 ROM 的权限 / 省电策略限制比较严（部分定制系统、开了「内存扩展」「应用冻结」的手机常见），请把这份诊断一起发给开发者。"
   else
     verdict="proot 跑不起来"
-    hint="内置 proot 可能和本机架构不匹配：重新部署一次；仍失败请把下面这段细节一起发出来。"
+    # 旧文案是「内置 proot 可能和本机架构不匹配：重新部署一次」，对内核拦 seccomp 的
+    # 机型是纯粹的误导（重装一百次也一样）。改成按日志关键字给下一步。
+    _kh="$log"
+    if grep -qiE 'PROOT_NO_SECCOMP|Operation not permitted|EPERM|seccomp' "_kh" 2>/dev/null; then
+      hint="这台手机的内核拦掉了 proot 的 seccomp 加速（Operation not permitted），三档 workaround 都没过。不是你的操作问题，重装/重置部署也没用；请把这份诊断发给开发者，下个版本会针对该机型适配。"
+    elif grep -qiE 'No such file or directory|ENOENT|not found' "_kh" 2>/dev/null; then
+      hint="内置组件似乎没装全（No such file or directory）。回主页点「重置部署」后重新部署一次；仍失败请把这份诊断发出来。"
+    elif grep -qiE 'Permission denied|EACCES|cannot execute' "_kh" 2>/dev/null; then
+      hint="系统拒绝执行 proot（Permission denied）。确认没开应用冻结 / 内存扩展，重启手机后再试；仍失败请把这份诊断发出来。"
+    else
+      hint="三档都没跑起来（日志已附在下面）。请把这份诊断发给开发者。"
+    fi
   fi
 
   text="内核探测（fork / proot）
 proot 执行 : $([ "$probe" = "fail" ] && echo 失败 || echo 正常)
+proot 档位 : $mode
 容器 fork  : $([ "$fork" = "ok" ] && echo 正常 || echo 失败)
 结论       : $verdict"
   [ -n "$detail" ] && text="$text
@@ -320,10 +337,10 @@ $detail"
   items="{\"k\":\"proot 执行\",\"v\":\"$probe\"},{\"k\":\"容器 fork\",\"v\":\"$fork\"},{\"k\":\"结论\",\"v\":\"$(dg_esc "$verdict")\"}"
   if [ "$fork" = "ok" ]; then
     dg_emit kernelcheck "ok" "内核探测：$verdict" "$hint" "$text" "[$items]" \
-      "\"proot\":\"$probe\"" "\"fork\":\"$fork\"" "\"detail\":\"$(dg_esc "$detail")\""
+      "\"proot\":\"$probe\"" "\"fork\":\"$fork\"" "\"mode\":\"$mode\"" "\"detail\":\"$(dg_esc "$detail")\""
   else
     dg_emit kernelcheck "fail" "内核探测：$verdict" "$hint" "$text" "[$items]" \
-      "\"proot\":\"$probe\"" "\"fork\":\"$fork\"" "\"detail\":\"$(dg_esc "$detail")\""
+      "\"proot\":\"$probe\"" "\"fork\":\"$fork\"" "\"mode\":\"$mode\"" "\"detail\":\"$(dg_esc "$detail")\""
   fi
 }
 

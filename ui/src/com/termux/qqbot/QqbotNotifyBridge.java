@@ -111,6 +111,32 @@ public class QqbotNotifyBridge {
         }
     }
 
+    /**
+     * 二维码弹窗「不再提示（本次运行）」：只影响本次进程，进程重启自动失效。
+     *
+     * 为什么不落 SharedPreferences：用户选的是「本次运行」，下次开 App 扫码还是要弹的
+     * ——扫码是登录的必要步骤，永久静音会让用户第二天发现机器人掉线却不知道为什么。
+     * 真正的开关还是在「更多 → 通知 → 扫码提醒」里（set("qr", …)）。
+     */
+    @JavascriptInterface
+    public void qrSkip(String on) {
+        try {
+            String v = on == null ? "" : on.trim().toLowerCase();
+            QqbotSession.setQrSkip("true".equals(v) || "1".equals(v) || "on".equals(v));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 本次运行是否已经「不再提示扫码」："true"/"false"。页面重进时用它恢复状态。 */
+    @JavascriptInterface
+    public String qrSkipped() {
+        try {
+            return QqbotSession.qrSkipped() ? "true" : "false";
+        } catch (Throwable t) {
+            return "false";
+        }
+    }
+
     /** 白名单化 kind：只认四个开关名，其余返回 null。 */
     private static String norm(String kind) {
         if (kind == null) return null;

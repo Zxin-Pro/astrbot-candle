@@ -274,7 +274,8 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 | 版本 | 字段 | 值 |
 | --- | --- | --- |
-| **1.3.4-beta.3（当前，测试版）** | `versionName` / 派生 `versionCode` | `1.3.4-beta.3` / `10304` |
+| **1.3.4-beta.4（当前，测试版）** | `versionName` / 派生 `versionCode` | `1.3.4-beta.4` / `10304` |
+| 1.3.4-beta.3 | `versionName` / 派生 `versionCode` | `1.3.4-beta.3` / `10304` |
 | 1.3.4-beta.2 | `versionName` / 派生 `versionCode` | `1.3.4-beta.2` / `10304` |
 | 1.3.4-beta.1 | `versionName` / 派生 `versionCode` | `1.3.4-beta.1` / `10304` |
 | 1.3.3（正式版） | `versionName` / 派生 `versionCode` | `1.3.3` / `10303` |
@@ -296,9 +297,15 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 | 1.2.10 | `versionName` / 派生 `versionCode` | `1.2.10` / `10210` |
 | 1.2.9 | `versionName` / 派生 `versionCode` | `1.2.9` / `10209` |
 
-1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.4-beta.3-arm64.apk`，`609,542,028`（约 581 MB，镜像在 APK 里），SHA-256 `5C544CFF2C4E4801F560776E85711194AB59C056F127C62DE4C88C580990C091`；增量包 `AstrBot-1.3.4-beta.3-arm64-update.apk`，`26,361,737`，SHA-256 `C63A18471840D2E2B73D4662F1B2717A0F816DC1DCB0CB11EE106CADEB8D6977`。1.3.4-beta.3 沿用旧密钥（_research\debug.keystore）签名，`versionCode 10304` 高于 1.3.3 及全部 1.3.3 测试版的 `10303`，因此可直接覆盖安装。
+1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.4-beta.4-arm64.apk`，`609,550,220`（约 581 MB，镜像在 APK 里），SHA-256 `07362864C513BE71613D7ECAA9658E0F2F380AC4594032B8ADB4951A9FC4D216`；增量包 `AstrBot-1.3.4-beta.4-arm64-update.apk`，`26,369,929`，SHA-256 `527162BD95FC6EACC81FDD8E81CDB07385765824E16237F75C92736475CEE417`。1.3.4-beta.4 沿用旧密钥（_research\debug.keystore）签名，`versionCode 10304` 高于 1.3.3 及全部 1.3.3 测试版的 `10303`，因此可直接覆盖安装。
 
 1.3.4-beta.3 又新增 5 个 Java 类（`QqbotUpdater` / `QqbotUpdaterCore` 应用内更新、`QqbotHealthBridge` 熔断与备份、`QqbotIslandView` / `QqbotIslandBridge` 灵动岛），重写了 `QqbotModelBridge`（原生直连模型接口），新增脚本 `build/opt/qqbot/crashfuse.sh`（崩溃熔断），并给 `backup.sh` 加了快照 / 回滚模式，所以增量包从 `26,300,297` 涨到 `26,361,737`。build-ui.ps1 现在还会把 `SYSTEM_ALERT_WINDOW` 与 `REQUEST_INSTALL_PACKAGES` 两个权限幂等补进 `AndroidManifest.xml`（供灵动岛与应用内安装使用），并已从杀软规避的删除清单里移出。
+
+1.3.4-beta.4 起灵动岛改成走系统「实时更新」通知：`QqbotIslandView.java`（悬浮窗小球）整份删除，`QqbotIslandBridge.java` 重写成纯桥（只读能力 / 开关 / 跳设置，不建窗），`QqbotGuardService.java` 里换成新渠道 `qqbot_live`（`ISLAND_ID=42330`）并用反射调 `setShortCriticalText` 与 `FLAG_PROMOTED_ONGOING`，Android 16 以下自动退回普通通知。扫码弹窗的「不再提示（本次运行）」落在新增的 `QqbotSession.java`（静态字段，不落盘），`QqbotNotifyBridge` 加了 `qrSkip` / `qrSkipped`，`QqbotGuardService.filterKinds()` 在本次运行内过滤掉「需要重新扫码」那类通知。
+
+脚本侧这一版改的是 proot 探针：`common.sh` 里 `qq_proot_probe` 变成三档矩阵（默认 → `PROOT_NO_SECCOMP=1` → 再叠 `--link2symlink`），命中后写 `proot-noseccomp` 标记，`qq_proot_export_mode()` 在文件顶层调用一次，所有 source 它的脚本都自动沿用；`qq_proot_fail_rows()` 按关键字给四档人话文案。`deploy.sh` / `steps/10-termux.sh` / `steps/70-launcher.sh` / `diagnose.sh` / `fix-sandbox.sh` 相应接线。注意档位开关必须排在 `proot` 本体**之后**（放前面会被 `timeout` 当成命令，rc=127）。
+
+UI 侧这一版只动 `ui/assets/qqbot/index.html` 与 `ui/assets/qqbot/plugins.html`：删掉更多页 `#runGuardCard` 整卡、`#islandCard` 改「实时更新」口径、二维码弹窗加 `qrskip`、全局按钮视觉层（`out/b4_buttons.css` 的内容整块并进 `index.html` 样式表末尾，块尾 `.btns > button` 12px / `.rowbtn` 10px 用来收回被 `--mi-ctl` 16px 压住的圆角；`.small` / `.tiny` 的视觉高度真抬到 44px，所以更多页卡片会变高）。
 
 本版同时改了 Java、界面和脚本，增量包不再是「只有脚本」：新增 5 个 Java 桥（`QqbotNotifyBridge` / `QqbotShare` / `QqbotPluginBridge` / `QqbotModelBridge` / `QqbotDiagBridge`）、新页面 `ui/assets/qqbot/plugins.html`、脚本 `build/opt/qqbot/diagnose.sh` 与 `model-test.py`，所以增量从 `26,206,018` 涨到 `26,300,297`。`build-ui.ps1` 的资产复制也从「点名拷 `index.html` + `appicon.png`」改成整目录 `Copy-Item ui\assets\qqbot\*`——以前新增页面会静默漏包（APK 里没有、真机白屏），以后往 `ui/assets/qqbot/` 加文件不用再改脚本。自查命令：`python out/b2_apkcheck3.py` 会核对 APK 内 `assets/qqbot/index.html` 与源码同哈希、`qqbot-scripts.zip` 里的脚本与 `build/opt/qqbot/` 同哈希。
 

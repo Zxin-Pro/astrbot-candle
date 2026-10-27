@@ -396,6 +396,52 @@ if [ "$QQBOT_ARCH" = "amd64" ]; then
   chmod 755 "$QQBOT_PROOT_BUNDLED" 2>/dev/null
   QQBOT_PROOT="$QQBOT_PROOT_BUNDLED"
 fi
+# ---------------------------------------------------------------------------
+# beta.5：PROOT_NO_SECCOMP —— 有些内核会拦掉 proot 的 seccomp 加速
+#
+# 真机报告 20261027-145000-3886（三星 SM-S9280 / One UI Android 16 / 内核 6.1.145）
+# 上 proot 自己打印了解法：
+#   proot error: execve("/system/bin/sh"): Operation not permitted
+#   proot info: It seems your kernel contains this bug: .../bug/1202161
+#   To workaround it, set the env. variable PROOT_NO_SECCOMP to 1.
+# 而 beta.4 以前只按一种方式试一次，试不通就报「这台设备上的 proot 跑不起来」，
+# 用户连部署第一步都进不去。现在由 qq_proot_probe 逐档试（见下面那段的注释），
+# 跑通的那一档写进下面这个标记文件。
+#
+# 标记文件的存在本身就是「这台机器需要 PROOT_NO_SECCOMP=1」的证据：
+#   - common.sh 被 30 多个脚本 source，在这里 export 一次就覆盖了所有入口
+#     （start-sandbox.sh / 70-launcher.sh / diagnose.sh 里那些直接调
+#     $QQBOT_PROOT 的地方都能吃到，不用逐个改）。
+#   - 探针下次直接从 noseccomp 档开始，不再从 default 白试一遍（幂等）。
+#
+# 为什么 amd64 一律不启用：amd64 用的是随包内置的 proot-x86_64，底下是 houdini
+# 翻译层，ptrace 寄存器布局跟 proot 对不上，PROOT_NO_SECCOMP=1 在模拟器上照样
+# 挂死（见上面 351-354 行的实测记录），开了只会让模拟器卡死，所以直接排除。
+QQBOT_PROOT_MODE_FILE="$QQBOT_HOME/proot-noseccomp"
+# 当前生效的档位：default | noseccomp | link2symlink。
+# 由 qq_proot_probe 在跑通时写入，供日志、诊断和失败文案判断。
+QQBOT_PROOT_MODE="default"
+
+qq_proot_export_mode() {
+  if [ "$QQBOT_ARCH" = "amd64" ]; then
+    unset PROOT_NO_SECCOMP 2>/dev/null
+    QQBOT_PROOT_MODE="default"
+    return 0
+  fi
+  if [ -f "$QQBOT_PROOT_MODE_FILE" ]; then
+    export PROOT_NO_SECCOMP=1
+    case "${QQBOT_PROOT_MODE:-}" in
+      ''|default) QQBOT_PROOT_MODE="noseccomp" ;;
+    esac
+  else
+    unset PROOT_NO_SECCOMP 2>/dev/null
+    QQBOT_PROOT_MODE="default"
+  fi
+  return 0
+}
+# 载入即生效：common.sh 是所有脚本的公共入口，这一行管住全部调用点。
+qq_proot_export_mode
+
 # proot-me 的 proot 需要一个可写的临时目录（只设 TMPDIR 不够，
 # 不设会报 "can't create temporary file: Permission denied"）
 export PROOT_TMP_DIR="$QQBOT_PTMP"
@@ -929,30 +975,52 @@ qq_tz_sync() {
   printf '%s' "$_t"
 }
 
-# proot 能不能跑：拿一句 echo 当探针。
+# proot 能不能跑：拿一句 echo 当探针，按「档位 × 解释器」逐格试。
 #
-# 探针不能写死 /system/bin/echo —— 1.2.0 就是这么写的，Redmi 24069RA21C / Android 16
-# 实测这台机器上根本没有这个路径，proot 把 -0 后面的第一个参数当可执行文件去 execve，
-# 直接 ENOENT，于是「proot 自检失败」，部署卡在第 10 步（用户日志 20261021-214703）。
-# 改成按顺序试几个「Android 上一定在」的解释器，谁先跑通就算谁：
+# 维度一：解释器。探针不能写死 /system/bin/echo —— 1.2.0 就是这么写的，
+# Redmi 24069RA21C / Android 16 实测这台机器上根本没有这个路径，proot 把 -0 后面的
+# 第一个参数当可执行文件去 execve，直接 ENOENT，于是「proot 自检失败」，部署卡在
+# 第 10 步（用户日志 20261021-214703）。所以按顺序试几个「Android 上一定在」的解释器：
 #   /system/bin/sh -c echo …（4.x 起一直都在，最稳）
 #   /system/bin/toybox echo …（6.0 起）
 #   /system/bin/echo …（老路径，留给旧机型）
-# 三次都失败才算 proot 真的跑不起来，并且把每次的原始报错都留在日志里。
+#
+# 维度二（beta.5 新增）：proot 的运行档位。旧版只试 default 一档，遇到三星 One UI /
+# Android 16 这种把 seccomp 加速拦掉的内核（报告 20261027-145000-3886，EPERM）就
+# 直接判「设备不支持」，而 proot 自己早就把解法打在屏幕上了（PROOT_NO_SECCOMP=1）。
+#   档位 1 default      ：现状，什么都不加
+#   档位 2 noseccomp    ：PROOT_NO_SECCOMP=1，关掉 seccomp 加速（proot 官方 workaround）
+#   档位 3 link2symlink ：再叠 --link2symlink（连硬链接都不可用时的最后兜底）
+# 每一格的原始输出都留在日志里，行首带档位标注，出问题时能一眼看出哪档试到哪一步。
+#
+# 记住哪一档能跑：命中后由 _qp_hit 写/删 $QQBOT_HOME/proot-noseccomp（见文件上方
+# qq_proot_export_mode），下次直接从那一档开始，不再从 default 重新试错。
+#
+# 结果用全局变量 QQBOT_PROOT_MODE 返回，不靠 echo —— 调用方写的是
+# `if qq_proot_probe ...` 或者直接看返回值，用命令替换会开子 shell 把状态丢掉。
 qq_proot_probe() {
   _qp_to="$1"
   _qp_mark="$2"
   _qp_log="$3"
   : > "$_qp_log" 2>/dev/null
+  # $1 档位名 $2 是否开 PROOT_NO_SECCOMP(1/0)；其余是命令行
   _qp_try() {
+    _qp_tag="$1"
+    _qp_ns="$2"
+    shift 2
     _qp_out="$_qp_log.$$.try"
+    if [ "$_qp_ns" = "1" ]; then
+      export PROOT_NO_SECCOMP=1
+    else
+      unset PROOT_NO_SECCOMP 2>/dev/null
+    fi
     if command -v timeout >/dev/null 2>&1; then
       timeout "$_qp_to" "$@" > "$_qp_out" 2>&1
     else
       "$@" > "$_qp_out" 2>&1
     fi
     _qp_rc=$?
-    printf '[probe] rc=%s %s\n' "$_qp_rc" "$1" >> "$_qp_log" 2>/dev/null
+    printf '[probe] (%s) rc=%s %s\n' "$_qp_tag" "$_qp_rc" "$1" >> "$_qp_log" 2>/dev/null
     sed 's/^/    /' "$_qp_out" >> "$_qp_log" 2>/dev/null
     if [ "$_qp_rc" -eq 0 ] && grep -q "$_qp_mark" "$_qp_out" 2>/dev/null; then
       rm -f "$_qp_out"
@@ -961,9 +1029,71 @@ qq_proot_probe() {
     rm -f "$_qp_out"
     return 1
   }
-  _qp_try "$QQBOT_PROOT" -0 /system/bin/sh -c "echo $_qp_mark" && return 0
-  _qp_try "$QQBOT_PROOT" -0 /system/bin/toybox echo "$_qp_mark" && return 0
-  _qp_try "$QQBOT_PROOT" -0 /system/bin/echo "$_qp_mark" && return 0
+  # 一整档：同一个档位下把三个解释器依次试一遍（前一个能跑通就不试后面的）
+  _qp_tier() {
+    _qp_name="$1"
+    _qp_nsflag="$2"
+    shift 2
+    # 档位自带的开关（--link2symlink）必须排在 proot 本体后面：放前面的话
+    # timeout 会把开关当成要执行的命令，直接 rc=127，这一档永远跑不通。
+    _qp_try "$_qp_name" "$_qp_nsflag" "$QQBOT_PROOT" "$@" -0 /system/bin/sh -c "echo $_qp_mark" && return 0
+    _qp_try "$_qp_name" "$_qp_nsflag" "$QQBOT_PROOT" "$@" -0 /system/bin/toybox echo "$_qp_mark" && return 0
+    _qp_try "$_qp_name" "$_qp_nsflag" "$QQBOT_PROOT" "$@" -0 /system/bin/echo "$_qp_mark" && return 0
+    return 1
+  }
+  # 命中：把档位记下来，供后续所有 proot 调用复用
+  _qp_hit() {
+    QQBOT_PROOT_MODE="$1"
+    case "$1" in
+      default)
+        rm -f "$QQBOT_PROOT_MODE_FILE" 2>/dev/null
+        unset PROOT_NO_SECCOMP 2>/dev/null
+        ;;
+      noseccomp)
+        : > "$QQBOT_PROOT_MODE_FILE" 2>/dev/null
+        export PROOT_NO_SECCOMP=1
+        ;;
+      link2symlink)
+        : > "$QQBOT_PROOT_MODE_FILE" 2>/dev/null
+        : > "$QQBOT_HOME/link2symlink" 2>/dev/null
+        export PROOT_NO_SECCOMP=1
+        ;;
+    esac
+    return 0
+  }
+  _qp_tried_ns=0
+  # 上次已经证明这台机器需要 noseccomp：直接从那一档开始，别再从 default 白试一遍。
+  if [ "$QQBOT_ARCH" != "amd64" ] && [ -f "$QQBOT_PROOT_MODE_FILE" ]; then
+    _qp_tried_ns=1
+    if _qp_tier noseccomp 1; then
+      _qp_hit noseccomp
+      return 0
+    fi
+    # 标记失效了（换了包 / 系统升级过）：删掉，老老实实走完整矩阵再判断一次。
+    rm -f "$QQBOT_PROOT_MODE_FILE" 2>/dev/null
+  fi
+  # 档位 1：default（绝大多数机器走到这里就结束）
+  if _qp_tier default 0; then
+    _qp_hit default
+    return 0
+  fi
+  # 档位 2、3 只在非 amd64 上试：amd64 是 houdini 翻译层，开 PROOT_NO_SECCOMP 会挂死
+  # （见上面 351-354 行），宁可报失败也不能把模拟器卡住。
+  if [ "$QQBOT_ARCH" != "amd64" ]; then
+    if [ "$_qp_tried_ns" = "0" ]; then
+      if _qp_tier noseccomp 1; then
+        _qp_hit noseccomp
+        return 0
+      fi
+    fi
+    if _qp_tier link2symlink 1 --link2symlink; then
+      _qp_hit link2symlink
+      return 0
+    fi
+  fi
+  # 三档全失败：环境恢复成「按标记来」，别把 PROOT_NO_SECCOMP 漏给后续调用
+  unset PROOT_NO_SECCOMP 2>/dev/null
+  QQBOT_PROOT_MODE="default"
   return 1
 }
 
@@ -1007,6 +1137,45 @@ qq_proot_selftest_log() {
   return 0
 }
 
+# 自检三档全失败时，按日志里的关键字告诉用户「下一步该干什么」。
+#
+# 旧文案是「内置 proot 可能和本机架构不匹配，重新部署一次」—— 对三星这类被内核
+# 拦掉 seccomp 的机器完全是错的（重新部署一百次还是同样的 EPERM），用户照做只会更
+# 困惑（真机报告 20261027-145000-3886 的留言就是这么来的）。所以改成按错误类型分支：
+#   有 EPERM / seccomp 痕迹 → 内核拦的，属于机型适配问题，只能上报日志
+#   有 ENOENT / not found   → 内置组件没装全，引导重新部署
+#   有 Permission denied    → 系统权限/冻结限制，引导重启并检查省电设置
+#   什么都没有              → 兜底：上传日志
+# 无论哪一支都带上「请把这段日志发给作者」，因为用户能做的就只有上传报告。
+qq_proot_fail_rows() {
+  _fr_log="$QQBOT_SELFTEST_LOG"
+  _fr_seccomp=0
+  _fr_enoent=0
+  _fr_perm=0
+  if [ -f "$_fr_log" ]; then
+    grep -qiE 'PROOT_NO_SECCOMP|Operation not permitted|EPERM|seccomp' "$_fr_log" 2>/dev/null && _fr_seccomp=1
+    grep -qiE 'No such file or directory|ENOENT|not found' "$_fr_log" 2>/dev/null && _fr_enoent=1
+    grep -qiE 'Permission denied|EACCES|cannot execute' "$_fr_log" 2>/dev/null && _fr_perm=1
+  fi
+  if [ "$_fr_seccomp" = "1" ]; then
+    qqerr "这台手机的内核拦掉了 proot 的 seccomp 加速（Operation not permitted）。"
+    qqerr "自动试过三档：默认 / PROOT_NO_SECCOMP=1 / 再加 --link2symlink，都没跑起来。"
+    qqerr "这不是你操作的问题，也不用重装或重置部署（重试同样会被拦）。"
+    qqerr "请把这段日志发给作者（设置 → 维护 → 上传错误日志），下个版本会针对这个机型适配。"
+  elif [ "$_fr_enoent" = "1" ]; then
+    qqerr "proot 找不到要执行的程序（No such file or directory），多半是内置组件没装全。"
+    qqerr "请回主页点「重置部署」，再点「开始部署」重新走一遍；仍失败请把这段日志发给作者。"
+  elif [ "$_fr_perm" = "1" ]; then
+    qqerr "系统拒绝执行 proot（Permission denied）。"
+    qqerr "请确认没开「应用冻结 / 内存扩展」，把 App 从后台划掉后重启手机再试一次；"
+    qqerr "仍失败请把这段日志发给作者（设置 → 维护 → 上传错误日志）。"
+  else
+    qqerr "proot 自检没有通过，三档都没跑起来（完整日志：$QQBOT_SELFTEST_LOG）。"
+    qqerr "请把这段日志发给作者（设置 → 维护 → 上传错误日志）。"
+  fi
+  return 0
+}
+
 # 关于 --link2symlink：默认关闭，只在「这台手机的存储不支持硬链接」时自动开启
 # （qq_fsprobe 判定后写 $QQBOT_HOME/link2symlink）。
 #
@@ -1017,6 +1186,9 @@ qq_proot_selftest_log() {
 # 不开这个 apt 装不了任何包（AstrBot-Bubble-Android-App 也是无条件开着它跑的）。
 qq_proot() {
   unset LD_PRELOAD
+  # 探针可能刚在本进程里写下标记（部署流程里 qq_proot_selftest 先跑、qq_proot 后跑），
+  # 每次进来都按标记重算一遍，保证 PROOT_NO_SECCOMP 和当前档位一致。
+  qq_proot_export_mode
   export PROOT_TMP_DIR="$QQBOT_PTMP"
   # /usr/bin/env -i 会清空全部环境变量，所以代理必须在这里显式补上：
   # 沙盒内的 apt（30-apt.sh）和 pip（60-astrbot.sh）都依赖这几个变量。

@@ -1238,6 +1238,12 @@ pre{
 }
 .dfoot button{ flex: 0 0 auto; }
 .dfoot button.primary{ flex: 1; }
+/* 1.3.4-beta.4：二维码弹窗底部新增「不再提示（本次运行）」，一排四个按钮在 320px 宽会横向溢出。
+   .dfoot 本身不换行，这里只给二维码这一个弹窗允许换行，别的弹窗布局一点不动。 */
+#dlgQr .dfoot{ flex-wrap: wrap; }
+/* 这个弹窗是「要不要继续被打断」的决策点，四个按钮统一 44px 触摸高度（原来只有 34px）。
+   beta.4 的按钮重设计（§5）落地后这两行就是重复规则，删掉也不影响功能。 */
+#dlgQr .dfoot > button{ min-height: 44px; }
 
 /* ---------- 14b. 背景裁剪（§B9-C 自定义图片裁剪，层在弹窗体系之上） ----------
    整页黑的取景器：上面一行标题，中间按屏幕比例（9:20~20:9）取 cover 预览，
@@ -2812,23 +2818,301 @@ html.devnotelock{ overflow: hidden; }
   .swrow .tgl::before{ content: ""; position: absolute; left: -8px; right: -8px; top: -7px; bottom: -7px; border-radius: 999px; }
   #qrFall .btns > button{ min-height: 44px; }
   @media (prefers-reduced-motion: reduce){ .startrow .spin{ animation: none !important; } }
-  /* ===== 1.3.4-beta.3 新增：运行守护卡 / 灵动岛开关 / 底栏第 5 个页签 ===== */
-  .guard .ghd{ margin: 14px 0 6px; font-size: 12px; font-weight: 600; letter-spacing: .3px; color: var(--label-2); }
-  .guard .ghd:first-of-type{ margin-top: 12px; }
-  .gbts{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-  .gbts > button, .gbts > select{ min-height: 44px; }
-  .guard .hrow > button{ min-height: 44px; }   /* 守护卡的「检查 / 立即备份 / 看记录」也在 .hrow 里，一样要够 44 */
-  .gsel{ flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 0 10px; border-radius: var(--mi-ctl);
-    background: var(--fill-1); color: var(--label); border: 1px solid var(--line-1); font-size: 13px; }
-  .gbar{ position: relative; height: 6px; margin: 8px 0 2px; border-radius: 999px; background: var(--fill-2); overflow: hidden; }
-  .gbar > i{ display: block; width: 0; height: 100%; border-radius: 999px; background: var(--accent); transition: width .25s var(--ease); }
-  .gbar.on{ display: block; }
-  .guard .hres.ok{ color: var(--ok); }
-  .guard .hres.bad{ color: var(--bad); }
+  /* ===== 1.3.4-beta.3 新增：灵动岛开关 / 底栏第 5 个页签 ===== */
   /* 底栏 5 个页签挤一点没关系，字号跟着收一档，别让「插件」两个字换行 */
   nav button{ white-space: nowrap; }
   nav button .ic{ width: 22px; height: 22px; }
   #islandCard .btns > button{ min-height: 44px; }
+
+/* ============================================================================
+   1.3.4-beta.4 · 按钮视觉层（task-23 / ui-tap）
+   ----------------------------------------------------------------------------
+   目的：去掉「塑料感」——多层内阴影、渐变高光、半透明白填充、>1px 厚边框、
+        按压缩放过大。统一成扁平 + 克制的四档语义。
+   约束：只加视觉层。不改 data-act / id / class 语义，不动布局尺寸逻辑，
+        可点区域只会变大不会变小（小控件直接给 44px 真高度）。
+   用法：整段插到 index.html 样式表末尾（plugins.html 已同步同一套风格）。
+   ============================================================================ */
+
+/* 令牌别名：本文件里统一用 --line / --danger 读；都从现有令牌派生，深浅色自动跟随。 */
+:root{
+  --line: color-mix(in srgb, var(--label) 16%, transparent);   /* 1px 描边色（浅色=黑 16%，深色=白 16%） */
+  --danger: var(--bad);
+  --btn-r: 12px;          /* 常规按钮圆角 */
+  --btn-r-sm: 10px;       /* 小控件圆角 */
+  --btn-dur: 120ms;
+  --btn-ease: cubic-bezier(.2,.8,.2,1);
+}
+
+/* ---------------------------------------------------------------- 基础层 */
+/* 一律扁平：清掉所有渐变、内阴影、发光。
+   !important 是给 base 里 button.small.primary / button.small.danger / button.small.ok
+   这类「两段类名」规则留的余量：它们的选择器权重比单独的 button.primary 高，
+   不加 !important 会被 base 的 background 简写盖回去。这里只钉 background-image 与
+   box-shadow 两条属性，背景色 / 圆角 / 尺寸仍按各自的类走。
+   .sw（主题色球）和 .tgl（开关）除外：那不是按钮，保留它自己的颜色与立体感。 */
+button, button.primary, button.danger, button.ok,
+button.small, button.small.primary, button.small.danger, button.small.ok,
+button.tiny, button.quiet, .iconbtn, .xdel, .bclose, .dots, .dtgl,
+.linkbtn, .moretoggle, .rowmore, .rowbtn, .qk, .mcbtn, .seg button{
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+button{
+  border: 1px solid var(--line);
+  border-radius: var(--btn-r);
+  background-color: transparent;
+  color: var(--label);
+  font-weight: 560;
+  letter-spacing: -.1px;
+  transition: background-color var(--btn-dur) var(--btn-ease),
+    border-color var(--btn-dur) var(--btn-ease),
+    color var(--btn-dur) var(--btn-ease),
+    transform var(--btn-dur) var(--btn-ease),
+    opacity var(--btn-dur) var(--btn-ease);
+}
+
+/* 次按钮（默认档）：透明底 + 1px 描边。 */
+button:hover{ background-color: var(--fill-1); }
+button:active{ transform: scale(.98); background-color: var(--fill-2); box-shadow: none; }
+
+/* 键盘导航才出现的焦点环，鼠标/触摸不打扰。 */
+button:focus-visible,
+[role="button"]:focus-visible{
+  outline: 2px solid color-mix(in srgb, var(--accent) 72%, transparent);
+  outline-offset: 2px;
+}
+
+/* 真 disabled（HTML 属性）才不吃点击；.locked / aria-disabled 是「部署未完成」的软锁，
+   必须仍然能收到 click —— 点了要弹「还在部署中」的 toast，所以只降不透明度。 */
+button:disabled{ opacity: .45; pointer-events: none; }
+button.locked, button[aria-disabled="true"], .qk.lock{ opacity: .5; }
+
+/* ---------------------------------------------------------------- 主按钮 */
+button.primary{
+  color: #fff;
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+button.primary:hover{ background-color: color-mix(in srgb, var(--accent) 94%, #fff); }   /* 提亮 6% */
+button.primary:active{ background-color: color-mix(in srgb, var(--accent) 92%, #000); }  /* 压暗 8% */
+
+/* ---------------------------------------------------------------- 危险 / 成功 */
+/* 禁止整块大红：danger 只是红字 + 10% 底。 */
+button.danger{
+  color: var(--danger);
+  background-color: color-mix(in srgb, var(--danger) 10%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 26%, transparent);
+}
+button.danger:hover{ background-color: color-mix(in srgb, var(--danger) 15%, transparent); }
+button.danger:active{ background-color: color-mix(in srgb, var(--danger) 20%, transparent); }
+
+button.ok{
+  color: var(--ok);
+  background-color: color-mix(in srgb, var(--ok) 12%, transparent);
+  border-color: color-mix(in srgb, var(--ok) 28%, transparent);
+}
+button.ok:hover{ background-color: color-mix(in srgb, var(--ok) 17%, transparent); }
+button.ok:active{ background-color: color-mix(in srgb, var(--ok) 22%, transparent); }
+
+/* ---------------------------------------------------------------- 幽灵 / 文字按钮 */
+button.quiet, button.linkbtn, .moretoggle, .rowmore{
+  color: var(--label-2);
+  background-color: transparent;
+  border-color: transparent;
+}
+button.quiet:active, .moretoggle:active, .rowmore:active{ background-color: var(--fill-2); }
+button.linkbtn{ color: var(--accent); }
+button.linkbtn:active{ background-color: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+/* ---------------------------------------------------------------- 小号 / 紧凑控件
+   一律真高度 44px：不再用 ::before 绝对定位撑命中区。
+   原因有二：① 验收脚本量的是 computed min-height，伪元素撑法在 computed 上仍是 36px；
+   ② 绝对定位的隐形容器在缺 position:relative 时会盖到整张卡片上，补了 relative 也会让
+   相邻按钮互相吃掉几像素点击。视觉高度直接做到 44，横向宽度不动（不改排版换行）。
+   .tiny / .xdel / .seg button / .rowbtn / #btnStatDetail 在 base 里有 min-height:32px !important，
+   这里必须用 !important 才能压过去。 */
+button.small, button.tiny, button.linkbtn, button.rowbtn, button.dtgl,
+.dots, .depov-off, #btnStatDetail{
+  min-height: 44px !important;
+}
+button.small, button.tiny{ border-radius: var(--btn-r-sm); }
+.seg button{ min-height: 44px !important; }
+
+/* 圆形小按钮：直径也补到 44（只改直径，位置靠 flex/margin-left:auto，不挤文字）。 */
+.xdel, .bclose{
+  width: 44px; height: 44px;
+  min-width: 44px !important; min-height: 44px !important;
+}
+
+/* .tgl 开关保持 51x31 视觉，命中区仍用 ::before 外扩（它本来就有 position:relative）。
+   .sw 颜色球同理，两者都不动。 */
+.tgl{ position: relative; }
+
+/* ---------------------------------------------------------------- 图标类 */
+.iconbtn{
+  width: 44px; height: 44px;
+  border: 1px solid var(--line);
+  border-radius: var(--btn-r);
+  background-color: transparent;
+  color: var(--accent);
+}
+.iconbtn:active{ transform: scale(.98); background-color: var(--fill-2); }
+
+.dots{
+  border: 1px solid var(--line);
+  background-color: transparent;
+  color: var(--label-2);
+}
+.dots[aria-expanded="true"]{
+  color: var(--accent);
+  background-color: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.xdel, .bclose{
+  border: 1px solid var(--line);
+  background-color: transparent;
+  color: var(--label-2);
+}
+.xdel:active, .bclose:active{ background-color: var(--fill-2); }
+
+#dlgAstr .dlgx{
+  border: 0;
+  background-color: transparent;
+  color: var(--label-2);
+}
+#dlgAstr .dlgx:active{ background-color: var(--fill-2); }
+
+/* ---------------------------------------------------------------- 行内小开关按钮 */
+.dtgl{
+  border: 1px solid var(--line);
+  border-radius: var(--btn-r-sm);
+  background-color: transparent;
+  color: var(--label-2);
+}
+.dtgl:active{ background-color: var(--fill-2); }
+
+/* ---------------------------------------------------------------- 快捷方块 / 卡片行 */
+.qk{
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background-color: var(--fill-1);
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.qk:active{ transform: scale(.98); background-color: var(--fill-2); }
+.qk .qi{ background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+.mcbtn{
+  border: 1px solid transparent;
+  border-radius: var(--btn-r);
+  background-color: transparent;
+}
+.mcbtn:active{ background-color: var(--fill-1); }
+
+/* 更多工具 / 展开行：纯文字，不带框。 */
+.moretoggle, .rowmore{ border: 0; border-radius: var(--btn-r-sm); }
+
+/* ---------------------------------------------------------------- 分段控件 */
+/* 分段控件外壳：原来靠 inset 阴影画 1px 环，改成真边框（padding 3→2 保持总高 38px 不变）。 */
+.seg{
+  background-color: var(--fill-1);
+  border: 1px solid var(--line);
+  padding: 2px;
+  border-radius: var(--btn-r-sm);
+}
+.seg button{
+  border: 0;
+  border-radius: calc(var(--btn-r-sm) - 2px);
+  background-color: transparent;
+  color: var(--label-2);
+}
+.seg button.on{
+  color: var(--label);
+  background-color: var(--page);
+  box-shadow: 0 1px 2px rgba(17,24,39,.10);
+}
+
+/* ---------------------------------------------------------------- 开关（保持 51x31 视觉，命中区 44） */
+.tgl{
+  background-color: var(--fill-3);
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+.tgl::after{ box-shadow: 0 1px 2px rgba(0,0,0,.20); }
+.tgl.on{ background-color: var(--accent); border-color: var(--accent); }
+.tgl::before{
+  content: "";
+  position: absolute;
+  left: -8px; right: -8px; top: -7px; bottom: -7px;
+  border-radius: 999px;
+}
+.tgl.locked::after{ background: rgba(255,255,255,.72); }
+
+/* 颜色球：42px 视觉，命中区补到 44；按下不再缩 10%。 */
+.sw{
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+.sw.on{ box-shadow: 0 0 0 2px var(--page), 0 0 0 4px var(--accent); }
+.sw:active{ transform: scale(.98); }
+
+/* ---------------------------------------------------------------- 底栏页签
+   5 个页签是导航，不是「按钮」：保持无框无底，只留激活色。 */
+nav button{
+  border: 0;
+  border-radius: var(--btn-r);
+  background-color: transparent;
+  box-shadow: none;
+  /* 页签本来就有 62px 高，这里只是把 computed min-height 也写成 44，
+     让「所有 button 的 min-height >= 44」这条验收口径对它同样成立。 */
+  min-height: 44px;
+}
+nav button:hover{ background-color: transparent; }
+nav button:active{ transform: none; background-color: transparent; }
+
+/* ---------------------------------------------------------------- 特殊容器里的按钮 */
+.crop-acts button{
+  border: 1px solid rgba(255,255,255,.28);
+  border-radius: var(--btn-r);
+  background-color: rgba(255,255,255,.10);
+  color: #fff;
+}
+.crop-acts button.primary{ border-color: var(--accent); background-color: var(--accent); }
+.crop-acts button:active{ transform: scale(.98); }
+
+.depov-off{
+  border: 1px solid var(--line);
+  border-radius: var(--btn-r);
+  background-color: transparent;
+}
+.depov-off:active{ background-color: var(--fill-2); }
+
+#riskBar > .rb button, #powBar > .rb button{
+  border: 1px solid var(--line);
+  border-radius: var(--btn-r-sm);
+  background-color: transparent;
+}
+
+/* 输入类控件跟按钮同款描边，整页看起来才是一套。 */
+.gsel{ border-color: var(--line); background-color: transparent; }
+
+/* ---------------------------------------------------------------- 动效偏好 */
+@media (prefers-reduced-motion: reduce){
+  button, .qk, .mcbtn, .tgl, .sw, .seg button, .iconbtn, .dots, .dtgl{
+    transition-duration: 0ms !important;
+  }
+  button:active, .qk:active, .sw:active, .crop-acts button:active{ transform: none; }
+}
+
+/* b10-nav 反馈：.btns > button 与 .rowbtn 被 base 里的
+   `.btns > button, .rowbtn{ border-radius: var(--mi-ctl); }`（--mi-ctl: 16px）压住（那边权重 (0,1,1) 高于 button）。
+   这里用同等权重、靠后出现收回圆角：普通按钮 12px，小控件（.rowbtn）10px。不动 --mi-ctl 这个全局令牌。 */
+.btns > button{ border-radius: var(--btn-r); }
+.rowbtn{ border-radius: var(--btn-r-sm); }
 </style>
 </head>
 <body>
@@ -3459,81 +3743,6 @@ html.devnotelock{ overflow: hidden; }
     </div>
     </div>
 
-    <!-- 运行守护（1.3.4-beta.3 §4）：更新 / 崩溃熔断 / 每日备份 / 定时重启 + 夜间低功耗。
-         AndroidUpdater 与 AndroidHealth 是这一版新加的桥，老安装包探不到就整块隐藏，
-         绝不出现「按钮点了没反应」。放在诊断折叠区外面，因为这四件是日常要看的。 -->
-    <div class="card guard" id="runGuardCard" style="display:none">
-      <h2><span class="dot" id="d-runguard"></span>运行守护</h2>
-      <div class="hint" style="margin-top:0">四件平时容易忘的事：有新版本直接下、崩太多次自动停、每天自动存一份、夜里自动重启并压低功耗。</div>
-
-      <div class="ghd">更新</div>
-      <div class="hrow">
-        <div class="hbd"><div class="lkt">版本更新</div><div class="lkv" id="gUpdSub">还没查过</div></div>
-        <button class="small" data-act="gupdcheck" id="gUpdBtn">检查</button>
-      </div>
-      <div class="gbar" id="gUpdBar" style="display:none"><i id="gUpdBarI"></i></div>
-      <div class="hres" id="gUpdOut" style="display:none"></div>
-      <div class="gbts" id="gUpdActs" style="display:none">
-        <button class="small primary" data-act="gupddl" id="gUpdDl">下载</button>
-        <button class="small" data-act="gupdcancel" id="gUpdCancel" style="display:none">取消下载</button>
-        <button class="small primary" data-act="gupdinstall" id="gUpdInstall" style="display:none">安装</button>
-      </div>
-
-      <div class="ghd">崩溃熔断</div>
-      <div class="hrow">
-        <div class="hbd"><div class="lkt">连续崩溃自动停</div><div class="lkv" id="gCrashSub">正在读…</div></div>
-        <button class="small" data-act="gcrashtxt">看记录</button>
-      </div>
-      <div class="hres" id="gCrashOut" style="display:none"></div>
-      <div class="gbts" id="gCrashActs" style="display:none">
-        <button class="small primary" data-act="gclearfuse" id="gFuseBtn">解除熔断并重启</button>
-      </div>
-
-      <div class="ghd">备份</div>
-      <div class="hrow">
-        <div class="hbd"><div class="lkt">每日自动备份</div><div class="lkv" id="gBkSub">正在读…</div></div>
-        <button class="small" data-act="gbknow" id="gBkNow">立即备份</button>
-      </div>
-      <div class="gbts">
-        <button class="small" data-act="gbklist" id="gBkList">恢复备份…</button>
-      </div>
-      <div class="hres" id="gBkOut" style="display:none"></div>
-
-      <div class="ghd">定时与夜间</div>
-      <div class="hrow">
-        <div class="hbd"><div class="lkt">每天定时重启</div><div class="lkv" id="gSchedSub">关闭</div></div>
-        <select class="gsel" id="gRestartSel" aria-label="每天定时重启">
-          <option value="">关闭</option>
-          <option value="02:00">02:00</option>
-          <option value="03:00">03:00</option>
-          <option value="04:00">04:00</option>
-          <option value="05:00">05:00</option>
-          <option value="06:00">06:00</option>
-        </select>
-      </div>
-      <div class="swrow">
-        <div class="swinfo">
-          <div class="swname">夜间低功耗</div>
-          <div class="swdesc" id="gNightSub">夜里没人聊，降频省电。</div>
-        </div>
-        <button class="tgl" id="gNightTgl" data-act="gnight" title="点击切换夜间低功耗" aria-label="夜间低功耗"></button>
-      </div>
-      <div class="gbts">
-        <select class="gsel" id="gNightFrom" aria-label="夜间开始时间">
-          <option value="21:00">21:00</option>
-          <option value="22:00">22:00</option>
-          <option value="23:00">23:00</option>
-          <option value="00:00">00:00</option>
-        </select>
-        <select class="gsel" id="gNightTo" aria-label="夜间结束时间">
-          <option value="06:00">06:00</option>
-          <option value="07:00">07:00</option>
-          <option value="08:00">08:00</option>
-        </select>
-      </div>
-    </div>
-
-
     <div class="card">
       <h2>终端</h2>
       <div class="hint" style="margin-top:0">需要手动执行命令时可切到 Termux 终端。常用：qqbot-start / qqbot-stop / qqbot-status / qqbot-shell。</div>
@@ -3639,21 +3848,24 @@ html.devnotelock{ overflow: hidden; }
       <div class="hint" id="ntfHint" style="margin-top:8px">测试会立刻发一条通知。如果没看到，去系统设置里允许本应用发送通知，或者检查「勿扰模式」。</div>
     </div>
 
-    <!-- 灵动岛状态球（1.3.4-beta.3 §4）：AndroidIsland 是这一版新加的桥，探不到就整块隐藏。
-         授权状态从 info().granted 读，没授权时把「去授权」露出来，不让用户猜。 -->
+    <!-- 灵动岛（实时更新，1.3.4-beta.4）：走 Android 16 的 Live Updates —— 状态栏常驻一条运行状态，
+         不是悬浮窗小球。AndroidIsland 是这一版新加的桥，老安装包没有，探不到就整块隐藏。
+         能力全部按 info() 的 canPromote / mode 动态判断，不假设任何权限字段。 -->
     <div class="card" id="islandCard" style="display:none">
-      <h2><span class="dot" id="d-island"></span>灵动岛状态球</h2>
-      <div class="hint" style="margin-top:0">在别的应用上也浮一颗小球，显示运行中 / 启动中 / 离线 / 待扫码，点一下回到控制台。</div>
+      <h2><span class="dot" id="d-island"></span>灵动岛（实时更新）</h2>
+      <div class="hint" style="margin-top:0">Android 16 的实时更新：状态栏常驻一条运行状态（运行中 / 待扫码 / 启动中 / 离线），点一下回到应用。系统没开放这个能力时，就退回普通通知。</div>
       <div class="swrow">
         <div class="swinfo">
-          <div class="swname">显示状态球</div>
-          <div class="swdesc" id="islandDesc">需要「悬浮窗」与「通知」两项权限。</div>
+          <div class="swname">状态栏常驻运行状态</div>
+          <div class="swdesc" id="islandDesc">正在读取…</div>
         </div>
-        <button class="tgl" id="islandTgl" data-act="islandtoggle" title="点击切换灵动岛" aria-label="灵动岛显示开关"></button>
+        <button class="tgl" id="islandTgl" data-act="islandtoggle" title="点击开关实时更新" aria-label="实时更新开关"></button>
       </div>
-      <div class="btns" id="islandActs" style="display:none;margin-top:10px">
-        <button class="small primary" data-act="islandgrant" id="islandGrant">去授权</button>
+      <div class="btns" id="islandActs" style="margin-top:10px">
+        <button class="small primary" data-act="islandgrant" id="islandGrant">去设置</button>
+        <button class="small" data-act="islandtest" id="islandTest">发一条试试</button>
       </div>
+      <div class="hint" id="islandHint" style="margin-top:8px;display:none"></div>
     </div>
 
     <div class="card">
@@ -3865,6 +4077,7 @@ html.devnotelock{ overflow: hidden; }
     <div class="dfoot">
       <button class="small" data-act="qrshare">分享二维码图片</button>
       <button class="small" data-act="qrreload">刷新二维码</button>
+      <button class="small quiet" data-act="qrskip" id="qrSkipBtn">不再提示（本次运行）</button>
       <button class="small quiet" style="flex:1" data-act="qrclose">稍后再说</button>
     </div>
   </div>
@@ -5140,7 +5353,7 @@ function showTab(t){
   window.scrollTo(0, 0);
   if (t === "logs") { fillQrSelect(); loadQr(); loadLog(); loadDuo(); }
   if (t === "settings") { try { ntfPaint(true); } catch (e9) {} }   /* 1.3.4-beta.2：进设置页现取一次通知配置 */
-  if (t === "settings") { try { islandPaint(true); } catch (e9b) {} }   /* 1.3.4-beta.3：灵动岛状态球开关 */
+  if (t === "settings") { try { islandPaint(true); } catch (e9b) {} }   /* 1.3.4-beta.3：灵动岛（实时更新）开关 */
   /* v1.1.30：切到哪页就立刻补一次那页的数据，不用干等下一个 4 秒轮询。
      extOnTab 内部自己 try/catch，桥缺了也只是空态。 */
   extOnTab(t);
@@ -5476,10 +5689,10 @@ var NO_LOCK_ACTS = [
      置灰等于把唯一入口堵死。二维码兜底的「复制链接」只是复制文本；
      日志分享弹窗只在上传成功后才出现，跟容器装没装好无关。 */
   "startmain", "startlogs", "qrcopyurl", "shlqq", "shlsys", "shllog", "shlcopy", "shlno",
-  /* 1.3.4-beta.3：运行守护与灵动岛。更新检查、看崩溃记录、备份、恢复、定时、状态球
-     这些全是「看状态 / 改设置」，跟容器装没装好无关；装没装好都能先配好。 */
-  "gupdcheck", "gupddl", "gupdcancel", "gupdinstall", "gcrashtxt", "gclearfuse",
-  "gbknow", "gbklist", "gbkpick", "gnight", "islandtoggle", "islandgrant"
+  /* 1.3.4-beta.3：灵动岛（实时更新）。状态球的开关是本地设置，装没装好都能先配。 */
+  "islandtoggle", "islandgrant", "islandtest",
+  /* 1.3.4-beta.4：扫码弹窗的「不再提示（本次运行）」只是本地标记，未部署时常要关掉提醒。 */
+  "qrskip"
 ];
 
 /* 这个 act 在未部署时要不要拦 */
@@ -6527,11 +6740,22 @@ function showStartLogs(){
    二维码有效期就两分钟，原来只写「N 秒前更新」，用户没法判断还剩多久；
    NapCat 偶尔只给一条可解码的链接、不落图文件，卡片上就永远空白。 */
 var QR_TTL = 120000;
+/* 1.3.4-beta.4：「不再提示（本次运行）」只放内存，reload / 下次启动自动复位。
+   绝不写 localStorage —— 那等于「以后永远不提醒」，用户登录掉了会卡在「容器在跑但没登录」。
+   原生侧 QqbotSession 也是静态字段，进程重启即失效，两边语义一致。 */
+var QR_SKIP = false;
 var QR_META = null, qrMetaTimer = 0, QR_URL = "", qrHintAt = 0;
 
 function qrMetaTick(m){
   m = m || el("qrMeta");
   if (!m) return;
+  /* 本次运行已经选了「不再提示」：倒计时没意义，直接说清楚，并留一句手动入口 */
+  if (QR_SKIP) {
+    var sk = "已选择本次运行不再提示 · 这次启动不会再自动弹窗；要看二维码随时点「刷新二维码」。";
+    if (m.textContent !== sk) m.textContent = sk;
+    m.className = "hint";
+    return;
+  }
   if (!QR_META) { if (m.textContent) m.textContent = ""; return; }
   var age = Math.max(0, Math.round((Date.now() - QR_META.mt) / 1000));
   var left = Math.round((QR_META.mt + QR_TTL - Date.now()) / 1000);
@@ -6551,7 +6775,8 @@ function paintQrMeta(r){
   var ok = !!(r && r.ok && r.data);
   QR_META = ok ? { id: r.id || "", mt: Number(r.mtime) || Date.now() } : null;
   var m = el("qrMeta");
-  if (m) { qrMetaTick(m); if (!QR_META) { m.textContent = ""; m.className = "hint"; } }
+  /* QR_SKIP 时 qrMetaTick 写的是「已选择本次运行不再提示」，这里别把这句话清掉 */
+  if (m) { qrMetaTick(m); if (!QR_META && !QR_SKIP) { m.textContent = ""; m.className = "hint"; } }
   qrMetaStart();
   try { qrFallPaint(ok); } catch (e) {}
 }
@@ -6600,6 +6825,8 @@ function qrCopyUrl(){
 /* 用户把扫码弹窗关掉之后，别让二维码继续藏在日志页：滚到那张卡并高亮 6 秒。
    60 秒最多提醒一次，避免每轮轮询都抢页面。 */
 function qrCardHint(){
+  /* 本次运行已经选了「不再提示」：不要再把用户从主页拽到日志页去 */
+  if (QR_SKIP) return;
   var now = Date.now();
   if (now - qrHintAt < 60000) return;
   var bs = (S.bots && S.bots.bots) ? S.bots.bots : [];
@@ -6827,10 +7054,10 @@ function shlCopy(){
   shlClose();
 }
 
-/* ===== 1.3.4-beta.3 §4：运行守护（更新 / 崩溃熔断 / 备份 / 定时与夜间）==========
-   AndroidUpdater / AndroidHealth / AndroidIsland 是这一版新加的桥，老安装包根本没有。
-   所以每个入口都先 typeof 探测：探不到就整块隐藏或明确说「当前版本不支持」，
-   绝不留一个点了没反应的按钮。原生侧一律包 try/catch —— 那边抛异常不能把页面打死。 */
+/* ===== 1.3.4-beta.3 §4：原生桥探测小工具（灵动岛实时更新在用）==========
+   AndroidIsland 是这一版新加的桥，老安装包根本没有：入口先 typeof 探测，
+   探不到就明确说「当前版本不支持」，绝不留一个点了没反应的按钮。
+   原生侧一律包 try/catch —— 那边抛异常不能把页面打死。 */
 function gWin(name){
   try { var w = window[name]; return (w && typeof w === "object") ? w : null; } catch (e) { return null; }
 }
@@ -6848,12 +7075,6 @@ function gCall(name, fn, arg){
     return normJson(v);
   } catch (e) { return null; }
 }
-function gSay(id, cls, txt){
-  var n = el(id); if (!n) return;
-  n.className = "hres" + (cls ? " " + cls : "");
-  n.textContent = txt || "";
-  n.style.display = txt ? "" : "none";
-}
 function gOpen(id, on){ var n = el(id); if (n) n.style.display = on ? "" : "none"; }
 function gTgl(id, on){
   var b = el(id); if (!b) return;
@@ -6861,312 +7082,83 @@ function gTgl(id, on){
   b.setAttribute("aria-checked", on ? "true" : "false");
 }
 function gOn(id){ var b = el(id); return !!(b && b.classList.contains("on")); }
-/* 三个定时控件共用 setSchedule：改动即存，不额外给「保存」按钮（省一次点击，也少一个忘了点的坑） */
-var GBOUND = false;
-function guardBind(){
-  if (GBOUND) return;
-  GBOUND = true;
-  ["gRestartSel", "gNightFrom", "gNightTo"].forEach(function(id){
-    var n = el(id);
-    if (!n) return;
-    n.addEventListener("change", function(){ try { gSched(true); } catch (e) {} });
-  });
-}
-function gEsc(s){
-  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-/* 当前版本号：state().appVersion 是权威来源，取不到就显示「—」 */
-function gCurVer(){
-  try { if (S && S.st && S.st.appVersion) return String(S.st.appVersion); } catch (e) {}
-  try { var n = el("v-appver"); if (n && n.textContent) return String(n.textContent).trim(); } catch (e2) {}
-  return "";
-}
-
-/* ---------- 守护卡整体状态 ---------- */
-var GUARD = { st: null, at: 0 };
-function guardPaint(force){
-  var card = el("runGuardCard"); if (!card) return;
-  var hasU = gFn("AndroidUpdater", "check");
-  var hasH = gFn("AndroidHealth", "status");
-  if (!hasU && !hasH){ card.style.display = "none"; return; }   /* 老安装包：整块不出现 */
-  card.style.display = "";
-  try { guardBind(); } catch (e0) {}
-  var d = el("d-runguard");
-  if (d) d.className = "dot " + (hasU && hasH ? "ok" : "warn");
-  if (!hasU){
-    var su = el("gUpdSub"); if (su) su.textContent = "当前版本不支持";
-    gOpen("gUpdBtn", false); gOpen("gUpdActs", false);
-  }
-  var miss = "当前版本不支持";
-  if (!hasH){
-    ["gCrashSub", "gBkSub", "gSchedSub", "gNightSub"].forEach(function(id){ var n = el(id); if (n) n.textContent = miss; });
-    gOpen("gCrashActs", false); gOpen("gBkNow", false); gOpen("gBkList", false);
-    gOpen("gRestartSel", false); gOpen("gNightTgl", false); gOpen("gNightFrom", false); gOpen("gNightTo", false);
-    gOpen("gNightTgl", false);
-  } else if (force !== false){
-    healthPaint();
-  }
-}
-
-/* ---------- 崩溃 / 备份 / 定时：读一次 status 全画上 ---------- */
-function healthPaint(){
-  var j = gCall("AndroidHealth", "status");
-  if (!j) return;
-  GUARD.st = j; GUARD.at = Date.now();
-  var cr = j.crash || {}, bk = j.backup || {}, sc = j.schedule || {};
-  var cnt = Number(cr.count || 0), fused = !!cr.fused;
-  var cs = el("gCrashSub");
-  if (cs){
-    if (fused) cs.textContent = "已熔断 · 连续崩了 " + cnt + " 次" + (cr.lastAt ? "，最后 " + extRel(cr.lastAt) : "");
-    else if (cnt > 0) cs.textContent = "最近连续崩了 " + cnt + " 次" + (cr.lastAt ? "（" + extRel(cr.lastAt) + "）" : "") + "，没到熔断线";
-    else cs.textContent = "没在熔断";
-  }
-  gOpen("gCrashActs", fused);
-  var dot = el("d-runguard");
-  if (dot) dot.className = "dot " + (fused ? "bad" : "ok");
-  var bs = el("gBkSub");
-  if (bs) bs.textContent = bk.lastAt ? ("上次 " + extRel(bk.lastAt) + " · 共 " + Number(bk.count || 0) + " 份") : "还没备份过";
-  var rt = sc.restartAt ? String(sc.restartAt) : "";
-  var ss = el("gSchedSub"); if (ss) ss.textContent = rt ? ("每天 " + rt) : "关闭";
-  var sel = el("gRestartSel");
-  if (sel){ sel.value = rt; if (sel.value !== rt) sel.value = ""; }
-  var nig = sc.night || {};
-  gTgl("gNightTgl", !!nig.on);
-  var nf = el("gNightFrom"), nt = el("gNightTo");
-  if (nf && nig.from) nf.value = String(nig.from);
-  if (nt && nig.to) nt.value = String(nig.to);
-  var ns = el("gNightSub");
-  if (ns) ns.textContent = nig.on
-    ? ("夜里 " + (nig.from || "23:00") + "–" + (nig.to || "07:00") + " 降频，白天照常")
-    : "夜里没人聊，降频省电。";
-}
-
-/* ---------- 更新：检查 → 下载（带进度）→ 安装 ---------- */
-var UPD = { busy: false, timer: 0, ver: "", ready: false };
-function updSub(t){ var n = el("gUpdSub"); if (n) n.textContent = t || ""; }
-function updBar(pct, on){
-  gOpen("gUpdBar", on !== false);
-  var i = el("gUpdBarI");
-  if (i) i.style.width = Math.max(0, Math.min(100, Number(pct) || 0)) + "%";
-}
-function gUpdStop(){ if (UPD.timer){ clearInterval(UPD.timer); UPD.timer = 0; } }
-function updCheck(){
-  if (!gFn("AndroidUpdater", "check")){ extToast("当前版本不支持检查更新"); return; }
-  if (UPD.busy){ extToast("正在查，稍等一下"); return; }
-  UPD.busy = true; UPD.ver = ""; UPD.ready = false;
-  updSub("正在查最新版本…");
-  gOpen("gUpdActs", false); gOpen("gUpdOut", false); gOpen("gUpdBar", false);
-  /* 查一次要走网络，先让这一帧的「正在查」画出来再调桥，否则界面像没反应 */
-  setTimeout(function(){
-    var j = gCall("AndroidUpdater", "check");
-    UPD.busy = false;
-    if (!j){ updSub("没查到"); gSay("gUpdOut", "bad", "查询失败：先确认手机能上网，再点一次「检查」。"); return; }
-    if (j.ok === false){
-      updSub("没查到");
-      gSay("gUpdOut", "bad", j.err ? String(j.err) : "没查到版本信息：可能是网络问题，过一会儿再试。");
-      return;
-    }
-    UPD.ver = String(j.ver || j.tag || "");
-    var cur = gCurVer();
-    if (UPD.ver && cur && UPD.ver === cur){
-      updSub("已是最新 · " + cur);
-      gSay("gUpdOut", "ok", "现在就是最新版（" + cur + "），不用更新。");
-      return;
-    }
-    var mb = j.size ? (" · " + (Math.round(Number(j.size) / 1048576 * 10) / 10) + " MB") : "";
-    var nt = j.notes ? String(j.notes).replace(/\s+/g, " ") : "";
-    if (nt.length > 110) nt = nt.slice(0, 110) + "…";
-    updSub("发现 " + (UPD.ver || "新版本") + mb);
-    gSay("gUpdOut", "ok", "新版本 " + (UPD.ver || "") + mb + (nt ? "：" + nt : "") + "。点「下载」会把安装包存到本地。");
-    gOpen("gUpdActs", true); gOpen("gUpdDl", true); gOpen("gUpdCancel", false); gOpen("gUpdInstall", false);
-  }, 40);
-}
-function updPoll(){
-  if (UPD.timer) return;
-  UPD.timer = setInterval(function(){
-    var p = gCall("AndroidUpdater", "poll");
-    if (!p){ gUpdStop(); updSub("读不到下载状态"); gSay("gUpdOut", "bad", "读不到进度：点「取消下载」再来一次；装好了却看不到就下拉通知栏。"); return; }
-    var stt = String(p.state || "idle");
-    if (stt === "downloading"){
-      var pct = Number(p.pct || 0); if (!isFinite(pct)) pct = 0;
-      var det = p.total ? ((Number(p.bytes || 0) / 1048576).toFixed(1) + " / " + (Number(p.total) / 1048576).toFixed(1) + " MB") : (pct + "%");
-      updBar(pct);
-      updSub("下载中 " + pct + "% · " + det);
-      return;
-    }
-    if (stt === "verifying"){ updSub("正在校验安装包…"); return; }
-    if (stt === "ready"){
-      gUpdStop(); UPD.ready = true; updBar(100);
-      updSub("下载好了，可以安装");
-      gSay("gUpdOut", "ok", "安装包已校验通过。点「安装」会弹系统安装界面，装完回到这里就行。");
-      gOpen("gUpdDl", false); gOpen("gUpdCancel", false); gOpen("gUpdInstall", true);
-      return;
-    }
-    if (stt === "fail"){
-      gUpdStop(); gOpen("gUpdBar", false);
-      updSub("下载失败");
-      gSay("gUpdOut", "bad", p.err ? String(p.err) : "下载中断了：确认网络和剩余空间，再点「下载」重试。");
-      gOpen("gUpdDl", true); gOpen("gUpdInstall", false); gOpen("gUpdCancel", false);
-      return;
-    }
-  }, 800);
-}
-function updDl(){
-  if (!gFn("AndroidUpdater", "download")){ extToast("当前版本不支持下载安装包"); return; }
-  try { gWin("AndroidUpdater").download(); } catch (e) { extToast("下载没能启动，再点一次「下载」"); return; }
-  UPD.ready = false;
-  updSub("正在下载…"); updBar(0);
-  gOpen("gUpdActs", true); gOpen("gUpdDl", false); gOpen("gUpdCancel", true); gOpen("gUpdInstall", false);
-  updPoll();
-}
-function updCancel(){
-  gUpdStop();
-  try { var w = gWin("AndroidUpdater"); if (w && typeof w.cancel === "function") w.cancel(); } catch (e) {}
-  gOpen("gUpdBar", false); gOpen("gUpdCancel", false); gOpen("gUpdInstall", false); gOpen("gUpdDl", true);
-  updSub("已取消下载");
-  extToast("已取消下载");
-}
-function updInstall(){
-  if (!gFn("AndroidUpdater", "install")){ extToast("当前版本不支持安装"); return; }
-  var w = gWin("AndroidUpdater");
-  try { w.install(); extToast("已调起安装界面"); } catch (e) {
-    /* 装不了基本只有一种原因：系统没允许「安装未知应用」。把下一步说清楚，别只说失败 */
-    extToast("调不起安装界面：去系统设置里允许本应用「安装未知应用」，再点一次");
-    try { if (typeof w.openPermission === "function") w.openPermission(); } catch (e2) {}
-  }
-  setTimeout(function(){ try { guardPaint(true); } catch (e3) {} }, 2500);
-}
-
-/* ---------- 崩溃记录：优先走分享面板，没桥就复制 ---------- */
-function gCrashTxt(){
-  var s = "";
-  var w = gWin("AndroidHealth");
-  if (w && typeof w.crashSummary === "function"){ try { s = String(w.crashSummary() || ""); } catch (e) { s = ""; } }
-  if (!s){
-    var j = gCall("AndroidHealth", "status");
-    var cr = (j && j.crash) || {};
-    s = cr.summary ? String(cr.summary) : "还没有崩溃记录：后台一直没被连续重启过。";
-  }
-  var okShare = false;
-  try { okShare = (typeof AndroidShare !== "undefined") && AndroidShare && typeof AndroidShare.text === "function"; } catch (e2) { okShare = false; }
-  if (okShare){ try { AndroidShare.text("崩溃记录", s); extToast("选一个聊天窗口发出去就行"); return; } catch (e3) {} }
-  try { Android.copy(s); extToast("崩溃记录已复制，粘到群里就行"); return; } catch (e4) {}
-  /* 两条路都不通就原地显示，至少能长按选中 */
-  gSay("gCrashOut", "bad", s);
-}
-function gClearFuse(){
-  if (!gFn("AndroidHealth", "clearFuse")){ extToast("当前版本不支持解除熔断"); return; }
-  try { gWin("AndroidHealth").clearFuse(); } catch (e) { extToast("没解除成功，再点一次"); return; }
-  gSay("gCrashOut", "ok", "熔断已解除，正在重新拉起服务，等 30 秒看首屏；还起不来就点「重启服务」。");
-  setTimeout(function(){ try { guardPaint(true); } catch (e2) {} }, 900);
-}
-
-/* ---------- 备份：立即备份 / 列出备份点就地展开 ---------- */
-function gBkNow(){
-  if (!gFn("AndroidHealth", "backupNow")){ extToast("当前版本不支持备份"); return; }
-  try { gWin("AndroidHealth").backupNow(); } catch (e) { extToast("备份没能开始，再点一次"); return; }
-  gSay("gBkOut", "ok", "正在打包备份，几秒后这里的「上次」会刷新。备份不会动正在跑的数据。");
-  setTimeout(function(){ try { healthPaint(); } catch (e1) {} }, 1500);
-  setTimeout(function(){ try { healthPaint(); } catch (e2) {} }, 6000);
-}
-function gBkList(){
-  if (!gFn("AndroidHealth", "restoreList")){ extToast("当前版本不支持恢复备份"); return; }
-  var arr = null;
-  try { arr = gWin("AndroidHealth").restoreList(); } catch (e) { arr = null; }
-  if (typeof arr === "string") arr = normJson(arr);
-  if (!arr || !arr.length){
-    gSay("gBkOut", "bad", "还没有可恢复的备份：先点「立即备份」存一份，之后每天也会自动存。");
-    return;
-  }
-  var html = '<div style="font-weight:600;margin-bottom:2px">选一份恢复（会覆盖当前数据）</div>';
-  var n = Math.min(arr.length, 8);
-  for (var i = 0; i < n; i++){
-    var it = arr[i] || {};
-    var at = it.at ? extRel(it.at) : "时间不明";
-    var sz = it.size ? (" · " + (Number(it.size) / 1048576).toFixed(1) + " MB") : "";
-    var rs = it.reason ? (" · " + String(it.reason)) : "";
-    html += '<div class="gbts" style="margin-top:6px"><button class="small" data-act="gbkpick" data-arg="' + gEsc(it.id || "") + '">' + gEsc(at + sz + rs) + '</button></div>';
-  }
-  if (arr.length > n) html += '<div style="margin-top:6px;font-size:12px">只列最近 ' + n + ' 份，旧的在备份目录里。</div>';
-  var out = el("gBkOut");
-  if (!out) return;
-  out.className = "hres";
-  out.innerHTML = html;
-  out.style.display = "";
-}
-function gBkPick(id){
-  if (!id){ extToast("这条备份没编号，换一条"); return; }
-  if (!gFn("AndroidHealth", "restore")){ extToast("当前版本不支持恢复备份"); return; }
-  try { gWin("AndroidHealth").restore(String(id)); } catch (e) { extToast("恢复没能开始，再点一次"); return; }
-  gSay("gBkOut", "ok", "开始恢复了：正在把这份备份解开，期间别关应用，完了会自动重载一次页面。");
-  extToast("开始恢复备份");
-  setTimeout(function(){ try { healthPaint(); } catch (e2) {} }, 1500);
-}
-
-/* ---------- 定时重启 / 夜间低功耗：三个控件共用一次 setSchedule ---------- */
-function gSchedSay(){
-  var sel = el("gRestartSel"), nf = el("gNightFrom"), nt = el("gNightTo");
-  var rt = sel ? sel.value : "";
-  var on = gOn("gNightTgl");
-  var ss = el("gSchedSub"); if (ss) ss.textContent = rt ? ("每天 " + rt) : "关闭";
-  var ns = el("gNightSub");
-  if (ns) ns.textContent = on
-    ? ("夜里 " + (nf ? nf.value : "23:00") + "–" + (nt ? nt.value : "07:00") + " 降频，白天照常")
-    : "夜里没人聊，降频省电。";
-}
-function gSched(silent){
-  if (!gFn("AndroidHealth", "setSchedule")){ extToast("当前版本不支持定时重启"); return; }
-  var sel = el("gRestartSel"), nf = el("gNightFrom"), nt = el("gNightTo");
-  var o = {
-    restart: sel ? String(sel.value || "") : "",
-    night: gOn("gNightTgl"),
-    from: nf ? String(nf.value || "23:00") : "23:00",
-    to: nt ? String(nt.value || "07:00") : "07:00"
-  };
-  try { gWin("AndroidHealth").setSchedule(JSON.stringify(o)); } catch (e) { extToast("没保存上，再点一次"); return; }
-  gSchedSay();
-  if (silent === true) return;
-  extToast(o.restart ? ("每天 " + o.restart + " 自动重启一次") : "定时重启已关闭");
-}
-
-/* ---------- 灵动岛状态球 ---------- */
+/* ---------- 灵动岛 / 实时更新（Android 16 Live Updates）----------
+   全部按 AndroidIsland.info() 的字段画：available / canPromote / sdk / enabled / code / text / battery / mode。
+   mode = promoted 已在状态栏常驻 / plain 系统没允许提升 / off 没开。老桥（只有 enabled/granted/request）
+   退回 beta.3 的口径，绝不因为少一个字段就报错或整块消失。 */
 function islandPaint(force){
   var card = el("islandCard"); if (!card) return;
-  if (!gFn("AndroidIsland", "set") && !gFn("AndroidIsland", "info")){ card.style.display = "none"; return; }
+  var hasInfo = gFn("AndroidIsland", "info"), hasSet = gFn("AndroidIsland", "set");
+  if (!hasInfo && !hasSet){ card.style.display = "none"; return; }   /* 老安装包：整块不出现 */
   card.style.display = "";
   var j = (force === false) ? null : gCall("AndroidIsland", "info");
-  var en = false, gr = false;
+  var avail = true, can = false, en = false, mode = "off", txt = "", bat = "", sdk = "", legacy = false;
   if (j){
-    en = !!j.enabled;
-    gr = (j.granted === true || String(j.granted) === "true");
-  } else {
+    avail = !(String(j.available) === "false");
+    can = (j.canPromote === true || String(j.canPromote) === "true");
+    en = (j.enabled === true || String(j.enabled) === "true");
+    mode = String(j.mode || (en ? "plain" : "off"));
+    txt = j.text ? String(j.text) : "";
+    if (j.battery != null && j.battery !== "") bat = String(j.battery);
+    if (j.sdk != null && j.sdk !== "") sdk = String(j.sdk);
+  } else if (hasSet){
+    /* 老桥：没有 info()，只有几个布尔口。按 beta.3 的语义尽力画，canPromote 当作「能自己处理」 */
+    legacy = true; can = true;
     var w = gWin("AndroidIsland");
     if (w){
-      try { if (typeof w.granted === "function") gr = (String(w.granted()) === "true"); } catch (e) {}
-      try { if (typeof w.available === "function" && String(w.available()) === "false"){ card.style.display = "none"; return; } } catch (e2) {}
+      try { if (typeof w.available === "function") avail = (String(w.available()) !== "false"); } catch (e) {}
+      try { if (typeof w.enabled === "function") en = (String(w.enabled()) === "true"); } catch (e2) {}
     }
+    mode = en ? "plain" : "off";
   }
+  if (!avail){ card.style.display = "none"; return; }   /* 系统连通知都没给：不画这张卡 */
+  /* canPromote 为假有两种意思：sdk>=36 是「用户还没允许」（该给去设置入口），sdk<36 才是系统没这能力。 */
+  var sdkN = parseInt(sdk, 10); if (!isFinite(sdkN)) sdkN = 0;
+  var tooOld = (!can && !legacy && sdkN > 0 && sdkN < 36);
   gTgl("islandTgl", en);
-  gOpen("islandActs", !gr);
-  var ds = el("islandDesc");
-  if (ds) ds.textContent = gr
-    ? (j && j.text ? String(j.text) : "权限齐了。小球会在别的应用上也浮着，点一下回到控制台。")
-    : "还缺「悬浮窗」权限，点下面的「去授权」给上就生效。";
+  var ds = el("islandDesc"), hint = el("islandHint"), grant = el("islandGrant");
+  if (ds){
+    if (!en) ds.textContent = "关着。打开后状态栏常驻一条运行状态，不用一直切回应用看。";
+    else if (mode === "promoted") ds.textContent = "已常驻状态栏" + (txt ? "：" + txt : "") + (bat ? "（电量 " + bat + "）" : "") + "。";
+    else if (tooOld) ds.textContent = "这个系统版本只有普通通知，状态栏里看不到运行状态。";
+    else if (mode === "plain") ds.textContent = legacy
+      ? (txt ? txt : "已打开。状态栏只显示普通通知。")
+      : "系统还没允许提升为实时更新，点「去设置」把「实时更新」打开。";
+    else ds.textContent = txt ? txt : "已打开。";
+  }
+  if (hint){
+    if (tooOld){ hint.textContent = "实时更新需要 Android 16（API 36）；当前系统版本没有这个能力，运行状态仍然能在应用内和普通通知里看到。"; hint.style.display = ""; }
+    else if (!can && !legacy){ hint.textContent = "系统还没允许提升这条通知，点「去设置」打开" + (sdk ? "（当前 API " + sdk + "）" : "") + "，回来这里会自动更新。"; hint.style.display = ""; }
+    else if (sdk){ hint.textContent = "当前系统 API " + sdk + "；实时更新由系统控制，开关在「设置 → 应用 → 通知 → 实时更新」。"; hint.style.display = ""; }
+    else { hint.textContent = ""; hint.style.display = "none"; }
+  }
+  if (grant){
+    grant.textContent = tooOld ? "当前系统不支持" : "去设置";
+    if (tooOld){ grant.setAttribute("disabled", "disabled"); } else { grant.removeAttribute("disabled"); }
+  }
   var d = el("d-island");
-  if (d) d.className = "dot " + (gr ? (en ? "ok" : "warn") : "bad");
+  if (d) d.className = "dot" + (en && mode === "promoted" ? " ok" : (!en ? "" : (tooOld ? " bad" : " warn")));
 }
 function islandToggle(){
-  if (!gFn("AndroidIsland", "set")){ extToast("当前版本不支持灵动岛"); return; }
+  if (!gFn("AndroidIsland", "set")){ extToast("当前版本不支持实时更新"); return; }
   var want = !gOn("islandTgl");
   try { gWin("AndroidIsland").set(want ? "true" : "false"); } catch (e) { extToast("切换失败，再点一次"); return; }
   gTgl("islandTgl", want);
-  extToast(want ? "已打开状态球" : "已关掉状态球");
+  extToast(want ? "已打开实时更新" : "已关掉实时更新");
   setTimeout(function(){ try { islandPaint(true); } catch (e2) {} }, 500);
 }
 function islandGrant(){
-  if (!gFn("AndroidIsland", "request")){ extToast("去系统设置里给本应用「显示在其他应用上层」权限"); return; }
-  try { gWin("AndroidIsland").request(); extToast("授权完回来看这一行，状态会自己更新"); } catch (e) { extToast("没弹出授权窗，去系统设置里手动给悬浮窗权限"); }
+  var w = gWin("AndroidIsland");
+  var fn = (w && typeof w.openSettings === "function") ? "openSettings" : ((w && typeof w.request === "function") ? "request" : "");
+  if (!fn){ extToast("去系统设置里给本应用「显示在其他应用上层」权限"); return; }
+  try { w[fn](); extToast("把「实时更新」打开，回来这里会自动更新"); } catch (e) { extToast("没打开设置，手动去系统设置里找「实时更新」"); }
   setTimeout(function(){ try { islandPaint(true); } catch (e2) {} }, 1500);
+}
+function islandTest(){
+  var w = gWin("AndroidIsland");
+  if (!w || typeof w.test !== "function"){ extToast("当前版本不支持测试实时更新"); return; }
+  try { w.test(); extToast("已发一条测试；状态栏没变化就先去设置里打开实时更新"); } catch (e) { extToast("测试没发出去，再点一次"); }
+  setTimeout(function(){ try { islandPaint(true); } catch (e2) {} }, 800);
 }
 
 function paintHero(st, installed){
@@ -8148,16 +8140,18 @@ function qrOpen(id, auto){
   stt.timer = setInterval(function(){ try { qrTick(); } catch (e) {} }, 6000);
 }
 
-function qrClose(silent){
+function qrClose(silent, skip){
   var stt = qrState();
   if (stt.timer) { clearInterval(stt.timer); stt.timer = 0; }
   stt.open = false;
   var m = el("dlgQr");
   if (m) m.classList.remove("on");
-  /* 只有「自动弹出来的」才记安静期；用户自己点开再关掉不该被记仇 */
-  if (stt.auto) stt.until = Date.now() + QR_SNOOZE;
+  /* 只有「自动弹出来的」才记安静期；用户自己点开再关掉不该被记仇。
+     skip = 用户主动选了「不再提示（本次运行）」：静音交给 QR_SKIP，不再叠这层 10 分钟安静期，
+     否则「手动点开 → 关掉」之后 10 分钟内怎么都不弹，用户会以为坏了。 */
+  if (!skip && stt.auto) stt.until = Date.now() + QR_SNOOZE;
   stt.auto = false;
-  if (!silent) { /* 手动关闭不提示，安静收掉 */ }
+  if (!silent && !skip) { /* 手动关闭不提示，安静收掉 */ }
 }
 
 /* 分享二维码图片（v1.2.13）：把 qrcode.png 交给系统的分享面板，可以发到微信 / QQ，
@@ -8192,6 +8186,21 @@ function qrTick(){
   }
 }
 
+/* 1.3.4-beta.4「不再提示（本次运行）」：只关这次。
+   顺序：先收窗（不然 6 秒内的 qrTick 会把图刷回来）→ 立内存标志 → 告诉原生侧（旧包没这个方法）→ toast。
+   QR_SKIP 不落盘；原生 QqbotSession.qrSkip 是静态字段，进程重启即失效，两边都只管本次运行。 */
+function qrSkipNow(){
+  try { qrClose(true, true); } catch (e) {}
+  QR_SKIP = true;
+  try {
+    if (typeof AndroidNotify !== "undefined" && AndroidNotify && typeof AndroidNotify.qrSkip === "function"){
+      AndroidNotify.qrSkip("true");
+    }
+  } catch (e2) {}
+  try { qrMetaTick(); } catch (e3) {}   /* 日志页那张卡立刻改口径，别等下一轮 4 秒 */
+  extToast("本次运行不再提示；下次打开还会提醒你扫码");
+}
+
 function qrReload(){
   var stt = qrState();
   qrApply(qrProbe(stt.id), stt.id);
@@ -8199,6 +8208,9 @@ function qrReload(){
 
 /* 每轮 refreshAll 调用一次：决定要不要自动弹 */
 function qrAutoCheck(st){
+  /* 1.3.4-beta.4：选了「不再提示（本次运行）」就彻底不自动弹（手动点「去扫码」照旧能开）。
+     只放内存，下次启动重新算。 */
+  if (QR_SKIP) return;
   var stt = qrState();
   if (stt.open) return;
   if (Date.now() < stt.until) { try { qrCardHint(); } catch (e0) {} return; }   /* 1.3.4-beta.2：关掉弹窗后改提示卡片 */
@@ -8363,6 +8375,7 @@ document.addEventListener("click", function(ev){
   else if (act === "qrreload") { qrReload(); extToast("已刷新二维码"); }
   else if (act === "qrshare") qrShareImg();
   else if (act === "qrclose") { qrClose(false); }
+  else if (act === "qrskip") { qrSkipNow(); }
     else if (act === "depovoff") { depovHide(); }
   else if (act === "astrconfig") astrOpen();
   else if (act === "astrclose") astrClose();
@@ -8477,19 +8490,10 @@ document.addEventListener("click", function(ev){
   else if (act === "shlcopy") shlCopy();
   else if (act === "shlno") shlClose();
   else if (act === "qrcopyurl") qrCopyUrl();
-  /* ---------- 1.3.4-beta.3：运行守护 / 灵动岛 ---------- */
-  else if (act === "gupdcheck") updCheck();
-  else if (act === "gupddl") updDl();
-  else if (act === "gupdcancel") updCancel();
-  else if (act === "gupdinstall") updInstall();
-  else if (act === "gcrashtxt") gCrashTxt();
-  else if (act === "gclearfuse") gClearFuse();
-  else if (act === "gbknow") gBkNow();
-  else if (act === "gbklist") gBkList();
-  else if (act === "gbkpick") gBkPick(arg);
+  /* ---------- 1.3.4-beta.3：灵动岛（实时更新） ---------- */
   else if (act === "islandtoggle") islandToggle();
   else if (act === "islandgrant") islandGrant();
-  else if (act === "gnight") { gTgl("gNightTgl", !gOn("gNightTgl")); gSched(false); }
+  else if (act === "islandtest") islandTest();
   else if (act === "savebot") saveBot();
   else if (act === "cancelbot") cancelBot();
   else if (act === "pickbg") {
@@ -11110,8 +11114,6 @@ function refreshExtras(st){
     /* 1.3.4-beta.2：启动五态与通知开关跟着同一轮刷新走，不额外加定时器 */
     try { paintStartRow(st); } catch (e8b) {}
     try { ntfPaint(true); } catch (e8c) {}
-    /* 1.3.4-beta.3：运行守护卡只在「更多」页读桥，不在可见页反复问原生 */
-    try { guardPaint(true); } catch (e8d) {}
   }
   /* 省电提醒条 + 省电卡状态：60 秒问一次就够（只读一个小文件）。横幅挂在所有页，
      因为「收不到消息」正是用户随手打开应用时最该看到的一句话。 */
@@ -11182,7 +11184,7 @@ function refreshExtras(st){
 function extOnTab(t){
   try {
     if (t === "home") refreshInst(true);
-    else if (t === "more"){ refreshBk(true); refreshStorage(true); refreshCrash(true); guardPaint(true); }
+    else if (t === "more"){ refreshBk(true); refreshStorage(true); refreshCrash(true); }
     else if (t === "settings"){ refreshStats(true); refreshLan(true); islandPaint(true); }
   } catch (e) {}
 }
@@ -11299,9 +11301,8 @@ setInterval(function(){
   try { if (tabOn("home")) paintStartRow(null); } catch (e) {}
 }, 3000);
 try { upTick(); } catch (e) {}
-/* 1.3.4-beta.3：启动时先把运行守护 / 灵动岛两块的状态探一次。桥不在就一直是隐藏的，
+/* 1.3.4-beta.3：启动时先把灵动岛状态探一次。桥不在就一直是隐藏的，
    在的话用户不用先切一次页签才看到卡片和开关。 */
-try { guardPaint(true); } catch (e) {}
 try { islandPaint(true); } catch (e) {}
 try { paintFoot(); } catch (e) {}
 

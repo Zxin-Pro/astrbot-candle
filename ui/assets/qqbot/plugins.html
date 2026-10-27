@@ -257,6 +257,61 @@ textarea#cfgText:focus{ border-color:var(--accent); }
 @media (prefers-reduced-motion: reduce){
   *{ animation-duration:.001ms !important; transition-duration:.001ms !important; }
 }
+/* ================= 按钮层（b4：去塑料感、统一 44px 命中） ================= */
+:root{
+  --line:color-mix(in srgb, var(--label) 16%, transparent);
+  --danger:var(--bad);
+  --btn-r:12px; --btn-r-sm:10px;
+  --btn-dur:120ms; --btn-ease:cubic-bezier(.2,.8,.2,1);
+}
+button{
+  min-height:44px;
+  border:1px solid var(--line);
+  border-radius:var(--btn-r);
+  background:transparent; background-image:none; box-shadow:none;
+  color:var(--label); font-weight:560;
+  transition:background-color var(--btn-dur) var(--btn-ease), border-color var(--btn-dur) var(--btn-ease),
+             color var(--btn-dur) var(--btn-ease), transform var(--btn-dur) var(--btn-ease), opacity var(--btn-dur) linear;
+}
+button:hover{ background-color:var(--fill-1); }
+button:active{ transform:scale(.98); background-color:var(--fill-2); }
+button:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+button[disabled]{ opacity:.45; pointer-events:none; }
+
+button.primary{ background-color:var(--accent); background-image:none; border-color:var(--accent); color:#fff; }
+button.primary:hover{ background-color:color-mix(in srgb, var(--accent) 94%, #fff); border-color:color-mix(in srgb, var(--accent) 94%, #fff); }
+button.primary:active{ background-color:color-mix(in srgb, var(--accent) 92%, #000); border-color:color-mix(in srgb, var(--accent) 92%, #000); }
+
+button.danger{
+  background-color:color-mix(in srgb, var(--bad) 10%, transparent);
+  background-image:none;
+  border-color:color-mix(in srgb, var(--bad) 26%, transparent);
+  color:var(--bad);
+}
+button.danger:hover{ background-color:color-mix(in srgb, var(--bad) 15%, transparent); }
+button.danger:active{ background-color:color-mix(in srgb, var(--bad) 20%, transparent); }
+
+button.ghost, button.link{ background-color:transparent; border-color:transparent; }
+button.ghost:hover, button.link:hover{ background-color:var(--fill-1); }
+button.link{ min-height:44px; }
+
+/* 顶栏圆形图标键：46 的描边按键会显得脏，这里只留圆形命中面。 */
+.iconbtn{ border-color:transparent; border-radius:50%; background-color:transparent; }
+.iconbtn:hover{ background-color:var(--fill-1); }
+.iconbtn:active{ background-color:var(--fill-2); transform:none; }
+
+/* 首页两个入口是整张卡片，不是常规按钮：保留卡片外观。 */
+.entry{ border:1px solid var(--sep); border-radius:var(--r-md); background-color:var(--card); }
+.entry:hover{ background-color:var(--card); border-color:var(--sep); }
+.entry:active{ transform:scale(.985); background-color:var(--fill-2); }
+
+/* 开关不是普通按钮：命中区 52x44 已经在，别被基础样式描边。 */
+.sw{ border:0; border-radius:22px; background-color:transparent; }
+.sw:hover{ background-color:transparent; }
+.sw:active{ background-color:transparent; transform:none; }
+
+/* 配置工具条原来压到 40px，跟着抬到 44。 */
+.cfg-toolbar button{ min-height:44px; font-size:15px; }
 </style>
 </head>
 <body>
