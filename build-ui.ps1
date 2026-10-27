@@ -309,10 +309,29 @@ if ($mfBoot -notmatch 'android\.intent\.action\.USER_UNLOCKED') {
 } else {
   Write-Host 'manifest: USER_UNLOCKED already present'
 }
+# 3c7) QqbotDailyReport: 每日早报的闹钟接收器（1.3.4-beta.7）。
+#      exported=false：只接自己排的 AlarmManager 广播，外部应用不能触发；
+#      不写 intent-filter，因为它只靠 PendingIntent 显式唤起。
+$mfDaily = Get-Content $mf -Raw -Encoding UTF8
+if ($mfDaily -notmatch 'com\.termux\.app\.QqbotDailyReport') {
+  $dailyRcv = '<receiver android:exported="false" android:name="com.termux.app.QqbotDailyReport"/>'
+  if ($mfDaily.Contains('</application>')) {
+    $mfDaily = $mfDaily.Replace('</application>', '        ' + $dailyRcv + $NL + '    </application>')
+    [System.IO.File]::WriteAllText($mf, $mfDaily, (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host 'manifest: added QqbotDailyReport receiver'
+  } else {
+    Write-Host 'manifest: </application> missing - QqbotDailyReport NOT added'
+  }
+} else {
+  Write-Host 'manifest: QqbotDailyReport already present'
+}
 Remove-Item "$ROOT\_apkwork\smali_classes30" -Recurse -Force -ErrorAction SilentlyContinue
 Copy-Item "$ROOT\ui\smali" "$ROOT\_apkwork\smali_classes30" -Recurse -Force -ErrorAction Stop
+# 1.3.4-beta.7：先清空再整目录复制。只覆盖不删的话，上一版留在
+# _apkwork 里的页面（比如已经下线的 plugins.html）会被一直打进包里。
+Remove-Item "$ROOT\_apkwork\assets\qqbot" -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path "$ROOT\_apkwork\assets\qqbot" | Out-Null
-# 整目录复制：index.html 之外还有 appicon.png、plugins.html（插件管理页）等，
+# 整目录复制：index.html 之外还有 appicon.png 等资源，
 # 以前只点名拷两个文件，新增页面会静默漏包（APK 里没有、真机白屏）。
 Copy-Item "$ROOT\ui\assets\qqbot\*" "$ROOT\_apkwork\assets\qqbot\" -Recurse -Force -ErrorAction Stop
 Write-Host 'smali + asset copied'

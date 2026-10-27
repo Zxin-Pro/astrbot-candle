@@ -3,6 +3,185 @@
 
 . "$PREFIX/opt/qqbot/common.sh"
 
+# ---------------------------------------------------------------------------
+# 断点续传（--status / --reset / --from N）
+#
+# 为什么另开一个状态文件：$QQBOT_STEPS/<id> 那套标记是给原生层 deployInfo() 读的
+# （QqbotBridge 里把步骤表写死了），既表达不了「收尾」这一步，也存不下中文名。
+# deploy.state 一行一步 id=done，是脚本自己的账本：--status 直接照它输出 JSON。
+# 两边由 qq_step_finish 同时写、qq_step_sync 互相补齐，不会出现「界面说装完了、
+# 脚本说没装完」这种各说各话的状态。
+#
+# 步骤表：id|中文名。id 必须与 $QQBOT_STEPS 下的标记文件名一致（原生层按 id 查文件），
+# 增删步骤只改这一行，[i/N] 编号与 --status 会跟着变，不用改别处。
+DEPLOY_STEPS='10-termux|准备 Termux 工具（proot / tar / xz / curl）
+20-rootfs|下载并解包 Ubuntu 根文件系统
+30-apt|在沙盒内安装运行依赖（Python / 图形库）
+40-qq|安装 Linux QQ
+50-napcat|安装 NapCat 并注入 QQ
+60-astrbot|安装 AstrBot 与 WebUI
+65-link|把 NapCat 与 AstrBot 对接起来
+70-launcher|安装 qqbot-* 命令
+90-start|收尾并拉起 NapCat 与 AstrBot'
+DEPLOY_STATE="$QQBOT_HOME/deploy.state"
+DEPLOY_STEP_TOTAL=$(printf '%s\n' "$DEPLOY_STEPS" | grep -c .)
+
+# 步骤序号（从 1 起）与中文名。查不到时序号回 0、名字退回 id 本身（不致命，只是难看）。
+qq_step_idx() {
+  _qi_i=0
+  while IFS='|' read -r _qi_id _qi_nm; do
+    [ -n "$_qi_id" ] || continue
+    _qi_i=$((_qi_i + 1))
+    if [ "$_qi_id" = "$1" ]; then printf '%s' "$_qi_i"; return 0; fi
+  done <<QQ_STEPS_EOF
+$DEPLOY_STEPS
+QQ_STEPS_EOF
+  printf '0'
+}
+qq_step_name() {
+  while IFS='|' read -r _qn_id _qn_nm; do
+    [ -n "$_qn_id" ] || continue
+    if [ "$_qn_id" = "$1" ]; then printf '%s' "$_qn_nm"; return 0; fi
+  done <<QQ_STEPS_EOF
+$DEPLOY_STEPS
+QQ_STEPS_EOF
+  printf '%s' "$1"
+}
+
+qq_state_has() { grep -qx "$1=done" "$DEPLOY_STATE" 2>/dev/null; }
+
+# 状态文件的写/删一律「写临时文件再 mv」：部署随时可能被掐掉，半行记录会让下一次
+# 读到 30-ap 这种残行，之后每一步的跳过判断都再也对不上。
+qq_state_set() {
+  _qss_id="$1"
+  [ -n "$_qss_id" ] || return 0
+  { grep -v "^$_qss_id=" "$DEPLOY_STATE" 2>/dev/null; printf '%s=done\n' "$_qss_id"; } \
+    > "$DEPLOY_STATE.$$" 2>/dev/null && mv -f "$DEPLOY_STATE.$$" "$DEPLOY_STATE" 2>/dev/null
+  rm -f "$DEPLOY_STATE.$$" 2>/dev/null
+  return 0
+}
+qq_state_drop() {
+  _qsd_id="$1"
+  [ -f "$DEPLOY_STATE" ] || return 0
+  grep -v "^$_qsd_id=" "$DEPLOY_STATE" > "$DEPLOY_STATE.$$" 2>/dev/null
+  mv -f "$DEPLOY_STATE.$$" "$DEPLOY_STATE" 2>/dev/null || rm -f "$DEPLOY_STATE.$$" 2>/dev/null
+  return 0
+}
+
+# 判断「这一步做完没有」：标记文件优先（原生层 deployInfo 读的就是它），其次看状态文件。
+# 只读，不碰任何文件 —— --status 在部署正在跑的时候也能安全调用。
+qq_step_done() {
+  [ -n "$1" ] || return 1
+  [ -f "$QQBOT_STEPS/$1" ] && return 0
+  qq_state_has "$1"
+}
+
+# 状态文件说做完、标记文件却不见了（用户清过 steps 目录，或从没有状态文件的旧版本升上来）：
+# 顺手把标记补回来，省得界面一直把那一步显示成没装。只在真要跑/跳过步骤时调用。
+qq_step_sync() {
+  [ -n "$1" ] || return 0
+  [ -f "$QQBOT_STEPS/$1" ] && return 0
+  qq_state_has "$1" || return 0
+  : > "$QQBOT_STEPS/$1" 2>/dev/null
+  return 0
+}
+
+# 一步成功：先落标记文件，再落状态文件。
+# 顺序反了的话，恰好崩在两者之间时界面说「没装完」而 --status 说「装完了」；
+# 按这个顺序最坏情况只是多跑一遍（每个步骤本身都幂等），不会漏装。
+qq_step_finish() {
+  [ -n "$1" ] || return 1
+  : > "$QQBOT_STEPS/$1" 2>/dev/null
+  qq_state_set "$1"
+  return 0
+}
+
+# --status：只读，不抢锁、不写文件，输出一行 JSON（给原生层 / GUI / 脚本用）
+cmd_deploy_status() {
+  _qst_sep=""
+  printf '{"ok":true,"steps":['
+  while IFS='|' read -r _qst_id _qst_nm; do
+    [ -n "$_qst_id" ] || continue
+    if qq_step_done "$_qst_id"; then _qst_done=true; else _qst_done=false; fi
+    printf '%s{"id":"%s","name":"%s","done":%s}' \
+      "$_qst_sep" "$(qq_json_esc "$_qst_id")" "$(qq_json_esc "$_qst_nm")" "$_qst_done"
+    _qst_sep=","
+  done <<QQ_STEPS_EOF
+$DEPLOY_STEPS
+QQ_STEPS_EOF
+  printf ']}\n'
+  return 0
+}
+
+# --reset：把「续传进度」清零（状态文件 + 各步骤标记 + deploy.done）。
+# 缓存、rootfs、QQ / AstrBot 本体一律不动 —— 用户要的是「从头再装一遍」，不是「删光重下」。
+cmd_deploy_reset() {
+  _qrs_n=0
+  while IFS='|' read -r _qrs_id _qrs_nm; do
+    [ -n "$_qrs_id" ] || continue
+    rm -f "$QQBOT_STEPS/$_qrs_id" 2>/dev/null
+    _qrs_n=$((_qrs_n + 1))
+  done <<QQ_STEPS_EOF
+$DEPLOY_STEPS
+QQ_STEPS_EOF
+  rm -f "$DEPLOY_STATE" "$QQBOT_HOME/deploy.done" 2>/dev/null
+  printf '{"ok":true,"reset":true,"steps":%s}\n' "$_qrs_n"
+  return 0
+}
+
+# --from N：第 1..N-1 步记为已完成，第 N 步起重新跑（N 可以是序号，也可以是步骤 id）
+qq_apply_from() {
+  _qaf_i=0
+  while IFS='|' read -r _qaf_id _qaf_nm; do
+    [ -n "$_qaf_id" ] || continue
+    _qaf_i=$((_qaf_i + 1))
+    if [ "$_qaf_i" -lt "$1" ]; then
+      qq_state_set "$_qaf_id"
+    else
+      qq_state_drop "$_qaf_id"
+      rm -f "$QQBOT_STEPS/$_qaf_id" 2>/dev/null
+    fi
+  done <<QQ_STEPS_EOF
+$DEPLOY_STEPS
+QQ_STEPS_EOF
+}
+
+# 参数解析：不带参数时行为必须和以前一字不差（profile.d / 界面 / 守护任务都是裸跑本脚本）。
+DEPLOY_MODE=run
+DEPLOY_FROM=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --status) DEPLOY_MODE=status; shift ;;
+    --reset)  DEPLOY_MODE=reset;  shift ;;
+    --from)
+      if [ $# -ge 2 ]; then DEPLOY_FROM="$2"; shift; else DEPLOY_FROM=""; fi
+      shift
+      ;;
+    -h|--help)
+      printf '用法: deploy.sh [--status | --reset | --from N]\n'
+      exit 0
+      ;;
+    *) qqwarn "未知参数 $1（可用 --status / --reset / --from N），按默认流程继续"; shift ;;
+  esac
+done
+
+if [ "$DEPLOY_MODE" = "status" ]; then
+  cmd_deploy_status
+  exit 0
+fi
+
+# 重置前先确认没有别的部署在跑：一边装一边清进度，等于没清（装完的标记会立刻被写回来）。
+if [ "$DEPLOY_MODE" = "reset" ]; then
+  _qr_pid="$(cat "$QQBOT_HOME/deploy.pid" 2>/dev/null)"
+  if [ -n "$_qr_pid" ] && kill -0 "$_qr_pid" 2>/dev/null \
+     && tr '\0' ' ' < "/proc/$_qr_pid/cmdline" 2>/dev/null | grep -q 'deploy\.sh'; then
+    printf '{"ok":false,"err":"部署正在进行中（pid %s），先停止部署再重置"}\n' "$_qr_pid"
+    exit 1
+  fi
+  cmd_deploy_reset
+  exit 0
+fi
+
 # 并发护栏：profile.d 里的 50-qqbot-sandbox.sh 每次新开登录 shell 都会直接跑本脚本，
 # 部署期间再打开一次应用（或多开一个终端）就会并发跑第二份部署，两条 rm -rf "$ROOTFS"
 # 和两批 apt 会互相踩，轻则部署失败、重则 rootfs 半残。
@@ -73,7 +252,7 @@ cleanup_pid() {
   # 部署结束（成功或失败）不能把预取与并行的步骤留在后台：它们还在下载/安装，白耗流量与电。
   qq_prefetch_stop
   [ -n "${PAR60:-}" ] && kill "$PAR60" 2>/dev/null
-  [ "$(cat "$QQBOT_HOME/deploy.pid" 2>/dev/null)" = "$" ] && rm -f "$QQBOT_HOME/deploy.pid"
+  [ "$(cat "$QQBOT_HOME/deploy.pid" 2>/dev/null)" = "$$" ] && rm -f "$QQBOT_HOME/deploy.pid"
   # 只删自己持有的锁：万一锁已被别人（陈旧锁修复路径）接管，别把新持有者的锁删掉。
   [ "$(cat "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"
   return 0
@@ -86,6 +265,22 @@ qq_deploy_abort() {
 }
 trap cleanup_pid EXIT
 trap qq_deploy_abort INT TERM HUP
+
+# --from：把进度改成「第 N 步起还没做」。放在 trap 之后是有意的 —— 这里要写状态文件，
+# 万一中途出错或被 Ctrl-C，也得让 cleanup_pid 把 pid 与锁收干净。
+if [ -n "$DEPLOY_FROM" ]; then
+  case "$DEPLOY_FROM" in
+    ''|*[!0-9]*) _qf_n=$(qq_step_idx "$DEPLOY_FROM") ;;
+    *) _qf_n="$DEPLOY_FROM" ;;
+  esac
+  case "$_qf_n" in ''|*[!0-9]*) _qf_n=0 ;; esac
+  if [ "$_qf_n" -lt 1 ] || [ "$_qf_n" -gt "$DEPLOY_STEP_TOTAL" ]; then
+    qqerr "--from 的参数无效（$DEPLOY_FROM）：可给 1~$DEPLOY_STEP_TOTAL 的序号，或步骤 id（如 30-apt）"
+    exit 2
+  fi
+  qqlog "--from $_qf_n：前 $((_qf_n - 1)) 步视为已完成，从第 $_qf_n 步起重跑"
+  qq_apply_from "$_qf_n"
+fi
 
 if command -v termux-wake-lock >/dev/null 2>&1; then
   termux-wake-lock 2>/dev/null || true
@@ -154,21 +349,27 @@ run_steps() {
   FAILED=""
   PAR60=""
   for s in $STEPS; do
+    _idx=$(qq_step_idx "$s")
+    _nm=$(qq_step_name "$s")
+    # 断点续传：这一步上次已经做完就跳过，[跳过] 行让日志/界面一眼看出跳过的是哪一步
+    if qq_step_done "$s"; then
+      qq_step_sync "$s"
+      qqok "跳过已完成步骤 $s"
+      printf '[跳过] %s\n' "$_nm"
+      continue
+    fi
     # 走到 40-qq 时顺手把 60-astrbot 放到后台（见 qq_par60_on 上面那段说明）
-    if [ "$s" = "40-qq" ] && [ -z "$PAR60" ] && [ ! -f "$QQBOT_STEPS/60-astrbot" ] && qq_par60_on; then
+    if [ "$s" = "40-qq" ] && [ -z "$PAR60" ] && ! qq_step_done "60-astrbot" && qq_par60_on; then
       qqlog "并行：60-astrbot 提前到后台跑（与 40-qq / 50-napcat 同时进行）"
       bash "$QQBOT_OPT/steps/60-astrbot.sh" > "$QQBOT_LOGS/60-astrbot.par.log" 2>&1 &
       PAR60=$!
     fi
-    if [ -f "$QQBOT_STEPS/$s" ]; then
-      qqok "跳过已完成步骤 $s"
-      continue
-    fi
     # 轮到 60-astrbot 时，先收并行那一份的结果，成功就直接算完成、不再跑第二遍
     if [ "$s" = "60-astrbot" ] && [ -n "$PAR60" ]; then
+      printf '[%s/%s] %s\n' "$_idx" "$DEPLOY_STEP_TOTAL" "$_nm"
       qqlog "等待并行运行的 60-astrbot 收尾"
       if wait "$PAR60"; then
-        : > "$QQBOT_STEPS/$s"
+        qq_step_finish "$s"
         qqok "步骤 $s 完成（并行）"
         PAR60=""
         continue
@@ -180,6 +381,7 @@ run_steps() {
     while : ; do
       _n=$((_n + 1))
       if [ "$_n" -eq 1 ]; then
+        printf '[%s/%s] %s\n' "$_idx" "$DEPLOY_STEP_TOTAL" "$_nm"
         qqlog "========== 步骤 $s =========="
       else
         qqlog "========== 步骤 $s（第 $_n 次尝试）=========="
@@ -187,7 +389,7 @@ run_steps() {
       _src=0
       bash "$QQBOT_OPT/steps/$s.sh" || _src=$?
       if [ "$_src" -eq 0 ]; then
-        : > "$QQBOT_STEPS/$s"
+        qq_step_finish "$s"
         qqok "步骤 $s 完成"
         break
       fi
@@ -247,10 +449,17 @@ if [ "$FAILED" = "30-apt" ] && [ ! -f "$QQBOT_HOME/.rootfs-rebuilt" ]; then
   rm -f "$QQBOT_STEPS/20-rootfs" "$QQBOT_STEPS/30-apt" \
         "$QQBOT_STEPS/40-qq" "$QQBOT_STEPS/50-napcat" \
         "$QQBOT_STEPS/60-astrbot" "$QQBOT_STEPS/65-link" "$QQBOT_STEPS/70-launcher"
+  # 标记文件删了状态文件也得跟上：否则 --status 会把这几步报成「已完成」，实际却要重装。
+  for _qrb in 20-rootfs 30-apt 40-qq 50-napcat 60-astrbot 65-link 70-launcher; do
+    qq_state_drop "$_qrb"
+  done
   run_steps
 fi
 
 if [ -z "$FAILED" ]; then
+  # 第 9 步（收尾）每次都跑：它本身幂等（服务在跑就只打一行「已在运行」），
+  # 而用户点「继续部署」时往往就是想把这会儿停着的服务拉起来，跳过它会让服务一直停着。
+  printf '[%s/%s] %s\n' "$DEPLOY_STEP_TOTAL" "$DEPLOY_STEP_TOTAL" "$(qq_step_name 90-start)"
   : > "$QQBOT_HOME/deploy.done"
   rm -f "$QQBOT_HOME/.rootfs-rebuilt" 2>/dev/null || true
   # 成功了就把失败记录清掉：不然界面上会一直顶着一句早就过期的报错。
@@ -296,6 +505,7 @@ if [ -z "$FAILED" ]; then
     fi
     qqlog "首次启动需要几分钟，可在应用「日志」页查看进度"
   fi
+  qq_step_finish 90-start
 else
   qqerr "部署中断于 $FAILED，重新打开本应用会自动续跑"
   exit 1

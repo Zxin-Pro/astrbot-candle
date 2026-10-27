@@ -57,6 +57,8 @@ public class QqbotBootReceiver extends BroadcastReceiver {
             android.util.Log.i("QqbotBoot", "state/offline 存在：用户已主动关闭，本次开机不拉起守护");
             return;
         }
+        // 1.3.4-beta.7：每日早报的闹钟不跨重启保留，开机这一次重排。
+        try { QqbotDailyReport.reschedule(c); } catch (Throwable ignored) {}
         boolean ok;
         try {
             ok = QqbotGuardService.applyEx(c);

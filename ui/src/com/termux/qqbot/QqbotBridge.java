@@ -228,7 +228,10 @@ public class QqbotBridge {
                 {"50-napcat", "安装 NapCat 并注入 QQ"},
                 {"60-astrbot", "安装 AstrBot 与 WebUI"},
                 {"65-link", "把 NapCat 与 AstrBot 对接起来"},
-                {"70-launcher", "安装 qqbot-* 命令"}
+                {"70-launcher", "安装 qqbot-* 命令"},
+                /* 1.3.4-beta.7：deploy.sh 拆成 9 步做断点续传，末步收尾并拉起服务。
+                   这里不补的话界面永远只显示 8 步，用户看不到“已完成”。 */
+                {"90-start", "收尾并拉起服务"}
             };
             File stepsDir = new File(act.qqbotDir(), "steps");
             int doneCount = 0;

@@ -294,7 +294,6 @@ public class QqbotActivity extends Activity {
         // 拆成独立类是为了不把 QqbotBridge 撑到不可维护，注册顺序与老桥无关。
         web.addJavascriptInterface(new QqbotNotifyBridge(this), "AndroidNotify");
         web.addJavascriptInterface(new QqbotShare(this), "AndroidShare");
-        web.addJavascriptInterface(new QqbotPluginBridge(this), "AndroidPlugins");
         web.addJavascriptInterface(new QqbotModelBridge(this), "AndroidModel");
         web.addJavascriptInterface(new QqbotDiagBridge(this), "AndroidDiag");
         // 1.3.4-beta.3：应用内更新下载器 / 运行健康（熔断·备份·定时重启）/ 灵动岛。
@@ -302,6 +301,11 @@ public class QqbotActivity extends Activity {
         web.addJavascriptInterface(new QqbotUpdater(this), "AndroidUpdater");
         web.addJavascriptInterface(new QqbotHealthBridge(this), "AndroidHealth");
         web.addJavascriptInterface(new QqbotIslandBridge(this), "AndroidIsland");
+        // 1.3.4-beta.7：模型用量（只读 data_v4.db）/ 端口检测 / 每日早报。
+        // 插件页已下线（底栏不再有入口），AndroidPlugins 桥一并移除。
+        web.addJavascriptInterface(new QqbotUsageBridge(this), "AndroidUsage");
+        web.addJavascriptInterface(new QqbotPortBridge(this), "AndroidPort");
+        web.addJavascriptInterface(new QqbotDailyReport(this), "AndroidDaily");
         setContentView(web);
         // 通知栏点进来的 tab 要在第一次 loadUi 之前就记下来（singleTask 重入走 onNewIntent）
         pendingTab = tabOfIntent(getIntent());

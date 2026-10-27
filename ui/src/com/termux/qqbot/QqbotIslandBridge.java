@@ -14,21 +14,22 @@ import android.widget.Toast;
 import org.json.JSONObject;
 
 /**
- * window.AndroidIsland —— 灵动岛 v3「摄像头胶囊」的 JS 桥（v1.3.4-beta.5）。
+ * window.AndroidIsland —— 灵动岛 v4 的 JS 桥（v1.3.4-beta.7）。
  *
- * 用户的原话是「系统级交互，在摄像头那边的那种」：iPhone 灵动岛、HyperOS 胶囊那种。
- * 所以主体重新变成覆盖层——QqbotIslandCapsule 用 TYPE_APPLICATION_OVERLAY 在挖孔位置
- * 画一枚黑胶囊，别的应用上也看得见。beta.4 那套 Android 16「实时更新」通知不再当主角，
- * 只留作兜底（胶囊建不起来时，至少还有一条通知告诉你状态）。
- *
- * 桥只负责四件事，一律不自己建窗（窗口归 QqbotGuardService 持有，服务没了窗也必须没）：
+ * 用户要的是「安卓原生的灵动岛」：贴挖孔的胶囊、有事件自己弹开、展开像音乐播放器。
+ * 绘制那层全在 QqbotIslandCapsule 里，本类只做四件事，一律不自己建窗
+ * （窗口归 QqbotGuardService 持有，服务没了窗也必须没）：
  *   ① 告诉界面：这台设备能不能建胶囊（canPromote）、授权了没有（granted）、开关开着没；
  *   ② 开关（set）：写偏好，然后让服务那边同步建/拆胶囊 + 刷新通知兜底；
  *   ③ 带用户去系统设置（openSettings）：优先「显示在其他应用上层」，已授权再去通知设置；
  *   ④ 演示（test）：在摄像头位置挂 5 秒胶囊，让用户点一下就知道长什么样。
  *
+ * beta.7 只新增了一个可选方法 notice(json)：界面想「通知上岛」时（部署进度这种只有
+ * 前端才知道的事件）可以推一条带标题/副标题/进度的岛上事件。老方法名与返回结构一个没动，
+ * 旧界面不调它照样正常工作。
+ *
  * 纯逻辑集中在本文件 ISLAND-PURE 标记块里：不碰任何 Android 类，
- * 能被 out/b134b5_island_check.py 抠出来在普通 JVM 上跑回归。改这里必须同步改测试。
+ * 能被外部回归脚本抠出来在普通 JVM 上跑。改这里必须同步改测试。
  *
  * 旧包兼容：界面必须 typeof window.AndroidIsland !== "undefined" 才调它。
  * 本类所有方法自己再包一层 try/catch —— 桥方法抛异常在 JS 侧会变成一句看不懂的报错。
@@ -48,6 +49,10 @@ public class QqbotIslandBridge {
     /** 演示胶囊活多久（毫秒）：够用户看清楚，又不至于一直挡在摄像头那儿。 */
     private static final long TEST_TTL_MS = 5000L;
 
+    /** 岛消息最短/最长停留：太短看不清，太长像卡住了。 */
+    private static final long NOTICE_MIN_MS = 800L;
+    private static final long NOTICE_MAX_MS = 10000L;
+
     private final Activity act;
 
     public QqbotIslandBridge(Activity act) {
@@ -56,7 +61,6 @@ public class QqbotIslandBridge {
 
     /* ================================================================
      * 纯逻辑：不碰 Android 类，能抠出来在普通 JVM 上跑回归
-     * （见 out/b4_island_check.py）。改这里必须同步改测试。
      * ================================================================ */
 
     // ==== ISLAND-PURE-BEGIN ====
@@ -193,6 +197,7 @@ public class QqbotIslandBridge {
     /** 开关当前值（含旧键迁移；读失败按默认值处理，绝不抛给 JS）。 */
     public static boolean isEnabled(Context c) {
         try {
+            if (c == null) return false;
             SharedPreferences sp = c.getSharedPreferences(PREF, Context.MODE_PRIVATE);
             return resolveOn(sp.contains(KEY_ON), sp.getBoolean(KEY_ON, false),
                     sp.contains(KEY_ON_LEGACY), sp.getBoolean(KEY_ON_LEGACY, false),
@@ -204,6 +209,7 @@ public class QqbotIslandBridge {
 
     public static void setEnabled(Context c, boolean on) {
         try {
+            if (c == null) return;
             c.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit().putBoolean(KEY_ON, on).apply();
         } catch (Throwable ignored) {
         }
@@ -239,6 +245,7 @@ public class QqbotIslandBridge {
     /** 有没有通知服务：有就能发（Android 4.0+ 全都有）。 */
     private static boolean notifierOk(Context c) {
         try {
+            if (c == null) return false;
             return c.getSystemService(Context.NOTIFICATION_SERVICE) != null;
         } catch (Throwable t) {
             return false;
@@ -253,6 +260,7 @@ public class QqbotIslandBridge {
     public static boolean canPromoteNow(Context c) {
         if (Build.VERSION.SDK_INT < 36) return false;
         try {
+            if (c == null) return false;
             Object nm = c.getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm == null) return false;
             java.lang.reflect.Method m = NotificationManager.class
@@ -272,6 +280,7 @@ public class QqbotIslandBridge {
         } catch (Throwable ignored) {
         }
         try {
+            if (act == null) return -1;
             Intent i = act.registerReceiver(null,
                     new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
             if (i == null) return -1;
@@ -285,7 +294,7 @@ public class QqbotIslandBridge {
     }
 
     /* ================================================================
-     * JS 桥方法（契约 §3.1）
+     * JS 桥方法（契约 §3.1，方法名与返回结构一个都不能改）
      * ================================================================ */
 
     /** 这个版本能不能用实时更新：能发通知就算能用（36 以下只是不上芯片）。 */
@@ -350,9 +359,10 @@ public class QqbotIslandBridge {
         try {
             Boolean v = parseOn(on);
             if (v == null) {
-                toast("实时更新开关参数不认识：" + on);
+                toast("灵动岛开关参数不认识：" + on);
                 return;
             }
+            if (act == null) return;
             act.runOnUiThread(new UiSet(v.booleanValue()));
         } catch (Throwable t) {
             // 吞掉：桥方法抛异常会在 JS 侧变成一句看不懂的报错
@@ -404,6 +414,7 @@ public class QqbotIslandBridge {
     @JavascriptInterface
     public void openSettings() {
         try {
+            if (act == null) return;
             act.runOnUiThread(new UiOpen());
         } catch (Throwable t) {
             // Activity 已经没了，不再处理
@@ -420,9 +431,40 @@ public class QqbotIslandBridge {
     @JavascriptInterface
     public void test() {
         try {
+            if (act == null) return;
             act.runOnUiThread(new UiDemo());
         } catch (Throwable t) {
             // 同上，投递失败就算了
+        }
+    }
+
+    /**
+     * 可选新方法：让界面对灵动岛说一句话（部署进度、二维码刷新这类「只有前端知道」的事件）。
+     * 入参：{"title":"部署中","sub":"3/9 安装依赖","ms":3000,"p":0.33}
+     *   title / sub 可省（省了用当前状态文案）；ms 缺省 3 秒（夹在 0.8~10 秒）；
+     *   p 是 0~1 的进度，缺省或越界就退回「按停留时间倒计时」。
+     * 返回 {"ok":true} 或 {"ok":false,"err":"中文原因"}。旧界面不调它完全不受影响。
+     */
+    @JavascriptInterface
+    public String notice(String json) {
+        try {
+            if (json == null || json.trim().length() == 0) {
+                return "{\"ok\":false,\"err\":\"没有内容\"}";
+            }
+            JSONObject o = new JSONObject(json);
+            String title = o.optString("title", "");
+            String sub = o.optString("sub", "");
+            long ms = o.optLong("ms", 3000L);
+            if (ms < NOTICE_MIN_MS) ms = NOTICE_MIN_MS;
+            if (ms > NOTICE_MAX_MS) ms = NOTICE_MAX_MS;
+            double p = o.optDouble("p", -1d);
+            float frac = (p < 0d || p > 1d || Double.isNaN(p)) ? -1f : (float) p;
+            QqbotIslandCapsule.notice(title, sub, ms, frac);
+            return "{\"ok\":true}";
+        } catch (org.json.JSONException e) {
+            return "{\"ok\":false,\"err\":\"岛消息不是合法的 JSON\"}";
+        } catch (Throwable t) {
+            return "{\"ok\":false,\"err\":\"岛消息发不出去\"}";
         }
     }
 
@@ -447,6 +489,7 @@ public class QqbotIslandBridge {
 
     private void toast(String msg) {
         try {
+            if (act == null) return;
             act.runOnUiThread(new UiToast(act, msg));
         } catch (Throwable ignored) {
         }
@@ -455,6 +498,7 @@ public class QqbotIslandBridge {
     /** 真正干活的：写偏好 → 让服务立刻建/拆胶囊，并重发或撤销通知兜底。 */
     private void applyOn(boolean on) {
         try {
+            if (act == null) return;
             setEnabled(act, on);
             // 胶囊与通知是两条路，两边都要同步：胶囊建不起来时，通知至少还在说状态
             QqbotIslandCapsule.sync(act);
@@ -493,6 +537,7 @@ public class QqbotIslandBridge {
 
     /** 先去要权限，已经给了才轮到通知设置那一页。 */
     private void gotoPermissionSettings() {
+        if (act == null) return;
         String pkg = act.getPackageName();
         if (!QqbotIslandCapsule.granted(act)) {
             try {
@@ -526,6 +571,7 @@ public class QqbotIslandBridge {
     }
 
     private void gotoNotificationSettings() {
+        if (act == null) return;
         String pkg = act.getPackageName();
         if (Build.VERSION.SDK_INT >= 36) {
             String act36 = promotionAction();
@@ -583,6 +629,7 @@ public class QqbotIslandBridge {
     private final class UiDemo implements Runnable {
         public void run() {
             try {
+                if (act == null) return;
                 if (!QqbotIslandCapsule.canHostNow(act)) {
                     toast("先允许「显示在其他应用上层」，胶囊才能显示");
                     try {

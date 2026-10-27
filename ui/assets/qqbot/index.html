@@ -2857,7 +2857,7 @@ html.devnotelock{ overflow: hidden; }
         按压缩放过大。统一成扁平 + 克制的四档语义。
    约束：只加视觉层。不改 data-act / id / class 语义，不动布局尺寸逻辑，
         可点区域只会变大不会变小（小控件直接给 44px 真高度）。
-   用法：整段插到 index.html 样式表末尾（plugins.html 已同步同一套风格）。
+   用法：整段插到 index.html 样式表末尾。
    ============================================================================ */
 
 /* 令牌别名：本文件里统一用 --line / --danger 读；都从现有令牌派生，深浅色自动跟随。 */
@@ -3176,6 +3176,113 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
 .mark{ border-radius: 16px; }
 .lkic{ border-radius: 18px; }
 .bi{ border-radius: 12px; }
+
+/* ---------------------------------------------------------------- 模型用量（b137）
+   数据源是 AstrBot 自己的本地库：AndroidUsage 是两段式桥，start() 只负责「开始扫」，
+   poll() 在扫完前一律回空串 —— 所以加载态是设计的一部分。7 天柱状图纯 div + 高度，
+   不引图表库，也不引任何外部资源。
+   颜色 / 圆角一律走令牌：柱身 --accent 与 --fill-3，轨道 --fill-1，圆角 --r-full。 */
+.usg-src{ margin-left: auto; font-size: 10.5px; font-weight: 500; color: var(--label-3); letter-spacing: .2px; }
+.usg-state, .ps-state{
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 0 4px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--label-2);
+}
+.usg-state > span, .ps-state > span{ flex: 1; min-width: 0; }
+.usg-state.bad, .ps-state.bad{ color: var(--bad); }
+.usg-state button.small, .ps-state button.small{ flex: none; margin-left: auto; }
+.usg-grid{ margin-top: 2px; }
+.usg-bars{
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 7px;
+  align-items: end;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: .5px solid var(--sep);
+}
+.usg-col{ display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.usg-track{
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  max-width: 26px;
+  height: 54px;
+  border-radius: var(--r-full);
+  background: var(--fill-1);
+  overflow: hidden;
+}
+.usg-bar{
+  display: block;
+  width: 100%;
+  min-height: 3px;
+  border-radius: var(--r-full);
+  background: var(--fill-3);
+  transition: height var(--dur) var(--ease);
+}
+.usg-col.today .usg-bar{ background: var(--accent); }
+.usg-day{
+  font-size: 9.5px;
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.usg-col.today .usg-day{ color: var(--accent); font-weight: 600; }
+.usg-models{ margin-top: 12px; }
+.usg-mrow{ display: flex; align-items: center; gap: 9px; padding: 7px 0; font-size: 12.5px; }
+.usg-mrow + .usg-mrow{ border-top: .5px solid var(--sep); }
+.usg-mname{
+  flex: none;
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--label);
+}
+.usg-mbar{ flex: 1; min-width: 24px; height: 6px; border-radius: var(--r-full); background: var(--fill-2); overflow: hidden; }
+.usg-mbar > i{ display: block; height: 100%; border-radius: var(--r-full); background: var(--fill-3); }
+.usg-mval{ flex: none; font-size: 11.5px; color: var(--label-2); font-variant-numeric: tabular-nums; }
+.usg-foot{ display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.usg-note{ flex: 1; min-width: 0; font-size: 11px; line-height: 1.5; color: var(--label-3); }
+.usg-foot button.small{ flex: none; }
+/* ---------------------------------------------------------------- 端口检测（b137）
+   接在「端口设置」卡尾巴上：上面是配置、下面是这台机器上谁真的占着端口。
+   AndroidPort.scan() 同步阻塞最长 3 秒，所以扫描时先画转圈再 let DOM 上屏。 */
+.ps-wrap{ margin-top: 16px; padding-top: 14px; border-top: .5px solid var(--sep); }
+.ps-hd{ display: flex; align-items: center; gap: 10px; }
+.ps-t{ flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; color: var(--label); }
+.ps-src{ margin-left: 6px; font-size: 10.5px; font-weight: 500; color: var(--label-3); }
+.ps-row{ display: flex; align-items: center; gap: 9px; padding: 8px 0; border-top: .5px solid var(--sep); }
+.ps-main{ flex: 1; min-width: 0; }
+.ps-l1{ display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.ps-port{ flex: none; font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--label); }
+.ps-name{ min-width: 0; font-size: 12.5px; color: var(--label-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ps-sub{ margin-top: 2px; font-size: 10.5px; color: var(--label-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ps-kill{ flex: none; }
+.ps-more{ margin-top: 10px; font-size: 11px; color: var(--label-3); }
+/* ---------------------------------------------------------------- 日志占用（b137）
+   接在「存储占用」卡里：上面是目录条形，这一块只回答两件事——日志多大、能不能裁。
+   两条命令都走 Android.exec（同步阻塞，返回 stdout 纯文本，脚本自己的日志会混进去），
+   所以先画「读取中」再动手，慢的那几秒界面卡一下也不会看起来像死了。 */
+.logstg{ margin-top: 14px; padding-top: 13px; border-top: .5px solid var(--sep); }
+.logstg-hd{ display: flex; align-items: baseline; gap: 10px; }
+.logstg-t{ flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--label); }
+.logstg-v{ flex: none; font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--label); font-variant-numeric: tabular-nums; }
+.logstg-s{ margin-top: 3px; font-size: 10.5px; line-height: 1.55; color: var(--label-3); }
+.logstg-s.bad{ color: var(--bad); }
+/* ---------------------------------------------------------------- 每日早报（b137）
+   接在通知卡最后一条开关下面：开关复用 .tgl，时间用原生 time 控件（离线、跟随系统语言）。
+   桥（AndroidDaily）探不到时整段不显示，卡片其余部分照旧。 */
+.dl{ margin-top: 2px; border-top: .5px solid var(--sep); }
+.dlrow{ display: flex; align-items: center; gap: 10px; padding: 0 0 12px; }
+.dlk{ flex: 1; min-width: 0; font-size: 14.5px; font-weight: 560; color: var(--label); }
+.dltime{ flex: none; width: auto; min-height: 44px; padding: 0 14px; font-size: 16px; color: var(--label); background: var(--field-bg); border: .5px solid var(--field-line); border-radius: var(--btn-r); font-family: var(--mono); }
+.dltime::-webkit-calendar-picker-indicator{ opacity: .55; }
+.dlhint{ padding: 0 0 12px; font-size: 11.5px; line-height: 1.5; color: var(--label-3); }
 </style>
 </head>
 <body>
@@ -3265,6 +3372,19 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
         <button class="small" id="btnStartSide" data-act="startlogs" style="display:none">看日志</button>
       </div>
       <div class="startnote" id="startNote" role="status" aria-live="polite" style="display:none"></div>
+    </div>
+
+    <!-- 模型用量（b137）：今日调用 / 输入 / 输出 / 粗估花费 + 最近 7 天柱状图 + Top 模型。
+         数据来自 AstrBot 本地库（AndroidUsage.start() 起扫描、poll() 取结果，两段式），
+         所以一定有加载态；空数据 / 读失败 / 老安装包没有这个桥，各有各的话术，绝不白屏。
+         花费未知时桥给 -1，这里画成「—」而不是「¥0」。 -->
+    <div class="card" id="usageCard">
+      <h2>模型用量<span class="usg-src" id="usgSrc"></span></h2>
+      <div id="usgBox"><div class="usg-state" role="status" aria-live="polite"><span class="spin" aria-hidden="true"></span><span>正在统计用量…</span></div></div>
+      <div class="usg-foot">
+        <span class="usg-note" id="usgNote">数据来自 AstrBot 本地库，只统计这台机器上的调用</span>
+        <button class="small quiet" data-act="usgmore" id="btnUsgMore" style="display:none">更多</button>
+      </div>
     </div>
 
       <!-- 进程崩溃提示（功能 58 的入口）：跟风控红横幅刻意用两种颜色 —— 崩溃是琥珀 #EA580C，
@@ -3756,6 +3876,24 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
         <div class="lkt" style="font-size:12px;margin-bottom:2px">最大的 10 项（文件 / 目录）</div>
         <div id="stgTop"></div>
       </div>
+      <!-- 日志占用（b137）：沙盒自带的 storage.sh 能报日志目录多大，也能按天数和体积裁。
+           两条命令都走 Android.exec（同步阻塞、返回 stdout 纯文本，脚本自己的 echo 会混在里面），
+           所以解析是容错的：整段 parse → 截首个 { 到末个 } → 逐行 parse → 按字段捞。
+           prune 只删沙盒日志目录 7 天以前的文件，并把总量压到 20MB 以内。 -->
+      <div class="logstg" id="logStg">
+        <div class="logstg-hd"><span class="logstg-t">日志占用</span><span class="logstg-v" id="logStgVal">—</span></div>
+        <div class="logstg-s" id="logStgSub">展开诊断信息后自动读取</div>
+        <div class="btns" style="margin-top:8px">
+          <button class="small" data-act="logprune" id="btnLogPrune">清理旧日志</button>
+        </div>
+        <div class="confirm" id="logConfirm" style="display:none">
+          <div class="ct">只删沙盒日志目录里 7 天以前的文件，并把日志总量压到 20MB 以内；最近的日志、配置和聊天数据都不动。确定清理吗？</div>
+          <div class="btns" style="margin-top:8px">
+            <button class="small danger" data-act="logpruneyes" id="btnLogPruneOk">开始清理</button>
+            <button class="small" data-act="logpruneno">取消</button>
+          </div>
+        </div>
+      </div>
       <div class="btns" style="margin-top:10px">
         <button class="small primary" data-act="stgclean" id="stgBtnClean">清理缓存</button>
         <button class="small" data-act="stgrefresh">重新统计</button>
@@ -3905,6 +4043,22 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
         </div>
         <button class="tgl" id="ntfQr" data-act="ntftoggle" data-arg="qr" title="点击切换需扫码提醒" aria-label="需扫码提醒"></button>
       </div>
+      <!-- 每日早报（b137）：AndroidDaily 是这一版新加的桥，老安装包没有就整段收起，
+           通知卡其余部分照旧。开关与时间都写回 set(JSON {on,time})，写失败就把控件退回原值。 -->
+      <div class="dl" id="dailyBox" style="display:none">
+        <div class="swrow">
+          <div class="swinfo">
+            <div class="swname">每日早报</div>
+            <div class="swdesc">每天固定时间推一条汇总：在线时长、消息量、有没有报错。</div>
+          </div>
+          <button class="tgl" id="dlTgl" data-act="dailytoggle" title="点击开关每日早报" aria-label="每日早报开关"></button>
+        </div>
+        <div class="dlrow">
+          <span class="dlk">推送时间</span>
+          <input class="dltime" id="dlTime" type="time" step="60" value="08:00" aria-label="每日早报推送时间">
+        </div>
+        <div class="dlhint" id="dlHint">正在读取…</div>
+      </div>
       <div class="btns" style="margin-top:10px">
         <button class="small primary" id="btnNtfTest" data-act="ntftest">发一条测试通知</button>
       </div>
@@ -3956,6 +4110,17 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
         <button class="small primary" id="btnPortsSave" data-act="portssave">保存并重启服务</button>
       </div>
       <div class="hint">端口留空＝自动分配。WebUI 与 OneBot 端口必须同机唯一；改动后需要重新生成对接配置，点「保存并重启服务」会连同 AstrBot 平台配置一起重建。</div>
+
+      <!-- 端口检测（b137）：AndroidPort.scan() 是同步阻塞的（最长 3 秒），
+           所以点「扫描」先画转圈、让 DOM 上屏，再 setTimeout 去调桥；
+           只有 self:true 的进程（本应用自己拉起来的）才给「结束」。 -->
+      <div class="ps-wrap" id="portScan">
+        <div class="ps-hd">
+          <span class="ps-t">端口占用<span class="ps-src" id="psSrc"></span></span>
+          <button class="small" data-act="portscan" id="btnPortScan">扫描</button>
+        </div>
+        <div id="psBox"><div class="ps-state" role="status" aria-live="polite"><span>还没扫描，点「扫描」看看谁占着端口</span></div></div>
+      </div>
     </div>
 
     <div class="card">
@@ -4309,7 +4474,6 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
   <span class="nav-thumb" id="navThumb" aria-hidden="true"></span>
   <button class="on" data-tab="home"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.6 12 4l8 6.6V19a1 1 0 0 1-1 1h-4.2v-5.6H9.2V20H5a1 1 0 0 1-1-1z"/></svg>主页</button>
   <button data-tab="bots"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6" width="17" height="12.5" rx="3.4"/><path d="M9.5 6V4.6h5V6"/><circle cx="9.2" cy="11.4" r="1.1" fill="currentColor" stroke="none"/><circle cx="14.8" cy="11.4" r="1.1" fill="currentColor" stroke="none"/><path d="M9.4 15h5.2"/></svg>机器人</button>
-  <button data-tab="plugins"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7" rx="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.8"/><path d="M14.6 16.6h1.9m1.9 0h1.9M16.5 14.7v1.9m0 1.9v1.9"/></svg>插件</button>
   <button data-tab="logs"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3.5" width="16" height="17" rx="3.2"/><path d="M8 8.6h8M8 12h8M8 15.4h5"/></svg>日志</button>
   <button data-tab="more"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h16M4 16h16"/><circle class="knob" cx="9.6" cy="8" r="2.2"/><circle class="knob" cx="14.4" cy="16" r="2.2"/></svg>更多</button>
 </nav>
@@ -5411,15 +5575,7 @@ function doRmLog(arg){
   setTimeout(refresh, 900);
 }
 
-/* 1.3.4-beta.3 §3：插件页是独立的 plugins.html，不在 index.html 的页签容器里。
-   底栏点/拖到「插件」位时直接整页跳转；showTab 也要挡住，否则 el("tab-plugins") 是 null，
-   一点就抛 "Cannot read properties of null (reading classList)"，看起来就是「点了没反应」。 */
-function navGoPlugins(){
-  try { location.href = "plugins.html"; }
-  catch (e) { try { extToast("打不开插件页，重开应用再试"); } catch (e2) {} }
-}
 function showTab(t){
-  if (t === "plugins") return;   /* 插件页不在本文件里，别去 el("tab-plugins") */
   var tabs = document.querySelectorAll(".tab");
   for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove("on");
   el("tab-" + t).classList.add("on");
@@ -5446,8 +5602,7 @@ function showTab(t){
 }
 
 /* 1.3.4-beta.5：hash 定位 —— #tab-home / #tab-bots / #tab-logs / #tab-more。
-   插件页是独立页面，它那边的「回主页」落地就是 index.html#tab-home；应用内也可能
-   被 WebView 带着 hash 重新加载，所以开机读一次之外还要听 hashchange。
+   应用内也可能被 WebView 带着 hash 重新加载，所以开机读一次之外还要听 hashchange。
    设置页没有 hash：它不在底栏里，深链进去会让人找不到返回路径。 */
 function tabFromHash(){
   var h = "";
@@ -5582,8 +5737,6 @@ function navFlush(){
   }
   t = b.getAttribute("data-tab");
   if (!t || t === s.liveTab) return;      /* 同一个页签只切一次 */
-  /* 插件是外链页：拖动经过只亮 .near、滑块跟手，别在拖动途中就把整页跳走 */
-  if (t === "plugins"){ s.liveTab = t; return; }
   s.liveTab = t;
   s.lastSw = Date.now();
   s.swN++;
@@ -5663,8 +5816,6 @@ function navUp(e){
   if (!b) return;
   t = b.getAttribute("data-tab");
   if (!t) return;
-  /* 插件位：拖动经过只在 navFlush 里高亮，松手落在这里才真的跳过去 */
-  if (t === "plugins"){ s.liveTab = t; try { navPaint(i); } catch (e3) {} navGoPlugins(); return; }
   if (s.moved && t === s.liveTab) return;   /* 拖动途中已经切到这一页了，别重渲染第二次 */
   s.liveTab = t;
   try { showTab(t); } catch (e2) {}
@@ -5759,8 +5910,6 @@ var NO_LOCK_ACTS = [
      部署没成功时正是最需要它的时刻，绝不能因为未部署就把「直接上传」吞掉。 */
   "devnoteok", "devnotecancel", "devnotex",
   "settings", "backhome", "showlogs",
-  /* 插件页是独立页面，切过去看一眼不该被「部署未完成」挡住。 */
-  "openplugins",
   "pickbg", "clearbg", "cropbg", "cropreset", "cropcancel", "cropok", "bgpreset", "glass", "theme",
   "reload", "slim", "rmcard",
   /* 更新弹窗里每条卡片的「详情 / 下载」和两个自动提醒开关，全是纯前端动作
@@ -5804,7 +5953,14 @@ var NO_LOCK_ACTS = [
   /* 1.3.4-beta.3：灵动岛（实时更新）。状态球的开关是本地设置，装没装好都能先配。 */
   "islandtoggle", "islandgrant", "islandtest",
   /* 1.3.4-beta.4：扫码弹窗的「不再提示（本次运行）」只是本地标记，未部署时常要关掉提醒。 */
-  "qrskip"
+  "qrskip",
+  /* b137 主页用量卡：展开更多 / 重新读取都只是读库，跟容器装没装好无关 */
+  "usgmore", "usgretry",
+  /* b137 端口检测：扫描与结束都只读/只动本应用自己的进程，不该因未部署被置灰 */
+  "portscan", "portkill",
+  /* b137 日志清理：只动沙盒日志目录里的旧文件，跟容器装没装好无关 */
+  "logprune", "logpruneyes", "logpruneno",
+  "dailytoggle"
 ];
 
 /* 这个 act 在未部署时要不要拦 */
@@ -6979,7 +7135,8 @@ function ntfSet(id, on, locked){
 function ntfPaint(force){
   var card = el("notifyCard");
   if (!card) return;
-  if (!ntfAvail()) { card.style.display = "none"; return; }
+  /* b137：早报是另一个桥，老包里通知桥不在、早报桥在的情况下，卡片也得露出来 */
+  if (!ntfAvail() && !dailyAvail()) { card.style.display = "none"; return; }
   if (force !== false) {
     var c = null;
     try { c = normJson(AndroidNotify.config()); } catch (e) { c = null; }
@@ -8419,8 +8576,6 @@ document.addEventListener("click", function(ev){
   }
   var tab = t.getAttribute("data-tab");
   if (tab) {
-    /* 插件页是独立文件：click 兜底也要跳转，不能落到 showTab 里 */
-    if (tab === "plugins") { navGoPlugins(); return; }
     showTab(tab); return;
   }
   /* 未部署守门：除白名单里的部署相关 act 以外，一律弹提示后吞掉这次点击。
@@ -8501,11 +8656,6 @@ document.addEventListener("click", function(ev){
     }
     else Android.openPanel(arg || "");
   }
-  /* 插件与扩展：独立页面 plugins.html，用同目录相对路径（file:///android_asset/qqbot/），
-     返回靠页面自带的 history.back()，不占主页 DOM。 */
-  else if (act === "openplugins") {
-    try { location.href = "plugins.html"; } catch (e) { extToast("打不开插件页"); }
-  }
   else if (act === "algo") { astrLoginClose(); Android.openPanel(astrPanelUrl()); }
   else if (act === "alclose") astrLoginClose();
   else if (act === "alcopyuser") { astrLoginPaint(); Android.copy(el("alUser").textContent); }
@@ -8580,6 +8730,16 @@ document.addEventListener("click", function(ev){
   else if (act === "restartnow") restartDo();
   else if (act === "restartcancel") restartAsk(false);
   else if (act === "stgrefresh") { ext().stg.at = 0; refreshStorage(true); extToast("正在重新统计…"); }
+  else if (act === "usgmore") usgMore();
+  else if (act === "usgretry") usgScan(true);
+  else if (act === "portscan") portScan(true);
+  else if (act === "portkill") portKillAsk(arg);
+  /* b137 日志占用：问 → 真清 → 取消，删的全是本应用自己目录里的旧日志 */
+  else if (act === "logprune") logPruneAsk();
+  else if (act === "logpruneyes") logPruneYes();
+  else if (act === "logpruneno") logPruneNo();
+  /* b137 每日早报：开关写回 {on,time}，时间用原生 time 控件的 change 事件另走 */
+  else if (act === "dailytoggle") dailySave(true, null);
   else if (act === "crashclear") crashClear();
   else if (act === "statstoggle") statsToggle();
   else if (act === "statsok") statsDialogOk();
@@ -11140,6 +11300,8 @@ function diagFold(){
   E.diag = !E.diag;
   var box = el("diagFold"); if (box) box.hidden = !E.diag;
   var a = el("diagArw"); if (a) a.textContent = E.diag ? "收起" : "展开";
+  /* b137：日志占用要走一次阻塞的 exec，只在真正展开时去问，收起时白跑没意义 */
+  if (E.diag) { try { logStats(false); } catch (eL) {} }
 }
 
 /* v4：崩溃 / 省电 / 启动中 原来各是一条彩色条，同时出现时像通知栏堆叠。
@@ -11288,6 +11450,7 @@ function refreshExtras(st){
       }
     } catch (e10) {}
   }
+  if (tabOn("home")){ try { usgScan(false); } catch (eU) {} }
   if (tabOn("settings")){ try { refreshStats(false); } catch (e8) {} }
   /* 崩溃提示条要挂在主页，所以崩溃数据哪怕不在「更多」页也刷（读本地文件，很便宜） */
   try { refreshCrash(false); } catch (e9) {}
@@ -11331,9 +11494,9 @@ function refreshExtras(st){
 /* 切页签时按需立刻拉一次，不用等下一个轮询周期 */
 function extOnTab(t){
   try {
-    if (t === "home") refreshInst(true);
+    if (t === "home"){ refreshInst(true); try { usgScan(false); } catch (eU) {} }
     else if (t === "more"){ refreshBk(true); refreshStorage(true); refreshCrash(true); }
-    else if (t === "settings"){ refreshStats(true); refreshLan(true); islandPaint(true); }
+    else if (t === "settings"){ refreshStats(true); refreshLan(true); islandPaint(true); try { portAuto(); } catch (eP) {} try { dailyLoad(false); } catch (eD) {} }
   } catch (e) {}
 }
 
@@ -11455,6 +11618,535 @@ try { upTick(); } catch (e) {}
    在的话用户不用先切一次页签才看到卡片和开关。 */
 try { islandPaint(true); } catch (e) {}
 try { paintFoot(); } catch (e) {}
+
+/* ==========================================================================
+   模型用量（b137）
+   —— 数据源是 AstrBot 自己的本地库。AndroidUsage 是两段式的：start() 只是
+   「开始扫」，poll() 在扫完前一律回空串，所以加载态是设计的一部分；超时、读失败、
+   空数据、老安装包没有这个桥，四种下台都要有话说，任何情况都不白屏。
+   ========================================================================== */
+var USG = { on: false, at: 0, tries: 0, timer: 0, json: null, err: "", more: false };
+
+function usgApi(){
+  try { return (typeof AndroidUsage !== "undefined" && AndroidUsage) ? AndroidUsage : null; }
+  catch (e) { return null; }
+}
+function usgOk(){
+  var a = usgApi();
+  if (!a) return false;
+  try { return typeof a.start === "function" && typeof a.poll === "function"; }
+  catch (e) { return false; }
+}
+/* cost 未知时桥给的是 -1（不是 0），必须画成「—」，不能骗成「¥0」 */
+function usgMoney(c){
+  c = Number(c);
+  if (!isFinite(c) || c < 0) return "—";
+  if (c === 0) return "¥0";
+  if (c < 0.01) return "¥0.01-";
+  return "¥" + (c >= 10 ? c.toFixed(1) : c.toFixed(2));
+}
+function usgTok(n){
+  n = Number(n) || 0;
+  if (n <= 0) return "0";
+  if (n < 1000) return String(Math.round(n));
+  if (n < 1000000) return (n < 10000 ? (n / 1000).toFixed(1) : String(Math.round(n / 1000))) + "k";
+  return (n / 1000000).toFixed(2) + "M";
+}
+function usgCalls(n){ n = Number(n) || 0; return String(Math.round(n)); }
+function usgDay(d){
+  var s = String(d || "");
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s.slice(5) : s;
+}
+function usgState(kind, msg){
+  var spin = kind === "load" ? '<span class="spin" aria-hidden="true"></span>' : "";
+  var retry = kind === "bad" ? '<button class="small" data-act="usgretry">重新读取</button>' : "";
+  return '<div class="usg-state' + (kind === "bad" ? " bad" : "") + '" role="status" aria-live="polite">'
+    + spin + "<span>" + esc(msg) + "</span>" + retry + "</div>";
+}
+
+function usgPaint(){
+  var box = el("usgBox");
+  if (!box) return;
+  var src = el("usgSrc"), note = el("usgNote"), more = el("btnUsgMore");
+  if (more) more.style.display = "none";
+  if (src) src.textContent = usgOk() ? (USG.on ? "统计中" : "") : "不可用";
+  if (note) note.textContent = "数据来自 AstrBot 本地库，只统计这台机器上的调用";
+  /* 老安装包：桥不在就明说「功能不可用」，不留空白也不抛错 */
+  if (!usgOk()){
+    setHtml(box, usgState("bad", "这个安装包还不支持用量统计（功能不可用）"));
+    if (note) note.textContent = "升级到新版安装包后，这里会显示最近 7 天的调用与花费";
+    return;
+  }
+  if (USG.on){ setHtml(box, usgState("load", "正在统计用量…")); return; }
+  if (USG.err){ setHtml(box, usgState("bad", USG.err)); return; }
+  var j = USG.json;
+  if (!j){ setHtml(box, usgState("load", "正在统计用量…")); return; }
+
+  var today = j.today || {};
+  var days = (j.days && j.days.length) ? j.days : [];
+  var models = (j.models && j.models.length) ? j.models : [];
+  var any = Number(today.calls) > 0 || models.length > 0;
+  for (var i = 0; !any && i < days.length; i++) if (Number(days[i].calls) > 0) any = true;
+  if (!any){
+    setHtml(box, usgState("", "还没有调用记录，说句话之后这里就会出数"));
+    if (note && j.note) note.textContent = String(j.note);
+    return;
+  }
+  var h = [];
+  h.push('<div class="today-grid usg-grid">');
+  h.push('<div class="tcell"><span class="tlabel">今日调用</span><b class="tval">' + usgCalls(today.calls) + "</b></div>");
+  h.push('<div class="tcell"><span class="tlabel">输入</span><b class="tval">' + esc(usgTok(today.in)) + "</b></div>");
+  h.push('<div class="tcell"><span class="tlabel">输出</span><b class="tval">' + esc(usgTok(today.out)) + "</b></div>");
+  h.push('<div class="tcell"><span class="tlabel">粗估花费</span><b class="tval">' + esc(usgMoney(today.cost)) + "</b></div>");
+  h.push("</div>");
+  if (days.length){
+    var max = 1, k;
+    for (k = 0; k < days.length; k++) max = Math.max(max, Number(days[k].calls) || 0);
+    h.push('<div class="usg-bars" aria-label="最近 7 天调用次数">');
+    for (k = 0; k < days.length; k++){
+      var d = days[k], c = Number(d.calls) || 0;
+      var pct = c > 0 ? Math.max(6, Math.round(c / max * 100)) : 0;
+      var isT = k === days.length - 1;
+      h.push('<div class="usg-col' + (isT ? " today" : "") + '" title="' + esc(usgDay(d.d) + " · " + c + " 次调用") + '">'
+        + '<div class="usg-track"><i class="usg-bar" style="height:' + pct + '%"></i></div>'
+        + '<span class="usg-day">' + esc(usgDay(d.d)) + "</span></div>");
+    }
+    h.push("</div>");
+  }
+  if (models.length){
+    var top = Number(models[0].calls) || 1;
+    var show = USG.more ? models.slice(0, 6) : models.slice(0, 3);
+    h.push('<div class="usg-models">');
+    for (k = 0; k < show.length; k++){
+      var m2 = show[k], mc = Number(m2.calls) || 0;
+      var w = Math.max(4, Math.round(mc / top * 100));
+      var ttl = String(m2.m || "未知模型") + " · " + mc + " 次 · 输入 " + usgTok(m2.in) + " / 输出 " + usgTok(m2.out);
+      h.push('<div class="usg-mrow" title="' + esc(ttl) + '">'
+        + '<span class="usg-mname">' + esc(String(m2.m || "未知模型")) + "</span>"
+        + '<span class="usg-mbar"><i style="width:' + w + '%"></i></span>'
+        + '<b class="usg-mval">' + esc(mc + " 次") + "</b></div>");
+    }
+    h.push("</div>");
+    if (more && models.length > 3){
+      more.style.display = "";
+      more.textContent = USG.more ? "收起" : "更多";
+    }
+  }
+  if (note && j.note) note.textContent = String(j.note);
+  setHtml(box, h.join(""));
+}
+
+function usgScan(force){
+  if (!USG) return;   /* 初始化之前被 refresh() 顺手叫到时直接放过 */
+  if (!usgOk()){ USG.on = false; USG.err = ""; USG.json = null; usgPaint(); return; }
+  if (USG.on) return;
+  /* 同一份数据不重复打桥：成功缓存 60 秒，失败退避 2 分钟 */
+  var gap = USG.err ? 120000 : 60000;
+  if (!force && USG.at && Date.now() - USG.at < gap) return;
+  USG.on = true; USG.tries = 0; USG.err = ""; USG.at = Date.now();
+  usgPaint();
+  try { usgApi().start(); }
+  catch (e){ USG.on = false; USG.err = "调用用量统计失败：" + (e && e.message ? e.message : e); usgPaint(); return; }
+  usgPoll(0);
+}
+function usgPoll(n){
+  var raw = "";
+  if (usgOk()){ try { raw = String(usgApi().poll() || ""); } catch (e2){ raw = ""; } }
+  if (!raw){
+    /* 20 × 600ms ≈ 12 秒还没扫完：多半是 AstrBot 没在跑 / 库太大，给一句人话就停 */
+    if (n >= 20 || !usgOk()){
+      USG.on = false;
+      USG.err = usgOk() ? "读了十几秒还没读完，AstrBot 可能没在运行，稍后再试" : "用量桥在读取过程中失效了，重开本页试试";
+      usgPaint();
+      return;
+    }
+    USG.tries = n + 1;
+    USG.timer = setTimeout(function(){ usgPoll(n + 1); }, 600);
+    return;
+  }
+  USG.on = false;
+  var j = null;
+  try { j = JSON.parse(raw); } catch (e3){ j = null; }
+  if (!j){ USG.err = "读回来的内容不是可用的用量数据，稍后再试"; USG.json = null; usgPaint(); return; }
+  if (j.ok === false){
+    USG.err = j.err ? String(j.err) : "没找到 AstrBot 的用量数据";
+    USG.json = null;
+    usgPaint();
+    return;
+  }
+  USG.json = j; USG.err = ""; USG.at = Date.now();
+  usgPaint();
+}
+function usgMore(){
+  if (!USG || !USG.json) return;
+  USG.more = !USG.more;
+  usgPaint();
+}
+/* 首屏不等这条桥：桥要读库，晚 0.9 秒再起，别跟状态卡抢 */
+setTimeout(function(){ try { usgScan(false); } catch (eU) {} }, 900);
+
+/* ==========================================================================
+   端口检测（b137）
+   —— AndroidPort.scan() 是同步阻塞的（最长 3 秒），所以点「扫描」先把转圈画出来、
+   让 DOM 上屏，再 setTimeout 60ms 去调桥；release(port) 只对本应用自己的进程有效，
+   原生侧有自己的拒绝逻辑，这里只负责把结果说清楚。
+   ========================================================================== */
+var PORT = { on: false, at: 0, json: null, err: "" };
+var PORTASK = { port: 0, t: 0 };
+
+function portApi(){
+  try { return (typeof AndroidPort !== "undefined" && AndroidPort) ? AndroidPort : null; }
+  catch (e) { return null; }
+}
+function portOk(){
+  var a = portApi();
+  if (!a) return false;
+  try { return typeof a.scan === "function"; } catch (e) { return false; }
+}
+function portStateName(st){
+  return st === "listen" ? "监听中" : (st === "free" ? "空闲" : "被别的程序占用");
+}
+function portDot(st){
+  return st === "listen" ? "ok" : (st === "free" ? "mute" : "warn");
+}
+function portState(kind, msg){
+  var spin = kind === "load" ? '<span class="spin" aria-hidden="true"></span>' : "";
+  return '<div class="ps-state' + (kind === "bad" ? " bad" : "") + '" role="status" aria-live="polite">' + spin + "<span>" + esc(msg) + "</span></div>";
+}
+function portRowHtml(it){
+  var st = String(it.state || "other");
+  var self = !!it.self;
+  var nm = String(it.name || (self ? "本应用端口" : "未命名端口"));
+  var meta = [];
+  if (it.proc) meta.push(String(it.proc));
+  if (it.pid) meta.push("PID " + it.pid);
+  meta.push(portStateName(st));
+  var ask = PORTASK.port && String(PORTASK.port) === String(it.port);
+  var btn = (self && st !== "free")
+    ? '<button class="small ps-kill" data-act="portkill" data-arg="' + esc(String(it.port)) + '">' + (ask ? "确认结束" : "结束") + "</button>"
+    : "";
+  return '<div class="ps-row">'
+    + '<span class="dot ' + portDot(st) + '" aria-hidden="true"></span>'
+    + '<div class="ps-main"><div class="ps-l1"><b class="ps-port">' + esc(String(it.port)) + "</b>"
+    + '<span class="ps-name">' + esc(nm) + "</span></div>"
+    + '<div class="ps-sub">' + esc(meta.join(" · ")) + "</div></div>"
+    + btn + "</div>";
+}
+
+function portPaint(){
+  var box = el("psBox");
+  if (!box) return;
+  var b0 = el("btnPortScan");
+  if (!portOk()){
+    setHtml(box, portState("bad", "这个安装包还不支持端口检测（功能不可用）"));
+    if (b0) b0.style.display = "none";
+    return;
+  }
+  if (b0) b0.style.display = "";
+  if (PORT.on){ setHtml(box, portState("load", "正在扫描端口…")); return; }
+  if (PORT.err){ setHtml(box, portState("bad", PORT.err)); return; }
+  var j = PORT.json;
+  if (!j){ setHtml(box, portState("", "还没扫描，点「扫描」看看谁占着端口")); return; }
+  var items = (j.items && j.items.length) ? j.items : [];
+  var extra = (j.extra && j.extra.length) ? j.extra : [];
+  if (!items.length && !extra.length){ setHtml(box, portState("", "没有发现被占用的端口")); return; }
+  var h = [], i;
+  for (i = 0; i < items.length; i++) h.push(portRowHtml(items[i]));
+  for (i = 0; i < extra.length && i < 8; i++) h.push(portRowHtml(extra[i]));
+  if (extra.length > 8) h.push('<div class="ps-more">还有 ' + (extra.length - 8) + " 个端口没列出</div>");
+  setHtml(box, h.join(""));
+}
+
+function portScan(force){
+  if (!portOk()){ portPaint(); return; }
+  if (PORT.on) return;
+  if (!force && PORT.json && Date.now() - PORT.at < 60000) return;
+  PORT.on = true; PORT.err = "";
+  portPaint();                                   /* 先把转圈画上屏 */
+  setTimeout(function(){
+    var raw = "", j = null;
+    try { raw = String(portApi().scan() || ""); }
+    catch (e){ PORT.on = false; PORT.err = "扫描失败：" + (e && e.message ? e.message : e); portPaint(); return; }
+    try { j = JSON.parse(raw); } catch (e2){ j = null; }
+    PORT.on = false;
+    PORT.at = Date.now();
+    if (!j || j.ok === false){
+      PORT.json = null;
+      PORT.err = (j && j.err) ? String(j.err) : "扫描没有返回可用的结果";
+      portPaint();
+      return;
+    }
+    PORT.json = j; PORT.err = "";
+    portPaint();
+  }, 60);
+}
+function portAuto(){
+  if (!portOk()){ portPaint(); return; }
+  if (PORT.json && Date.now() - PORT.at < 60000) return;
+  portScan(false);
+}
+/* 结束进程：先点一下只是「问」，4 秒内再点同一个按钮才真动手（同 stgClean 的两步确认） */
+function portKillAsk(port){
+  if (PORTASK.port && String(PORTASK.port) === String(port) && Date.now() - PORTASK.t < 4000){
+    PORTASK.port = 0; PORTASK.t = 0;
+    portKill(port);
+    return;
+  }
+  PORTASK.port = Number(port) || 0; PORTASK.t = Date.now();
+  extToast("再点一次「确认结束」才会停掉这个进程");
+  portPaint();
+  setTimeout(function(){
+    if (PORTASK.port && String(PORTASK.port) === String(port) && Date.now() - PORTASK.t >= 3900){
+      PORTASK.port = 0; PORTASK.t = 0;
+      try { portPaint(); } catch (e) {}
+    }
+  }, 4200);
+}
+function portKill(port){
+  var a = portApi();
+  if (!a || typeof a.release !== "function"){ extToast("当前安装包不支持结束进程"); return; }
+  var raw = "", j = null;
+  try { raw = String(a.release(port) || ""); }
+  catch (e){ extToast("结束失败：" + (e && e.message ? e.message : e)); return; }
+  try { j = JSON.parse(raw); } catch (e2){ j = null; }
+  if (j && j.ok) extToast("已结束 PID " + (j.pid || "") + "，端口释放中");
+  else extToast((j && j.err) ? String(j.err) : "结束失败");
+  PORT.at = 0;
+  setTimeout(function(){ try { portScan(true); } catch (e3) {} }, 400);
+}
+
+/* ==========================================================================
+   日志清理（b137）
+   —— exec("storage.sh logs") 报占用，exec("storage.sh prune --days 7 --max-mb 20")
+   按天数和体积裁。两条都是同步阻塞调用（跟代理测速同一个 exec），返回的是 stdout
+   纯文本，脚本自己的 echo 会混在 JSON 前后，所以取值顺序是：
+   整段 parse → 截首个 { 到末个 } → 逐行 parse → 按 "key": value 正则捞。
+   ========================================================================== */
+var LOGCLEAN = { on: false, at: 0, json: null };
+
+function logExecOk(){
+  try { return typeof Android !== "undefined" && !!Android && typeof Android.exec === "function"; }
+  catch (e) { return false; }
+}
+/* 从一段文本里捞 "key": value（value 可能带引号，也可能是裸数字 / 布尔） */
+function logField(s, k){
+  var i = s.indexOf("\"" + k + "\"");
+  if (i < 0) return "";
+  i = s.indexOf(":", i + k.length + 2);
+  if (i < 0) return "";
+  var m = /^\s*"?([^",}\r\n]*)"?/.exec(s.slice(i + 1));
+  return m ? m[1] : "";
+}
+function logNorm(raw){
+  var s = String(raw == null ? "" : raw);
+  var j = null, a = s.indexOf("{"), b = s.lastIndexOf("}");
+  if (a >= 0 && b > a){
+    var cut = s.slice(a, b + 1);
+    try { j = JSON.parse(cut); } catch (e) { j = null; }
+    if (!j || typeof j !== "object"){
+      var lines = cut.split(/\r?\n/), i;
+      for (i = 0; i < lines.length; i++){
+        var ln = lines[i].replace(/^\s+|\s+$/g, "");
+        if (ln.charAt(0) !== "{" || ln.charAt(ln.length - 1) !== "}") continue;
+        try { var o = JSON.parse(ln); if (o && typeof o === "object") { j = o; break; } } catch (e2) {}
+      }
+    }
+  }
+  /* 真没有 JSON（老脚本 / 输出被截断）：把认得的字段捞出来拼一个，
+     比一句「读取失败」有用 —— 至少还能看到占了多少。 */
+  if (!j || typeof j !== "object"){
+    if (!/bytes|files|freed|removed/.test(s)) return null;
+    var okv = logField(s, "ok");
+    j = {
+      ok: okv ? okv !== "false" : true,
+      files: logField(s, "files"), bytes: logField(s, "bytes"),
+      oldest: logField(s, "oldest"), newest: logField(s, "newest"),
+      freed: logField(s, "freed"), removed: logField(s, "removed"),
+      err: logField(s, "err")
+    };
+  }
+  return j;
+}
+function logPaintBusy(msg){
+  var v = el("logStgVal"), s = el("logStgSub");
+  if (v) v.textContent = "…";
+  if (s){ s.className = "logstg-s"; s.textContent = msg || ""; }
+}
+function logPaintBad(msg){
+  var v = el("logStgVal"), s = el("logStgSub");
+  if (v) v.textContent = "—";
+  if (s){ s.className = "logstg-s bad"; s.textContent = msg || "读取失败"; }
+}
+function logPaintData(j){
+  var v = el("logStgVal"), s = el("logStgSub");
+  var hasByte = j.bytes !== undefined && j.bytes !== null && j.bytes !== "";
+  var bytes = Number(j.bytes), files = Number(j.files);
+  if (!isFinite(bytes) || bytes < 0) bytes = 0;
+  if (!isFinite(files) || files < 0) files = 0;
+  if (v) v.textContent = hasByte ? todayFmtBytes(bytes) : "—";
+  var bits = [];
+  bits.push(files > 0 ? (files + " 个日志文件") : "日志目录是空的");
+  if (j.oldest) bits.push("最早 " + String(j.oldest).slice(0, 10));
+  if (j.newest) bits.push("最新 " + String(j.newest).slice(0, 10));
+  if (s){ s.className = "logstg-s"; s.textContent = bits.join(" · "); }
+}
+/* 读一次占用。exec 会卡住 JS 线程，所以先上屏「读取中」再 setTimeout 让它画出来。 */
+function logStats(force){
+  if (!logExecOk()){ logPaintBad("这个安装包还没有日志接口，升级后可用"); return; }
+  if (LOGCLEAN.on) return;
+  if (!force && LOGCLEAN.at && Date.now() - LOGCLEAN.at < 60000) return;
+  LOGCLEAN.on = true;
+  logPaintBusy("正在读取日志占用…这段时间界面会卡一下");
+  setTimeout(function(){
+    var raw = "";
+    try { raw = String(Android.exec("storage.sh logs") || ""); }
+    catch (e){
+      LOGCLEAN.on = false; LOGCLEAN.at = Date.now();
+      logPaintBad("读取失败：" + (e && e.message ? e.message : e));
+      return;
+    }
+    LOGCLEAN.on = false; LOGCLEAN.at = Date.now();
+    var j = logNorm(raw);
+    if (!j || j.ok === false){
+      LOGCLEAN.json = null;
+      logPaintBad((j && j.err) ? String(j.err) : "没读到日志占用，沙盒可能还没就绪");
+      return;
+    }
+    LOGCLEAN.json = j;
+    logPaintData(j);
+  }, 60);
+}
+function logPruneAsk(){
+  if (!logExecOk()){ extToast("当前安装包不支持清理日志"); return; }
+  var c = el("logConfirm"); if (c) c.style.display = "block";
+}
+function logPruneNo(){
+  var c = el("logConfirm"); if (c) c.style.display = "none";
+}
+function logPruneYes(){
+  var c = el("logConfirm"); if (c) c.style.display = "none";
+  if (!logExecOk()){ extToast("当前安装包不支持清理日志"); return; }
+  var btn = el("btnLogPrune"), ok = el("btnLogPruneOk");
+  if (btn) btn.disabled = true;
+  if (ok) ok.disabled = true;
+  logPaintBusy("正在清理：只删 7 天以前的日志，并压到 20MB 以内…");
+  setTimeout(function(){
+    var raw = "", j = null;
+    try { raw = String(Android.exec("storage.sh prune --days 7 --max-mb 20") || ""); }
+    catch (e){
+      if (btn) btn.disabled = false;
+      if (ok) ok.disabled = false;
+      logPaintBad("清理失败：" + (e && e.message ? e.message : e));
+      return;
+    }
+    if (btn) btn.disabled = false;
+    if (ok) ok.disabled = false;
+    j = logNorm(raw);
+    if (!j || j.ok === false){
+      logPaintBad((j && j.err) ? String(j.err) : "清理没有返回结果");
+      return;
+    }
+    var rm = Number(j.removed), fr = Number(j.freed);
+    extToast("已删 " + (isFinite(rm) ? rm : 0) + " 个旧日志" + (isFinite(fr) && fr > 0 ? "，释放 " + todayFmtBytes(fr) : ""));
+    LOGCLEAN.at = 0;
+    setTimeout(function(){ try { logStats(true); } catch (e2) {} }, 240);
+  }, 60);
+}
+/* ==========================================================================
+   每日早报（b137）
+   —— AndroidDaily.get() 读 {ok,on,time,last,next}，set(JSON {on,time}) 写回。
+   老安装包没有这个桥：整段收起，通知卡其余部分照旧；写失败把控件退回原值，
+   绝不假装保存成功 —— 早报没推出去时，用户唯一能查的就是这两个值对不对。
+   ========================================================================== */
+var DAILY = { ok: false, on: false, time: "08:00", last: "", next: "", err: "", at: 0, busy: false };
+
+function dailyAvail(){
+  try {
+    return (typeof AndroidDaily !== "undefined") && !!AndroidDaily &&
+      typeof AndroidDaily.get === "function" && typeof AndroidDaily.set === "function";
+  } catch (e) { return false; }
+}
+/* "8:5" / "08:05" / "08:05:00" 都收，统一成 "HH:mm"，认不出来返回空 */
+function dailyTimeOk(v){
+  var t = String(v == null ? "" : v).replace(/^\s+|\s+$/g, "");
+  var m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(t);
+  if (!m) return "";
+  var h = Number(m[1]), mi = Number(m[2]);
+  if (!(h >= 0 && h < 24 && mi >= 0 && mi < 60)) return "";
+  return (h < 10 ? "0" : "") + h + ":" + (mi < 10 ? "0" : "") + mi;
+}
+function dailyPaint(){
+  var box = el("dailyBox");
+  if (!box) return;
+  if (!dailyAvail()){ box.style.display = "none"; return; }
+  box.style.display = "";
+  var t = dailyTimeOk(DAILY.time) || "08:00";
+  var b = el("dlTgl");
+  if (b){ b.classList.toggle("on", !!DAILY.on); b.setAttribute("aria-checked", DAILY.on ? "true" : "false"); }
+  var inp = el("dlTime");
+  if (inp){
+    if (dailyTimeOk(inp.value) !== t) inp.value = t;
+    inp.onchange = function(){ dailySave(false, this.value); };
+  }
+  var h = el("dlHint");
+  if (h){
+    var bits = [];
+    if (!DAILY.ok && DAILY.err) bits.push(String(DAILY.err));
+    else if (DAILY.on){
+      bits.push("每天 " + t + " 推一条");
+      if (DAILY.next) bits.push("下次 " + String(DAILY.next));
+      else if (DAILY.last) bits.push("上次 " + String(DAILY.last));
+    } else {
+      bits.push("关着，不会推送");
+      if (DAILY.last) bits.push("上次 " + String(DAILY.last));
+    }
+    h.textContent = bits.join(" · ");
+  }
+}
+function dailyLoad(force){
+  if (!dailyAvail()){ dailyPaint(); return; }
+  if (DAILY.busy) return;
+  if (!force && DAILY.at && Date.now() - DAILY.at < 60000) return;
+  DAILY.busy = true;
+  var j = null;
+  try { j = normJson(AndroidDaily.get()); } catch (e) { j = null; }
+  DAILY.busy = false;
+  DAILY.at = Date.now();
+  if (j && j.ok !== false){
+    DAILY.ok = true; DAILY.err = "";
+    DAILY.on = !!j.on;
+    DAILY.time = dailyTimeOk(j.time) || DAILY.time;
+    DAILY.last = j.last ? String(j.last) : "";
+    DAILY.next = j.next ? String(j.next) : "";
+  } else {
+    DAILY.ok = false;
+    DAILY.err = (j && j.err) ? String(j.err) : "读不到早报设置";
+  }
+  dailyPaint();
+}
+/* toggle=true 是开关，false 是改时间；两种情况都把 {on,time} 整份写回去 */
+function dailySave(toggle, timeStr){
+  if (!dailyAvail()){ extToast("这个版本还不支持每日早报"); return; }
+  var on = toggle ? !DAILY.on : DAILY.on;
+  var time = dailyTimeOk(timeStr) || dailyTimeOk(DAILY.time) || "08:00";
+  if (!toggle && timeStr != null && !dailyTimeOk(timeStr)){
+    extToast("时间要写成 时:分，比如 08:00");
+    dailyPaint();
+    return;
+  }
+  var r = null;
+  try { r = normJson(AndroidDaily.set(JSON.stringify({ on: on, time: time }))); } catch (e) { r = null; }
+  if (r && r.ok === false){
+    extToast(r.err ? String(r.err) : "没保存成功，稍后再试");
+    dailyPaint();
+    return;
+  }
+  extToast(toggle ? (on ? ("已打开，每天 " + time + " 推一条") : "已关掉每日早报") : ("推送时间改成 " + time));
+  DAILY.on = on;
+  if (!toggle) DAILY.time = time;
+  dailyPaint();
+  dailyLoad(true);
+}
 
 /* ==========================================================================
    AstrBot 模型与人格（v1.2.0）

@@ -396,6 +396,9 @@ public class QqbotGuardService extends Service {
         // arm() 里同时会登记一条 JobScheduler 周期任务（KeepAlive.scheduleJob），
         // 闹钟被 ROM 掐掉/精确闹钟退化成不准时，还有系统级的那条命兜底。
         try { KeepAlive.arm(this); } catch (Throwable ignored) {}
+        // 1.3.4-beta.7：每日早报的闹钟在重启、清数据后会全丢，服务起来就重排一次。
+        // reschedule 内部自带开关与异常吞掉，开关关着时不会批到任何东西。
+        try { QqbotDailyReport.reschedule(this); } catch (Throwable ignored) {}
         // 息屏模式：监听 SCREEN_ON / SCREEN_OFF（清单里静态注册收不到这两个广播，
         // 只能跟着服务动态注册）。服务在 → 监听就在；服务停 → onDestroy 里注销。
         try { ScreenMode.start(this); } catch (Throwable ignored) {}

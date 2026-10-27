@@ -1,10 +1,13 @@
 package com.termux.app;
 
+import android.animation.Animator;
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.RectF;
@@ -12,36 +15,40 @@ import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.provider.Settings;
+import android.view.Choreographer;
 import android.view.DisplayCutout;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowManager;
+import android.view.animation.Interpolator;
 import android.widget.Toast;
 
 /**
- * 摄像头挖孔位置的系统级胶囊（v1.3.4-beta.5）。
+ * 摄像头挖孔位置的系统级胶囊（v1.3.4-beta.7，灵动岛 v4）。
  *
- * 用户说的是「系统级交互，在摄像头那边的那种」——iPhone 灵动岛、HyperOS 焦点通知胶囊那种：
- * 一条贴着前置摄像头挖孔的黑色圆角胶囊，画在所有应用上层，随状态变化换圆点颜色和短文案。
+ * 用户要的是「安卓原生的灵动岛」：收起时是贴着挖孔的一小条，有事件就自己弹开成一张
+ * 音乐播放器那样的岛（左图标、中间两行字、右边跳动的均衡器、底部进度条），三秒后收回去。
+ * 所以这一版把 beta.5 的「一块黑色贴纸」拆成三层重画：
+ *   ① 收起态：宽高按文案自适应的小胶囊，圆角=高/2，1dp 细描边 + 一圈手绘的柔和阴影；
+ *   ② 展开态：屏宽 78%、64dp 高，左侧 40dp 圆形图标底（状态色 22% 底 + 状态色图标），
+ *      中间标题 13sp / 副标题 11sp，右侧 4 根均衡器竖条（运行中跳动、其余平躺），
+ *      底部 2dp 进度条（有倒计时就按剩余时间走，外部给了 p 就按 p 走）；
+ *   ③ 过渡：一个 ValueAnimator 同时驱动宽/高/圆角/透明度，弹簧手感（320/26），
+ *      展开 520ms、收起 260ms；被打断时从当前进度接着走，不会跳一下。
  *
- * beta.4 走的是 Android 16 的「实时更新」通知（由系统提升成状态栏芯片），那套只在 36 上有效，
- * 而且用户根本看不见「岛」。这一版回到覆盖层：
- *   ① 一个 View 直接 WindowManager.addView，type=TYPE_APPLICATION_OVERLAY
- *      （26 以下没有这个类型，退回 TYPE_PHONE）；
- *   ② 水平中心对准 DisplayCutout.getBoundingRects() 给的挖孔矩形中心，竖直方向让胶囊
- *      中心压在挖孔中心上，于是看起来像从摄像头里长出来的；没有挖孔就退化到顶边 12dp 居中；
- *   ③ 32/34dp 高、圆角 = 高度/2、纯黑底、白字、左侧 6dp 语义色圆点；
- *   ④ 点一下回应用、长按 700ms 后可以上下微调（offset 存偏好），不做贴边吸附。
- *
- * 生命周期完全由 QqbotGuardService 驱动：服务 onCreate 建窗、每轮状态检查刷新、
- * onDestroy/停止时 removeViewImmediate。本类自己不持线程、不注册广播，
- * 被服务调一次就同步一次状态——服务没了，窗也必须没了，不然就是僵尸窗。
+ * 覆盖层的两条硬约束没变：
+ *   - 窗口归 QqbotGuardService 持有，服务 onCreate 建、onDestroy 拆；本类自己不持线程、
+ *     不注册广播，服务没了窗也必须没了，否则就是僵尸窗。唯一的常驻回调是绘制用的
+ *     Choreographer，展开态才跑，收起/拆窗立刻停。
+ *   - 窗口尺寸 = 胶囊尺寸 + 8dp 阴影边。窗口比胶囊大一圈是给阴影留地方（窗口外的像素画不出来），
+ *     顺带把点击热区撑到 50dp，满足 44dp 的最小触摸目标。
  *
  * 纯逻辑集中在本文件 ISLAND-PURE 标记块里：只依赖 java.lang，
- * 能被 out/b134b5_island_check.py 抠出来在普通 JVM 上跑回归。改这里必须同步改测试。
+ * 能被外部回归脚本抠出来在普通 JVM 上跑。改这里必须同步改测试。
  */
 public final class QqbotIslandCapsule {
 
@@ -49,30 +56,71 @@ public final class QqbotIslandCapsule {
      * 尺寸与颜色（全部 dp，按屏幕密度换算）
      * ================================================================ */
 
-    /** 收起态高度（契约 34dp）。 */
+    /** 收起态高度（契约 34dp）：贴着挖孔的一小条。 */
     private static final int H_COLLAPSED_DP = 34;
-    /** 展开态高度（契约 56dp），多给一行运行时长。 */
-    private static final int H_EXPANDED_DP = 56;
+    /** 展开态高度（契约 64dp）：40dp 图标 + 两行字 + 底部进度条刚放得下。 */
+    private static final int H_EXPANDED_DP = 64;
     /** 最小宽度：太窄了文字会贴边。 */
     private static final int MIN_W_DP = 92;
-    /** 最大宽度不超过屏宽的 60%（契约）。 */
-    private static final float MAX_W_RATIO = 0.6f;
+    /** 展开态占屏宽的比例（契约 78%）。 */
+    private static final float MAX_W_RATIO = 0.78f;
 
     /** 没有挖孔时的退化位置：顶边 12dp、水平居中。 */
     private static final int FALLBACK_TOP_DP = 12;
 
+    /* ---- 收起态 ---- */
     private static final int PAD_H_DP = 14;
     private static final int DOT_DP = 6;
     private static final int GAP_DP = 8;
     private static final float TEXT_SP = 12.5f;
-    private static final float SUB_SP = 10f;
+    private static final float SUB_SP = 11f;
+
+    /* ---- 展开态 ---- */
+    /** 左侧图标底直径（圆形）。 */
+    private static final int ICON_DP = 40;
+    /** 图标底离左边沿的距离。 */
+    private static final int ICON_INSET_DP = 11;
+    /** 图标底到文字的间距。 */
+    private static final int TEXT_GAP_DP = 12;
+    /** 标题字号（契约 13sp / 600）。 */
+    private static final float TITLE_SP = 13f;
+    /** 均衡器：4 根，条宽、条距、高度区间。 */
+    private static final int EQ_COUNT = 4;
+    private static final float EQ_W_DP = 2.5f;
+    private static final float EQ_GAP_DP = 2.5f;
+    private static final float EQ_MIN_DP = 3f;
+    private static final float EQ_MAX_DP = 18f;
+    /** 均衡器一个完整循环的时间：太慢像呼吸，太快像故障。 */
+    private static final long EQ_PERIOD_MS = 1400L;
+    /** 底部进度条：2dp 高、离底 6dp、左右各留 12dp。 */
+    private static final float BAR_H_DP = 2f;
+    private static final float BAR_INSET_DP = 12f;
+    private static final float BAR_BOTTOM_DP = 6f;
+
+    /** 窗口四周给阴影留的边：窗口外的像素系统不会画，阴影必须画在窗口里面。 */
+    private static final int SHADOW_DP = 8;
+    /** 阴影层数：手绘模糊就是一圈圈放大的圆角矩形，层数多了费电、少了能看出台阶。 */
+    private static final int SHADOW_STEPS = 6;
+    /** 描边宽度（约 1px）：太粗就变成「边框」，灵动岛要的是一道细细的轮廓。 */
+    private static final float STROKE_DP = 0.8f;
 
     /** 长按多久进入拖动（契约 700ms）。 */
     private static final int LONG_PRESS_MS = 700;
     /** 拖动时手指位移超过这个值就不再算点击。 */
     private static final int TOUCH_SLOP_DP = 6;
-    /** 展开后自动收起的时间。 */
-    private static final long EXPAND_MS = 2200L;
+    /** 上下滑多少算「收起」：太小会跟点击打架，太大要滑很远。 */
+    private static final int SWIPE_DP = 12;
+    /** 有事件时展开多久再收回（契约 3 秒）。 */
+    private static final long EXPAND_MS = 3000L;
+    /** 用户手点时展开多久：比事件长一点，够看清也够点第二下开应用。 */
+    private static final long TAP_EXPAND_MS = 5000L;
+    /** 展开动画时长（契约 ≤600ms）。 */
+    private static final long DUR_EXPAND_MS = 520L;
+    /** 收起动画时长（契约 260ms）。 */
+    private static final long DUR_COLLAPSE_MS = 260L;
+    /** 弹簧参数（契约 stiffness≈320 / damping≈26）。 */
+    private static final float SPRING_STIFFNESS = 320f;
+    private static final float SPRING_DAMPING = 26f;
 
     /** 竖向微调偏移（单位 dp，相对挖孔对齐位置）。 */
     public static final String KEY_OFFSET = "island.offsetY";
@@ -81,15 +129,18 @@ public final class QqbotIslandCapsule {
     private static final int BG_COLOR = 0xFF0B0B0C;
     private static final int TEXT_COLOR = 0xFFFFFFFF;
     private static final int SUB_COLOR = 0xB3FFFFFF;
+    /** 描边：白色 14%，压在黑底上是一道若隐若现的轮廓。 */
+    private static final int STROKE_COLOR = 0x24FFFFFF;
+    /** 图标底的透明度（契约：状态色 22%）。 */
+    private static final float ICON_BG_ALPHA = 0.22f;
 
     /* ================================================================
-     * 纯逻辑：不碰 Android 类，能抠出来在普通 JVM 上跑回归
-     * （见 out/b134b5_island_check.py）。改这里必须同步同步改测试。
+     * 纯逻辑：不碰 Android 类，能被抠出来在普通 JVM 上跑回归
      * ================================================================ */
 
     // ==== ISLAND-PURE-BEGIN ====
 
-    /** 展不展开就这两个高度，别再从布局里算——覆盖层没有 res，量不出来。 */
+    /** 展开/收起就这两个高度，别再从布局里算——覆盖层没有 res，量不出来。 */
     static int heightDp(boolean expanded) {
         return expanded ? H_EXPANDED_DP : H_COLLAPSED_DP;
     }
@@ -123,7 +174,7 @@ public final class QqbotIslandCapsule {
     }
 
     /**
-     * 胶囊宽度（dp）：内容决定，最小 92dp，最大不超过屏宽的 60%。
+     * 收起态胶囊宽度（dp）：内容决定，最小 92dp，最大不超过屏宽的 78%。
      * 每个文字单位按 7dp 估（12.5sp 中文大约就是这个宽度），再加上左右内边距、圆点和间隙。
      */
     static int widthDp(int units, int screenWdp) {
@@ -133,6 +184,13 @@ public final class QqbotIslandCapsule {
         if (content < MIN_W_DP) content = MIN_W_DP;
         if (content > max) content = max;
         return content;
+    }
+
+    /** 展开态宽度（dp）：契约要的「约占屏宽 78%」，窄屏兜底不小于最小宽度。 */
+    static int expandedWidthDp(int screenWdp) {
+        if (screenWdp <= 0) return MIN_W_DP;
+        int w = (int) Math.floor(screenWdp * MAX_W_RATIO + 0.5f);
+        return w < MIN_W_DP ? MIN_W_DP : w;
     }
 
     /**
@@ -156,17 +214,25 @@ public final class QqbotIslandCapsule {
     }
 
     /**
-     * 水平位置：中心对准挖孔矩形的水平中心；没有挖孔就屏幕居中。
-     * 返回的是窗口左边沿（相对屏幕左边），调用方再转成 CENTER_HORIZONTAL 下的 x 偏移。
+     * 水平位置：以某个锚点为中心摆一个 width 宽的窗口，并夹在屏幕里。
+     * 展开时锚点会从挖孔中心渐变到屏幕中心，所以这里只认「中心点」。
      */
-    static int leftOf(int cutLeft, int cutRight, int screenW, int capsuleW) {
-        int cx = (cutRight > cutLeft) ? (cutLeft + cutRight) / 2 : screenW / 2;
-        int left = cx - capsuleW / 2;
+    static int leftFor(int anchorCx, int screenW, int width) {
+        int left = anchorCx - width / 2;
         if (left < 0) return 0;
-        int maxLeft = screenW - capsuleW;
+        int maxLeft = screenW - width;
         if (maxLeft < 0) return 0;
         if (left > maxLeft) return maxLeft;
         return left;
+    }
+
+    /**
+     * 挖孔矩形 → 窗口左边沿（旧接口，回归脚本仍在调）：
+     * 中心对准挖孔矩形的水平中心；没有挖孔就屏幕居中。
+     */
+    static int leftOf(int cutLeft, int cutRight, int screenW, int capsuleW) {
+        int cx = (cutRight > cutLeft) ? (cutLeft + cutRight) / 2 : screenW / 2;
+        return leftFor(cx, screenW, capsuleW);
     }
 
     /** 竖向微调的合法范围（dp 偏移，正数往下）：0 ~ 屏高/3，避免把胶囊拖到屏幕外。 */
@@ -212,6 +278,48 @@ public final class QqbotIslandCapsule {
         return enabled && canHost(sdkInt, overlayGranted, wmOk);
     }
 
+    /** 0~1 夹紧：动画被打断时进度可能短暂越界（弹簧有回弹），画之前一律夹一次。 */
+    static float clamp01(float v) {
+        if (v < 0f) return 0f;
+        if (v > 1f) return 1f;
+        return v;
+    }
+
+    /** 线性插值（整数版）：宽高都按同一个进度走，才不会「宽到了高没到」。 */
+    static int lerpInt(int a, int b, float t) {
+        float f = clamp01(t);
+        return Math.round(a + (b - a) * f);
+    }
+
+    /**
+     * 弹簧位移阶跃响应（0→1），t 单位秒。
+     * ζ = damping / (2√k)，ζ<1 会有一点点过冲——展开时那 3% 的回弹就是「手感」的来源。
+     * 用解析解而不是插值表：换参数不用重新标定，也方便在 JVM 上单测。
+     */
+    static float springAt(float t, float stiffness, float damping) {
+        if (t <= 0f) return 0f;
+        float omega = (float) Math.sqrt(stiffness);
+        if (omega <= 0f) return 1f;
+        float zeta = damping / (2f * omega);
+        if (zeta >= 1f) return 1f;
+        float wd = omega * (float) Math.sqrt(1f - zeta * zeta);
+        float decay = (float) Math.exp(-zeta * omega * t);
+        return 1f - decay * ((float) Math.cos(wd * t)
+                + (zeta * omega / wd) * (float) Math.sin(wd * t));
+    }
+
+    /**
+     * 均衡器第 i 根条的高度系数（0~1）：按相位算，四根条各错开一点，
+     * 两根正弦叠加，看起来才像真的在跳而不是整齐地呼吸。
+     */
+    static float eqFactor(float phase, int i) {
+        // 两条正弦都必须是 1 个周期的整数倍，否则循环接缝处会「跳一下」
+        double p = (phase + i * 0.23) * 2.0 * Math.PI;
+        double v = Math.sin(p) * 0.62 + Math.sin(p * 3.0 + 1.1) * 0.38;
+        float f = (float) ((v + 1.0) / 2.0);
+        return clamp01(f);
+    }
+
     // ==== ISLAND-PURE-END ====
 
     /* ================================================================
@@ -228,12 +336,37 @@ public final class QqbotIslandCapsule {
     private static volatile long upSince = 0L;
     /** 挖孔对齐后的基准顶边（不含用户微调），重算几何时更新。 */
     private static int baseTopPx = 0;
-    /** 上次写进 lp.x 的屏幕半宽偏移，供拖动与旋转时复用。 */
-    private static int baseXOff = 0;
+    /** 屏幕尺寸缓存：动画每帧都要用，别每帧去问 Display。 */
+    private static int scrW = 0;
+    private static int scrH = 0;
+
+    /** 逻辑展开状态（目标态）；真正的画面由 progress 决定。 */
     private static boolean expanded = false;
+    /** 0=完全收起，1=完全展开。宽/高/圆角/透明度全部由它推出来，打断才能平滑。 */
+    private static float progress = 0f;
+    private static ValueAnimator anim;
+    /** 动画代号：打断时旧动画的 onAnimationEnd 要认出来「已经不是我了」。 */
+    private static int animSeq = 0;
+
+    /** 自动收回的截止时刻（0 = 不自动收）。 */
+    private static long deadline = 0L;
+    /** 这一次展开一共给了多少毫秒，进度条按剩余比例走。 */
+    private static long deadlineTotal = 1L;
+    private static Runnable collapseTask;
+
+    /** 事件带上来的内容（没有就用状态文案）。 */
+    private static volatile String noticeTitle = null;
+    private static volatile String noticeSub = null;
+    /** 外部给的进度（0~1；<0 表示没有，走倒计时）。 */
+    private static volatile float noticeFrac = -1f;
+
     /** 演示模式的截止时刻（0 = 不在演示）。 */
     private static long demoUntil = 0L;
-    private static Runnable collapseTask;
+
+    /** 均衡器/进度条的相位（0~1 循环），由 Choreographer 每帧推进。 */
+    private static float eqPhase = 0f;
+    private static long eqStartMs = 0L;
+    private static boolean framePosted = false;
 
     private QqbotIslandCapsule() {
     }
@@ -246,6 +379,7 @@ public final class QqbotIslandCapsule {
     public static boolean granted(Context c) {
         if (Build.VERSION.SDK_INT < 23) return true;
         try {
+            if (c == null) return false;
             return Settings.canDrawOverlays(c);
         } catch (Throwable t) {
             return false;
@@ -255,6 +389,7 @@ public final class QqbotIslandCapsule {
     /** 现在能不能建窗（权限 + WindowManager 都到位）。 */
     public static boolean canHostNow(Context c) {
         try {
+            if (c == null) return false;
             Object svc = c.getSystemService(Context.WINDOW_SERVICE);
             return canHost(Build.VERSION.SDK_INT, granted(c), svc instanceof WindowManager);
         } catch (Throwable t) {
@@ -277,7 +412,9 @@ public final class QqbotIslandCapsule {
      */
     public static void sync(Context c) {
         try {
+            if (c == null) return;
             final Context a = c.getApplicationContext();
+            if (a == null) return;
             app = a;
             if (!QqbotIslandBridge.isEnabled(a)) {
                 hide();
@@ -293,7 +430,10 @@ public final class QqbotIslandCapsule {
         }
     }
 
-    /** 状态变了就刷新文案与几何（不重建窗口）。 */
+    /**
+     * 状态变了就刷新文案与几何（不重建窗口）。
+     * 状态码一变就是一次「事件」：展开三秒把内容讲清楚再收回去，不是只闪一下。
+     */
     public static void update(String st, long since) {
         String next = (st == null || st.length() == 0) ? "down" : st;
         boolean changed = !next.equals(code);
@@ -301,6 +441,24 @@ public final class QqbotIslandCapsule {
         upSince = since;
         if (changed) flashPending = true;
         UI.post(new PaintTask());
+    }
+
+    /**
+     * 外部推一条「上岛通知」（部署进度这类只有界面才知道的事件）。
+     * title/sub 为空就退回状态文案；frac 给 0~1 时底部进度条按它走，给负数走倒计时。
+     * 只影响画面，不碰状态机——真正的状态仍然以服务的 update 为准。
+     */
+    public static void notice(String title, String sub, long ms, float frac) {
+        try {
+            String t = (title == null || title.length() == 0)
+                    ? QqbotIslandBridge.labelOf(code) : title;
+            noticeTitle = t;
+            noticeSub = (sub == null || sub.length() == 0) ? null : sub;
+            noticeFrac = (frac < 0f || frac > 1f) ? -1f : frac;
+            flashPending = false;
+            UI.post(new NoticeTask(ms));
+        } catch (Throwable ignored) {
+        }
     }
 
     /**
@@ -322,7 +480,9 @@ public final class QqbotIslandCapsule {
      */
     public static void demo(Context c, long ttlMs) {
         try {
+            if (c == null) return;
             final Context a = c.getApplicationContext();
+            if (a == null) return;
             app = a;
             if (!canHostNow(a)) {
                 toast(a, "还不允许「显示在其他应用上层」，去设置里开一下");
@@ -347,6 +507,9 @@ public final class QqbotIslandCapsule {
             wm = null;
         }
         if (wm == null) return;
+        scrW = 0;
+        scrH = 0;
+        refreshScreen();
 
         WindowManager.LayoutParams p = new WindowManager.LayoutParams();
         // 26 起才有 TYPE_APPLICATION_OVERLAY；再往下只能退回老的 TYPE_PHONE
@@ -370,8 +533,8 @@ public final class QqbotIslandCapsule {
         }
         p.x = 0;
         p.y = dp(FALLBACK_TOP_DP);
-        p.width = dp(MIN_W_DP);
-        p.height = dp(heightDp(false));
+        p.width = dp(MIN_W_DP) + dp(SHADOW_DP) * 2;
+        p.height = dp(heightDp(false)) + dp(SHADOW_DP) * 2;
 
         lp = p;
         CapsuleView v = new CapsuleView(c);
@@ -389,11 +552,26 @@ public final class QqbotIslandCapsule {
         v.setOnApplyWindowInsetsListener(new InsetsHook());
     }
 
+    /** 拆窗并把所有会自己跑的东西停掉：动画、帧回调、倒计时。少停一样就是内存/电量泄漏。 */
     private static void detach() {
         View v = root;
         root = null;
-        collapseTask = null;
+        cancelCollapse();
+        stopFrames();
+        animSeq++;
+        if (anim != null) {
+            try {
+                anim.cancel();
+            } catch (Throwable ignored) {
+            }
+            anim = null;
+        }
+        progress = 0f;
         expanded = false;
+        deadline = 0L;
+        noticeTitle = null;
+        noticeSub = null;
+        noticeFrac = -1f;
         if (v == null) return;
         try {
             if (wm != null) wm.removeViewImmediate(v);
@@ -438,7 +616,11 @@ public final class QqbotIslandCapsule {
         }
     }
 
-    /** 按当前状态重算宽高与位置，只在真的变了时才 updateViewLayout（每次调用都是一次跨进程事务）。 */
+    /**
+     * 按当前 progress 重算窗口几何。
+     * 宽/高/圆角/位置全部来自同一个进度，所以动画里它们天生同步；
+     * 只有和上一帧真的不一样才 updateViewLayout（每次都是一次跨进程事务）。
+     */
     private static void applyGeometry() {
         if (root == null || wm == null || lp == null || app == null) return;
         try {
@@ -446,59 +628,162 @@ public final class QqbotIslandCapsule {
             int screenW = wh[0];
             int screenH = wh[1];
             if (screenW <= 0 || screenH <= 0) return;
-            int screenWdp = px2dp(screenW);
 
+            float t = clamp01(progress);
+            int screenWdp = px2dp(screenW);
             String label = QqbotIslandBridge.labelOf(code);
-            int wPx = dp(widthDp(textUnits(label), screenWdp));
-            int hPx = dp(heightDp(expanded));
+            int wCollapsed = dp(widthDp(textUnits(label), screenWdp));
+            int wExpanded = dp(expandedWidthDp(screenWdp));
+            int hCollapsed = dp(heightDp(false));
+            int hExpanded = dp(heightDp(true));
+
+            int margin = dp(SHADOW_DP);
+            int capW = lerpInt(wCollapsed, wExpanded, t);
+            int capH = lerpInt(hCollapsed, hExpanded, t);
+            int winW = capW + margin * 2;
+            int winH = capH + margin * 2;
 
             Rect cut = cutoutRect();
-            int top;
-            int xOff;
+            int cx = screenW / 2;
+            int cy = dp(FALLBACK_TOP_DP) + winH / 2;
             if (cut != null) {
-                int fallback = dp(FALLBACK_TOP_DP);
-                top = cutoutTop(cut.top, cut.bottom, hPx, fallback);
-                baseTopPx = top;
-                int left = leftOf(cut.left, cut.right, screenW, wPx);
-                baseXOff = left - screenW / 2;
-                xOff = baseXOff;
-            } else {
-                baseTopPx = dp(FALLBACK_TOP_DP);
-                baseXOff = 0;
-                xOff = 0;
-                top = baseTopPx;
+                int cutCx = (cut.left + cut.right) / 2;
+                int cutCy = (cut.top + cut.bottom) / 2;
+                // 收起时贴着挖孔；展开时往屏幕中心滑一点，宽岛贴边会很难看
+                cx = lerpInt(cutCx, screenW / 2, t);
+                cy = cutCy;
             }
-            int y = clampTop(top, loadOffsetPx(), screenH);
+            int left = leftFor(cx, screenW, winW);
+            int baseTop = cy - winH / 2;
+            baseTopPx = baseTop;
+            int y = clampTop(baseTop, loadOffsetPx(), screenH);
+            // CENTER_HORIZONTAL 下 lp.x 是相对屏幕中线的偏移
+            int xOff = left - (screenW - winW) / 2;
 
-            if (lp.width == wPx && lp.height == hPx && lp.x == xOff && lp.y == y) {
+            if (lp.width == winW && lp.height == winH && lp.x == xOff && lp.y == y) {
                 root.invalidate();
                 return;
             }
-            lp.width = wPx;
-            lp.height = hPx;
+            lp.width = winW;
+            lp.height = winH;
             lp.x = xOff;
             lp.y = y;
             wm.updateViewLayout(root, lp);
             root.invalidate();
         } catch (Throwable ignored) {
+            // 权限刚被撤销 / 窗口已被系统回收：下一轮 sync 会走拆窗，这里绝不能把服务带崩
         }
     }
 
     /* ================================================================
-     * 展开 / 收起
+     * 展开 / 收起（弹簧动画）
      * ================================================================ */
 
-    private static void setExpanded(boolean on) {
-        if (expanded == on) return;
-        expanded = on;
-        applyGeometry();
+    /**
+     * 往目标进度走。
+     * 被打断（收起一半又要展开）时从当前 progress 起步，所以只会「换个方向继续」，
+     * 不会跳回起点——这就是「中途打断要能平滑接上」的实现方式。
+     */
+    private static void animateTo(float target, long durMs) {
+        // 先把代号推进去再 cancel：cancel() 会同步触发旧动画的 onAnimationEnd，
+        // 代号要是还没换，旧动画就会被当成「当前这一发」收尾，画面当场跳一下
+        final int seq = ++animSeq;
+        if (anim != null) {
+            try {
+                anim.cancel();
+            } catch (Throwable ignored) {
+            }
+            anim = null;
+        }
+        float to = target > 1f ? 1f : (target < 0f ? 0f : target);
+        if (Math.abs(progress - to) < 0.004f) {
+            progress = to;
+            finishAnim(seq, to);
+            return;
+        }
+        ValueAnimator a = ValueAnimator.ofFloat(progress, to);
+        a.setDuration(durMs < 16L ? 16L : durMs);
+        a.setInterpolator(new Spring(durMs / 1000f, to > progress));
+        a.addUpdateListener(new Tick());
+        a.addListener(new End(seq));
+        anim = a;
+        try {
+            a.start();
+        } catch (Throwable t) {
+            progress = to;
+            finishAnim(seq, to);
+        }
     }
 
-    private static void expandBriefly() {
-        setExpanded(true);
-        if (collapseTask != null) UI.removeCallbacks(collapseTask);
+    /** 展开并定时收回。ms 是停留时间，进度条按它倒计时。 */
+    private static void expandFor(long ms) {
+        cancelCollapse();
+        expanded = true;
+        deadlineTotal = Math.max(500L, ms);
+        deadline = System.currentTimeMillis() + deadlineTotal;
+        startFrames();
+        animateTo(1f, DUR_EXPAND_MS);
         collapseTask = new CollapseTask();
-        UI.postDelayed(collapseTask, EXPAND_MS);
+        UI.postDelayed(collapseTask, deadlineTotal);
+    }
+
+    private static void collapseNow() {
+        expanded = false;
+        // 手点收起时要撤掉还在排队的自动收回，别让它 3 秒后再「收」一次
+        cancelCollapse();
+        animateTo(0f, DUR_COLLAPSE_MS);
+    }
+
+    private static void cancelCollapse() {
+        if (collapseTask != null) {
+            UI.removeCallbacks(collapseTask);
+            collapseTask = null;
+        }
+        deadline = 0L;
+    }
+
+    /** 动画落定后的收尾：该清的事件内容清掉，几何再对一次（弹簧末尾是小数，要取整对齐）。 */
+    private static void finishAnim(int seq, float to) {
+        if (seq != animSeq) return;
+        anim = null;
+        progress = to <= 0.5f ? 0f : 1f;
+        if (progress <= 0f) {
+            stopFrames();
+            deadline = 0L;
+            noticeTitle = null;
+            noticeSub = null;
+            noticeFrac = -1f;
+        }
+        applyGeometry();
+        if (root != null) root.invalidate();
+    }
+
+    /* ================================================================
+     * 帧驱动：均衡器与进度条（Choreographer，展开时才跑）
+     * ================================================================ */
+
+    private static void startFrames() {
+        if (!framePosted) {
+            // 相位钟只在「起跑」时归零，续帧不能重置，否则只会画第 0 帧
+            eqStartMs = SystemClock.uptimeMillis();
+        }
+        postFrame();
+    }
+
+    /** 只管把下一帧排上（相位钟不动）。 */
+    private static void postFrame() {
+        if (framePosted) return;
+        if (Looper.myLooper() != Looper.getMainLooper()) return;
+        try {
+            framePosted = true;
+            Choreographer.getInstance().postFrameCallback(new Frames());
+        } catch (Throwable t) {
+            framePosted = false;
+        }
+    }
+
+    private static void stopFrames() {
+        framePosted = false;
     }
 
     /* ================================================================
@@ -528,26 +813,31 @@ public final class QqbotIslandCapsule {
      * 工具
      * ================================================================ */
 
+    /** 屏幕尺寸：缓存一次，屏幕转了就 refreshScreen 重来。 */
     private static int[] screenSize() {
-        int[] out = new int[]{0, 0};
+        if (scrW > 0 && scrH > 0) return new int[]{scrW, scrH};
+        refreshScreen();
+        return new int[]{scrW, scrH};
+    }
+
+    private static void refreshScreen() {
         try {
             if (wm != null) {
                 android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
                 wm.getDefaultDisplay().getRealMetrics(dm);
-                out[0] = dm.widthPixels;
-                out[1] = dm.heightPixels;
+                scrW = dm.widthPixels;
+                scrH = dm.heightPixels;
             }
         } catch (Throwable ignored) {
         }
-        if (out[0] <= 0 && app != null) {
+        if (scrW <= 0 && app != null) {
             try {
                 android.util.DisplayMetrics dm2 = app.getResources().getDisplayMetrics();
-                out[0] = dm2.widthPixels;
-                out[1] = dm2.heightPixels;
+                scrW = dm2.widthPixels;
+                scrH = dm2.heightPixels;
             } catch (Throwable ignored) {
             }
         }
-        return out;
     }
 
     private static int dp(float v) {
@@ -586,6 +876,7 @@ public final class QqbotIslandCapsule {
     /** 点胶囊回应用：已经在栈里就提到最前，不重建 Activity。 */
     private static void openApp() {
         try {
+            if (app == null) return;
             Intent i = new Intent(app, QqbotActivity.class);
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
             app.startActivity(i);
@@ -597,6 +888,20 @@ public final class QqbotIslandCapsule {
      * 自绘胶囊（不 inflate 布局：覆盖层没有 res，量宽高必须自己说了算）
      * ================================================================ */
 
+    /**
+     * 底部进度条的取值（0~1）：外部推了 p 就用 p（部署进度这类），
+     * 否则按「还有多久收回」倒计时——比假装有个播放进度诚实，也真的在动。
+     */
+    private static float barFraction() {
+        float f = noticeFrac;
+        if (f >= 0f) return clamp01(f);
+        long total = deadlineTotal;
+        long left = deadline - System.currentTimeMillis();
+        if (total <= 0L) return 1f;
+        if (left <= 0L) return 0f;
+        return clamp01((float) left / (float) total);
+    }
+
     /** 状态变了就展开一下再收回：纯逻辑侧只置个标记，动画靠系统时钟，不另起线程。 */
     private static volatile boolean flashPending = false;
     /** 递进中的长按任务，收指/滑开时必须能撤掉它，否则手指早抬起来了还会进入拖动。 */
@@ -604,31 +909,83 @@ public final class QqbotIslandCapsule {
 
     private static final class CapsuleView extends View {
 
+        private final float den = getResources().getDisplayMetrics().density;
+
         private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint shadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint titlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint subPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint iconBgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint glyphPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint eqPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint trackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint barPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
         private final RectF rf = new RectF();
+        private final RectF iconRf = new RectF();
+        private final RectF arcRf = new RectF();
+        private final Path triPath = new Path();
 
         private int downRawY;
         private int startLpY;
         private long downMs;
         private boolean dragging;
         private boolean moved;
+        private boolean swiped;
 
         CapsuleView(Context c) {
             super(c);
             bgPaint.setStyle(Paint.Style.FILL);
             bgPaint.setColor(BG_COLOR);
+
+            strokePaint.setStyle(Paint.Style.STROKE);
+            strokePaint.setStrokeWidth(Math.max(1f, px(STROKE_DP)));
+            strokePaint.setColor(STROKE_COLOR);
+
+            shadowPaint.setStyle(Paint.Style.FILL);
+            shadowPaint.setColor(0xFF000000);
+
             dotPaint.setStyle(Paint.Style.FILL);
             dotPaint.setColor(dotColor(code));
+
             textPaint.setColor(TEXT_COLOR);
             textPaint.setTextSize(sp(TEXT_SP));
             textPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.NORMAL));
             textPaint.setTextAlign(Paint.Align.LEFT);
+
+            titlePaint.setColor(TEXT_COLOR);
+            titlePaint.setTextSize(sp(TITLE_SP));
+            // 600 在系统字体里没有对应常量，BOLD 最接近；用户要的是「标题比正文重」
+            titlePaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
+            titlePaint.setTextAlign(Paint.Align.LEFT);
+
             subPaint.setColor(SUB_COLOR);
             subPaint.setTextSize(sp(SUB_SP));
+            subPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.NORMAL));
             subPaint.setTextAlign(Paint.Align.LEFT);
+
+            iconBgPaint.setStyle(Paint.Style.FILL);
+            glyphPaint.setStyle(Paint.Style.FILL);
+            glyphPaint.setStrokeCap(Paint.Cap.ROUND);
+            eqPaint.setStyle(Paint.Style.FILL);
+            trackPaint.setStyle(Paint.Style.FILL);
+            barPaint.setStyle(Paint.Style.FILL);
+        }
+
+        /** dp → px，绘制里高频调用，别再走静态的 getResources。 */
+        private float px(float dpv) {
+            return dpv * den;
+        }
+
+        /** 透明度权重：p 是展开进度，a 是这一层自己的权重。 */
+        private int alphaOf(float a) {
+            float v = a;
+            if (v < 0f) v = 0f;
+            if (v > 1f) v = 1f;
+            return Math.round(255f * v);
         }
 
         @Override
@@ -636,35 +993,211 @@ public final class QqbotIslandCapsule {
             int w = getWidth();
             int h = getHeight();
             if (w <= 0 || h <= 0) return;
-            float r = radiusPx(h);
-            rf.set(0f, 0f, w, h);
-            cv.drawRoundRect(rf, r, r, bgPaint);
+
+            float margin = px(SHADOW_DP);
+            float l = margin;
+            float t = margin;
+            float r = w - margin;
+            float b = h - margin;
+            if (r - l < 4f || b - t < 4f) {
+                // 窗口还没被系统量好（第一帧常见）：先按整个窗口画，别画到负数里去
+                l = 0f;
+                t = 0f;
+                r = w;
+                b = h;
+            }
+            float rad = Math.min((b - t) / 2f, (r - l) / 2f);
+            rf.set(l, t, r, b);
+
+            drawShadow(cv, l, t, r, b, rad);
+
+            bgPaint.setColor(BG_COLOR);
+            cv.drawRoundRect(rf, rad, rad, bgPaint);
+            strokePaint.setAlpha(255);
+            cv.drawRoundRect(rf, rad, rad, strokePaint);
+
+            float p = clamp01(progress);
+            if (p < 0.985f) {
+                drawCollapsed(cv, l, t, r, b, clamp01(1f - p * 1.45f));
+            }
+            if (p > 0.015f) {
+                // 展开内容晚一点淡入：宽度还没长开就画字，会被省略号糊一脸
+                drawExpanded(cv, l, t, r, b, clamp01((p - 0.35f) / 0.5f));
+            }
+        }
+
+        /**
+         * 手绘柔和阴影：一圈圈放大的圆角矩形，越往外越淡。
+         * 为什么不 setShadowLayer：那要走软件图层，动画每帧重绘会掉帧；
+         * 这里 6 次 drawRoundRect 在硬件层上是白送的。
+         */
+        private void drawShadow(Canvas cv, float l, float t, float r, float b, float rad) {
+            float step = px(1.2f);
+            for (int i = SHADOW_STEPS; i >= 1; i--) {
+                float grow = i * step;
+                int alpha = Math.round(20f * (1f - (i - 1f) / SHADOW_STEPS));
+                if (alpha <= 0) continue;
+                shadowPaint.setAlpha(alpha);
+                rf.set(l - grow, t - grow + px(0.8f), r + grow, b + grow + px(0.8f));
+                cv.drawRoundRect(rf, rad + grow, rad + grow, shadowPaint);
+            }
+            rf.set(l, t, r, b);
+        }
+
+        /** 收起态：一颗状态色圆点 + 一句短文案，居中对齐，干干净净。 */
+        private void drawCollapsed(Canvas cv, float l, float t, float r, float b, float a) {
+            if (a <= 0.01f) return;
+            float h = b - t;
+            float dot = px(DOT_DP);
+            float cx = l + px(PAD_H_DP) + dot / 2f;
+            float cy = t + h / 2f;
 
             dotPaint.setColor(dotColor(code));
-            float dot = dp(DOT_DP);
-            float dotX = dp(PAD_H_DP) + dot / 2f;
-            float dotY = h / 2f;
-            float textX = dp(PAD_H_DP) + dot + dp(GAP_DP);
+            dotPaint.setAlpha(alphaOf(a));
+            cv.drawCircle(cx, cy, dot / 2f, dotPaint);
 
-            if (!expanded) {
-                cv.drawCircle(dotX, dotY, dot / 2f, dotPaint);
-                Paint.FontMetrics fm = textPaint.getFontMetrics();
-                float base = h / 2f - (fm.ascent + fm.descent) / 2f;
-                cv.drawText(QqbotIslandBridge.labelOf(code), textX, base, textPaint);
-                return;
+            textPaint.setAlpha(alphaOf(a));
+            Paint.FontMetrics fm = textPaint.getFontMetrics();
+            float base = cy - (fm.ascent + fm.descent) / 2f;
+            float tx = cx + dot / 2f + px(GAP_DP);
+            float maxW = r - px(10f) - tx;
+            cv.drawText(fit(textPaint, QqbotIslandBridge.labelOf(code), maxW), tx, base, textPaint);
+        }
+
+        /** 展开态：左图标、中间两行字、右边均衡器、底部进度条。 */
+        private void drawExpanded(Canvas cv, float l, float t, float r, float b, float a) {
+            if (a <= 0.01f) return;
+            float h = b - t;
+            int sc = dotColor(code);
+
+            /* ---- 左侧圆形图标底 + 状态图标 ---- */
+            float icon = px(ICON_DP);
+            float ix = l + px(ICON_INSET_DP);
+            float iy = t + (h - icon) / 2f;
+            iconRf.set(ix, iy, ix + icon, iy + icon);
+            iconBgPaint.setColor(sc);
+            iconBgPaint.setAlpha(Math.round(255f * ICON_BG_ALPHA * a));
+            cv.drawRoundRect(iconRf, icon / 2f, icon / 2f, iconBgPaint);
+            drawGlyph(cv, ix + icon / 2f, iy + icon / 2f, sc, a);
+
+            /* ---- 右侧均衡器 ---- */
+            float eqW = px(EQ_W_DP);
+            float eqGap = px(EQ_GAP_DP);
+            float eqBlock = EQ_COUNT * eqW + (EQ_COUNT - 1) * eqGap;
+            float eqLeft = r - px(14f) - eqBlock;
+            drawEqualizer(cv, eqLeft, t + h / 2f, eqW, eqGap, sc, a);
+
+            /* ---- 中间两行字 ---- */
+            float tx = ix + icon + px(TEXT_GAP_DP);
+            float maxW = eqLeft - px(8f) - tx;
+            String title = noticeTitle != null ? noticeTitle : QqbotIslandBridge.labelOf(code);
+            String sub = noticeSub != null ? noticeSub : secondLine(code,
+                    QqbotIslandBridge.durText(upSince > 0
+                            ? System.currentTimeMillis() - upSince : 0L));
+
+            titlePaint.setAlpha(alphaOf(a));
+            Paint.FontMetrics tfm = titlePaint.getFontMetrics();
+            Paint.FontMetrics sfm = subPaint.getFontMetrics();
+            // 两行作为一块整体垂直居中；系统字号调大到碰撞时再往上让，绝不压到底部进度条
+            float blockH = (tfm.descent - tfm.ascent) + px(2f) + (sfm.descent - sfm.ascent);
+            float barTopY = b - px(BAR_BOTTOM_DP) - px(BAR_H_DP);
+            float blockTop = t + h * 0.5f - blockH / 2f;
+            if (blockTop + blockH > barTopY - px(2f)) blockTop = barTopY - px(2f) - blockH;
+            if (blockTop < t + px(3f)) blockTop = t + px(3f);
+            float titleBase = blockTop - tfm.ascent;
+            cv.drawText(fit(titlePaint, title, maxW), tx, titleBase, titlePaint);
+
+            subPaint.setAlpha(alphaOf(a * 0.85f));
+            float subBase = titleBase + tfm.descent + px(2f) - sfm.ascent;
+            cv.drawText(fit(subPaint, sub, maxW), tx, subBase, subPaint);
+
+            /* ---- 底部 2dp 进度条 ---- */
+            drawBar(cv, l, t, r, b, sc, a);
+        }
+
+        /** 均衡器：4 根，运行中按相位跳，其余状态下平躺成 3dp 的小墩子。 */
+        private void drawEqualizer(Canvas cv, float left, float centerY,
+                float barW, float gap, int sc, float a) {
+            float minH = px(EQ_MIN_DP);
+            float maxH = px(EQ_MAX_DP);
+            boolean playing = "run".equals(code);
+            float baseY = centerY + maxH / 2f;
+            for (int i = 0; i < EQ_COUNT; i++) {
+                float f = playing ? eqFactor(eqPhase, i) : 0f;
+                float bh = minH + (maxH - minH) * f;
+                float x = left + i * (barW + gap);
+                if (playing) {
+                    eqPaint.setColor(sc);
+                    eqPaint.setAlpha(alphaOf(a * 0.9f));
+                } else {
+                    eqPaint.setColor(TEXT_COLOR);
+                    eqPaint.setAlpha(alphaOf(a * 0.38f));
+                }
+                cv.drawRoundRect(x, baseY - bh, x + barW, baseY,
+                        barW / 2f, barW / 2f, eqPaint);
             }
+        }
 
-            // 展开态：上行状态、下行补充信息，圆点压在第一行上
-            float lineH = h * 0.5f;
-            dotY = lineH / 2f + dp(1);
-            cv.drawCircle(dotX, dotY, dot / 2f, dotPaint);
-            Paint.FontMetrics fm1 = textPaint.getFontMetrics();
-            float base1 = lineH / 2f - (fm1.ascent + fm1.descent) / 2f;
-            cv.drawText(QqbotIslandBridge.labelOf(code), textX, base1, textPaint);
-            Paint.FontMetrics fm2 = subPaint.getFontMetrics();
-            float base2 = lineH + lineH / 2f - (fm2.ascent + fm2.descent) / 2f;
-            cv.drawText(secondLine(code, QqbotIslandBridge.durText(upSince > 0
-                    ? System.currentTimeMillis() - upSince : 0L)), textX, base2, subPaint);
+        /** 底部进度条：外部给了 p 就用 p，否则按「还有多久收回」倒计时。 */
+        private void drawBar(Canvas cv, float l, float t, float r, float b, int sc, float a) {
+            float bh = px(BAR_H_DP);
+            float y = b - px(BAR_BOTTOM_DP) - bh;
+            float x0 = l + px(BAR_INSET_DP);
+            float x1 = r - px(BAR_INSET_DP);
+            if (x1 <= x0) return;
+
+            trackPaint.setColor(TEXT_COLOR);
+            trackPaint.setAlpha(alphaOf(a * 0.14f));
+            cv.drawRoundRect(x0, y, x1, y + bh, bh / 2f, bh / 2f, trackPaint);
+
+            float frac = barFraction();
+            if (frac <= 0f) return;
+            barPaint.setColor(sc);
+            barPaint.setAlpha(alphaOf(a * 0.85f));
+            float xEnd = x0 + (x1 - x0) * frac;
+            if (xEnd < x0 + bh) xEnd = x0 + bh;
+            cv.drawRoundRect(x0, y, xEnd, y + bh, bh / 2f, bh / 2f, barPaint);
+        }
+
+        /** 状态图标：全是 Canvas 手绘，工程没引图标库。 */
+        private void drawGlyph(Canvas cv, float cx, float cy, int color, float a) {
+            float s = px(9f);
+            glyphPaint.setColor(color);
+            glyphPaint.setAlpha(alphaOf(a));
+            String c = code;
+            if ("run".equals(c)) {
+                // 运行中：播放三角，正好对上「听歌上岛」那个意象
+                glyphPaint.setStyle(Paint.Style.FILL);
+                triPath.reset();
+                triPath.moveTo(cx - s * 0.45f, cy - s * 0.72f);
+                triPath.lineTo(cx + s * 0.78f, cy);
+                triPath.lineTo(cx - s * 0.45f, cy + s * 0.72f);
+                triPath.close();
+                cv.drawPath(triPath, glyphPaint);
+            } else if ("boot".equals(c)) {
+                // 启动中：缺一个缺口的圆圈，像在转
+                glyphPaint.setStyle(Paint.Style.STROKE);
+                glyphPaint.setStrokeWidth(Math.max(1f, px(1.8f)));
+                arcRf.set(cx - s, cy - s, cx + s, cy + s);
+                cv.drawArc(arcRf, -80f, 280f, false, glyphPaint);
+                glyphPaint.setStyle(Paint.Style.FILL);
+            } else if ("qr".equals(c)) {
+                // 待扫码：三个定位角，一眼能认出是二维码
+                glyphPaint.setStyle(Paint.Style.FILL);
+                float q = s * 0.42f;
+                float o = s * 0.62f;
+                cv.drawRoundRect(cx - o, cy - o, cx - o + q, cy - o + q, q / 3f, q / 3f, glyphPaint);
+                cv.drawRoundRect(cx + o - q, cy - o, cx + o, cy - o + q, q / 3f, q / 3f, glyphPaint);
+                cv.drawRoundRect(cx - o, cy + o - q, cx - o + q, cy + o, q / 3f, q / 3f, glyphPaint);
+                cv.drawRect(cx + o * 0.25f, cy + o * 0.15f, cx + o * 0.55f, cy + o * 0.45f, glyphPaint);
+            } else {
+                // 离线：感叹号，比叉号更像「出问题了」
+                glyphPaint.setStyle(Paint.Style.FILL);
+                float w2 = s * 0.17f;
+                cv.drawRoundRect(cx - w2, cy - s * 0.85f, cx + w2, cy + s * 0.1f,
+                        w2, w2, glyphPaint);
+                cv.drawCircle(cx, cy + s * 0.6f, w2 * 1.15f, glyphPaint);
+            }
         }
 
         @Override
@@ -673,9 +1206,10 @@ public final class QqbotIslandCapsule {
                 case MotionEvent.ACTION_DOWN:
                     downRawY = (int) e.getRawY();
                     startLpY = lp != null ? lp.y : 0;
-                    downMs = android.os.SystemClock.elapsedRealtime();
+                    downMs = SystemClock.elapsedRealtime();
                     dragging = false;
                     moved = false;
+                    swiped = false;
                     cancelPress();
                     pressTask = new LongPress(this);
                     UI.postDelayed(pressTask, LONG_PRESS_MS);
@@ -683,7 +1217,13 @@ public final class QqbotIslandCapsule {
                 case MotionEvent.ACTION_MOVE: {
                     int dy = (int) e.getRawY() - downRawY;
                     if (!dragging) {
-                        if (Math.abs(dy) > dp(TOUCH_SLOP_DP)) {
+                        if (Math.abs(dy) > dp(SWIPE_DP) && !swiped) {
+                            // 上下滑 = 收起（长按之前的大幅位移都按滑动手势处理）
+                            swiped = true;
+                            moved = true;
+                            cancelPress();
+                            if (expanded || progress > 0.02f) collapseNow();
+                        } else if (Math.abs(dy) > dp(TOUCH_SLOP_DP)) {
                             moved = true;
                             cancelPress();
                         }
@@ -704,20 +1244,30 @@ public final class QqbotIslandCapsule {
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL: {
                     cancelPress();
-                    long cost = android.os.SystemClock.elapsedRealtime() - downMs;
+                    long cost = SystemClock.elapsedRealtime() - downMs;
                     boolean wasDragging = dragging;
                     dragging = false;
                     if (wasDragging && lp != null) {
                         // 拖动结束把偏移落盘：下次建窗直接用这个位置
                         saveOffsetPx(lp.y - baseTopPx);
                     } else if (e.getActionMasked() == MotionEvent.ACTION_UP
-                            && !moved && cost < LONG_PRESS_MS) {
-                        openApp();
+                            && !moved && !swiped && cost < LONG_PRESS_MS) {
+                        onTap();
                     }
                     return true;
                 }
                 default:
                     return true;
+            }
+        }
+
+        /** 点击：收起态点开看详情，已经展开再点就进应用（灵动岛的常规两段式）。 */
+        private void onTap() {
+            if (progress > 0.35f) {
+                collapseNow();
+                openApp();
+            } else {
+                expandFor(TAP_EXPAND_MS);
             }
         }
 
@@ -728,23 +1278,129 @@ public final class QqbotIslandCapsule {
             if (t != null) UI.removeCallbacks(t);
         }
 
-        /** 长按到点：进入拖动。展开态要收回（高度变了要重算几何），基准跟着重算，免得一拖就跳。 */
+        /**
+         * 长按到点：进入拖动。展开态先收回（高度变了要重算几何），
+         * 基准跟着重算，免得一拖就跳。
+         */
         void beginDrag() {
             dragging = true;
+            cancelCollapse();
             expanded = false;
+            animSeq++;
+            if (anim != null) {
+                try {
+                    anim.cancel();
+                } catch (Throwable ignored) {
+                }
+                anim = null;
+            }
+            progress = 0f;
+            stopFrames();
             applyGeometry();
             if (lp != null) startLpY = lp.y;
         }
 
-        /** 状态变了：闪一下展开态，两秒后自己收回。 */
+        /** 有事件：带着内容展开一段时间再收回（默认三秒）。 */
         void flash() {
-            expandBriefly();
+            flash(EXPAND_MS);
+        }
+
+        void flash(long ms) {
+            expandFor(ms < 500L ? 500L : ms);
+        }
+
+        /** 文本超宽就截断加省略号：覆盖层没有 TextView，自己算。 */
+        private String fit(Paint p, String s, float maxW) {
+            if (s == null) return "";
+            if (maxW <= 0f) return "";
+            if (p.measureText(s) <= maxW) return s;
+            String ell = "…";
+            int n = s.length();
+            while (n > 0 && p.measureText(s.substring(0, n) + ell) > maxW) {
+                n--;
+            }
+            if (n <= 0) return "";
+            return s.substring(0, n) + ell;
         }
     }
 
     /* ================================================================
      * 具名内部类（d8 不吃匿名类）
      * ================================================================ */
+
+    /** 弹簧插值器：把线性时间轴映射成弹簧曲线，过冲只允许在「展开」方向出现。 */
+    private static final class Spring implements Interpolator {
+        private final float seconds;
+        private final boolean overshoot;
+
+        Spring(float s, boolean allowOvershoot) {
+            seconds = s <= 0f ? 0.26f : s;
+            overshoot = allowOvershoot;
+        }
+
+        public float getInterpolation(float input) {
+            float v = springAt(input * seconds, SPRING_STIFFNESS, SPRING_DAMPING);
+            if (v < 0f) v = 0f;
+            if (!overshoot && v > 1f) v = 1f;
+            return v;
+        }
+    }
+
+    /** 每帧把动画值写回 progress，再同步一次几何——宽/高/圆角/透明度都从它推出来。 */
+    private static final class Tick implements ValueAnimator.AnimatorUpdateListener {
+        public void onAnimationUpdate(ValueAnimator a) {
+            Object v = a.getAnimatedValue();
+            if (v instanceof Float) {
+                progress = ((Float) v).floatValue();
+            }
+            if (progress < 0f) progress = 0f;
+            if (progress > 1.02f) progress = 1.02f;
+            applyGeometry();
+            if (root != null) root.invalidate();
+        }
+    }
+
+    /** 动画结束：只有「当前这一发」才收尾，被新动画打断的旧动画老老实实让位。 */
+    private static final class End implements Animator.AnimatorListener {
+        private final int seq;
+
+        End(int s) {
+            seq = s;
+        }
+
+        public void onAnimationStart(Animator a) {
+        }
+
+        public void onAnimationRepeat(Animator a) {
+        }
+
+        public void onAnimationCancel(Animator a) {
+        }
+
+        public void onAnimationEnd(Animator a) {
+            finishAnim(seq, progress >= 0.5f ? 1f : 0f);
+        }
+    }
+
+    /** 绘制帧回调：展开时一直跑，进度条的倒计时和均衡器都靠它推进。 */
+    private static final class Frames implements Choreographer.FrameCallback {
+        public void doFrame(long frameTimeNanos) {
+            framePosted = false;
+            if (root == null || progress <= 0.02f) {
+                // 已经收起/拆窗：不再续帧，否则就是一个永远跑的回调
+                return;
+            }
+            eqPhase = ((SystemClock.uptimeMillis() - eqStartMs) % EQ_PERIOD_MS)
+                    / (float) EQ_PERIOD_MS;
+            if (deadline > 0L && System.currentTimeMillis() > deadline) {
+                // 倒计时到点还没收到 CollapseTask（主线程被占过）：这里兜一手
+                collapseNow();
+                return;
+            }
+            root.invalidate();
+            postFrame();
+        }
+    }
 
     private static final class SyncTask implements Runnable {
         private final Context ctx;
@@ -770,12 +1426,30 @@ public final class QqbotIslandCapsule {
                 flashPending = false;
                 return;
             }
+            // 权限被系统撤销时窗口还在屏上：这里收一次网，别等下一轮 45 秒
+            if (app != null && !granted(app)) {
+                detach();
+                return;
+            }
             applyGeometry();
             root.invalidate();
             if (flashPending) {
                 flashPending = false;
                 if (root instanceof CapsuleView) ((CapsuleView) root).flash();
             }
+        }
+    }
+
+    private static final class NoticeTask implements Runnable {
+        private final long ms;
+
+        NoticeTask(long m) {
+            ms = m;
+        }
+
+        public void run() {
+            if (root == null) return;
+            if (root instanceof CapsuleView) ((CapsuleView) root).flash(ms);
         }
     }
 
@@ -787,6 +1461,8 @@ public final class QqbotIslandCapsule {
 
     private static final class AlignTask implements Runnable {
         public void run() {
+            scrW = 0;
+            scrH = 0;
             applyGeometry();
         }
     }
@@ -794,8 +1470,7 @@ public final class QqbotIslandCapsule {
     private static final class CollapseTask implements Runnable {
         public void run() {
             collapseTask = null;
-            setExpanded(false);
-            if (root != null) root.invalidate();
+            collapseNow();
         }
     }
 
@@ -849,6 +1524,8 @@ public final class QqbotIslandCapsule {
 
     private static final class InsetsHook implements View.OnApplyWindowInsetsListener {
         public WindowInsets onApplyWindowInsets(View v, WindowInsets in) {
+            scrW = 0;
+            scrH = 0;
             applyGeometry();
             return in;
         }
