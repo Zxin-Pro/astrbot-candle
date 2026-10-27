@@ -17,6 +17,47 @@
 
 ---
 
+## [1.3.4-beta.8] - 2026-10-28
+
+> **测试版**：这一版修掉「加载时那条长条子转」，并把常驻通知接上 **Android 16 的实时更新（Live Updates）**：
+> 部署 / 启动期间状态栏图标会变成一枚带百分比的胶囊芯片，展开是分段进度条，进度自己往前走，
+> 真正上线才跳到 100% 并收起。Android 16 以下自动退回普通常驻通知（带确定进度条），功能不受影响。
+> `versionCode` 仍 `10304`，可直接覆盖 1.3.4-beta.7 及更早版本。
+
+### 修复
+
+- **加载转圈被拉成一条长条**：`.usg-state > span, .ps-state > span { flex: 1; min-width: 0 }` 这条规则本来
+  只该喂给旁边的说明文字，却把转圈用的 `<span class="spin">` 也一起选中了 —— 15px 的圆环被 flex 撑成
+  整行宽、高度不到 1px，看起来就是「一条长条在那里转」。现在 `.spin` 固定 `flex: none`，`width` /
+  `height` / `min-width` / `min-height` 全部锁 15px 并加 `box-sizing: border-box`，选择器收窄成
+  `.usg-state > span:not(.spin)` / `.ps-state > span:not(.spin)`。主页用量卡、端口检测、启动按钮、
+  开机图标四处转圈全部回到正圆（CDP 实测 15×15 与 21.2×21.2，`border-radius: 50%`，全页无一个被拉伸的 `.spin`）。
+
+### 新增
+
+- **Android 16 实时更新（Live Updates）**：常驻通知在 Android 16（API 36）上不再只是一条普通通知，而是
+  状态栏顶部的**胶囊芯片**。判定条件是「系统版本 ≥ 36 且 `NotificationManager.canPostPromotedNotifications()`
+  放行」，两条都满足才走新路径：`setRequestPromotedOngoing(true)` 让通知进入「持续活动」档；
+  `Notification.ProgressStyle` 设成 3 段等权分段条（`setStyledByProgress(true)`、`setProgress(pct)`、
+  `setProgressTrackerIcon()`）并 `setStyle()` 交给系统；`setShortCriticalText("37%")` 给出芯片上那串
+  最多 7 个字的短文案（沿用 1.3.4-beta.4 起就在用的反射调用，只是文案从「启动中」换成实时百分比）。
+- **启动进度是真的在走**：新增纯函数 `bootPctOf(elapsed)` —— 0~60 秒线性爬到 92%，之后封顶 92%，
+  **100% 只在真的上线（`run` 状态）时给**，所以百分比不会骗人。服务里那条 `StatusWatch` 之外又加了一个
+  `Pump` 心跳：状态是「启动中」时每 2 秒刷一次通知，状态变了、服务销毁、或**超过 10 分钟**没起来就自己停，
+  不会白耗电。通知的节流键也带上进度档位（每 4% 一档），老节流逻辑不会把进度冻在原地。
+- **降级路径**：Android 16 以下、系统没放行、或反射调用抛异常（部分 ROM 改过 `Notification` 内部类），
+  一律退回普通常驻通知 —— `setProgress(100, pct, false)` 画确定进度条 + `setSubText("37%")` 标百分比，
+  不再使用原来那条「不确定进度」的细线（那条线在部分 ROM 上根本不显示）。
+- `AndroidManifest.xml` 补上 `android.permission.POST_PROMOTIONS`（`build-ui.ps1` 幂等插入）。
+  这条权限在 Android 16 以下直接忽略、不弹窗，老系统升级上来也不会多一个授权对话框。
+
+### 说明
+
+- 实时更新的样式与位置完全由系统（SystemUI）决定：不同 ROM 的芯片宽度、展开动画、是否折叠进「状态栏胶囊」
+  都不一样，本应用只负责把进度、图标、短文案喂给系统。
+- 验收脚本：`out/b138_live_check.py`（进度曲线 9 组样本 + 11 条静态断言 + 全量 javac，15/15 PASS）、
+  `out/b137_verify.py`（界面与功能 39/39 PASS，94.2 秒）。
+
 ## [1.3.4-beta.7] - 2026-10-27
 
 > **测试版**：这一版做用户点名的一批功能——**模型用量**、**断点续传**、**日志清理**、**每日早报**、

@@ -109,6 +109,18 @@ public class QqbotGuardService extends Service {
      */
     private static volatile String lastIslandKey = "";
 
+    /*
+     * 启动进度（Android 16 实时更新用）：boot 从 0 推到 92，run 直接 100。
+     * bootStart 是本进程第一次见到 "boot" 的时刻，不写盘——重启之后从 0 再来一遍，
+     * 比接着上次的 80% 更符合「这是这次启动」的直觉。<=0 表示没在启动。
+     */
+    private static volatile long bootStartMs = 0L;
+
+    /** 进度心跳（只在启动期间自转，见 Pump）。主线程 Handler，服务一停就自然停。 */
+    private static final android.os.Handler PUMP =
+            new android.os.Handler(android.os.Looper.getMainLooper());
+    private static volatile boolean pumping = false;
+
     /* ---------- 静态入口 ---------- */
 
     /** 返回是否真的把启动请求发出去了：API 31+ 的后台启动限制会在这里抛异常。 */
@@ -548,6 +560,9 @@ public class QqbotGuardService extends Service {
             if (nm != null) nm.cancel(ISLAND_ID);
         } catch (Throwable ignored) {}
         try { lastIslandKey = ""; } catch (Throwable ignored) {}
+        // 进度心跳跟着服务一起停；bootStart 清零，下次启动重新从 0 计。
+        pumping = false;
+        bootStartMs = 0L;
         // 覆盖层必须在这里就地拆掉（removeViewImmediate）：窗口是服务的，服务没了窗还挂着，
         // 就是一枚点不掉、也永远停在旧状态的僵尸胶囊。
         try { QqbotIslandCapsule.hide(); } catch (Throwable ignored) {}
@@ -598,6 +613,9 @@ public class QqbotGuardService extends Service {
             if (nm != null) nm.cancel(ISLAND_ID);
         } catch (Throwable ignored) {}
         try { lastIslandKey = ""; } catch (Throwable ignored) {}
+        // 进度心跳跟着服务一起停；bootStart 清零，下次启动重新从 0 计。
+        pumping = false;
+        bootStartMs = 0L;
         try { QqbotIslandCapsule.hide(); } catch (Throwable ignored) {}
         try { stopSelf(); } catch (Throwable ignored) {}
     }
@@ -899,12 +917,20 @@ public class QqbotGuardService extends Service {
      * 只是不会被系统提升成芯片，用户看到的就是一条普通常驻通知。
      */
     private static void applyShortCritical(Notification.Builder b, String code) {
+        applyShortCritical(b, code, -1);
+    }
+
+    /**
+     * 同上，但启动期间把百分比也带上（芯片上就写「45%」）。pct < 0 表示没有进度，
+     * 回到纯状态词。文案在 QqbotIslandBridge 里统一夹长度，这边不做二次加工。
+     */
+    private static void applyShortCritical(Notification.Builder b, String code, int pct) {
         if (Build.VERSION.SDK_INT < 36) return;
         try {
             java.lang.reflect.Method m = Notification.Builder.class
                     .getMethod("setShortCriticalText", String.class);
             // 必须极短：系统给芯片留的位置大约 4 个汉字，超长会被截断成「运行…」。
-            m.invoke(b, QqbotIslandBridge.shortCritical(code));
+            m.invoke(b, QqbotIslandBridge.shortCritical(code, pct));
         } catch (Throwable ignored) {
         }
     }
@@ -921,6 +947,159 @@ public class QqbotGuardService extends Service {
             return Notification.class.getField("FLAG_PROMOTED_ONGOING").getInt(null);
         } catch (Throwable t) {
             return 0;
+        }
+    }
+
+    /* ================= Android 16 实时更新（Live Updates / 状态栏芯片） ================= */
+
+    /**
+     * 启动进度（0~100）。纯函数：只吃「已经启动多久」，能脱离 Android 单独跑回归
+     * （out/b138_live_check.py 会把这段源码抠出来编到普通 JVM 上跑）。
+     *
+     * 为什么是 60 秒线性 + 封顶 92：
+     *   ①冷启动实测 40~60 秒，按 60 秒铺满，进度条才不会一秒跳完；
+     *   ②永远不自己走到 100 —— 真正的 100 只由「端口真的通了」那次状态跃迁给，
+     *     否则用户会盯着一条满格却还在转的通知，反而更焦虑。
+     */
+    static int bootPctOf(long elapsedMs) {
+        if (elapsedMs <= 0L) return 0;
+        if (elapsedMs >= 60000L) return 92;
+        int p = (int) (elapsedMs * 92L / 60000L);
+        return p < 0 ? 0 : p;
+    }
+
+    /**
+     * 当前该显示的进度：启动中按启动起点算；运行中给 100（芯片上就是「已完成」）；
+     * 待扫码 / 离线返回 -1 = 这条通知根本不该有进度条。
+     */
+    static int pctOf(String code, long now) {
+        if ("run".equals(code)) return 100;
+        if (!"boot".equals(code)) return -1;
+        long start = bootStartMs;
+        if (start <= 0L) return 0;
+        return bootPctOf(now - start);
+    }
+
+    /** 这台机器能不能把常驻通知提升成实时活动（36+ 且用户没在系统设置里关掉）。 */
+    static boolean promotedOk(Context c) {
+        try {
+            return QqbotIslandBridge.canPromoteNow(c);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * Notification.Builder#setRequestPromotedOngoing(boolean)：向系统「申请」被提升成
+     * 实时活动的资格。API 36 才有，本包用 android-34 编译，只能反射。
+     *
+     * 和 FLAG_PROMOTED_ONGOING 的分工：这个方法是「申请」，标志位是系统「批准后」打在
+     * Notification 上的结果。都写上不冲突——没批准时系统也不会给那个标志。
+     */
+    private static void applyPromotedOngoing(Notification.Builder b, boolean on) {
+        if (Build.VERSION.SDK_INT < 36) return;
+        try {
+            java.lang.reflect.Method m = Notification.Builder.class
+                    .getMethod("setRequestPromotedOngoing", boolean.class);
+            m.invoke(b, Boolean.valueOf(on));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * Notification.ProgressStyle（API 36）：状态栏芯片上的「实时活动」样式。
+     * 三段进度（后台服务 / NapCat / AstrBot）+ 轨道图标，系统会画成分段进度条，
+     * 息屏显示（AOD）与状态栏芯片用的是同一份数据，两处自动同步。
+     *
+     * 返回 true = 这条通知已经吃上 ProgressStyle，调用方就不要再设 Builder 自带的
+     * setProgress：两套进度同时存在时部分 ROM 会画成两条叠在一起。
+     * 任何一步反射失败都返回 false，调用方自动退回普通确定进度条（降级路径）。
+     */
+    private static boolean applyProgressStyle(Notification.Builder b, Context c, int pct) {
+        if (Build.VERSION.SDK_INT < 36) return false;
+        if (pct < 0 || pct > 100) return false;
+        try {
+            Class<?> styleCls = Class.forName("android.app.Notification$ProgressStyle");
+            Object style = styleCls.getConstructor().newInstance();
+            // 分段只是「进度条上的刻度」，进度本身还是一条 0~100 的线；拿不到就画整段。
+            try {
+                Class<?> segCls = Class.forName("android.app.Notification$ProgressStyle$Segment");
+                java.util.List<Object> segs = new java.util.ArrayList<Object>();
+                for (int i = 0; i < 3; i++) {
+                    segs.add(segCls.getConstructor(int.class).newInstance(Integer.valueOf(1)));
+                }
+                styleCls.getMethod("setProgressSegments", java.util.List.class).invoke(style, segs);
+            } catch (Throwable ignored) {
+            }
+            styleCls.getMethod("setProgress", int.class).invoke(style, Integer.valueOf(pct));
+            styleCls.getMethod("setStyledByProgress", boolean.class).invoke(style, Boolean.TRUE);
+            styleCls.getMethod("setProgressIndeterminate", boolean.class).invoke(style, Boolean.FALSE);
+            try {
+                int res = c.getResources().getIdentifier("ic_stat_qqbot", "drawable", c.getPackageName());
+                if (res == 0) res = c.getApplicationInfo().icon;
+                android.graphics.drawable.Icon icon =
+                        android.graphics.drawable.Icon.createWithResource(c, res);
+                styleCls.getMethod("setProgressTrackerIcon", android.graphics.drawable.Icon.class)
+                        .invoke(style, icon);
+            } catch (Throwable ignored) {
+            }
+            b.setStyle((Notification.Style) style);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * 启动期间的进度心跳：只在「启动中」自转，每 2 秒重发一次通知。
+     *
+     * 为什么不复用 StatusWatch：那条线程一轮要做两次端口探测 + 读盘（约 1 秒），
+     * 拉到 2 秒一轮等于一直在探测；进度条只需要时间，不需要探测。
+     * 这里每 2 秒一次 notify 也只会在「进度涨了 4% 以上」时真的发（见 postIsland 的
+     * 状态键），实际约 2.6 秒一次，不会触发系统的「频繁更新」限流。
+     */
+    private static final class Pump implements Runnable {
+        private final Context ctx;
+
+        Pump(Context c) {
+            ctx = c;
+        }
+
+        public void run() {
+            try {
+                if (!guardRunning) {
+                    pumping = false;
+                    return;
+                }
+                String code = QqbotIslandBridge.currentCode();
+                if (!"boot".equals(code)) {
+                    pumping = false;
+                    return;
+                }
+                // 十分钟还没起来就别再刷了：真有病的时候，一条 92% 的通知也已经说明问题，
+                // 每 2 秒 notify 一次只会白耗电（StatusWatch 仍然每 45 秒照常盯状态）。
+                if (bootStartMs > 0L && System.currentTimeMillis() - bootStartMs > 600000L) {
+                    pumping = false;
+                    return;
+                }
+                postIsland(ctx, code, QqbotIslandBridge.currentUpSince());
+                PUMP.postDelayed(this, 2000L);
+            } catch (Throwable t) {
+                pumping = false;
+            }
+        }
+    }
+
+    /** 开一次进度心跳（幂等）。bootStart 也在这里打点：第一次见到 boot 才算起点。 */
+    private static void startPump(Context c) {
+        if (c == null) return;
+        if (bootStartMs <= 0L) bootStartMs = System.currentTimeMillis();
+        if (pumping) return;
+        pumping = true;
+        try {
+            PUMP.postDelayed(new Pump(c.getApplicationContext()), 2000L);
+        } catch (Throwable t) {
+            pumping = false;
         }
     }
 
@@ -947,6 +1126,11 @@ public class QqbotGuardService extends Service {
         b.setOnlyAlertOnce(true);
         b.setShowWhen(false);
         b.setCategory(Notification.CATEGORY_STATUS);
+        // Android 16：先向系统申请「可被提升成实时活动」的资格。14/15 上方法不存在，
+        // 反射失败即跳过，最终就是一条普通常驻通知（降级路径见下面 boot 分支）。
+        boolean promoted = promotedOk(c);
+        applyPromotedOngoing(b, promoted);
+        int pct = pctOf(code, System.currentTimeMillis());
         if ("run".equals(code) && upSince > 0L) {
             // 运行中才把时间槽打开：setUsesChronometer 让系统自己每秒走字，
             // 不用我们每 45 秒 notify 一次——这正是「避免频繁更新被静音」的关键。
@@ -955,8 +1139,14 @@ public class QqbotGuardService extends Service {
             b.setUsesChronometer(true);
             b.setSubText("已运行 " + QqbotIslandBridge.durText(System.currentTimeMillis() - upSince));
         } else if ("boot".equals(code)) {
-            // 启动中给一条不确定进度：那根来回走的细线是「正在动」最直观的信号。
-            b.setProgress(0, 0, true);
+            // 启动中：进度按「冷启动预估 60 秒」线性推进（bootPctOf），封顶 92%。
+            // 36+ 先试 ProgressStyle（分段 + 轨道图标 + 芯片实时活动）；装不上或系统版本
+            // 不够就退回普通确定进度条 —— 不再用 setProgress(0,0,true) 那根来回走的
+            // 不确定细线，用户反馈「长条子转」很难看。
+            if (!(promoted && applyProgressStyle(b, c, pct))) {
+                b.setProgress(100, pct, false);
+            }
+            b.setSubText(pct + "%");
         }
         if (Build.VERSION.SDK_INT < 26) b.setPriority(Notification.PRIORITY_LOW);
         try {
@@ -968,11 +1158,12 @@ public class QqbotGuardService extends Service {
             } catch (Throwable ignored) {
             }
         }
-        applyShortCritical(b, code);
+        applyShortCritical(b, code, pct);
         Notification n = b.build();
         try {
             // 提升标志位只能在 build 之后写（见 promotedFlag 的注释）。
-            n.flags |= promotedFlag();
+            // 只有系统允许提升时才写：不允许的机器上带着这个位反而可能被整条折叠。
+            if (promoted) n.flags |= promotedFlag();
         } catch (Throwable ignored) {
         }
         return n;
@@ -990,7 +1181,10 @@ public class QqbotGuardService extends Service {
     static void postIsland(Context c, String code, long upSince) {
         if (c == null) return;
         try {
-            String key = (code == null) ? "" : code;
+            // 状态键带进度档位：启动中每涨 4% 算一次「变了」，45 秒一轮的老节流才不会
+            // 把进度条冻在原地；其余状态下 pct<0，键就是纯状态码，行为与以前完全一致。
+            int pct = pctOf(code, System.currentTimeMillis());
+            String key = (code == null ? "" : code) + (pct < 0 ? "" : "#" + (pct / 4));
             NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm == null) return;
             if (!QqbotIslandBridge.isEnabled(c)) {
@@ -1004,8 +1198,11 @@ public class QqbotGuardService extends Service {
                 NotificationChannel ch = nm.getNotificationChannel(CH_LIVE);
                 if (ch != null && ch.getImportance() == NotificationManager.IMPORTANCE_NONE) return;
             }
-            nm.notify(ISLAND_ID, buildIslandNoti(c, key, upSince));
+            nm.notify(ISLAND_ID, buildIslandNoti(c, code, upSince));
             lastIslandKey = key;
+            // 启动中把进度心跳挂上；一旦状态跃迁出去，心跳自己会停（见 Pump.run）。
+            if ("boot".equals(code)) startPump(c);
+            else if (bootStartMs > 0L) bootStartMs = 0L;
         } catch (Throwable ignored) {
         }
     }

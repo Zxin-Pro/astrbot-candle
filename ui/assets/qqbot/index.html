@@ -1097,9 +1097,14 @@ main > #riskBar, main > #powBar{ margin-bottom: var(--gap); }
 .notichip > span{ flex: 1; min-width: 0; font-size: 12.5px; color: var(--label-2); }
 .notichip b{ color: var(--label); }
 
-/* 转圈 */
+/* 转圈：flex:none 不能少——父级 .usg-state/.ps-state 会给每个 span 加 flex:1，
+   少了它这个 15px 的圆环会被拉成整行宽的扁椭圆（beta.8 修）。box-sizing 让 2px
+   边框算在 15px 里，圆才是正圆。 */
 .spin{
+  flex: none;
+  box-sizing: border-box;
   width: 15px; height: 15px;
+  min-width: 15px; min-height: 15px;
   border-radius: 50%;
   border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
   border-top-color: var(--accent);
@@ -3192,7 +3197,7 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
   line-height: 1.55;
   color: var(--label-2);
 }
-.usg-state > span, .ps-state > span{ flex: 1; min-width: 0; }
+.usg-state > span:not(.spin), .ps-state > span:not(.spin){ flex: 1; min-width: 0; }
 .usg-state.bad, .ps-state.bad{ color: var(--bad); }
 .usg-state button.small, .ps-state button.small{ flex: none; margin-left: auto; }
 .usg-grid{ margin-top: 2px; }

@@ -130,7 +130,10 @@ if ($xml2 -notmatch 'android\.permission\.POST_NOTIFICATIONS') {
 # 3c2b) 1.3.4-beta.3：灵动岛要悬浮窗权限、应用内更新要装 APK。这两条原本在 3c3 的杀软规避
 #       删除清单里，现在必须留着并幂等补齐。两者都是安装型权限（不弹运行时授权，用户自己去
 #       系统设置里打开）；没打开时对应功能不可用，不影响其它功能。
-foreach ($need in @('android.permission.SYSTEM_ALERT_WINDOW', 'android.permission.REQUEST_INSTALL_PACKAGES')) {
+#       1.3.4-beta.8 再加 POST_PROMOTIONS：Android 16 的 Live Updates（状态栏芯片）要求清单里
+#       显式声明这条普通权限，否则 NotificationManager#canPostPromotedNotifications 恒为 false，
+#       通知永远提不上去。API 36 以下系统直接忽略这条声明（不是危险权限，不弹窗）。
+foreach ($need in @('android.permission.SYSTEM_ALERT_WINDOW', 'android.permission.REQUEST_INSTALL_PACKAGES', 'android.permission.POST_PROMOTIONS')) {
   $mfx = Get-Content $mf -Raw -Encoding UTF8
   if ($mfx -notmatch [regex]::Escape($need)) {
     $boot2 = '<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>'

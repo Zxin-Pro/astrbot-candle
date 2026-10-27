@@ -84,6 +84,16 @@ public class QqbotIslandBridge {
         return clampShort(labelOf(code));
     }
 
+    /**
+     * 带进度的版本（Android 16 实时更新用）：启动中芯片上只写「45%」——
+     * 那一刻用户唯一关心的就是「还有多久」，写「启动中」是废话。
+     * pct < 0（待扫码 / 离线 / 运行中）回到纯状态词。
+     */
+    static String shortCritical(String code, int pct) {
+        if ("boot".equals(code) && pct >= 0 && pct <= 100) return clampShort(pct + "%");
+        return shortCritical(code);
+    }
+
     /** 硬夹到 SHORT_LIMIT 个字符：宁可截断，也不要被系统自己截到半个词。 */
     static String clampShort(String s) {
         if (s == null) return "离线";
