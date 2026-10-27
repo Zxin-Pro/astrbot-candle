@@ -187,6 +187,8 @@ reap() {
       tail -n 30 /qqbot-cache/logs/astrbot.log 2>/dev/null | sed -e 's/\x1b\[[0-9;]*m//g' -e 's/^/[astrbot.log] /'
     fi
   fi
+  # beta.3：把退出码回给调用方 —— 崩溃熔断要靠它区分「自己崩了」和「被我停掉的」。
+  return "$rc"
 }
 
 # 收到 TERM（qqbot-stop / 停止容器）时先把两个服务收干净再退，
@@ -227,6 +229,67 @@ GRACE=180
 MAXDOWN=3
 PROBE_EVERY=45
 
+# ---------- beta.3：夜间降频 / 定时重启 / 每日备份 / 崩溃熔断 ----------
+# 这四件事都是 supervisor 自己的活，全部在沙盒里判定：定时器看手机本地时间（TZ 由
+# start-sandbox.sh 传进来），夜间降频改的是本轮探测间隔，都不需要原生层参与。
+# 状态文件一律放 /qqbot-state（宿主侧就是 $HOME/.qqbot/state）：原生层、错误报告、
+# Java 桥读的都是同一份，路径写死在这里是为了不依赖 common.sh（沙盒里看不见它）。
+SCHED=/qqbot-state/schedule.json        # Java 写：{"restart":"04:00","night":true,"from":"23:00","to":"07:00"}
+RUNTIME_LAST=/qqbot-state/runtime-last.json
+BACKUP_REQ=/qqbot-state/backup-request  # 宿主侧 watchdog.sh 看到这个文件就跑 backup.sh
+DAILY_DAY=/qqbot-state/last-daily-day   # 每日备份去重（当天只触发一次）
+FUSE_SH=/qqbot-opt/crashfuse.sh
+PROBE_DAY=45     # 白天：45 秒探测一轮（原行为，不要改）
+PROBE_NIGHT=180  # 夜间：180 秒一轮。手机夜里没人用，少唤醒 CPU 就是省电
+NIGHT_NOW=0
+LAST_NIGHT_CHK=0
+LAST_DAILY=""
+LAST_RESTART=""
+BACKUP_AT="03:30"
+
+# 读 schedule.json 里某个键的字符串值（取不到就输出空）。不引 jq：沙盒里不保证有。
+sched_val() {
+  [ -s "$SCHED" ] || return 0
+  sed -n 's/.*"'"$1"'"[[:space:]]*:[[:space:]]*"\{0,1\}\([^",}]*\)"\{0,1\}.*/\1/p' "$SCHED" 2>/dev/null \
+    | head -n 1 | tr -d ' \r'
+}
+
+# 现在是否处于夜间低功耗时段。from > to 表示跨零点（23:00~07:00 正是这种），
+# 那种情况下「晚于 from」或「早于 to」都算夜间。
+in_night() {
+  local from to now
+  [ "$(sched_val night)" = "true" ] || return 1
+  from=$(sched_val from); to=$(sched_val to)
+  case "$from" in [0-2][0-9]:[0-5][0-9]) ;; *) from=23:00 ;; esac
+  case "$to"   in [0-2][0-9]:[0-5][0-9]) ;; *) to=07:00 ;; esac
+  now=$(date +%H:%M)
+  if [ "$from" \< "$to" ]; then
+    [ "$now" \> "$from" ] && [ "$now" \< "$to" ]
+  elif [ "$from" \> "$to" ]; then
+    [ "$now" \> "$from" ] || [ "$now" \< "$to" ]
+  else
+    return 1
+  fi
+}
+
+# 崩溃熔断（beta.3）：run-all.sh 是唯一会「拉起」服务的地方，熔断判定就挂在这条
+# 链路上 —— 崩溃次数记在 /qqbot-state/crash-fuse.json，5 分钟内 3 次就不再来回拉。
+# 脚本不在（老版本只更新了部分文件）时一律放行，绝不能因为缺一个脚本就不启动服务。
+fuse_allow() {
+  [ -f "$FUSE_SH" ] || return 0
+  bash "$FUSE_SH" allow "$1" >/dev/null 2>&1
+}
+fuse_record() {
+  [ -f "$FUSE_SH" ] || return 0
+  bash "$FUSE_SH" record "$1" "$2" "${3:-}" >> /qqbot-cache/logs/supervisor.log 2>&1
+}
+
+# 上次定时重启的日期（supervisor 自己也会被重启，所以要去状态文件里捡回来）
+if [ -s "$RUNTIME_LAST" ]; then
+  LAST_RESTART=$(sed -n 's/.*"lastRestartAt":"\([0-9-]\{10\}\)T.*/\1/p' "$RUNTIME_LAST" 2>/dev/null | head -n 1)
+fi
+if [ -s "$DAILY_DAY" ]; then LAST_DAILY=$(head -n 1 "$DAILY_DAY" 2>/dev/null | tr -d ' \r'); fi
+
 # ---------- 网络现场采样 / 登录服务抖动检测 ----------
 # 真机 09:13 那次 AstrBot 出网全部 EBUSY（Cannot connect to host … [Device or resource busy]），
 # 而沙盒里事后一点线索都没有；同一份日志里 NapCat 的登录服务又在 15~20 秒一轮地掉线重连。
@@ -265,6 +328,62 @@ while true; do
   beat
   NOW=$(date +%s)
 
+  # ---------- 夜间低功耗（beta.3）----------
+  # 每 30 秒重算一次就够：用户改 schedule.json 之后最多半分钟生效，不用重启沙盒。
+  # 只降「存活探测」的频率，服务本身照常守护 —— 夜里掉线一样会被发现，只是慢一点。
+  if [ $((NOW - LAST_NIGHT_CHK)) -ge 30 ]; then
+    LAST_NIGHT_CHK=$NOW
+    if in_night; then
+      if [ "$NIGHT_NOW" != 1 ]; then
+        NIGHT_NOW=1
+        echo "[supervisor] 进入夜间低功耗（$(sched_val from)~$(sched_val to)）：存活探测 ${PROBE_DAY} 秒 → ${PROBE_NIGHT} 秒"
+      fi
+      PROBE_EVERY=$PROBE_NIGHT
+    else
+      if [ "$NIGHT_NOW" = 1 ]; then
+        NIGHT_NOW=0
+        echo "[supervisor] 退出夜间低功耗：存活探测恢复 ${PROBE_NIGHT} 秒 → ${PROBE_DAY} 秒"
+      fi
+      PROBE_EVERY=$PROBE_DAY
+    fi
+  fi
+
+  # ---------- 每日备份 / 定时重启（beta.3）----------
+  # 备份本体必须跑在宿主侧（要读 rootfs 里的 AstrBot data，还要写 $HOME/.qqbot/backup，
+  # 那是沙盒外的东西），所以这里只落一个请求文件，watchdog.sh 每 15 秒会接手执行。
+  _hm=$(date +%H:%M)
+  _day=$(date +%Y-%m-%d)
+  if [ "$_day" != "$LAST_DAILY" ]; then
+    if [ "$_hm" \> "$BACKUP_AT" ] || [ "$_hm" = "$BACKUP_AT" ]; then
+      LAST_DAILY=$_day
+      printf '%s\n' "$_day" > "$DAILY_DAY" 2>/dev/null
+      printf 'daily %s\n' "$_day" > "$BACKUP_REQ.tmp" 2>/dev/null && mv -f "$BACKUP_REQ.tmp" "$BACKUP_REQ" 2>/dev/null
+      echo "[supervisor] 到点（$BACKUP_AT）请求一次每日备份"
+    fi
+  fi
+  # 定时重启：到点做一次优雅重启。走的是本文件的 stop_svc（先 TERM 整组、等 10 秒、
+  # 赖着不走才 KILL）再让下面的分支重新拉起，不是 kill -9，也不会重启整个 proot ——
+  # 重启 proot 会把正在跑的上传 / 部署一起打断，而且 supervisor 自己就是 proot 的子进程，
+  # 从里往外重启只能靠看门狗兜底，失败一次就变成「停在半路没起来」。
+  _rat=$(sched_val restart)
+  case "$_rat" in [0-2][0-9]:[0-5][0-9]) ;; *) _rat="" ;; esac
+  if [ -n "$_rat" ] && [ "$_day" != "$LAST_RESTART" ]; then
+    if [ "$_hm" \> "$_rat" ] || [ "$_hm" = "$_rat" ]; then
+      LAST_RESTART=$_day
+      printf 'pre-restart %s\n' "$_day" > "$BACKUP_REQ.tmp" 2>/dev/null && mv -f "$BACKUP_REQ.tmp" "$BACKUP_REQ" 2>/dev/null
+      echo "[supervisor] 到点（$_rat）执行定时重启：先停两个服务，再重新拉起"
+      [ -n "$NP" ] && stop_svc "$NP" NapCat napcat
+      [ -n "$AB" ] && stop_svc "$AB" AstrBot astrbot
+      NP=""; AB=""
+      NAP_STARTED=0; NAP_DOWN=0; NAP_PROBE=0; NAP_WAIT=0; NAP_FUSED_LOGGED=0
+      AB_STARTED=0; AB_DOWN=0; AB_PROBE=0; AB_FAST=0; AB_FUSED_LOGGED=0
+      _now_iso=$(date '+%Y-%m-%dT%H:%M:%S%z')
+      printf '{"lastRestartAt":"%s","at":"%s","reason":"schedule"}\n' "$_now_iso" "$_rat" \
+        > "$RUNTIME_LAST.tmp" 2>/dev/null && mv -f "$RUNTIME_LAST.tmp" "$RUNTIME_LAST" 2>/dev/null
+      echo "[supervisor] 定时重启完成（$_now_iso）"
+    fi
+  fi
+
   # 每 10 分钟采一次网络现场；每 30 秒查一次登录服务是否在打转。
   # LAST_* 初值 0，所以启动后第一轮就会各跑一次。
   if [ $((NOW - LAST_NET)) -ge 600 ]; then LAST_NET=$NOW; netdiag; fi
@@ -275,14 +394,33 @@ while true; do
     if [ -n "$NP" ]; then stop_svc "$NP" NapCat napcat; NP=""; fi
     NAP_STARTED=0; NAP_DOWN=0; NAP_PROBE=0
   elif [ -z "$NP" ] || ! kill -0 "$NP" 2>/dev/null; then
-    if [ -n "$NP" ]; then echo "[supervisor] NapCat 已退出，重新拉起"; reap "$NP" NapCat; fi
-    bash /qqbot-opt/sandbox/run-napcat.sh &
-    NP=$!
-    NAP_WAIT=1
-    NAP_STARTED=$NOW
-    NAP_DOWN=0
-    NAP_PROBE=$NOW
-    echo "[supervisor] NapCat 启动 pid=$NP"
+    if [ -n "$NP" ]; then
+      echo "[supervisor] NapCat 已退出，重新拉起"
+      reap "$NP" NapCat
+      _nrc=$?
+      # 只把「异常退出」记成崩溃：rc=0 是正常退出、143 是 stop_svc 发的 TERM，
+      # 这两种都不该算（否则每次手动重启 / 定时重启都会被记成崩溃，越重启越接近熔断）。
+      case "$_nrc" in
+        0|143) ;;
+        *) fuse_record napcat "$_nrc" /qqbot-cache/logs/napcat.log ;;
+      esac
+    fi
+    if fuse_allow napcat; then
+      NAP_FUSED_LOGGED=0
+      bash /qqbot-opt/sandbox/run-napcat.sh &
+      NP=$!
+      NAP_WAIT=1
+      NAP_STARTED=$NOW
+      NAP_DOWN=0
+      NAP_PROBE=$NOW
+      echo "[supervisor] NapCat 启动 pid=$NP"
+    else
+      # 熔断期间不进 probe 分支（NP 一直是空），每轮只做一次廉价的 marker 判断。
+      if [ "${NAP_FUSED_LOGGED:-}" != 1 ]; then
+        echo "[supervisor] NapCat 已熔断（5 分钟内崩溃 3 次），不再自动拉起；等控制台「重启」或「清除熔断」"
+        NAP_FUSED_LOGGED=1
+      fi
+    fi
   elif [ "$NAP_STARTED" -gt 0 ] && [ $((NOW - NAP_STARTED)) -gt "$GRACE" ] && [ $((NOW - NAP_PROBE)) -ge "$PROBE_EVERY" ]; then
     NAP_PROBE=$NOW
     if napcat_ports | while read -r _pp; do port_open "$_pp" && exit 7; done; [ "$?" = "7" ]; then
@@ -307,26 +445,43 @@ while true; do
     if [ -n "$AB" ]; then stop_svc "$AB" AstrBot astrbot; AB=""; fi
     AB_STARTED=0; AB_DOWN=0; AB_PROBE=0
   elif [ -z "$AB" ] || ! kill -0 "$AB" 2>/dev/null; then
-    if [ -n "$AB" ]; then echo "[supervisor] AstrBot 已退出，重新拉起"; reap "$AB" AstrBot; fi
-    # 退避：连续「起来不到 20 秒就退」时把重启间隔拉开，最慢 60 秒一次。
-    # 否则坏掉的 AstrBot 会 3 秒一次地重启，既耗电又刷日志，用户还只看到一堆重复行。
-    if [ -n "${AB_STARTED:-}" ] && [ "$AB_STARTED" -gt 0 ] && [ $((NOW - AB_STARTED)) -lt 20 ]; then
-      AB_FAST=$(( ${AB_FAST:-0} + 1 ))
+    if [ -n "$AB" ]; then
+      echo "[supervisor] AstrBot 已退出，重新拉起"
+      reap "$AB" AstrBot
+      _arc=$?
+      case "$_arc" in
+        0|143) ;;
+        *) fuse_record astrbot "$_arc" /qqbot-cache/logs/astrbot.log ;;
+      esac
+    fi
+    # 崩溃熔断优先于退避：真熔断了就别再试探性拉起了（拉也是再崩一次）。
+    if fuse_allow astrbot; then
+      AB_FUSED_LOGGED=0
+      # 退避：连续「起来不到 20 秒就退」时把重启间隔拉开，最慢 60 秒一次。
+      # 否则坏掉的 AstrBot 会 3 秒一次地重启，既耗电又刷日志，用户还只看到一堆重复行。
+      if [ -n "${AB_STARTED:-}" ] && [ "$AB_STARTED" -gt 0 ] && [ $((NOW - AB_STARTED)) -lt 20 ]; then
+        AB_FAST=$(( ${AB_FAST:-0} + 1 ))
+      else
+        AB_FAST=0
+      fi
+      if [ "${AB_FAST:-0}" -ge 3 ]; then
+        _bo=$(( AB_FAST > 12 ? 60 : AB_FAST * 5 ))
+        echo "[supervisor] AstrBot 连续快速退出 ${AB_FAST} 次，等待 ${_bo} 秒再试"
+        sleep "$_bo"
+        NOW=$(date +%s)
+      fi
+      bash /qqbot-opt/sandbox/run-astrbot.sh &
+      AB=$!
+      AB_STARTED=$NOW
+      AB_DOWN=0
+      AB_PROBE=$NOW
+      echo "[supervisor] AstrBot 启动 pid=$AB"
     else
-      AB_FAST=0
+      if [ "${AB_FUSED_LOGGED:-}" != 1 ]; then
+        echo "[supervisor] AstrBot 已熔断（5 分钟内崩溃 3 次），不再自动拉起；等控制台「重启」或「清除熔断」"
+        AB_FUSED_LOGGED=1
+      fi
     fi
-    if [ "${AB_FAST:-0}" -ge 3 ]; then
-      _bo=$(( AB_FAST > 12 ? 60 : AB_FAST * 5 ))
-      echo "[supervisor] AstrBot 连续快速退出 ${AB_FAST} 次，等待 ${_bo} 秒再试"
-      sleep "$_bo"
-      NOW=$(date +%s)
-    fi
-    bash /qqbot-opt/sandbox/run-astrbot.sh &
-    AB=$!
-    AB_STARTED=$NOW
-    AB_DOWN=0
-    AB_PROBE=$NOW
-    echo "[supervisor] AstrBot 启动 pid=$AB"
   elif [ "$AB_STARTED" -gt 0 ] && [ $((NOW - AB_STARTED)) -gt "$GRACE" ] && [ $((NOW - AB_PROBE)) -ge "$PROBE_EVERY" ]; then
     AB_PROBE=$NOW
     ABPORT=$(sed -n 's/.*"astrbotPort"[[:space:]]*:[[:space:]]*\([0-9]\{1,5\}\).*/\1/p' "$BOTS_JSON" 2>/dev/null | head -n 1)

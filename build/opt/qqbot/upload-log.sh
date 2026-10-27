@@ -299,28 +299,84 @@ if [ "${SZ:-0}" -gt 1572864 ]; then
   SZ=$(wc -c < "$TMP" 2>/dev/null || echo 0)
 fi
 
-# ---- 1.4) 想给开发者的话（beta.10）----
-# 界面上那句选填的附言由 Java 落盘到 $QQBOT_HOME/devnote.txt，这里把它贴到整份报告的
-# 最前面（在 AstrBot 标题之前），再 cat 原报告 —— 临时文件 + mv，任何一步失败都只丢掉
-# 附言，不影响后面的脱敏和上传。顺序必须在「截断之后、脱敏之前」：截断只保尾部，
-# 先贴再截会被切掉；脱敏跑在合并后的整份文件上，留言里的账号 / 手机号同样要打码。
+# ---- 1.4) 报告前置块（beta.10 留言 / beta.3 模型自测 + 熔断与备份）----
+# 拼到整份报告最前面，顺序固定：
+#     想给开发者的话 → 模型自测 → 熔断与备份 → 原来的正文（从「AstrBot 烛版 错误报告」起）
+# 为什么要单独一段前置：这三块都是「用户/我们最想先看到的」，正文动辄上百 KB，塞在
+# 中间就没人看了。
+# 为什么在「截断之后」：截断只保尾部，先拼再截会被切掉。
+# 为什么在「脱敏之前」：留言和自测输出里同样可能有账号 / 手机号，必须一起打码。
+# 全部写进 $TMP.pre 再整份合并 + mv；任何一步失败都只丢前置块，原报告照常上传。
 NOTE="$QQBOT_HOME/devnote.txt"
-if [ -s "$NOTE" ]; then
+MTEST="$QQBOT_HOME/logs/model-test.log"
+FUSEJ="$QQBOT_STATE/crash-fuse.json"
+SCHEDJ="$QQBOT_STATE/schedule.json"
+BLAST="$QQBOT_STATE/backup-last.json"
+BDIR="$QQBOT_HOME/backup"
+PREOK=1
+{ : > "$TMP.pre"; } 2>/dev/null || PREOK=0
+
+# a) 想给开发者的话：界面上那句选填的附言，Java 已落盘到 $QQBOT_HOME/devnote.txt
+if [ "$PREOK" = 1 ] && [ -s "$NOTE" ]; then
   # 字数按字符数（不是字节数）：去掉 UTF-8 续字节再数，跟界面上的计数器口径一致
   NCH=$(printf '%s' "$(cat "$NOTE" 2>/dev/null)" | LC_ALL=C tr -d '\200-\277' | wc -c | tr -d ' ')
   case "${NCH:-0}" in ''|*[!0-9]*) NCH=0 ;; esac
-  if {
-        echo "===== 想给开发者的话 ====="
-        cat "$NOTE" 2>/dev/null
-        echo
-        echo "（留言 ${NCH} 字）"
-        echo
-      } > "$TMP.note" 2>/dev/null && cat "$TMP" >> "$TMP.note" 2>/dev/null; then
-    mv -f "$TMP.note" "$TMP" 2>/dev/null || rm -f "$TMP.note"
-  else
-    rm -f "$TMP.note"
+  {
+    echo "===== 想给开发者的话 ====="
+    cat "$NOTE" 2>/dev/null
+    echo
+    echo "（留言 ${NCH} 字）"
+    echo
+  } >> "$TMP.pre" 2>/dev/null || PREOK=0
+fi
+
+# b) 模型自测：AndroidModel 每次「测试模型」都往这个文件追加一行（以 [model-test] 开头）。
+#    「模型测不通过」这类反馈，光看主日志是看不出到底回了什么 / 报了什么错的，
+#    所以把最后 40 行原样带上 —— 多 40 行比让用户来回描述十遍划算。
+if [ "$PREOK" = 1 ] && [ -f "$MTEST" ]; then
+  {
+    echo "===== 模型自测（最近 40 行）====="
+    tail -n 40 "$MTEST" 2>/dev/null
+    echo "（共 $(wc -l < "$MTEST" 2>/dev/null | tr -d ' ') 行记录）"
+    echo
+  } >> "$TMP.pre" 2>/dev/null || PREOK=0
+fi
+
+# c) 熔断与备份：崩溃熔断状态 + 最近一次备份 + 定时任务。这三件事都在宿主 state 目录里，
+#    用户反馈「总是自动重启 / 配置丢了」时，先看这三行就能判断个大概。
+if [ "$PREOK" = 1 ]; then
+  {
+    echo "===== 熔断与备份 ====="
+    if [ -s "$FUSEJ" ]; then
+      echo "崩溃熔断 : $(cat "$FUSEJ" 2>/dev/null)"
+    else
+      echo "崩溃熔断 : 没有记录（没发生过连续崩溃）"
+    fi
+    if [ -s "$BLAST" ]; then
+      echo "最近备份 : $(cat "$BLAST" 2>/dev/null)"
+      _blf=$(sed -n 's/.*"file":"\([^"]*\)".*/\1/p' "$BLAST" 2>/dev/null | head -n 1)
+      if [ -n "$_blf" ] && [ -f "$BDIR/$_blf/manifest.json" ]; then
+        echo "备份清单 : $(cat "$BDIR/$_blf/manifest.json" 2>/dev/null)"
+      fi
+      echo "备份份数 : $(ls -1d "$BDIR"/*/ 2>/dev/null | wc -l | tr -d ' ')（保留最近 7 份）"
+    else
+      echo "最近备份 : 还没有备份过"
+    fi
+    if [ -s "$SCHEDJ" ]; then
+      echo "定时任务 : $(cat "$SCHEDJ" 2>/dev/null)"
+    else
+      echo "定时任务 : 没设置（不定时重启、夜间不降频）"
+    fi
+    echo
+  } >> "$TMP.pre" 2>/dev/null || PREOK=0
+fi
+
+if [ "$PREOK" = 1 ]; then
+  if cat "$TMP.pre" "$TMP" > "$TMP.full" 2>/dev/null; then
+    mv -f "$TMP.full" "$TMP" 2>/dev/null || rm -f "$TMP.full"
   fi
 fi
+rm -f "$TMP.pre" 2>/dev/null
 
 # ---- 1.5) 整份脱敏（v1.1.31）----
 # 必须放在截断之后：先脱敏再截断的话，被切掉那一段里的命中数统计不到，

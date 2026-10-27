@@ -274,7 +274,8 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 | 版本 | 字段 | 值 |
 | --- | --- | --- |
-| **1.3.4-beta.2（当前，测试版）** | `versionName` / 派生 `versionCode` | `1.3.4-beta.2` / `10304` |
+| **1.3.4-beta.3（当前，测试版）** | `versionName` / 派生 `versionCode` | `1.3.4-beta.3` / `10304` |
+| 1.3.4-beta.2 | `versionName` / 派生 `versionCode` | `1.3.4-beta.2` / `10304` |
 | 1.3.4-beta.1 | `versionName` / 派生 `versionCode` | `1.3.4-beta.1` / `10304` |
 | 1.3.3（正式版） | `versionName` / 派生 `versionCode` | `1.3.3` / `10303` |
 | 1.3.3-beta.10 | `versionName` / 派生 `versionCode` | `1.3.3-beta.10` / `10303` |
@@ -295,7 +296,9 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 | 1.2.10 | `versionName` / 派生 `versionCode` | `1.2.10` / `10210` |
 | 1.2.9 | `versionName` / 派生 `versionCode` | `1.2.9` / `10209` |
 
-1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.4-beta.2-arm64.apk`，`609,480,588`（约 581 MB，镜像在 APK 里），SHA-256 `DA98272E60B54D6BE3628E4F6C7B9287C63211ED714E932B3F9B9842D01DC9CB`；增量包 `AstrBot-1.3.4-beta.2-arm64-update.apk`，`26,300,297`，SHA-256 `E74B9D73E4590D26DF657833F760E3EBA1B62B398B2081C16E8BA15DF48BFD77`。1.3.4-beta.2 沿用旧密钥（_research\debug.keystore）签名，`versionCode 10304` 高于 1.3.3 及全部 1.3.3 测试版的 `10303`，因此可直接覆盖安装。
+1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.4-beta.3-arm64.apk`，`609,542,028`（约 581 MB，镜像在 APK 里），SHA-256 `5C544CFF2C4E4801F560776E85711194AB59C056F127C62DE4C88C580990C091`；增量包 `AstrBot-1.3.4-beta.3-arm64-update.apk`，`26,361,737`，SHA-256 `C63A18471840D2E2B73D4662F1B2717A0F816DC1DCB0CB11EE106CADEB8D6977`。1.3.4-beta.3 沿用旧密钥（_research\debug.keystore）签名，`versionCode 10304` 高于 1.3.3 及全部 1.3.3 测试版的 `10303`，因此可直接覆盖安装。
+
+1.3.4-beta.3 又新增 5 个 Java 类（`QqbotUpdater` / `QqbotUpdaterCore` 应用内更新、`QqbotHealthBridge` 熔断与备份、`QqbotIslandView` / `QqbotIslandBridge` 灵动岛），重写了 `QqbotModelBridge`（原生直连模型接口），新增脚本 `build/opt/qqbot/crashfuse.sh`（崩溃熔断），并给 `backup.sh` 加了快照 / 回滚模式，所以增量包从 `26,300,297` 涨到 `26,361,737`。build-ui.ps1 现在还会把 `SYSTEM_ALERT_WINDOW` 与 `REQUEST_INSTALL_PACKAGES` 两个权限幂等补进 `AndroidManifest.xml`（供灵动岛与应用内安装使用），并已从杀软规避的删除清单里移出。
 
 本版同时改了 Java、界面和脚本，增量包不再是「只有脚本」：新增 5 个 Java 桥（`QqbotNotifyBridge` / `QqbotShare` / `QqbotPluginBridge` / `QqbotModelBridge` / `QqbotDiagBridge`）、新页面 `ui/assets/qqbot/plugins.html`、脚本 `build/opt/qqbot/diagnose.sh` 与 `model-test.py`，所以增量从 `26,206,018` 涨到 `26,300,297`。`build-ui.ps1` 的资产复制也从「点名拷 `index.html` + `appicon.png`」改成整目录 `Copy-Item ui\assets\qqbot\*`——以前新增页面会静默漏包（APK 里没有、真机白屏），以后往 `ui/assets/qqbot/` 加文件不用再改脚本。自查命令：`python out/b2_apkcheck3.py` 会核对 APK 内 `assets/qqbot/index.html` 与源码同哈希、`qqbot-scripts.zip` 里的脚本与 `build/opt/qqbot/` 同哈希。
 

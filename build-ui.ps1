@@ -127,6 +127,24 @@ if ($xml2 -notmatch 'android\.permission\.POST_NOTIFICATIONS') {
 } else {
   Write-Host 'manifest: POST_NOTIFICATIONS already present'
 }
+# 3c2b) 1.3.4-beta.3：灵动岛要悬浮窗权限、应用内更新要装 APK。这两条原本在 3c3 的杀软规避
+#       删除清单里，现在必须留着并幂等补齐。两者都是安装型权限（不弹运行时授权，用户自己去
+#       系统设置里打开）；没打开时对应功能不可用，不影响其它功能。
+foreach ($need in @('android.permission.SYSTEM_ALERT_WINDOW', 'android.permission.REQUEST_INSTALL_PACKAGES')) {
+  $mfx = Get-Content $mf -Raw -Encoding UTF8
+  if ($mfx -notmatch [regex]::Escape($need)) {
+    $boot2 = '<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>'
+    if ($mfx.Contains($boot2)) {
+      $mfx = $mfx.Replace($boot2, $boot2 + "`r`n<uses-permission android:name=`"" + $need + "`"/>")
+      [System.IO.File]::WriteAllText($mf, $mfx, (New-Object System.Text.UTF8Encoding($false)))
+      Write-Host ('manifest: added ' + $need)
+    } else {
+      Write-Host ('manifest: anchor missing - ' + $need + ' NOT added')
+    }
+  } else {
+    Write-Host ('manifest: ' + $need + ' already present')
+  }
+}
 # 3c4) 窗口底色（1.3.3-beta.3）：系统画的启动窗口 / 回前台窗口不要用 Theme.Material 自带的 #303030 灰。
 #      三处一起改：manifest 把 QqbotActivity 的 theme 换成 Theme.QqbotPage；values 与 values-night
 #      写 windowBackground（深色 #05060A / 浅色 #F3F6FC）；values-v31 与 values-night-v31 再补
@@ -182,9 +200,7 @@ $drop = @(
   'android.permission.WRITE_SECURE_SETTINGS',
   'android.permission.PACKAGE_USAGE_STATS',
   'android.permission.MANAGE_EXTERNAL_STORAGE',
-  'android.permission.SYSTEM_ALERT_WINDOW',
   'com.android.alarm.permission.SET_ALARM',
-  'android.permission.REQUEST_INSTALL_PACKAGES',
   'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
   'android.permission.WRITE_EXTERNAL_STORAGE'
 )

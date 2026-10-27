@@ -23,6 +23,11 @@ OFFMARK="$QQBOT_CACHE/svc/watchdog.off"
 # 看门狗正好在这几秒里判断「supervisor 没了」就会把沙盒重新拉起来 ——
 # 用户看到的是「点了停止，过一会儿又自己活了」。两个标记任一存在就暂停守护。
 USEROFF="$QQBOT_STATE/offline"
+# beta.3：沙盒里的 run-all.sh 跑到 03:30 / 定时重启前会写这个「备份请求」文件
+# （内容：原因 + 日期两列）。备份本体读不到沙盒里的 rootfs，所以只能在宿主侧执行，
+# 由本看门狗接手 —— 见主循环里「每日 / 重启前备份」那一段。
+BACKUP_REQ="$QQBOT_STATE/backup-request"
+BACKUP_LOG="$QQBOT_HOME/logs/backup.log"
 
 mkdir -p "$QQBOT_HOME/logs" "$QQBOT_CACHE/svc" 2>/dev/null
 
@@ -197,6 +202,27 @@ while true; do
     continue
   fi
   if [ -n "$WAS_DEPLOY" ]; then say "部署已结束，恢复守护"; WAS_DEPLOY=""; fi
+
+  # ---------- 每日 / 重启前备份（beta.3） ----------
+  # 沙盒里的 run-all.sh 只能写 /qqbot-state（= 这里的 $QQBOT_STATE），而备份本体必须
+  # 在宿主侧跑：要读 rootfs 里的 AstrBot data、写 $QQBOT_HOME/backup，还要用 Termux 的 tar。
+  # 请求文件是一行「原因 日期」。先删请求再起后台任务：宁可丢一次备份，也不能让同一份
+  # 请求每 15 秒被执行一次，把手机写满。失败只进日志 —— 备份挂了不该影响服务守护。
+  if [ -f "$BACKUP_REQ" ]; then
+    _breq=$(head -n 1 "$BACKUP_REQ" 2>/dev/null | tr -d '\r')
+    _bwhy=${_breq%% *}
+    case "$_bwhy" in
+      daily|pre-restart|manual) ;;
+      *) _bwhy="" ;;
+    esac
+    rm -f "$BACKUP_REQ" 2>/dev/null
+    if [ -n "$_bwhy" ]; then
+      say "收到备份请求（$_bwhy），在后台生成快照"
+      ( bash "$QQBOT_OPT/backup.sh" "$_bwhy" >> "$BACKUP_LOG" 2>&1; \
+        _brc=$?; [ "$_brc" = 0 ] || printf '[%s] [warn] 备份失败（%s，rc=%s）\n' \
+          "$(date '+%F %T')" "$_bwhy" "$_brc" >> "$BACKUP_LOG" ) &
+    fi
+  fi
   # 启动中：既不判活也不重启。这里必须放在 sv_alive 之前 —— 见 start_in_progress 的说明。
   if start_in_progress; then
     if [ -z "$WAS_STARTING" ]; then

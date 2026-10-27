@@ -13,6 +13,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -226,6 +227,19 @@ public class QqbotPluginBridge {
         row.put("enabled", enabled);
         row.put("dir", dirName);
         row.put("hasConfig", configFile(dirName).isFile());
+        /*
+         * beta.3 起详情页要用到这三项：仓库地址（拉 README）、有没有自带 WebUI
+         * （决定「打开 WebUI」按钮显不显示）、有哪些页面。全从磁盘读，不额外发请求。
+         */
+        File dir = (dirName.length() == 0) ? null : new File(pluginsDir(), dirName);
+        JSONObject meta = (dir == null) ? new JSONObject() : readMetadata(new File(dir, "metadata.yaml"));
+        List<String> pages = (dir == null) ? new ArrayList<String>() : pageNames(dir);
+        row.put("repo", meta.optString("repo", ""));
+        row.put("hasWebui", pages.size() > 0);
+        row.put("pages", new JSONArray(pages));
+        synchronized (ENABLED_CACHE) {
+            ENABLED_CACHE.put(name, Boolean.valueOf(enabled));
+        }
         return row;
     }
 
@@ -893,6 +907,403 @@ public class QqbotPluginBridge {
         } catch (Throwable t) {
             return "无法打开链接";
         }
+    }
+
+    /* ======================= 详情：信息 / README / WebUI / 更新 ======================= */
+
+    /** name → 是否启用。installed() 每轮都会填，info() 直接查，避免在 JS 线程上再发一次 HTTP。 */
+    private static final java.util.HashMap<String, Boolean> ENABLED_CACHE =
+            new java.util.HashMap<String, Boolean>();
+
+    /** README 缓存：key = repo + "|" + name，值是已经算好的结果 JSON。 */
+    private static final java.util.HashMap<String, String> README_CACHE =
+            new java.util.HashMap<String, String>();
+
+    /** README 只试这几个分支/文件名：覆盖 99% 的仓库，剩下的交给 GitHub API 问默认分支。 */
+    private static final String[] README_BRANCHES = new String[]{"main", "master"};
+    private static final String[] README_NAMES =
+            new String[]{"README.md", "readme.md", "README.MD", "README.markdown", "README.txt"};
+
+    /**
+     * 详情页顶部那块信息。同步方法：只读磁盘、不发请求，点进详情立刻能画。
+     * enabled 取自 installed() 的缓存（控制台活着时是真实运行态；否则当作 true，靠 note 说明）。
+     */
+    @JavascriptInterface
+    public String info(String name) {
+        JSONObject out = new JSONObject();
+        try {
+            String n = (name == null) ? "" : name.trim();
+            File dir = findPluginDir(n);
+            if (dir == null) {
+                out.put("ok", false);
+                out.put("err", "找不到这个插件（可能刚被删掉，回列表刷新一下）");
+                return out.toString();
+            }
+            JSONObject meta = readMetadata(new File(dir, "metadata.yaml"));
+            List<String> pages = pageNames(dir);
+            String pname = firstNonEmpty(meta.optString("name", ""), dir.getName());
+            boolean enabled = true;
+            synchronized (ENABLED_CACHE) {
+                Boolean b = ENABLED_CACHE.get(pname);
+                if (b != null) enabled = b.booleanValue();
+            }
+            out.put("ok", true);
+            out.put("name", pname);
+            out.put("dir", dir.getName());
+            out.put("version", meta.optString("version", ""));
+            out.put("author", meta.optString("author", ""));
+            out.put("desc", firstNonEmpty(meta.optString("desc", ""), meta.optString("description", "")));
+            out.put("repo", meta.optString("repo", ""));
+            out.put("enabled", enabled);
+            out.put("hasConfig", configFile(dir.getName()).isFile());
+            out.put("hasWebui", pages.size() > 0);
+            out.put("pages", new JSONArray(pages));
+            out.put("configPath", "/opt/AstrBot/data/config/" + dir.getName() + "_config.json");
+            return out.toString();
+        } catch (Throwable t) {
+            return errJson("读取插件信息失败", t);
+        }
+    }
+
+    /**
+     * 插件的 WebUI 地址。
+     *
+     * AstrBot 4.x 的插件页面不是独立站点，而是 dashboard（Vue SPA）里的一个路由：
+     * dashboard/src/router/MainRoutes.ts:101 → "/plugin-page/:pluginName/:pageName"，
+     * 页面文件在 data/plugins/<目录>/pages/<页面>/index.html（plugin_page_service.py:25,508）。
+     * 所以这里只能给出「控制台端口 + 路由」，进浏览器后还要用控制台账号登录一次——
+     * 这句话放在 hint 里，别让用户以为点了没反应。
+     *
+     * 端口读 cmd_config.json 的 dashboard.port（AstrBot 默认 6185），读不到退 bots.json 口径。
+     */
+    @JavascriptInterface
+    public String webui(String name) {
+        JSONObject out = new JSONObject();
+        try {
+            String n = (name == null) ? "" : name.trim();
+            File dir = findPluginDir(n);
+            if (dir == null) {
+                out.put("ok", false);
+                out.put("err", "找不到这个插件（可能刚被删掉，回列表刷新一下）");
+                return out.toString();
+            }
+            List<String> pages = pageNames(dir);
+            if (pages.size() == 0) {
+                out.put("ok", false);
+                out.put("err", "这个插件没有自带 WebUI（data/plugins/" + dir.getName() + "/pages/ 里没有页面）");
+                return out.toString();
+            }
+            JSONObject meta = readMetadata(new File(dir, "metadata.yaml"));
+            String pname = firstNonEmpty(meta.optString("name", ""), dir.getName());
+            int p = dashboardPort();
+            String base = "http://127.0.0.1:" + p;
+            out.put("ok", true);
+            out.put("port", p);
+            out.put("page", pages.get(0));
+            out.put("root", base + "/");
+            out.put("url", base + "/plugin-page/" + urlEnc(pname) + "/" + urlEnc(pages.get(0)));
+            out.put("hint", "WebUI 在控制台里：第一次打开要登录控制台账号（默认 astrbot / Astrbot123）");
+            out.put("up", consoleUp());
+            return out.toString();
+        } catch (Throwable t) {
+            return errJson("读取 WebUI 地址失败", t);
+        }
+    }
+
+    /**
+     * README。三种来源依次试：本机插件目录里的 README.* → 仓库 raw（main/master）→ GitHub API 问默认分支。
+     *
+     * 为什么异步：github raw 在国内经常要 10 秒才失败，同步等会把 JS 线程（还有同时轮询的
+     * taskPoll/installed）一起卡住。所以第一次调用先回 state=loading，页面每 400ms 再调一次
+     * 拿最终结果——结果缓存在内存里，重复调用不会重复发请求。
+     */
+    @JavascriptInterface
+    public String readme(final String name, final String repo) {
+        try {
+            String n = (name == null) ? "" : name.trim();
+            String r = (repo == null) ? "" : repo.trim();
+            String key = r + "|" + n;
+            synchronized (README_CACHE) {
+                String hit = README_CACHE.get(key);
+                if (hit != null) return hit;
+            }
+            JSONObject local = localReadme(n);
+            if (local != null) {
+                String s = local.toString();
+                synchronized (README_CACHE) {
+                    README_CACHE.put(key, s);
+                }
+                return s;
+            }
+            if (r.length() == 0) {
+                JSONObject o = readmeFailQuiet("这个插件没有 README.md，metadata.yaml 里也没写仓库地址，看不到说明");
+                String s = o.toString();
+                synchronized (README_CACHE) {
+                    README_CACHE.put(key, s);
+                }
+                return s;
+            }
+            JSONObject loading = new JSONObject();
+            loading.put("ok", true);
+            loading.put("state", "loading");
+            loading.put("md", "");
+            String s = loading.toString();
+            synchronized (README_CACHE) {
+                README_CACHE.put(key, s);
+            }
+            Thread th = new Thread(new ReadmeTask(key, r), "qqbot-plugin-readme");
+            th.setDaemon(true);
+            th.start();
+            return s;
+        } catch (Throwable t) {
+            return errJson("读取 README 失败", t);
+        }
+    }
+
+    /** 后台线程：从 GitHub 拉 README，结果写回缓存（页面下一次 readme() 就拿到 ok/fail）。 */
+    private final class ReadmeTask implements Runnable {
+        private final String key;
+        private final String repo;
+
+        ReadmeTask(String key, String repo) {
+            this.key = key;
+            this.repo = repo;
+        }
+
+        public void run() {
+            JSONObject res;
+            try {
+                res = fetchReadme(repo);
+            } catch (Throwable t) {
+                res = readmeFailQuiet("拉 README 失败：" + shortOf(t));
+            }
+            synchronized (README_CACHE) {
+                README_CACHE.put(key, res.toString());
+            }
+        }
+    }
+
+    private JSONObject fetchReadme(String repo) throws Exception {
+        String or = ownerRepoOf(repo);
+        if (or.length() == 0) return readmeFailQuiet("仓库地址看不懂：" + repo + "（要形如 owner/repo）");
+        for (int b = 0; b < README_BRANCHES.length; b++) {
+            for (int n = 0; n < README_NAMES.length; n++) {
+                String url = "https://raw.githubusercontent.com/" + or + "/"
+                        + README_BRANCHES[b] + "/" + README_NAMES[n];
+                String md = httpGet(url, 12000);
+                if (isReadmeBody(md)) {
+                    JSONObject o = readmeOkQuiet(capReadme(md));
+                    o.put("source", "github/" + README_BRANCHES[b]);
+                    return o;
+                }
+            }
+        }
+        /*
+         * 默认分支既不是 main 也不是 master 的仓库：问一次 GitHub API 要 default_branch。
+         * 不登录也能用（限速 60 次/小时），只在这条兜底路径上才发。
+         */
+        String meta = httpGet("https://api.github.com/repos/" + or, 12000);
+        if (meta != null && meta.length() > 0) {
+            try {
+                String br = new JSONObject(meta).optString("default_branch", "");
+                if (br.length() > 0) {
+                    for (int n = 0; n < README_NAMES.length; n++) {
+                        String md = httpGet("https://raw.githubusercontent.com/" + or + "/"
+                                + br + "/" + README_NAMES[n], 12000);
+                        if (isReadmeBody(md)) {
+                            JSONObject o = readmeOkQuiet(capReadme(md));
+                            o.put("source", "github/" + br);
+                            return o;
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return readmeFailQuiet("这个仓库里没找到 README.md（" + or + "），可能作者没写说明");
+    }
+
+    /** httpGet 失败会给空串，404 会给一段 "404: Not Found" 文本，两种都不能当正文。 */
+    private static boolean isReadmeBody(String md) {
+        if (md == null) return false;
+        String t = md.trim();
+        if (t.length() == 0) return false;
+        if (t.startsWith("404:") || t.startsWith("{\"message\":\"Not Found\"")) return false;
+        return true;
+    }
+
+    private static String capReadme(String md) {
+        if (md.length() <= 400000) return md;
+        return md.substring(0, 400000) + "\n\n…（README 太长，后面的截掉了）";
+    }
+
+    /** 本机 README：插件目录里第一个 README.*（大小写都认）。读不到返回 null。 */
+    private JSONObject localReadme(String name) {
+        try {
+            File dir = findPluginDir(name);
+            if (dir == null) return null;
+            File[] files = dir.listFiles();
+            if (files == null) return null;
+            for (int i = 0; i < files.length; i++) {
+                File f = files[i];
+                if (f == null || !f.isFile()) continue;
+                String fn = f.getName().toLowerCase(java.util.Locale.ROOT);
+                if (!fn.startsWith("readme")) continue;
+                if (!(fn.endsWith(".md") || fn.endsWith(".markdown") || fn.endsWith(".txt"))) continue;
+                String md = readText(f);
+                if (md.trim().length() == 0) continue;
+                JSONObject o = readmeOkQuiet(capReadme(md));
+                o.put("source", "local");
+                return o;
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private static JSONObject readmeOkQuiet(String md) {
+        JSONObject o = new JSONObject();
+        try {
+            o.put("ok", true);
+            o.put("state", "ok");
+            o.put("md", md);
+        } catch (Throwable ignored) {
+        }
+        return o;
+    }
+
+    private static JSONObject readmeFailQuiet(String err) {
+        JSONObject o = new JSONObject();
+        try {
+            o.put("ok", false);
+            o.put("state", "fail");
+            o.put("md", "");
+            o.put("err", err);
+        } catch (Throwable ignored) {
+        }
+        return o;
+    }
+
+    /** 插件自带的 WebUI 页面：data/plugins/<目录>/pages/<页面>/index.html（plugin_page_service.py:25,508-538）。 */
+    private static List<String> pageNames(File dir) {
+        List<String> out = new ArrayList<String>();
+        try {
+            File[] subs = new File(dir, "pages").listFiles();
+            if (subs == null) return out;
+            for (int i = 0; i < subs.length; i++) {
+                File sub = subs[i];
+                if (sub == null || !sub.isDirectory()) continue;
+                if (sub.getName().startsWith(".")) continue;
+                if (!new File(sub, "index.html").isFile()) continue;
+                out.add(sub.getName());
+            }
+        } catch (Throwable ignored) {
+        }
+        return out;
+    }
+
+    /** 控制台端口：cmd_config.json 的 dashboard.port，读不到退 bots.json 的口径。 */
+    private int dashboardPort() {
+        try {
+            File cfg = AstrCfg.cfgFile(act.filesDirPub());
+            if (cfg.isFile()) {
+                JSONObject root = new JSONObject(AstrCfg.readText(cfg));
+                JSONObject dash = root.optJSONObject("dashboard");
+                if (dash != null) {
+                    int p = dash.optInt("port", 0);
+                    if (p > 0) return p;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return port();
+    }
+
+    private static String urlEnc(String s) {
+        try {
+            return URLEncoder.encode(s, "UTF-8").replace("+", "%20");
+        } catch (Throwable t) {
+            return s;
+        }
+    }
+
+    /**
+     * 更新插件：按 metadata.yaml 里的 repo（没有就按市场列表里的 download_url）重新下 zip，
+     * 解压校验后整目录替换，配置（data/config/<目录>_config.json）原样保留。
+     *
+     * 替换顺序是「旧目录先改名 → 新的放进去 → 删旧的」，中间任何一步失败都把旧的改回来：
+     * 用户点更新不该把一个能用的插件换成半截目录。
+     */
+    @JavascriptInterface
+    public void update(final String name) {
+        if (!beginTask("update")) return;
+        Thread th = new Thread(new Runnable() {
+            public void run() {
+                boolean ok = false;
+                String msg = "";
+                try {
+                    String n = (name == null) ? "" : name.trim();
+                    File dir = findPluginDir(n);
+                    if (dir == null) throw new Exception("找不到这个插件（可能刚被删掉，回列表刷新一下）");
+                    JSONObject meta = readMetadata(new File(dir, "metadata.yaml"));
+                    String pname = firstNonEmpty(meta.optString("name", ""), dir.getName());
+                    JSONObject entry = findMarket(pname);
+                    String repo = firstNonEmpty(meta.optString("repo", ""),
+                            (entry == null) ? "" : entry.optString("repo", ""));
+                    String url = (entry == null) ? "" : entry.optString("download_url", "");
+                    if (url.length() == 0) url = archiveUrl(repo);
+                    if (url.length() == 0) {
+                        throw new Exception("这个插件的 metadata.yaml 里没写 repo，也没在市场里找到下载地址，没法自动更新");
+                    }
+                    File tmpZip = new File(marketCache().getParentFile(), "update.zip");
+                    deleteTree(tmpZip);
+                    download(url, tmpZip);
+                    if (!tmpZip.isFile() || tmpZip.length() < 64) {
+                        throw new Exception("下载下来的不是压缩包，可能被中转站拦了");
+                    }
+                    File tmp = new File(marketCache().getParentFile(), "update-unzip");
+                    deleteTree(tmp);
+                    if (!tmp.mkdirs()) throw new Exception("解压目录建不出来");
+                    String top = unzip(tmpZip, tmp);
+                    File src = top.length() > 0 ? new File(tmp, top) : tmp;
+                    if (!new File(src, "metadata.yaml").isFile()) {
+                        throw new Exception("压缩包里没有 metadata.yaml，不像是 AstrBot 插件");
+                    }
+                    File old = new File(marketCache().getParentFile(), "update-old");
+                    deleteTree(old);
+                    if (!dir.renameTo(old)) {
+                        throw new Exception("旧版本目录挪不动（AstrBot 可能正占用它）：先重启 AstrBot 再试");
+                    }
+                    boolean moved = false;
+                    try {
+                        moved = src.renameTo(dir);
+                        if (!moved) {
+                            copyTree(src, dir);
+                            deleteTree(src);
+                            moved = true;
+                        }
+                    } catch (Throwable mt) {
+                        moved = false;
+                    }
+                    if (!moved) {
+                        old.renameTo(dir);
+                        throw new Exception("新版本没放进插件目录，已经还原成旧版本");
+                    }
+                    deleteTree(old);
+                    deleteTree(tmp);
+                    deleteTree(tmpZip);
+                    ok = true;
+                    msg = "已更新 " + pname;
+                    String r = tryReload(clientName(dir));
+                    if (r.length() > 0) msg = msg + "，" + r;
+                } catch (Throwable t) {
+                    msg = friendlyInstallErr(t);
+                }
+                endTask(ok, msg);
+            }
+        }, "qqbot-plugin-update");
+        th.setDaemon(true);
+        th.start();
     }
 
     /* ======================= 工具 ======================= */

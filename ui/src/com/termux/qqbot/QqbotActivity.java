@@ -297,6 +297,11 @@ public class QqbotActivity extends Activity {
         web.addJavascriptInterface(new QqbotPluginBridge(this), "AndroidPlugins");
         web.addJavascriptInterface(new QqbotModelBridge(this), "AndroidModel");
         web.addJavascriptInterface(new QqbotDiagBridge(this), "AndroidDiag");
+        // 1.3.4-beta.3：应用内更新下载器 / 运行健康（熔断·备份·定时重启）/ 灵动岛。
+        // 三个都是独立类，注册在这里，页面上按 window.AndroidUpdater|AndroidHealth|AndroidIsland 用。
+        web.addJavascriptInterface(new QqbotUpdater(this), "AndroidUpdater");
+        web.addJavascriptInterface(new QqbotHealthBridge(this), "AndroidHealth");
+        web.addJavascriptInterface(new QqbotIslandBridge(this), "AndroidIsland");
         setContentView(web);
         // 通知栏点进来的 tab 要在第一次 loadUi 之前就记下来（singleTask 重入走 onNewIntent）
         pendingTab = tabOfIntent(getIntent());

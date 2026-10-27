@@ -49,6 +49,19 @@ public class QqbotGuardService extends Service {
     public static final String CH_STATUS = "qqbot_status";
     public static final int STATUS_ID = 42320;
 
+    /**
+     * 通知栏版「灵动岛」（v1.3.4-beta.3）：一条常驻的进度式通知。
+     *
+     * 为什么单独建渠道：Android 16 的 Live Updates 只认「重要度高到能被提升」的渠道，
+     * 而 qqbot_guard 是 IMPORTANCE_MIN（常驻卡片本来就不该出声，这是对的），
+     * 把它的重要度调高会连带让常驻卡片也开始响——所以另起一条 IMPORTANCE_LOW：
+     * 无声、无震动、不上浮，但足够被系统渲染成置顶的进度条。
+     * 也不能复用 qqbot_status：那条负责「上线 / 掉线 / 扫码」的提醒（要有声），
+     * 语义和生命周期都不一样，混在一起会出现「被划掉就再也收不到掉线提醒」。
+     */
+    public static final String CH_ISLAND = "qqbot_island";
+    public static final int ISLAND_ID = 42330;
+
     /** 通知栏「重启」：PendingIntent.getService 打回本服务（协议里也写作 com.termux.qqbot.ACTION_RESTART）。 */
     public static final String ACTION_RESTART = "com.termux.app.GUARD_RESTART";
     public static final String ACTION_RESTART_LEGACY = "com.termux.qqbot.ACTION_RESTART";
@@ -88,6 +101,13 @@ public class QqbotGuardService extends Service {
     /* 通知节流：同一条文案 30 秒内不重复 notify()，换文案立刻发（协议：30 秒或状态变化时更新）。 */
     private String lastNotiText = "";
     private long lastNotiMs = 0L;
+
+    /*
+     * 灵动岛常驻条的状态键：只有状态真的变了才 notify()。
+     * 45 秒一轮、每轮都 notify 的话，系统会把这个渠道判成「频繁更新」并静音，
+     * 国内 ROM 还会直接折叠成一条灰条——用户最需要看到的那条反而最不显眼。
+     */
+    private static volatile String lastIslandKey = "";
 
     /* ---------- 静态入口 ---------- */
 
@@ -396,6 +416,13 @@ public class QqbotGuardService extends Service {
             statusThread.start();
         } catch (Throwable ignored) {
         }
+        // 灵动岛①：悬浮胶囊。开关和权限都满足才挂；不满足就什么都不做（界面自己会引导授权）。
+        // 挂窗口这一步必须回主线程，这里只是投递，不阻塞 onCreate 的前台时限。
+        try { QqbotIslandView.sync(getApplicationContext()); } catch (Throwable ignored) {}
+        // 灵动岛②：通知栏常驻条先按「启动中」占位，真实状态由 45 秒后的 statusTick 换上。
+        // 先占位的好处是：用户点完「启动服务」立刻能在通知栏看到一条「AstrBot 启动中」，
+        // 而不是对着常驻卡片上那行「正在检查沙盒…」猜到底动没动。
+        try { postIsland(this, "boot", 0L); } catch (Throwable ignored) {}
     }
 
     public int onStartCommand(Intent i, int flags, int startId) {
@@ -513,6 +540,13 @@ public class QqbotGuardService extends Service {
             NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm != null) nm.cancel(NOTI_ID);
         } catch (Throwable ignored) {}
+        // 服务没了，胶囊和常驻进度条都得跟着消失：留下一个点不开的窗口比没有更糟。
+        try { QqbotIslandView.hide(); } catch (Throwable ignored) {}
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) nm.cancel(ISLAND_ID);
+        } catch (Throwable ignored) {}
+        try { lastIslandKey = ""; } catch (Throwable ignored) {}
         // ui.json 里的 serviceAlive 要落成 false，但 onDestroy 在主线程，写盘丢后台线程。
         try {
             Thread th = new Thread(new StateFlush(this, UiState.online(), UiState.total(), false), "qqbot-uiflush");
@@ -553,6 +587,14 @@ public class QqbotGuardService extends Service {
             NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm != null) nm.cancel(NOTI_ID);
         } catch (Throwable ignored) {}
+        // 这条路是「关进程 / 紧急下线」的收尾，走的是后台线程：hide() 内部会自己回主线程，
+        // cancel 可以在任意线程调，所以不用额外切线程。
+        try { QqbotIslandView.hide(); } catch (Throwable ignored) {}
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) nm.cancel(ISLAND_ID);
+        } catch (Throwable ignored) {}
+        try { lastIslandKey = ""; } catch (Throwable ignored) {}
         try { stopSelf(); } catch (Throwable ignored) {}
     }
 
@@ -805,6 +847,165 @@ public class QqbotGuardService extends Service {
         }
     }
 
+    /* ================= 通知栏版「灵动岛」 ================= */
+
+    /**
+     * 建「灵动岛」渠道（幂等）。IMPORTANCE_LOW 是关键：无声、无震动、不上浮，
+     * 但高过 MIN 一档，系统才会把它当成「可提升的常驻活动」渲染到状态栏最前面。
+     * setShowBadge(false)：这是一条状态条，不是待办，别在图标上点红点。
+     */
+    private static void ensureIslandChannel(Context c) {
+        if (Build.VERSION.SDK_INT < 26) return;
+        try {
+            NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null) return;
+            if (nm.getNotificationChannel(CH_ISLAND) != null) return;
+            NotificationChannel ch = new NotificationChannel(
+                    CH_ISLAND, "运行状态", NotificationManager.IMPORTANCE_LOW);
+            ch.setDescription("在通知栏显示机器人当前状态和运行时长");
+            ch.setShowBadge(false);
+            ch.setSound(null, null);
+            ch.enableVibration(false);
+            ch.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+            nm.createNotificationChannel(ch);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * 电池优化白名单。不在白名单里，Doze 会把后台网络掐掉，QQ 长连接就断——
+     * 这不是「可能」而是必然，所以状态要能被界面读到（window.AndroidIsland.info）。
+     * 注意：这里只查询，不弹任何系统弹窗；引导由界面上的文案完成。
+     */
+    public static boolean batteryOk(Context c) {
+        try {
+            if (Build.VERSION.SDK_INT < 23) return true;
+            PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
+            if (pm == null) return false;
+            return pm.isIgnoringBatteryOptimizations(c.getPackageName());
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * Android 16（API 36）的「灵动岛」提升接口。本包用 android-34 编译，
+     * 这两个方法在编译期不存在，只能反射；Reflection 失败（14/15/魔改 ROM
+     * 删掉接口）就静默跳过——通知本身照发，只是不会被提升成胶囊。
+     */
+    private static void requestPromoted(Notification.Builder b, String code) {
+        if (Build.VERSION.SDK_INT < 36) return;
+        try {
+            java.lang.reflect.Method m = Notification.Builder.class
+                    .getMethod("setRequestPromotedOngoing", boolean.class);
+            m.invoke(b, Boolean.TRUE);
+        } catch (Throwable ignored) {
+        }
+        try {
+            java.lang.reflect.Method m = Notification.Builder.class
+                    .getMethod("setShortCriticalText", String.class);
+            // 短文案只有两档，且必须极短：系统在状态栏给它留的位置大约 4 个汉字。
+            m.invoke(b, QqbotIslandView.shortCritical(code));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * 通知栏常驻条：标题「AstrBot 运行中」+ 正文当前在干什么 + 运行中时右侧挂计时器。
+     *
+     * 和 buildStatusNoti 的分工要说清楚：那条是「事件通知」（上线/掉线，要响一声、
+     * 可以划掉），这条是「状态条」（一直在、不出声、划不掉）。两套并存是 Android 的
+     * 常规做法，也让用户能各自单独关掉。
+     */
+    public static Notification buildIslandNoti(Context c, String code, long upSince) {
+        ensureIslandChannel(c);
+        Intent main = new Intent(c, QqbotActivity.class);
+        main.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent pi = PendingIntent.getActivity(c, 32, main, PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder b;
+        if (Build.VERSION.SDK_INT >= 26) b = new Notification.Builder(c, CH_ISLAND);
+        else b = new Notification.Builder(c);
+        b.setContentTitle(QqbotIslandView.notiTitle(code));
+        b.setContentText(QqbotIslandView.islandHint(code));
+        b.setContentIntent(pi);
+        // 常驻三件套：划不掉、改内容不响、不显示「刚刚」那种时间戳（时间戳位置留给运行时长的计时器）。
+        b.setOngoing(true);
+        b.setOnlyAlertOnce(true);
+        b.setShowWhen(false);
+        b.setCategory(Notification.CATEGORY_STATUS);
+        if ("run".equals(code) && upSince > 0L) {
+            // 运行中才把时间槽打开：setUsesChronometer 让系统自己每秒走字，
+            // 不用我们每 45 秒 notify 一次——这正是「避免频繁更新被静音」的关键。
+            b.setWhen(upSince);
+            b.setShowWhen(true);
+            b.setUsesChronometer(true);
+            b.setSubText("已运行 " + QqbotIslandView.durText(System.currentTimeMillis() - upSince));
+        } else if ("boot".equals(code)) {
+            // 启动中给一条不确定进度：那根来回走的细线是「正在动」最直观的信号。
+            b.setProgress(0, 0, true);
+        }
+        if (Build.VERSION.SDK_INT < 26) b.setPriority(Notification.PRIORITY_LOW);
+        try {
+            int res = c.getResources().getIdentifier("ic_stat_qqbot", "drawable", c.getPackageName());
+            b.setSmallIcon(res != 0 ? res : c.getApplicationInfo().icon);
+        } catch (Throwable t) {
+            try {
+                b.setSmallIcon(android.R.drawable.stat_notify_error);
+            } catch (Throwable ignored) {
+            }
+        }
+        requestPromoted(b, code);
+        return b.build();
+    }
+
+    /**
+     * 发（或更新）常驻条。只在状态码变化时真的 notify()：
+     * 45 秒一轮无脑刷会被系统判成频繁更新，静音折叠都算好的，差的直接不让提升。
+     * 渠道被用户关掉（IMPORTANCE_NONE）也直接返回，并把状态键留着不动——
+     * 用户重新打开开关后能自然恢复。
+     */
+    static void postIsland(Context c, String code, long upSince) {
+        if (c == null) return;
+        try {
+            String key = (code == null) ? "" : code;
+            if (key.equals(lastIslandKey)) return;
+            NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null) return;
+            ensureIslandChannel(c);
+            if (Build.VERSION.SDK_INT >= 26) {
+                NotificationChannel ch = nm.getNotificationChannel(CH_ISLAND);
+                if (ch != null && ch.getImportance() == NotificationManager.IMPORTANCE_NONE) return;
+            }
+            nm.notify(ISLAND_ID, buildIslandNoti(c, key, upSince));
+            lastIslandKey = key;
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * 算灵动岛状态、落盘、并把胶囊和常驻条一起刷一遍。
+     * 两处共用这一份结论，免得出现「胶囊说运行中、通知栏说离线」这种自相矛盾的画面。
+     * 落盘字段：island（状态码）、islandQr（待扫码粘性位）、upSince（本次上线起点）、battery。
+     */
+    private static String islandRefresh(Context c, JSONObject out, JSONObject prev,
+            boolean up, boolean booting, boolean qrEvent, long now) {
+        boolean prevQr = prev != null && prev.optBoolean("islandQr", false);
+        long prevUp = (prev == null) ? 0L : prev.optLong("upSince", 0L);
+        boolean qrFlag = QqbotIslandView.qrKeep(prevQr, up, qrEvent);
+        long upSince = QqbotIslandView.upSinceOf(prevUp, up, now);
+        String code = QqbotIslandView.stateOf(up, booting, qrFlag);
+        try {
+            out.put("island", code);
+            out.put("islandQr", qrFlag);
+            out.put("upSince", upSince);
+            out.put("battery", batteryOk(c));
+        } catch (Throwable ignored) {
+        }
+        try { QqbotIslandView.update(c, code); } catch (Throwable ignored) {}
+        postIsland(c, code, upSince);
+        return code;
+    }
+
     /**
      * 一次跃迁检查。必须跑在后台线程（要连 socket、要读盘），由 StatusWatch 每 45 秒调一次。
      *
@@ -835,7 +1036,9 @@ public class QqbotGuardService extends Service {
         long qrMt = qrMtime(files, root);
         // 「重启中」的两种情形：用户按了紧急下线 / 沙盒还没部署完。
         // 这时候端口本来就该是关的，报掉线只会打扰用户，所以只静默记状态。
-        boolean quiet = StateIO.file(files, "offline").isFile() || !QqbotShell.bootstrapReady(files);
+        // booting 单独留一份：灵动岛要区分「启动中」和「离线」，两者对用户是两种心情。
+        boolean booting = !QqbotShell.bootstrapReady(files);
+        boolean quiet = StateIO.file(files, "offline").isFile() || booting;
 
         JSONObject prev = null;
         String raw = StateIO.read(files, NOTIFY_STATE);
@@ -858,6 +1061,9 @@ public class QqbotGuardService extends Service {
             // 服务刚起来：这一刻的端口状态只能当基线，不能当「跃迁」。
             // 否则每次开机、每次服务被系统拉起来都会先报一遍掉线。
             putSt(out, up ? "up" : "down", 0L);
+            // 灵动岛也要打基线：少了这一步，第一次启动后胶囊会一直停在「启动中」，
+            // 直到下一次跃迁（最长 45 秒后）才更新。
+            islandRefresh(c, out, null, up, booting, qrMt > 0, System.currentTimeMillis());
             StateIO.write(files, NOTIFY_STATE, out.toString());
             return;
         }
@@ -879,6 +1085,10 @@ public class QqbotGuardService extends Service {
             }
         }
         putSt(out, d[0], Long.parseLong(d[1]));
+
+        // 灵动岛：状态码在同一轮里算出来，45 秒才落一次盘，不额外起线程、不额外读日志。
+        // qrEvent = 这一轮新出了二维码（mtime 变了），交给 qrKeep 决定要不要粘住。
+        islandRefresh(c, out, prev, up, booting, qrMt > 0 && qrMt != prevQr, now);
 
         StateIO.write(files, NOTIFY_STATE, out.toString());
     }
