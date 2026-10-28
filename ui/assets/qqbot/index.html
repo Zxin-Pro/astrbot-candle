@@ -3245,6 +3245,51 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
   white-space: nowrap;
 }
 .usg-col.today .usg-day{ color: var(--accent); font-weight: 600; }
+    /* ---- 1.3.4-beta.10：「粗估花费」这一格变成可点的入口 ----
+       库里没有任何价格字段，只能让用户自己填单价；命中明细（输入 / 缓存命中 / 命中率）
+       也一起收在这个面板里，不点开就不占地方。它仍然是 4 格之一（class 保留 tcell），
+       只是把 button 的默认描边去掉，圆角 16px 与其它小控件对齐。 */
+    .tcellbtn{
+      min-height: 46px;
+      padding: 0 6px;
+      border: 0;
+      border-radius: var(--btn-r-sm);
+      background-color: transparent;
+      justify-content: center;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .tcellbtn:active{ background-color: var(--fill-1); transform: none; }
+    .tcellbtn .tval{ display: inline-flex; align-items: center; justify-content: center; gap: 3px; }
+    .tcellbtn .tcwrap{ width: 11px; height: 11px; flex: none; color: var(--label-3); transition: transform var(--dur) var(--ease); }
+    .tcellbtn[aria-expanded="true"] .tcwrap{ transform: rotate(180deg); }
+    .usg-cost{
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: var(--mi-inner);
+      background: var(--fill-1);
+    }
+    .usg-crow{ display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+    .usg-crow + .usg-crow{ margin-top: 7px; }
+    .usg-ck{ flex: 1 1 auto; min-width: 0; color: var(--label-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .usg-cu{ flex: none; font-size: 11px; color: var(--label-3); }
+    .usg-cv{ flex: none; font-variant-numeric: tabular-nums; font-weight: 600; }
+    .usg-cv.hit{ color: var(--accent); }
+    .usg-csep{ height: 1px; margin: 11px 0 9px; background: var(--sep); }
+    /* 全局 input 是 width:100%（给表单用），这里要固定窄条，得用 .usg-cost 提权压过去 */
+    .usg-cost .usg-cin{
+      flex: 0 0 92px;
+      width: 92px;
+      min-height: 40px;
+      padding: 0 10px;
+      border-radius: var(--btn-r-sm);
+      font-size: 15px;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+    .usg-cin:focus{ outline: none; border-color: var(--accent); }
+    .usg-cbtns{ display: flex; gap: 8px; margin-top: 10px; }
+    .usg-cbtns > button{ flex: 1; }
+    .usg-chint{ margin-top: 8px; font-size: 11px; line-height: 1.6; color: var(--label-3); }
 .usg-models{ margin-top: 12px; }
 .usg-mrow{ display: flex; align-items: center; gap: 9px; padding: 7px 0; font-size: 12.5px; }
 .usg-mrow + .usg-mrow{ border-top: .5px solid var(--sep); }
@@ -5956,7 +6001,7 @@ var NO_LOCK_ACTS = [
   /* 1.3.4-beta.4：扫码弹窗的「不再提示（本次运行）」只是本地标记，未部署时常要关掉提醒。 */
   "qrskip",
   /* b137 主页用量卡：展开更多 / 重新读取都只是读库，跟容器装没装好无关 */
-  "usgmore", "usgretry",
+  "usgmore", "usgretry", "usgcost", "usgcsave", "usgcclear",
   /* b137 端口检测：扫描与结束都只读/只动本应用自己的进程，不该因未部署被置灰 */
   "portscan", "portkill",
   /* b137 日志清理：只动沙盒日志目录里的旧文件，跟容器装没装好无关 */
@@ -8713,6 +8758,9 @@ document.addEventListener("click", function(ev){
   else if (act === "restartcancel") restartAsk(false);
   else if (act === "stgrefresh") { ext().stg.at = 0; refreshStorage(true); extToast("正在重新统计…"); }
   else if (act === "usgmore") usgMore();
+  else if (act === "usgcost") usgCostToggle();
+  else if (act === "usgcsave") usgCostSave();
+  else if (act === "usgcclear") usgCostClear();
   else if (act === "usgretry") usgScan(true);
   else if (act === "portscan") portScan(true);
   else if (act === "portkill") portKillAsk(arg);
@@ -11602,7 +11650,7 @@ try { paintFoot(); } catch (e) {}
    「开始扫」，poll() 在扫完前一律回空串，所以加载态是设计的一部分；超时、读失败、
    空数据、老安装包没有这个桥，四种下台都要有话说，任何情况都不白屏。
    ========================================================================== */
-var USG = { on: false, at: 0, tries: 0, timer: 0, json: null, err: "", more: false };
+var USG = { on: false, at: 0, tries: 0, timer: 0, json: null, err: "", more: false, cost: false, price: null, draft: null };
 
 function usgApi(){
   try { return (typeof AndroidUsage !== "undefined" && AndroidUsage) ? AndroidUsage : null; }
@@ -11641,9 +11689,85 @@ function usgState(kind, msg){
     + spin + "<span>" + esc(msg) + "</span>" + retry + "</div>";
 }
 
+/* ---------- 1.3.4-beta.10：单价与缓存命中 ----------
+   provider_stats 里没有任何价格字段，所以「粗估花费」只能由用户自己填单价现场算：
+   输入价 / 缓存命中价 / 输出价，单位一律「元 / 百万 token」。
+   - 单价只存本机 localStorage（key: qqbot.usgPrice），不上传、不写 AstrBot 的库。
+   - 新包的 today 里有 cached；老包没有这个字段时，把全部输入按输入价算。
+   - 三个价都留空 = 没配价，花费仍是「—」，与以前行为一致。 */
+var USG_PRICE_KEY = "qqbot.usgPrice";
+
+function usgNum(v){
+  v = Number(v);
+  return (isFinite(v) && v > 0) ? v : 0;
+}
+function usgPrice(){
+  if (USG.price) return USG.price;
+  var p = { in: 0, cache: 0, out: 0 };
+  try {
+    var raw = String(lsGet(USG_PRICE_KEY, "") || "");
+    if (raw){
+      var o = JSON.parse(raw) || {};
+      p = { in: usgNum(o.in), cache: usgNum(o.cache), out: usgNum(o.out) };
+    }
+  } catch (e) { }
+  USG.price = p;
+  return p;
+}
+function usgPriced(){ var p = usgPrice(); return p.in > 0 || p.cache > 0 || p.out > 0; }
+function usgHasCache(today){ return typeof (today && today.cached) === "number"; }
+function usgCachedOf(today){
+  var c = Number(today && today.cached);
+  return (isFinite(c) && c > 0) ? c : 0;
+}
+/* 花费 = (未缓存输入 × 输入价 + 缓存命中 × 缓存价 + 输出 × 输出价) / 100 万；没配价回 -1 */
+function usgCost(today){
+  if (!usgPriced()) return -1;
+  var p = usgPrice();
+  var tin = usgNum(today && today.in), tout = usgNum(today && today.out);
+  var cached = Math.min(usgCachedOf(today), tin);
+  var other = tin - cached;
+  var c = (other * p.in + cached * p.cache + tout * p.out) / 1000000;
+  return Math.round(c * 10000) / 10000;
+}
+function usgCostHtml(today){
+  var p = usgPrice();
+  var tin = usgNum(today && today.in), tout = usgNum(today && today.out);
+  var has = usgHasCache(today);
+  var cached = has ? Math.min(usgCachedOf(today), tin) : 0;
+  var other = tin - cached;
+  var rate = (has && tin > 0) ? (cached / tin * 100) : -1;
+  var dv = USG.draft;
+  function pv(k, v){ return esc(dv ? String(dv[k] || "") : (v ? String(v) : "")); }
+  var h = ['<div class="usg-cost">'];
+  h.push('<div class="usg-crow"><span class="usg-ck">输入（不含缓存）</span><b class="usg-cv">' + esc(usgTok(other)) + "</b></div>");
+  h.push('<div class="usg-crow"><span class="usg-ck">其中缓存命中</span><b class="usg-cv">' + esc(has ? usgTok(cached) : "—") + "</b></div>");
+  h.push('<div class="usg-crow"><span class="usg-ck">输出</span><b class="usg-cv">' + esc(usgTok(tout)) + "</b></div>");
+  h.push('<div class="usg-crow"><span class="usg-ck">缓存命中率</span><b class="usg-cv hit">' + esc(rate >= 0 ? rate.toFixed(1) + "%" : "—") + "</b></div>");
+  if (!has) h.push('<div class="usg-chint">这个安装包不提供缓存命中明细，升级到新版后这里会显示命中量与命中率（现在按全部输入价估算）。</div>');
+  h.push('<div class="usg-csep"></div>');
+  h.push('<div class="usg-crow"><span class="usg-ck">输入单价</span><input class="usg-cin" id="usgPin" type="text" inputmode="decimal" placeholder="0" value="' + pv("in", p.in) + '"><span class="usg-cu">元/百万</span></div>');
+  h.push('<div class="usg-crow"><span class="usg-ck">缓存命中价</span><input class="usg-cin" id="usgPcache" type="text" inputmode="decimal" placeholder="0" value="' + pv("cache", p.cache) + '"><span class="usg-cu">元/百万</span></div>');
+  h.push('<div class="usg-crow"><span class="usg-ck">输出单价</span><input class="usg-cin" id="usgPout" type="text" inputmode="decimal" placeholder="0" value="' + pv("out", p.out) + '"><span class="usg-cu">元/百万</span></div>');
+  h.push('<div class="usg-cbtns"><button class="small primary" data-act="usgcsave">保存单价</button><button class="small quiet" data-act="usgcclear">清空</button></div>');
+  h.push('<div class="usg-chint">按你所用的官方 / 中转站牌价填，只存在这台手机里，不会上传。缓存命中价通常远低于输入价，不确定就留 0。</div>');
+  h.push("</div>");
+  return h.join("");
+}
+
 function usgPaint(){
   var box = el("usgBox");
   if (!box) return;
+  /* 面板开着时先把用户正打的字收进 USG.draft：refresh 可能刚好在这时重画，
+     不收就会把输入框清空。usgCostSave / usgCostClear 会先把 draft 置 false 跳过这一步。 */
+  if (USG.cost && USG.draft !== false){
+    var dI = el("usgPin"), dC = el("usgPcache"), dO = el("usgPout");
+    if (dI || dC || dO) USG.draft = {
+      in: dI ? String(dI.value || "") : "",
+      cache: dC ? String(dC.value || "") : "",
+      out: dO ? String(dO.value || "") : ""
+    };
+  }
   var src = el("usgSrc"), note = el("usgNote"), more = el("btnUsgMore");
   if (more) more.style.display = "none";
   if (src) src.textContent = usgOk() ? (USG.on ? "统计中" : "") : "不可用";
@@ -11674,8 +11798,14 @@ function usgPaint(){
   h.push('<div class="tcell"><span class="tlabel">今日调用</span><b class="tval">' + usgCalls(today.calls) + "</b></div>");
   h.push('<div class="tcell"><span class="tlabel">输入</span><b class="tval">' + esc(usgTok(today.in)) + "</b></div>");
   h.push('<div class="tcell"><span class="tlabel">输出</span><b class="tval">' + esc(usgTok(today.out)) + "</b></div>");
-  h.push('<div class="tcell"><span class="tlabel">粗估花费</span><b class="tval">' + esc(usgMoney(today.cost)) + "</b></div>");
+  /* 1.3.4-beta.10：粗估花费是这一格里唯一的按钮 —— 点开填单价、看缓存命中明细 */
+  var cost = usgCost(today);
+  h.push('<button class="tcell tcellbtn" data-act="usgcost" id="usgCostBtn" aria-expanded="' + (USG.cost ? "true" : "false") + '" aria-label="粗估花费，点开设置单价并查看缓存命中">'
+    + '<span class="tlabel">粗估花费</span><b class="tval">' + esc(usgMoney(cost))
+    + '<svg class="tcwrap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>'
+    + "</b></button>");
   h.push("</div>");
+  if (USG.cost) h.push(usgCostHtml(today));
   if (days.length){
     var max = 1, k;
     for (k = 0; k < days.length; k++) max = Math.max(max, Number(days[k].calls) || 0);
@@ -11758,6 +11888,36 @@ function usgMore(){
   if (!USG || !USG.json) return;
   USG.more = !USG.more;
   usgPaint();
+}
+
+/* 1.3.4-beta.10：花费格点开 / 保存单价 / 清空单价 */
+function usgCostToggle(){
+  if (!USG || !USG.json) return;   /* 没有数据时这一格根本不在，兜一层 */
+  USG.cost = !USG.cost;
+  if (!USG.cost) USG.draft = null;
+  usgPaint();
+}
+function usgCostSave(){
+  function num(id){
+    var e = el(id);
+    if (!e) return 0;
+    return usgNum(String(e.value || "").replace(/[^0-9.]/g, ""));
+  }
+  var p = { in: num("usgPin"), cache: num("usgPcache"), out: num("usgPout") };
+  USG.price = p;
+  lsSet(USG_PRICE_KEY, JSON.stringify(p));
+  USG.draft = false;      /* 这次重画别从旧 DOM 里把旧值捡回来 */
+  usgPaint();
+  USG.draft = null;
+  try { extToast((p.in > 0 || p.cache > 0 || p.out > 0) ? "单价已保存" : "单价都是 0，花费仍显示「—」"); } catch (e) {}
+}
+function usgCostClear(){
+  USG.price = { in: 0, cache: 0, out: 0 };
+  lsDel(USG_PRICE_KEY);
+  USG.draft = false;
+  usgPaint();
+  USG.draft = null;
+  try { extToast("单价已清空，花费显示「—」"); } catch (e) {}
 }
 /* 首屏不等这条桥：桥要读库，晚 0.9 秒再起，别跟状态卡抢 */
 setTimeout(function(){ try { usgScan(false); } catch (eU) {} }, 900);

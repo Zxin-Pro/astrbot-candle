@@ -38,7 +38,8 @@ import java.util.TimeZone;
  *   - in = token_input_other + token_input_cached，out = token_output（:359-363、:388）。
  *   - created_at 是 naive UTC，先补 UTC 再转本地时区再按本地日分桶
  *     （stat_service.py:298-302、:357-358）—— 直接按 UTC 分日会让「今天」整体错 8 小时。
- *   - cost：AstrBot 全仓没有任何价格字段，拿不到就说拿不到 —— 固定 -1，界面显示「—」。
+ *   - cost：AstrBot 全仓没有任何价格字段，桥不猜价 —— 固定 -1；1.3.4-beta.10 起界面让用户
+ *     自己填「输入 / 缓存命中 / 输出」三个单价，用下面的 cached / inOther 现场算粗估花费。
  *   - 唯一的差异：面板的「今日模型」按 token 总量排序（stat_service.py:419-426），
  *     契约 3.1 要求按调用次数降序，这里按契约走（token 量作为第二名并列时的次序）。
  *
@@ -221,7 +222,7 @@ public class QqbotUsageBridge {
 
         String bound = utcStamp.format(weekStart.getTime());
 
-        /* 键是本地日期 yyyy-MM-dd，值是 {calls, in, out}。 */
+        /* 键是本地日期 yyyy-MM-dd，值是 {calls, in, out, cached}。 */
         Map<String, long[]> byDay = new HashMap<String, long[]>();
         /* 今日 Top 模型：键是模型名，值同上 {calls, in, out}。 */
         Map<String, long[]> byModel = new HashMap<String, long[]>();
@@ -239,17 +240,19 @@ public class QqbotUsageBridge {
             while (cur.moveToNext()) {
                 long ms = parseUtc(cur.getString(0));
                 if (ms < 0L) continue;
-                long in = cur.getLong(2) + cur.getLong(3);
+                long cached = cur.getLong(3);
+                long in = cur.getLong(2) + cached;
                 long out = cur.getLong(4);
                 String key = localDay.format(new Date(ms));
                 long[] b = byDay.get(key);
                 if (b == null) {
-                    b = new long[] { 0L, 0L, 0L };
+                    b = new long[] { 0L, 0L, 0L, 0L };
                     byDay.put(key, b);
                 }
                 b[0] = b[0] + 1L;
                 b[1] = b[1] + in;
                 b[2] = b[2] + out;
+                b[3] = b[3] + cached;
                 if (key.equals(todayKey)) {
                     String model = cur.getString(1);
                     if (model == null || model.trim().length() == 0) model = "未知模型";
@@ -274,12 +277,13 @@ public class QqbotUsageBridge {
         for (int i = 0; i < DAYS; i++) {
             String k = localDay.format(walk.getTime());
             long[] b = byDay.get(k);
-            if (b == null) b = new long[] { 0L, 0L, 0L };
+            if (b == null) b = new long[] { 0L, 0L, 0L, 0L };
             JSONObject d = new JSONObject();
             d.put("d", k);
             d.put("calls", b[0]);
             d.put("in", b[1]);
             d.put("out", b[2]);
+            d.put("cached", b[3]);
             days.put(d);
             lastDay = d;
             totalCalls = totalCalls + b[0];
@@ -296,6 +300,11 @@ public class QqbotUsageBridge {
         today.put("calls", lastDay.optLong("calls", 0L));
         today.put("in", lastDay.optLong("in", 0L));
         today.put("out", lastDay.optLong("out", 0L));
+        /* 1.3.4-beta.10：把「缓存命中」单独拆出来，界面才能算命中率、也才能区分
+           输入价与缓存命中价；in 仍是 other + cached，老界面只读 in/cost 不受影响。 */
+        long todayCached = lastDay.optLong("cached", 0L);
+        today.put("cached", todayCached);
+        today.put("inOther", Math.max(0L, lastDay.optLong("in", 0L) - todayCached));
         today.put("cost", -1);
         jo.put("today", today);
         jo.put("days", days);

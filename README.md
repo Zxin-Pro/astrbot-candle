@@ -11,10 +11,10 @@
 | --- | --- |
 | 应用名 | **AstrBot烛版** |
 | 控制台标题 | **烛之控制台** |
-| 安装包 | `AstrBot-1.3.4-beta.9-arm64.apk`（`609,566,533`，约 581 MB；**自带装好的运行环境镜像，第一次部署就是解压它，全程不用联网**） |
+| 安装包 | `AstrBot-1.3.4-beta.10-arm64.apk`（`609,587,013`，约 581 MB；**自带装好的运行环境镜像，第一次部署就是解压它，全程不用联网**） |
 | 包名 | `zhuxin.astrbot`（1.2.1 及更早为 `com.termux`） |
-| 当前版本 | **v1.3.4-beta.9（测试版）**（versionCode `10304`，可直接覆盖 1.3.3 正式版、1.3.4-beta.8 / beta.7 / beta.6 / beta.5 / beta.4 / beta.3 / beta.2 / beta.1、1.3.3-beta.10 / beta.9 / beta.8 / beta.7 / beta.6 / beta.5 / beta.4 / beta.3 / beta.2 / beta.1 或 1.3.2 安装） |
-| 安装包 SHA-256 | `EAD96FCFB469B9DF8BD6B5AE2918776A1185C0C102B3511F26AF0089DF189464` |
+| 当前版本 | **v1.3.4-beta.10（测试版）**（versionCode `10304`，可直接覆盖 1.3.3 正式版、1.3.4-beta.9 / beta.8 / beta.7 / beta.6 / beta.5 / beta.4 / beta.3 / beta.2 / beta.1、1.3.3-beta.10 / beta.9 / beta.8 / beta.7 / beta.6 / beta.5 / beta.4 / beta.3 / beta.2 / beta.1 或 1.3.2 安装） |
+| 安装包 SHA-256 | `3A16313B8A874F2763C70F71F9DF2458D3BB8FC38FA27AF11565984F330C251F` |
 | 签名证书 SHA-256 | `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3） |
 | 项目地址 | [github.com/Zxin-Pro/astrbot-candle](https://github.com/Zxin-Pro/astrbot-candle) |
 | 下载安装包 | 官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的 AstrBot 下载页与 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 提供**正式版**（约 581 MB，**站内直接下载，不用跳 GitHub**）；`-beta.N` 测试版只手动发给验收的人，不进官网、不进 latest |
@@ -30,7 +30,7 @@
 - 打开应用 → 自动在手机里建立一个 **Ubuntu 24.04 的 proot 沙盒**（无需 root、无需刷机、无需 Termux 命令行）；
 - 在沙盒里自动部署 **Linux QQ 3.2.34-53644** + **NapCat v4.18.38** + **AstrBot v4.28.2**；
 - 三者**出厂即预接线**：NapCat 通过反向 WebSocket 连到 AstrBot 的 aiocqhttp 平台（`ws://127.0.0.1:6199/ws`）；
-- 用户界面是一个**本地 HTML 控制台**（WebView 加载 `file:///android_asset/qqbot/index.html`），有 **主页 / 机器人 / 日志 / 更多** 四个页签（1.3.4-beta.5 起底栏滑条划到哪页就切到哪页，1.3.4-beta.6 起按钮统一 22px 大圆角；1.3.4-beta.7 起删掉「插件」页签与整个插件页，插件改在 AstrBot 自己的 WebUI 里管；1.3.4-beta.8 起 Android 16 上常驻通知变成带百分比的状态栏胶囊，加载转圈也不再被拉成长条；1.3.4-beta.9 起灵动岛整套删除，换成一条真正的前台常驻通知 —— 标题跟状态走、运行中挂系统计时器、启动中挂确定进度条、被系统从通知栏清掉会自己重新挂回前台，「更多 → 前台常驻」能看四行只读状态并一键重挂），扫码、开关服务、看日志、改端口全在界面里点。
+- 用户界面是一个**本地 HTML 控制台**（WebView 加载 `file:///android_asset/qqbot/index.html`），有 **主页 / 机器人 / 日志 / 更多** 四个页签（1.3.4-beta.5 起底栏滑条划到哪页就切到哪页，1.3.4-beta.6 起按钮统一 22px 大圆角；1.3.4-beta.7 起删掉「插件」页签与整个插件页，插件改在 AstrBot 自己的 WebUI 里管；1.3.4-beta.8 起 Android 16 上常驻通知变成带百分比的状态栏胶囊，加载转圈也不再被拉成长条；1.3.4-beta.9 起灵动岛整套删除，换成一条真正的前台常驻通知 —— 标题跟状态走、运行中挂系统计时器、启动中挂确定进度条、被系统从通知栏清掉会自己重新挂回前台，「更多 → 前台常驻」能看四行只读状态并一键重挂；1.3.4-beta.10 起「模型用量」卡的「粗估花费」可以点开，自己填输入 / 缓存命中 / 输出三个单价（元/百万 token），面板里同时给出输入与缓存命中的拆分和缓存命中率），扫码、开关服务、看日志、改端口全在界面里点。
 - 从 **1.3.0** 起：**界面整体换成 iOS 液态玻璃风**，提供跟随系统 / 浅色 / 深色三档主题，以及 8 套强调色、8 套背景色调、6 套渐变预设和 0–100 的玻璃透明度滑块（全部记在 localStorage，重开保留），「外观」卡从「诊断信息」折叠搬到「更多」页顶层；毛玻璃只留在顶栏、底栏胶囊与弹窗遮罩，卡片不模糊，静止 CPU 仍为 0%。左上角图标跟随登录 QQ 号头像（12 小时缓存，未登录回落原图标），「更多 → 外观」可把带头像的快捷方式钉到桌面；顶栏「烛之控制台」支持双击改名（最长 16 字）。访问地址卡的 Token / 账号 / 密码改成读 NapCat 与 AstrBot 的真实配置文件，找不到时显示 —；清单再删 VIBRATE、桌面小部件与快捷设置磁贴，普通权限只剩 6 条，电池优化改走系统总列表。
 - 从 **1.2.13** 起：**关于页读真实版本、关闭进程真关但下次打开自动恢复、重装后不再卡「正在启动」、新手引导整套移除**。「更多 → 关于」里的 AstrBot 版本不再写死 `v4.28.2`：桥方法 `envVers()` 直接读 `<home>/ubuntu/opt/AstrBot/astrbot/__init__.py` 的 `__version__`（5 分钟缓存），沙盒里现在是 **4.29.1**，读不到显示 `—`、绝不编一个数字。通知栏「关闭进程」改成真的关掉应用：写 `state/offline` → 脱离进程跑 `stop-sandbox.sh` → 收常驻通知 → `killProcess`（带 5 秒兜底的 `KillWatchdog`），同时留一张 `state/closed` 便条，**下次进应用时 `QqbotActivity.onCreate` 把便条和 offline 标记一起清掉、沙盒照常自动启动**，不用再点「启动服务」；界面上自己点的「紧急下线」不写这张便条，仍然是「别再自己起来」，要用卡片上的「启动服务」恢复。修好**重装后主页一直写「正在启动」**：`paintHero()` 里「全绿」（NapCat / AstrBot / OneBot 都在线）判定提到 `bootPending()` 的 120 秒开机窗口**前面**，全绿优先，「重启服务」也会重置窗口。**移除新手引导**：首页「第 N/5 步」引导卡与「发一条测试消息」整套删掉，`onboard` 相关 HTML / CSS / JS 清干净；顺手补回 `refreshExtras()` 开头被连带删掉的 `var E = ext(), now = Date.now();`（缺这行时函数每次抛 `E is not defined` 又被外层 try/catch 吞掉，表现为下线后卡片永远写「沙盒运行中」、也不出现「启动服务」按钮）。
 - 从 **1.2.10** 起：**模型配置终于读得对了，改参数也不用再重启沙盒**。AstrBot v4.29 启动时会把 `cmd_config.json` 里的 provider 拆成 `provider[]` + `provider_sources[]`（密钥 / API 地址搬到后者），App 原来只翻 `provider[]`，于是「配过模型、第二次打开又显示没配置」；现在按 AstrBot 运行时的合并顺序读，并优先显示默认对话模型指向的那条。保存模型 / 人格改成走 AstrBot 的 HTTP 接口**热生效**（`provider-sources` → `providers` → `personas` → `system-config` 四步），实测一秒内卡片就变、机器人不中断，只有接口够不着时才回落到停沙盒改文件的旧流程。另外：主页模型卡显示中转站主机名 `worldcodes.online`（「复制 / 打开」给的是带邀请码的注册地址 `https://worldcodes.online/register?invite_code=CZLT`）、第一次点「控制台」弹账号密码卡可复制、NapCat 直达链接自带 token、登录 QQ 后自动回填 QQ 号、AstrBot 冷启动时 OneBot 磁贴显示「启动中」不再误报未连接。

@@ -13,11 +13,12 @@ data_v4.db）。Termux 前缀里没有 python3（见 build/opt/qqbot/common.sh:2
   - 只取 agent_type='internal'，status 不过滤 —— 面板的 where 只有这两个条件
     （astrbot/dashboard/services/stat_service.py:322-326），成功/失败另外单独数（:377-379）。
   - in = token_input_other + token_input_cached，out = token_output（stat_service.py:359-363、:388）。
+    另外单独给 cached（缓存命中量）与 inOther（不含缓存的输入），界面用它们算命中率和自定义单价花费。
   - models 按契约 3.1 用 calls 降序；面板是按 token 量排序（stat_service.py:419-426），这里以契约为准。
   - created_at 是 naive UTC，先补 UTC 再转本地时区，按本地日分桶
     （stat_service.py:298-302、:357-358）。
     直接按 UTC 分日会让「今天」错 8 小时。
-  - cost：AstrBot 没有任何价格字段，拿不到就是 -1（界面显示「—」）。
+  - cost：AstrBot 没有任何价格字段，恒为 -1（1.3.4-beta.10 起界面让用户自己填输入/缓存/输出三个单价，现场算钱）。
   - days 固定 7 条（今天往前 6 天，缺的补 0），today 就是 days 最后一条。
 
 只读：用 sqlite3 的 uri 模式 mode=ro 打开，绝不建库、绝不写 WAL。
@@ -135,12 +136,14 @@ def build(db_path):
                 continue
             local = dt.astimezone()
             key = local.date()
-            tok_in = int(row[2] or 0) + int(row[3] or 0)
+            cached = int(row[3] or 0)
+            tok_in = int(row[2] or 0) + cached
             tok_out = int(row[4] or 0)
-            b = by_day.setdefault(key, [0, 0, 0])
+            b = by_day.setdefault(key, [0, 0, 0, 0])
             b[0] += 1
             b[1] += tok_in
             b[2] += tok_out
+            b[3] += cached
             if key == today_key:
                 model = (row[1] or "").strip() or "未知模型"
                 m = by_model.setdefault(model, [0, 0, 0])
@@ -156,12 +159,13 @@ def build(db_path):
     days = []
     day = week_start
     for _ in range(DAYS):
-        b = by_day.get(day.date(), [0, 0, 0])
+        b = by_day.get(day.date(), [0, 0, 0, 0])
         days.append({
             "d": day.strftime("%Y-%m-%d"),
             "calls": int(b[0]),
             "in": int(b[1]),
             "out": int(b[2]),
+            "cached": int(b[3]),
         })
         day = day + timedelta(days=1)
 
@@ -182,7 +186,9 @@ def build(db_path):
             "calls": int(last["calls"]),
             "in": int(last["in"]),
             "out": int(last["out"]),
-            "cost": -1,
+            "cached": int(last["cached"]),
+            "inOther": int(last["in"]) - int(last["cached"]),
+            "cost": -1,   # 桥不猜价：单价由界面填，这里恒 -1
         },
         "days": days,
         "models": models,
