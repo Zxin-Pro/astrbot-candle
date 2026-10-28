@@ -127,13 +127,14 @@ if ($xml2 -notmatch 'android\.permission\.POST_NOTIFICATIONS') {
 } else {
   Write-Host 'manifest: POST_NOTIFICATIONS already present'
 }
-# 3c2b) 1.3.4-beta.3：灵动岛要悬浮窗权限、应用内更新要装 APK。这两条原本在 3c3 的杀软规避
-#       删除清单里，现在必须留着并幂等补齐。两者都是安装型权限（不弹运行时授权，用户自己去
-#       系统设置里打开）；没打开时对应功能不可用，不影响其它功能。
-#       1.3.4-beta.8 再加 POST_PROMOTIONS：Android 16 的 Live Updates（状态栏芯片）要求清单里
-#       显式声明这条普通权限，否则 NotificationManager#canPostPromotedNotifications 恒为 false，
-#       通知永远提不上去。API 36 以下系统直接忽略这条声明（不是危险权限，不弹窗）。
-foreach ($need in @('android.permission.SYSTEM_ALERT_WINDOW', 'android.permission.REQUEST_INSTALL_PACKAGES', 'android.permission.POST_PROMOTIONS')) {
+# 3c2b) 应用内更新要装 APK；前台常驻服务要两条前台服务权限。
+#       1.3.4-beta.9 起灵动岛整套下线，SYSTEM_ALERT_WINDOW（悬浮窗）与 beta.8 的 POST_PROMOTIONS
+#       （Live Updates 状态栏芯片）都不再有代码使用，见 3c2c 的回收逻辑 —— 一个机器人应用还挂着
+#       悬浮窗权限，小米/腾讯扫描会直接往 a.gray.devicemaster 这一类上靠，删掉比留着好。
+#       FOREGROUND_SERVICE 是 API 28+ 起 startForeground 的前提；FOREGROUND_SERVICE_SPECIAL_USE
+#       是 API 34+ 声明 foregroundServiceType="specialUse" 时要配的权限。两条都是普通权限，
+#       不弹运行时授权，装上就有。
+foreach ($need in @('android.permission.REQUEST_INSTALL_PACKAGES', 'android.permission.FOREGROUND_SERVICE', 'android.permission.FOREGROUND_SERVICE_SPECIAL_USE')) {
   $mfx = Get-Content $mf -Raw -Encoding UTF8
   if ($mfx -notmatch [regex]::Escape($need)) {
     $boot2 = '<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>'
@@ -146,6 +147,21 @@ foreach ($need in @('android.permission.SYSTEM_ALERT_WINDOW', 'android.permissio
     }
   } else {
     Write-Host ('manifest: ' + $need + ' already present')
+  }
+}
+# 3c2c) 1.3.4-beta.9：回收退役权限。
+#       _apkwork 是复用目录（apktool d 只做一次），清单里上一版插进去的 <uses-permission> 不会
+#       自己消失。灵动岛下线后 SYSTEM_ALERT_WINDOW、Live Updates 下线后 POST_PROMOTIONS 都已无用，
+#       这里幂等删除（第二次跑找不到就什么都不做）。
+foreach ($gone in @('android.permission.SYSTEM_ALERT_WINDOW', 'android.permission.POST_PROMOTIONS')) {
+  $mfG = Get-Content $mf -Raw -Encoding UTF8
+  $patG = '\s*<uses-permission android:name="' + [regex]::Escape($gone) + '"\s*/>'
+  if ([regex]::IsMatch($mfG, $patG)) {
+    $mfG = [regex]::Replace($mfG, $patG, '')
+    [System.IO.File]::WriteAllText($mf, $mfG, (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host ('manifest: dropped ' + $gone)
+  } else {
+    Write-Host ('manifest: ' + $gone + ' already absent')
   }
 }
 # 3c4) 窗口底色（1.3.3-beta.3）：系统画的启动窗口 / 回前台窗口不要用 Theme.Material 自带的 #303030 灰。
@@ -293,6 +309,28 @@ if ($mfJob -notmatch 'KeepAliveJobService') {
 }
 if ($mfJob -ne $mfJobOrig) {
   [System.IO.File]::WriteAllText($mf, $mfJob, (New-Object System.Text.UTF8Encoding($false)))
+}
+# 3c5b) 1.3.4-beta.9：前台服务类型（Android 14 起是硬要求）。
+#       targetSdk>=34 的机器上，startForeground 前没声明 foregroundServiceType 会直接抛
+#       MissingForegroundServiceTypeException 把进程打死；Android 15/16 还会按类型再校验一遍。
+#       本服务只做「沙盒保活 + 状态展示」，不碰摄像头 / 麦克风 / 定位，所以用 specialUse，
+#       并用 <property> 给出子类型说明（系统「特殊用途」条目里显示的就是这段 value）。
+#       幂等：标签上已有该属性就跳过。
+$mfFgs = Get-Content $mf -Raw -Encoding UTF8
+if ($mfFgs -notmatch 'android:foregroundServiceType') {
+  $fgsM = [regex]::Match($mfFgs, '<service\s+[^>]*QqbotGuardService[^>]*?/>')
+  if ($fgsM.Success) {
+    $fgsTag = $fgsM.Value
+    $fgsOpen = $fgsTag.Substring(0, $fgsTag.Length - 2).TrimEnd() + ' android:foregroundServiceType="specialUse">'
+    $fgsBody = $NL + '            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="qqbot-sandbox-keepalive"/>' + $NL + '        </service>'
+    $mfFgs = $mfFgs.Replace($fgsTag, $fgsOpen + $fgsBody)
+    [System.IO.File]::WriteAllText($mf, $mfFgs, (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host 'manifest: QqbotGuardService foregroundServiceType=specialUse'
+  } else {
+    Write-Host 'manifest: QqbotGuardService tag not found - foregroundServiceType NOT patched'
+  }
+} else {
+  Write-Host 'manifest: foregroundServiceType already present'
 }
 # 3c6) QqbotBootReceiver: also listen for USER_UNLOCKED (1.3.3-beta.6).
 #      Some ROMs drop BOOT_COMPLETED on quick-boot; USER_UNLOCKED arrives after the

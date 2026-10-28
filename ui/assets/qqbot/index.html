@@ -2849,11 +2849,19 @@ html.devnotelock{ overflow: hidden; }
   .swrow .tgl::before{ content: ""; position: absolute; left: -8px; right: -8px; top: -7px; bottom: -7px; border-radius: 999px; }
   #qrFall .btns > button{ min-height: 44px; }
   @media (prefers-reduced-motion: reduce){ .startrow .spin{ animation: none !important; } }
-  /* ===== 1.3.4-beta.3 新增：灵动岛开关 / 底栏第 5 个页签 ===== */
-  /* 底栏 5 个页签挤一点没关系，字号跟着收一档，别让「插件」两个字换行 */
+  /* 底栏标签一律单行，图标固定 22px */
   nav button{ white-space: nowrap; }
   nav button .ic{ width: 22px; height: 22px; }
-  #islandCard .btns > button{ min-height: 44px; }
+  /* ===== 1.3.4-beta.9：前台常驻 · 四行只读状态 ===== */
+  /* 卡是 28px，卡内小块跟 --mi-inner 走，不硬编码方角、不动任何令牌。 */
+  .fgslist{ margin-top: 12px; padding: 2px 14px; border-radius: var(--mi-inner); background: var(--fill-1); }
+  .fgsrow{ display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; }
+  .fgsrow + .fgsrow{ border-top: .5px solid var(--sep); }
+  .fgsk{ flex: 0 0 auto; font-size: 13px; color: var(--label-2); }
+  .fgsv{ flex: 1 1 auto; min-width: 0; text-align: right; font-size: 12.5px; font-weight: 600; line-height: 1.5; color: var(--label-2); }
+  /* 只读行的语义色：正常 --ok，异常 --warn（不新增任何颜色值） */
+  .fgsrow[data-st="ok"] .fgsv{ color: var(--ok); }
+  .fgsrow[data-st="warn"] .fgsv{ color: var(--warn); }
 
 /* ============================================================================
    1.3.4-beta.4 · 按钮视觉层（task-23 / ui-tap）
@@ -3809,12 +3817,23 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
 
 
     <div class="card" id="guardCard">
-      <h2><span class="dot" id="d-guard"></span>后台守护</h2>
-      <div class="hint">Android 在内存紧张时会冻结甚至杀掉后台应用，沙盒里的 NapCat 与 AstrBot 就会「进程还在、但完全没有反应」。开启下面的常驻守护后，本应用会保留一条常驻通知以维持前台优先级，每分钟自检一次沙盒，掉线就自动拉起；另外还有一条两分钟一次的闹钟心跳，即使整个应用被系统冻住，也会被叫醒并把沙盒兜回来。</div>
+      <h2><span class="dot" id="d-guard"></span>前台常驻</h2>
+      <div class="hint">一条常驻通知把服务钉在前台，系统不会随便回收。</div>
       <div class="hint" style="margin-top:6px">如果挂后台一阵子还是掉线，多半是厂商省电策略：到下面「省电策略」里点「去设置」，把本应用设为「不限制 / 允许后台高耗电」，并打开「自启动」（vivo：i管家 → 应用管理 → 自启动；设置 → 电池 → 后台耗电管理 → 允许后台高耗电）。</div>
       <div id="guardList" style="margin-top:10px"></div>
+      <!-- 1.3.4-beta.9：前台常驻的四行只读状态。老安装包字段不全，整段降级成一句「功能不可用」。 -->
+      <div class="fgslist" id="fgsBox" style="display:none">
+        <div class="fgsrow" id="fgsRowSvc"><span class="fgsk">前台服务</span><span class="fgsv" id="fgsSvc">—</span></div>
+        <div class="fgsrow" id="fgsRowNoti"><span class="fgsk">常驻通知</span><span class="fgsv" id="fgsNoti">—</span></div>
+        <div class="fgsrow" id="fgsRowCh"><span class="fgsk">通知渠道</span><span class="fgsv" id="fgsCh">—</span></div>
+        <div class="fgsrow" id="fgsRowBatt"><span class="fgsk">电池白名单</span><span class="fgsv" id="fgsBatt">—</span></div>
+      </div>
+      <div class="hint" id="fgsUnavail" style="display:none">这个安装包还不支持前台常驻检测（功能不可用）。升级到最新版本后，这里会显示前台服务的实时状态。</div>
       <div class="btns" style="margin-top:10px">
         <button class="small" data-act="battery" style="flex:1">申请电池优化白名单</button>
+      </div>
+      <div class="btns" style="margin-top:8px">
+        <button class="small primary" id="btnFgsFix" data-act="fgsfix" style="flex:1">重新挂上前台服务</button>
       </div>
       <!-- 通知权限不是「关掉通知」：它是让常驻通知上那三个快捷按钮（重启 / 扫码 / 关闭进程）
            出现的开关。没这条权限，通知栏上就没有「关闭进程」，后台只能进应用里手动停。 -->
@@ -4070,25 +4089,6 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
       <div class="hint" id="ntfHint" style="margin-top:8px">测试会立刻发一条通知。如果没看到，去系统设置里允许本应用发送通知，或者检查「勿扰模式」。</div>
     </div>
 
-    <!-- 灵动岛（摄像头胶囊，1.3.4-beta.5）：不是状态栏通知，而是屏幕顶部挖孔位置的一枚胶囊
-         （TYPE_APPLICATION_OVERLAY，别的应用上也看得见）。AndroidIsland 是这一版新加的桥，
-         老安装包没有，探不到就整块隐藏。状态全部按 info() 的 mode 判断，不假设任何权限字段。 -->
-    <div class="card" id="islandCard" style="display:none">
-      <h2><span class="dot" id="d-island"></span>灵动岛（摄像头胶囊）</h2>
-      <div class="hint" style="margin-top:0">在屏幕顶部摄像头位置显示一枚胶囊，别的应用上也看得见；需要「显示在其他应用上层」权限。</div>
-      <div class="swrow">
-        <div class="swinfo">
-          <div class="swname">在摄像头位置显示胶囊</div>
-          <div class="swdesc" id="islandDesc">正在读取…</div>
-        </div>
-        <button class="tgl" id="islandTgl" data-act="islandtoggle" title="点击开关摄像头胶囊" aria-label="摄像头胶囊开关"></button>
-      </div>
-      <div class="btns" id="islandActs" style="margin-top:10px">
-        <button class="small primary" data-act="islandgrant" id="islandGrant">去授权</button>
-        <button class="small" data-act="islandtest" id="islandTest">发一条试试</button>
-      </div>
-      <div class="hint" id="islandHint" style="margin-top:8px;display:none"></div>
-    </div>
 
     <div class="card">
       <h2>组件重装</h2>
@@ -4220,7 +4220,6 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
         <li><b>存储</b>：解压 Linux 沙盒镜像、读写安装包与本机日志文件。</li>
         <li><b>网络</b>：下载 NapCat / AstrBot / QQ 安装包，连接本机 6099、6185 端口，以及在你主动上传时提交日志。</li>
         <li><b>通知与前台服务</b>：保持沙盒常驻，避免系统在后台冻结进程。</li>
-        <li><b>悬浮窗</b>：仅用于在沙盒运行期间显示状态提示，可随时在系统设置里关闭。</li>
         <li><b>忽略电池优化</b>：防止息屏后机器人掉线。</li>
         <li><b>安装应用</b>：仅用于安装本软件自身的新版本（自动更新）。</li>
         <li><b>读取日志 / 诊断类权限</b>：仅用于生成本机排障日志，不上传、不外发，除非你主动提交。</li>
@@ -5599,7 +5598,6 @@ function showTab(t){
   window.scrollTo(0, 0);
   if (t === "logs") { fillQrSelect(); loadQr(); loadLog(); loadDuo(); }
   if (t === "settings") { try { ntfPaint(true); } catch (e9) {} }   /* 1.3.4-beta.2：进设置页现取一次通知配置 */
-  if (t === "settings") { try { islandPaint(true); } catch (e9b) {} }   /* 1.3.4-beta.3：灵动岛（实时更新）开关 */
   /* v1.1.30：切到哪页就立刻补一次那页的数据，不用干等下一个 4 秒轮询。
      extOnTab 内部自己 try/catch，桥缺了也只是空态。 */
   extOnTab(t);
@@ -5922,7 +5920,7 @@ var NO_LOCK_ACTS = [
   "checkupdate", "dlupdate", "updnotes", "updgo", "updlater", "updbeta",
   "updclose", "upddl", "updremind",
   "copyurl", "openurl", "openqq", "copydisc", "dlgagree", "privacy", "privacyclose", "copydiscp",
-  "guardset", "battery", "terminal", "powgo", "powack", "notiask",
+  "guardset", "battery", "fgsfix", "terminal", "powgo", "powack", "notiask",
   /* 风控横幅说的是账号侧的事（要验证 / 被踢下线），跟「容器装没装好」无关：
      哪怕部署还没完成，也不能把「我知道了」「去处理」置灰 —— 那正是要处理的时刻。 */
   "riskack", "riskgo", "riskpanel",
@@ -5955,8 +5953,6 @@ var NO_LOCK_ACTS = [
      置灰等于把唯一入口堵死。二维码兜底的「复制链接」只是复制文本；
      日志分享弹窗只在上传成功后才出现，跟容器装没装好无关。 */
   "startmain", "startlogs", "qrcopyurl", "shlqq", "shlsys", "shllog", "shlcopy", "shlno",
-  /* 1.3.4-beta.3：灵动岛（实时更新）。状态球的开关是本地设置，装没装好都能先配。 */
-  "islandtoggle", "islandgrant", "islandtest",
   /* 1.3.4-beta.4：扫码弹窗的「不再提示（本次运行）」只是本地标记，未部署时常要关掉提醒。 */
   "qrskip",
   /* b137 主页用量卡：展开更多 / 重新读取都只是读库，跟容器装没装好无关 */
@@ -7332,10 +7328,8 @@ function shlCopy(){
   shlClose();
 }
 
-/* ===== 1.3.4-beta.3 §4：原生桥探测小工具（灵动岛实时更新在用）==========
-   AndroidIsland 是这一版新加的桥，老安装包根本没有：入口先 typeof 探测，
-   探不到就明确说「当前版本不支持」，绝不留一个点了没反应的按钮。
-   原生侧一律包 try/catch —— 那边抛异常不能把页面打死。 */
+/* ===== 原生桥探测小工具：入口先 typeof 探测，探不到就当空态，
+   绝不留一个点了没反应的按钮；原生侧一律包 try/catch —— 那边抛异常不能把页面打死。 ===== */
 function gWin(name){
   try { var w = window[name]; return (w && typeof w === "object") ? w : null; } catch (e) { return null; }
 }
@@ -7360,86 +7354,6 @@ function gTgl(id, on){
   b.setAttribute("aria-checked", on ? "true" : "false");
 }
 function gOn(id){ var b = el(id); return !!(b && b.classList.contains("on")); }
-/* ---------- 灵动岛 / 实时更新（Android 16 Live Updates）----------
-   全部按 AndroidIsland.info() 的字段画：available / canPromote / sdk / enabled / code / text / battery / mode。
-   mode = promoted 已在状态栏常驻 / plain 系统没允许提升 / off 没开。老桥（只有 enabled/granted/request）
-   退回 beta.3 的口径，绝不因为少一个字段就报错或整块消失。 */
-function islandPaint(force){
-  var card = el("islandCard"); if (!card) return;
-  var hasInfo = gFn("AndroidIsland", "info"), hasSet = gFn("AndroidIsland", "set");
-  if (!hasInfo && !hasSet){ card.style.display = "none"; return; }   /* 老安装包：整块不出现 */
-  card.style.display = "";
-  var j = (force === false) ? null : gCall("AndroidIsland", "info");
-  var avail = true, can = false, en = false, mode = "off", txt = "", bat = "", sdk = "", legacy = false;
-  if (j){
-    avail = !(String(j.available) === "false");
-    can = (j.canPromote === true || String(j.canPromote) === "true");
-    en = (j.enabled === true || String(j.enabled) === "true");
-    mode = String(j.mode || (en ? "promoted" : "off"));
-    txt = j.text ? String(j.text) : "";
-    if (j.battery != null && j.battery !== "") bat = String(j.battery);
-    if (j.sdk != null && j.sdk !== "") sdk = String(j.sdk);
-  } else if (hasSet){
-    /* 老桥：只问得到「开没开」，胶囊建没建出来不知道，一律按通知兜底（promoted）画 */
-    legacy = true; can = true;
-    var w = gWin("AndroidIsland");
-    if (w){
-      try { if (typeof w.available === "function") avail = (String(w.available()) !== "false"); } catch (e) {}
-      try { if (typeof w.enabled === "function") en = (String(w.enabled()) === "true"); } catch (e2) {}
-    }
-    mode = en ? "promoted" : "off";
-  }
-  if (!avail){ card.style.display = "none"; return; }   /* 系统连通知都没给：不画这张卡 */
-  /* 1.3.4-beta.5：胶囊改用 TYPE_APPLICATION_OVERLAY（Android 8+ 就有），sdk<36 不再是门槛。
-     失败只有两种：canPromote=false = 还没给悬浮窗权限；sdk<26 = 系统太老建不了窗。
-     mode 的新语义：capsule（胶囊在显示）/ promoted（仅通知兜底）/ off。 */
-  var sdkN = parseInt(sdk, 10); if (!isFinite(sdkN)) sdkN = 0;
-  var noOverlay = (!can && !legacy);
-  var tooOld = (sdkN > 0 && sdkN < 26);
-  gTgl("islandTgl", en);
-  var ds = el("islandDesc"), hint = el("islandHint"), grant = el("islandGrant");
-  if (ds){
-    if (tooOld) ds.textContent = "这个系统版本不支持悬浮窗，胶囊显示不出来，运行状态只能在应用里看。";
-    else if (noOverlay) ds.textContent = "还没给「显示在其他应用上层」权限，胶囊显示不出来。点「去授权」到系统设置里打开。";
-    else if (!en) ds.textContent = "关着。打开后在屏幕顶部摄像头位置显示一枚胶囊，别的应用上也看得见。";
-    else if (mode === "capsule") ds.textContent = "胶囊已显示在屏幕顶部" + (txt ? "：" + txt : "") + (bat ? "（电量 " + bat + "）" : "") + "。";
-    else if (mode === "promoted") ds.textContent = "已打开，但胶囊没建出来，现在是普通通知在兜底" + (txt ? "：" + txt : "") + "。";
-    else ds.textContent = txt ? txt : "已打开。";
-  }
-  if (hint){
-    if (tooOld){ hint.textContent = "摄像头胶囊需要 Android 8（API 26）以上的悬浮窗能力；当前系统没有，运行状态仍然能在应用内看到。" + (sdk ? "（当前 API " + sdk + "）" : ""); hint.style.display = ""; }
-    else if (noOverlay){ hint.textContent = "授权路径：设置 → 应用 → 特殊权限 → 显示在其他应用上层。" + (sdk ? "（当前 API " + sdk + "）" : "") + "授权后回到这里会自动更新。"; hint.style.display = ""; }
-    else if (sdk){ hint.textContent = "当前系统 API " + sdk + "；胶囊由系统绘制，收回权限后会退回普通通知。"; hint.style.display = ""; }
-    else { hint.textContent = ""; hint.style.display = "none"; }
-  }
-  if (grant){
-    grant.textContent = noOverlay ? "去授权" : "去设置";
-    if (tooOld){ grant.setAttribute("disabled", "disabled"); } else { grant.removeAttribute("disabled"); }
-  }
-  var d = el("d-island");
-  if (d) d.className = "dot" + (en && mode === "capsule" && !noOverlay ? " ok" : (!en ? "" : (noOverlay ? " bad" : " warn")));
-}
-function islandToggle(){
-  if (!gFn("AndroidIsland", "set")){ extToast("当前版本不支持摄像头胶囊"); return; }
-  var want = !gOn("islandTgl");
-  try { gWin("AndroidIsland").set(want ? "true" : "false"); } catch (e) { extToast("切换失败，再点一次"); return; }
-  gTgl("islandTgl", want);
-  extToast(want ? "已打开摄像头胶囊" : "已关掉摄像头胶囊");
-  setTimeout(function(){ try { islandPaint(true); } catch (e2) {} }, 500);
-}
-function islandGrant(){
-  var w = gWin("AndroidIsland");
-  var fn = (w && typeof w.openSettings === "function") ? "openSettings" : ((w && typeof w.request === "function") ? "request" : "");
-  if (!fn){ extToast("去系统设置里给本应用「显示在其他应用上层」权限"); return; }
-  try { w[fn](); extToast("在系统设置里允许「显示在其他应用上层」，回来这里会自动更新"); } catch (e) { extToast("没打开设置，手动去系统设置里找「显示在其他应用上层」"); }
-  setTimeout(function(){ try { islandPaint(true); } catch (e2) {} }, 1500);
-}
-function islandTest(){
-  var w = gWin("AndroidIsland");
-  if (!w || typeof w.test !== "function"){ extToast("当前版本不支持测试实时更新"); return; }
-  try { w.test(); extToast("已发一条测试；顶部没出现胶囊就先去授权"); } catch (e) { extToast("测试没发出去，再点一次"); }
-  setTimeout(function(){ try { islandPaint(true); } catch (e2) {} }, 800);
-}
 
 function paintHero(st, installed){
   var v = el("h3v");
@@ -7599,7 +7513,7 @@ function renderSvc(st){
   paintLocks();
 }
 
-/* 后台守护：Android 侧的常驻前台服务。它和沙盒内的 supervisor、Termux 侧的
+/* 前台常驻：Android 侧的前台服务。它和沙盒内的 supervisor、Termux 侧的
    watchdog 组成三层防护——这三层任何一层单独都不够：应用进程被系统冻结时，
    沙盒里那两个进程其实还活着，只是没人叫它们干活。 */
 function renderGuard(st){
@@ -7610,7 +7524,7 @@ function renderGuard(st){
      两者不一致时（开关开着、服务没起来）必须如实说，别让用户以为有守护。 */
   var gRunning = !!st.guardRunning;
   var rows = [
-    { n: "guard", label: "常驻后台守护", desc: "前台常驻通知 + 每分钟自检沙盒，进程消失自动拉起", on: !!st.guardOn,
+    { n: "guard", label: "常驻前台服务", desc: "前台常驻通知 + 每分钟自检沙盒，进程消失自动拉起", on: !!st.guardOn,
       tag: (st.guardOn && !gRunning) ? "off" : "", tagTxt: (st.guardOn && !gRunning) ? "开关已开 · 服务未运行" : "" },
     { n: "wake", label: "息屏保持运行", desc: "持有 CPU 唤醒锁，息屏后 NapCat 才能继续维持 QQ 长连接", on: !!st.guardWake },
     /* 息屏模式：不用手点。屏幕一灭自动把心跳加密到 1 分钟、掉线阈值减半、
@@ -7629,6 +7543,18 @@ function renderGuard(st){
       '<button class="tgl' + (r.on ? " on" : "") + '" data-act="guardset" data-arg="' + r.n + '" title="点击切换"></button></div>');
   }
   setHtml(box, h.join(""));
+  /* 1.3.4-beta.9：前台常驻的四行只读状态。新字段不全 = 老安装包 / 桥缺失，
+     整段降级成一句「功能不可用」：不摆假数值，也不抛异常。 */
+  var fgsBox = el("fgsBox"), fgsUn = el("fgsUnavail"), fgsBtn = el("btnFgsFix");
+  var hasFgs = !!(st && typeof st.fgsSince === "number" && typeof st.fgsNoti === "boolean"
+    && typeof st.fgsCh === "boolean" && typeof st.battOk === "boolean");
+  if (fgsBox) fgsBox.style.display = hasFgs ? "" : "none";
+  if (fgsUn) fgsUn.style.display = hasFgs ? "none" : "";
+  if (fgsBtn){
+    if (hasFgs){ fgsBtn.removeAttribute("disabled"); fgsBtn.textContent = "重新挂上前台服务"; }
+    else { fgsBtn.setAttribute("disabled", "disabled"); fgsBtn.textContent = "功能不可用"; }
+  }
+  if (hasFgs) fgsPaint(st);
   var d = el("d-guard");
   if (d) d.className = "dot " + ((st.guardOn && gRunning) ? "ok" : "warn");
   var nt = el("guardNote");
@@ -7651,6 +7577,57 @@ function renderGuard(st){
   if (chip) chip.style.display = (st && st.notiGranted === false) ? "flex" : "none";
 }
 
+/* 1.3.4-beta.9：前台常驻的四行只读状态。文案按契约固定：服务（fgsSince>0 就报已运行多久）
+   / 通知 / 渠道 / 电池白名单；异常一律走 --warn 语义色，正常走 --ok。 */
+function setFgsSt(id, v){
+  var r = el(id); if (!r) return;
+  if (v) r.setAttribute("data-st", v); else r.removeAttribute("data-st");
+}
+/* 时长按 Java 侧 durText 的口径走：刚刚 / N 分钟 / N 小时 M 分钟 / N 天 M 小时 */
+function fgsDur(sec){
+  sec = Math.max(0, Math.floor(Number(sec) || 0));
+  if (sec < 60) return "刚刚";
+  var d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
+  if (d > 0) return d + " 天 " + h + " 小时";
+  if (h > 0) return h + " 小时 " + m + " 分钟";
+  return m + " 分钟";
+}
+function fgsPaint(st){
+  st = st || {};
+  var now = Date.now(), ms = Number(st.fgsSince || 0);
+  var svc = el("fgsSvc"), noti = el("fgsNoti"), ch = el("fgsCh"), batt = el("fgsBatt");
+  if (svc){
+    svc.textContent = (ms > 0) ? ("运行中 · 已运行 " + fgsDur((now - ms) / 1000)) : "未运行";
+    setFgsSt("fgsRowSvc", ms > 0 ? "ok" : "warn");
+  }
+  if (noti){
+    noti.textContent = st.fgsNoti ? "已在通知栏" : "不在通知栏";
+    setFgsSt("fgsRowNoti", st.fgsNoti ? "ok" : "warn");
+  }
+  if (ch){
+    /* 渠道被关掉是最常见的「通知不出现」，所以直接写清楚该去哪儿打开 */
+    ch.textContent = st.fgsCh ? "已就绪" : "被系统关掉了，去通知设置里打开「前台运行」";
+    setFgsSt("fgsRowCh", st.fgsCh ? "ok" : "warn");
+  }
+  if (batt){
+    batt.textContent = st.battOk ? "已加入" : "未加入，容易被系统杀掉";
+    setFgsSt("fgsRowBatt", st.battOk ? "ok" : "warn");
+  }
+}
+/* 一键重挂：原生 action("fgs:fix") 会重新 startForeground 一遍并回中文串，
+   这里原样 toast，然后立刻重读状态，不用干等下一个 4 秒轮询。 */
+function fgsFix(){
+  var r = "";
+  try { r = String(Android.action("fgs:fix")); } catch (e) { r = "失败：" + e; }
+  /* toast 统一走 extToast（内部 brHas 探测，桥没有就静默）；只有连 toast 桥都探不到时，
+     才退回直接调 Android.toast —— 不混两套风格，也不让按钮变成哑巴。 */
+  var msg = r || "已重新挂上前台服务";
+  try { extToast(msg); } catch (e2) {}
+  try { if (!brHas("toast")) Android.toast(msg); } catch (e3) {}
+  /* refresh() 会重拉 Android.state() 并把 st 交给 renderGuard → fgsPaint，四行随之重画 */
+  try { refresh(); } catch (e4) {}
+  setTimeout(function(){ try { refresh(); } catch (e5) {} }, 1500);
+}
 function doGuard(arg){
   /* 跟组件开关同样的道理：S.st 最长 4 秒前，点完立刻本地翻转，否则连点会被旧值吞掉。 */
   var st = S.st || {};
@@ -8803,10 +8780,8 @@ document.addEventListener("click", function(ev){
   else if (act === "shlcopy") shlCopy();
   else if (act === "shlno") shlClose();
   else if (act === "qrcopyurl") qrCopyUrl();
-  /* ---------- 1.3.4-beta.3：灵动岛（实时更新） ---------- */
-  else if (act === "islandtoggle") islandToggle();
-  else if (act === "islandgrant") islandGrant();
-  else if (act === "islandtest") islandTest();
+  /* ---------- 1.3.4-beta.9：前台常驻 ---------- */
+  else if (act === "fgsfix") fgsFix();
   else if (act === "savebot") saveBot();
   else if (act === "cancelbot") cancelBot();
   else if (act === "pickbg") {
@@ -11501,7 +11476,7 @@ function extOnTab(t){
   try {
     if (t === "home"){ refreshInst(true); try { usgScan(false); } catch (eU) {} }
     else if (t === "more"){ refreshBk(true); refreshStorage(true); refreshCrash(true); }
-    else if (t === "settings"){ refreshStats(true); refreshLan(true); islandPaint(true); try { portAuto(); } catch (eP) {} try { dailyLoad(false); } catch (eD) {} }
+    else if (t === "settings"){ refreshStats(true); refreshLan(true); try { portAuto(); } catch (eP) {} try { dailyLoad(false); } catch (eD) {} }
   } catch (e) {}
 }
 
@@ -11619,9 +11594,6 @@ setInterval(function(){
   try { if (tabOn("home")) paintStartRow(null); } catch (e) {}
 }, 3000);
 try { upTick(); } catch (e) {}
-/* 1.3.4-beta.3：启动时先把灵动岛状态探一次。桥不在就一直是隐藏的，
-   在的话用户不用先切一次页签才看到卡片和开关。 */
-try { islandPaint(true); } catch (e) {}
 try { paintFoot(); } catch (e) {}
 
 /* ==========================================================================

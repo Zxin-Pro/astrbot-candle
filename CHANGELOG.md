@@ -17,6 +17,57 @@
 
 ---
 
+## [1.3.4-beta.9] - 2026-10-28
+
+> 第九个测试版：灵动岛整套下线，换成一条真正的前台常驻通知 —— 标题跟着状态走、运行中挂计时器、
+> 启动中挂确定进度条、被系统清掉会自己重新挂回去。
+
+### 变更
+
+- **灵动岛整套删除**。`QqbotIslandCapsule.java`（覆盖层窗口，62 KB）与 `QqbotIslandBridge.java`（676 行）
+  两个文件整份删除，`QqbotActivity` 里 `AndroidIsland` 的注册一并去掉；`index.html` 删掉「灵动岛（摄像头胶囊）」
+  整卡、它的样式块、四个 JS 函数与所有调用点，隐私清单里那条「悬浮窗」说明也删掉。
+  这套东西要悬浮窗权限、要跟各家 ROM 的挖孔坐标对赌，收益却只是「多一个小胶囊」；
+  用户要的是「后台别掉线」，那件事应该由前台服务本身做，不该靠一层浮窗。
+- **新增 `QqbotRunState.java`**（纯逻辑类，不 import 任何 Android 类）：状态码 `run` / `boot` / `qr` / `down`、
+  标题与提示文案、状态判定、待扫码粘性位、运行起点、时长文案全在这里。原来这套逻辑挂在灵动岛桥上，
+  桥没了就散架，现在抽出来给通知栏和界面共用一份，两处不会各说各话。
+- **常驻通知合成一条**。以前是「守护条（`qqbot_guard`，IMPORTANCE_MIN）+ 灵动岛条（`qqbot_live`）」两条，
+  现在只有一条 `qqbot_run`（「前台运行」，IMPORTANCE_LOW，无声无震动、但正常显示在通知栏，
+  不会被 HyperOS / ColorOS 折叠成灰条）。标题跟状态走：AstrBot 运行中 / 启动中 / 待扫码 / 离线；
+  正文说清楚现在该干什么；运行中右侧是系统计时器（`setUsesChronometer`，系统自己走字，不必周期性 notify）；
+  启动中是确定进度条（0→92%，那根来回走的不确定细线删掉）；三个快捷按钮仍是重启 / 扫码 / 关闭进程。
+  API 31+ 补 `FOREGROUND_SERVICE_IMMEDIATE`，避免前台通知被系统压后十秒才出现。
+- **通知被清掉会自己挂回去**。`postRunNoti()` 每轮先查通知栏里那条还在不在（`getActiveNotifications`），
+  不在就 `startService(ACTION_REPAIR)` 让服务自己重新 `startForeground` —— 国产 ROM 清掉通知后服务会掉出前台、
+  几秒内被杀，这一步把它自己拽回来。界面上的「重新挂上前台服务」按钮走同一条路（`Android.action("fgs:fix")`）。
+- **两个旧渠道顺手删掉**（`qqbot_guard` / `qqbot_live`）：渠道一旦建过就改不了重要度，留着只会在「通知设置」里
+  多出两条永远不来消息的死渠道。
+- **权限收口**：删掉 `SYSTEM_ALERT_WINDOW`（灵动岛没了）与 `POST_PROMOTIONS`（beta.8 的状态栏芯片没了），
+  新增 `FOREGROUND_SERVICE_SPECIAL_USE`；清单里给 `QqbotGuardService` 补
+  `android:foregroundServiceType="specialUse"` 与 `<property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE">`，
+  Android 14 起 `startForeground` 没声明类型会直接抛 `MissingForegroundServiceTypeException` 把进程打死。
+  `build-ui.ps1` 新增 3c2c（幂等回收退役权限）与 3c5b（幂等补前台服务类型）两段。
+- **界面**：「后台守护」卡改名「前台常驻」，下面加四行只读状态 —— 前台服务（跑着就报已运行多久）/ 常驻通知 /
+  通知渠道 / 电池白名单，异常走 `--warn`、正常走 `--ok`，下面加一颗「重新挂上前台服务」按钮。
+  老安装包字段不全时整段降级成一句「这个安装包还不支持前台常驻检测（功能不可用）」，不摆假数值。
+- `Android.stats()` 新增四个字段：`fgsSince`（毫秒，0 = 服务没跑）、`fgsNoti`、`fgsCh`、`battOk`；旧字段一个没动。
+
+### 修复
+
+- `notify.json` 里 `island` / `islandQr` 两个字段改名 `state` / `qrFlag`，`upSince` 保持原样（每日早报读它算「已连续」）。
+- 状态检查那轮不再额外 `notify` 一次：状态、通知栏、界面三处现在读同一份结论，避免出现「界面说运行中、通知栏说离线」。
+
+### 说明
+
+- 这一版没有改动任何沙盒脚本、部署流程与数据目录；升级不需要重新部署。
+- 常驻通知的渠道 id 变了（`qqbot_guard` → `qqbot_run`），所以升级后通知设置里会看到一条新的「前台运行」，
+  旧的「后台守护」会自己消失。如果你之前手动关过旧渠道的通知，这次要重新开一次。
+- 灵动岛删掉之后，`SYSTEM_ALERT_WINDOW` 权限也一起从清单里去掉了 —— 已经装过旧版的机器升级后，
+  系统设置里那条「显示在其他应用上层」会变成无效条目，不影响使用（想清干净可以卸载重装）。
+
+---
+
 ## [1.3.4-beta.8] - 2026-10-28
 
 > **测试版**：这一版修掉「加载时那条长条子转」，并把常驻通知接上 **Android 16 的实时更新（Live Updates）**：

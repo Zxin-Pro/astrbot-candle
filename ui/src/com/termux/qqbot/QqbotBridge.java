@@ -125,6 +125,14 @@ public class QqbotBridge {
             o.put("guardScreen", ScreenMode.isOn(act));
             o.put("screenDark", ScreenMode.boosted(act));
             o.put("guardRunning", QqbotGuardService.guardRunning);
+            // 1.3.4-beta.9：「前台常驻」卡用它渲染四行只读状态。
+            // fgsSince 是这次前台服务的启动时刻（0 = 服务没跑），界面拿它算「已运行多久」；
+            // fgsNoti 查的是通知栏里那条还在不在（被 ROM 清掉就是 false，需要一键重挂）；
+            // fgsCh 是渠道有没有被用户关掉（关了系统就不会让服务留在前台）。
+            o.put("fgsSince", QqbotGuardService.fgsSince);
+            o.put("fgsNoti", QqbotGuardService.runNotiPosted(act));
+            o.put("fgsCh", QqbotGuardService.runChannelOk(act));
+            o.put("battOk", QqbotGuardService.batteryOk(act));
             o.put("guardNote", QqbotGuardService.lastNote == null ? "" : QqbotGuardService.lastNote);
             // 常驻通知能不能出现：false 时「关闭进程」根本没入口，后台只能靠进应用手动停
             o.put("notiGranted", act.notiGranted());
@@ -709,6 +717,11 @@ public class QqbotBridge {
         }
         if ("battery".equals(what)) {
             return QqbotGuardService.requestIgnoreBattery(act);
+        }
+        if ("fgs:fix".equals(what)) {
+            // 「重新挂上前台服务」：把常驻通知 + 前台身份重新钉回去。
+            // 通知被 ROM 清掉、渠道被用户关掉后又打开、服务被系统降级，都靠这一个动作救回来。
+            return QqbotGuardService.repair(act);
         }
         if ("resetdeploy".equals(what)) {
             act.runShell("rm -f " + qh + "/deploy.done " + qh + "/deploy.pid; echo ok", 10);

@@ -296,11 +296,11 @@ public class QqbotActivity extends Activity {
         web.addJavascriptInterface(new QqbotShare(this), "AndroidShare");
         web.addJavascriptInterface(new QqbotModelBridge(this), "AndroidModel");
         web.addJavascriptInterface(new QqbotDiagBridge(this), "AndroidDiag");
-        // 1.3.4-beta.3：应用内更新下载器 / 运行健康（熔断·备份·定时重启）/ 灵动岛。
-        // 三个都是独立类，注册在这里，页面上按 window.AndroidUpdater|AndroidHealth|AndroidIsland 用。
+        // 1.3.4-beta.3：应用内更新下载器 / 运行健康（熔断·备份·定时重启）。
+        // 都是独立类，注册在这里，页面上按 window.AndroidUpdater|AndroidHealth 用。
+        // 1.3.4-beta.9：AndroidIsland 已下线（灵动岛整套删除，改由前台常驻通知保活）。
         web.addJavascriptInterface(new QqbotUpdater(this), "AndroidUpdater");
         web.addJavascriptInterface(new QqbotHealthBridge(this), "AndroidHealth");
-        web.addJavascriptInterface(new QqbotIslandBridge(this), "AndroidIsland");
         // 1.3.4-beta.7：模型用量（只读 data_v4.db）/ 端口检测 / 每日早报。
         // 插件页已下线（底栏不再有入口），AndroidPlugins 桥一并移除。
         web.addJavascriptInterface(new QqbotUsageBridge(this), "AndroidUsage");
