@@ -274,7 +274,8 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 | 版本 | 字段 | 值 |
 | --- | --- | --- |
-| **1.3.4-beta.10（当前，测试版）** | `versionName` / 派生 `versionCode` | `1.3.4-beta.10` / `10304` |
+| **1.3.4（当前，正式版）** | `versionName` / 派生 `versionCode` | `1.3.4` / `10304` |
+| 1.3.4-beta.10 | `versionName` / 派生 `versionCode` | `1.3.4-beta.10` / `10304` |
 | 1.3.4-beta.9 | `versionName` / 派生 `versionCode` | `1.3.4-beta.9` / `10304` |
 | 1.3.4-beta.8 | `versionName` / 派生 `versionCode` | `1.3.4-beta.8` / `10304` |
 | 1.3.4-beta.7 | `versionName` / 派生 `versionCode` | `1.3.4-beta.7` / `10304` |
@@ -303,7 +304,7 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 | 1.2.10 | `versionName` / 派生 `versionCode` | `1.2.10` / `10210` |
 | 1.2.9 | `versionName` / 派生 `versionCode` | `1.2.9` / `10209` |
 
-1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.4-beta.10-arm64.apk`，`609,587,013`（约 581 MB，镜像在 APK 里），SHA-256 `3A16313B8A874F2763C70F71F9DF2458D3BB8FC38FA27AF11565984F330C251F`；增量包 `AstrBot-1.3.4-beta.10-arm64-update.apk`，`26,406,722`，SHA-256 `CEB14A5C8EB1A30AE5CAAA4AB4F3495F0FB38EC63585E99821026E574D563555`。1.3.4-beta.10 沿用旧密钥（_research\debug.keystore）签名，`versionCode 10304` 高于 1.3.3 及全部 1.3.3 测试版的 `10303`，因此可直接覆盖安装。
+1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.4-arm64.apk`，`609,570,629`（约 581 MB，镜像在 APK 里），SHA-256 `9B947B17D7B138C38877B77BAF2E0A5EB46D3074C1393016C5BF20DF0B799061`；增量包 `AstrBot-1.3.4-arm64-update.apk`，`26,390,338`，SHA-256 `478815CAA2753C24BCEE84D96E32386EEDF827C3559C84622E22A60D6A61DF4A`。1.3.4 正式版沿用旧密钥（_research\debug.keystore）签名，且与 1.3.4 各测试版同为 `versionCode 10304`，因此可直接覆盖 1.3.4-beta.10 及更早各测试版与 1.3.3。
 
 1.3.4-beta.3 又新增 5 个 Java 类（`QqbotUpdater` / `QqbotUpdaterCore` 应用内更新、`QqbotHealthBridge` 熔断与备份、`QqbotIslandView` / `QqbotIslandBridge` 灵动岛），重写了 `QqbotModelBridge`（原生直连模型接口），新增脚本 `build/opt/qqbot/crashfuse.sh`（崩溃熔断），并给 `backup.sh` 加了快照 / 回滚模式，所以增量包从 `26,300,297` 涨到 `26,361,737`。build-ui.ps1 现在还会把 `SYSTEM_ALERT_WINDOW` 与 `REQUEST_INSTALL_PACKAGES` 两个权限幂等补进 `AndroidManifest.xml`（供灵动岛与应用内安装使用），并已从杀软规避的删除清单里移出。
 
