@@ -306,6 +306,14 @@ public class QqbotActivity extends Activity {
         web.addJavascriptInterface(new QqbotUsageBridge(this), "AndroidUsage");
         web.addJavascriptInterface(new QqbotPortBridge(this), "AndroidPort");
         web.addJavascriptInterface(new QqbotDailyReport(this), "AndroidDaily");
+        // 1.3.5-beta.1：运行分层 / 告警中心 / Provider 体检 / 性能面板 / 反馈包。
+        // 五个都是独立类，页面按 window.AndroidLayer|AndroidAlert|AndroidProv|AndroidPerf|AndroidFeed 用；
+        // 老包（没有这些桥）会在 UI 侧整卡显示「功能不可用」，不会报错。
+        web.addJavascriptInterface(new QqbotLayerBridge(this), "AndroidLayer");
+        web.addJavascriptInterface(new QqbotAlertBridge(this), "AndroidAlert");
+        web.addJavascriptInterface(new QqbotProviderBridge(this), "AndroidProv");
+        web.addJavascriptInterface(new QqbotPerfBridge(this), "AndroidPerf");
+        web.addJavascriptInterface(new QqbotFeedbackBridge(this), "AndroidFeed");
         setContentView(web);
         // 通知栏点进来的 tab 要在第一次 loadUi 之前就记下来（singleTask 重入走 onNewIntent）
         pendingTab = tabOfIntent(getIntent());
@@ -319,6 +327,12 @@ public class QqbotActivity extends Activity {
         } catch (Throwable ignored) {
         }
         loadUi();
+        // 1.3.5-beta.1：桌面图标长按菜单（启动 / 停止 / 状态 / 日志 / 扫码）。
+        // 动态快捷方式，首次启动后生效；重复调用不会重复添加，失败也不影响主流程。
+        try {
+            QqbotShortcuts.install(this);
+        } catch (Throwable ignored) {
+        }
         // 最外层防掉线：常驻前台服务。没有它，应用一退到后台就会被系统当缓存进程
         // 冻结甚至杀掉，沙盒里的 NapCat/AstrBot 会「进程还在但完全没有反应」。
         // 用户关掉守护开关时 apply() 会自动跳过启动。

@@ -366,6 +366,21 @@ if ($mfDaily -notmatch 'com\.termux\.app\.QqbotDailyReport') {
 } else {
   Write-Host 'manifest: QqbotDailyReport already present'
 }
+# 3c8) QqbotWeeklyReport: 周报的每周日 20:00 闹钟接收器（1.3.5-beta.1）。
+#      与每日早报同一个写法：exported=false、只接自己排的显式 PendingIntent。
+$mfWeek = Get-Content $mf -Raw -Encoding UTF8
+if ($mfWeek -notmatch 'com\.termux\.app\.QqbotWeeklyReport') {
+  $weekRcv = '<receiver android:exported="false" android:name="com.termux.app.QqbotWeeklyReport"/>'
+  if ($mfWeek.Contains('</application>')) {
+    $mfWeek = $mfWeek.Replace('</application>', '        ' + $weekRcv + $NL + '    </application>')
+    [System.IO.File]::WriteAllText($mf, $mfWeek, (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host 'manifest: added QqbotWeeklyReport receiver'
+  } else {
+    Write-Host 'manifest: </application> missing - QqbotWeeklyReport NOT added'
+  }
+} else {
+  Write-Host 'manifest: QqbotWeeklyReport already present'
+}
 Remove-Item "$ROOT\_apkwork\smali_classes30" -Recurse -Force -ErrorAction SilentlyContinue
 Copy-Item "$ROOT\ui\smali" "$ROOT\_apkwork\smali_classes30" -Recurse -Force -ErrorAction Stop
 # 1.3.4-beta.7：先清空再整目录复制。只覆盖不删的话，上一版留在

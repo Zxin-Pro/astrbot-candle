@@ -21,12 +21,9 @@ import java.io.File;
  */
 public class BatteryMon extends BroadcastReceiver {
 
-    /** 进入降载的门槛。 */
-    private static final int LOW_PCT_IN = 15;
-    private static final float HOT_C_IN = 42f;
-    /** 退出的门槛（回差）。 */
-    private static final int LOW_PCT_OUT = 25;
-    private static final float HOT_C_OUT = 38f;
+    /** 退出回差：比进入门槛高 10 个百分点 / 低 4℃。门槛本身由 QqbotLayers 的 protect 配置提供。 */
+    private static final int LOW_PCT_OUT_DELTA = 10;
+    private static final float HOT_C_OUT_DELTA = 4f;
 
     private static final String NAME = "degrade";
 
@@ -106,16 +103,28 @@ public class BatteryMon extends BroadcastReceiver {
 
     /** 回差判断：状态没变就什么都不做（不写文件、不通知）。 */
     private static void evaluate(QqbotGuardService s) {
-        boolean lowBat = level >= 0 && level < LOW_PCT_IN;
-        boolean hot = tempC > HOT_C_IN;
+        // 门槛来自看门狗的 protect 配置（默认 15% / 42℃，可在界面里改），
+        // 桥保存后会立刻生效，不用重启服务。
+        int lowIn = 15;
+        float hotIn = 42f;
+        try {
+            int[] th = QqbotLayers.thresholds(s == null ? null : s.getFilesDir());
+            if (th != null && th.length >= 2) {
+                lowIn = th[0];
+                hotIn = th[1];
+            }
+        } catch (Throwable ignored) {
+        }
+        boolean lowBat = level >= 0 && level < lowIn;
+        boolean hot = tempC > hotIn;
         String cur = degrade;
         String want;
         if (cur.length() == 0) {
             want = hot ? "thermal" : (lowBat ? "battery" : "");
         } else {
-            // 退出条件：电量已回到 25% 以上、温度已降到 38℃ 以下（未知的项算「没问题」）。
-            boolean batOk = (level < 0) || level > LOW_PCT_OUT;
-            boolean tempOk = (tempC <= 0f) || tempC < HOT_C_OUT;
+            // 退出条件：电量回到 (进入线 + 10)% 以上、温度降到 (进入线 - 4)℃ 以下（未知的项算「没问题」）。
+            boolean batOk = (level < 0) || level > (lowIn + LOW_PCT_OUT_DELTA);
+            boolean tempOk = (tempC <= 0f) || tempC < (hotIn - HOT_C_OUT_DELTA);
             if (batOk && tempOk) want = "";
             else if (hot) want = "thermal";
             else if (lowBat) want = "battery";

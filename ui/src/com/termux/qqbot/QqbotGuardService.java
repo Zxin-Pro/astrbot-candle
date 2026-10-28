@@ -433,6 +433,12 @@ public class QqbotGuardService extends Service {
         // 两个子系统都挂在服务上：服务在它们才有意义，服务一停立刻注销，不留泄漏的监听。
         try { NetworkWatch.start(this); } catch (Throwable ignored) {}
         try { BatteryMon.start(this); } catch (Throwable ignored) {}
+        // 告警中心要先初始化：下面的看门狗探针掉线时会直接往里丢消息。
+        try { QqbotAlertCenter.init(this); } catch (Throwable ignored) {}
+        // 崩溃现场：先看上一任守护进程是不是被系统杀掉的（不是正常退出就留一份快照）。
+        try { QqbotCrashScene.onServiceCreate(this); } catch (Throwable ignored) {}
+        // 分层看门狗：沙盒 / NapCat / AstrBot 三层探针，15 秒一轮，掉哪层只重启哪层。
+        try { QqbotLayers.start(this); } catch (Throwable ignored) {}
         task = new QqbotGuardTask(this);
         thread = new Thread(task, "qqbot-guard");
         thread.setDaemon(true);
@@ -571,6 +577,8 @@ public class QqbotGuardService extends Service {
         if (task != null) task.stop();
         if (statusWatch != null) statusWatch.stop();
         try { NetworkWatch.stop(); } catch (Throwable ignored) {}
+        try { QqbotLayers.stop(); } catch (Throwable ignored) {}
+        try { QqbotCrashScene.onServiceDestroy(getFilesDir()); } catch (Throwable ignored) {}
         try { BatteryMon.stop(this); } catch (Throwable ignored) {}
         try { ScreenMode.stop(this); } catch (Throwable ignored) {}
         releaseWake();

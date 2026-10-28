@@ -2862,6 +2862,65 @@ html.devnotelock{ overflow: hidden; }
   /* 只读行的语义色：正常 --ok，异常 --warn（不新增任何颜色值） */
   .fgsrow[data-st="ok"] .fgsv{ color: var(--ok); }
   .fgsrow[data-st="warn"] .fgsv{ color: var(--warn); }
+  /* ===== 1.3.5-beta.1：六张新卡（运行分层 / 告警 / 周报 / 性能 / Provider / 反馈包） =====
+     只加类、不改令牌：卡片吃 --mi-card，卡内块吃 --mi-inner，按钮吃 --btn-r / --btn-r-sm。 */
+  .xfbox{ margin-top: 12px; padding: 2px 14px; border-radius: var(--mi-inner); background: var(--fill-1); }
+  .xflist{ margin-top: 10px; padding: 2px 14px; border-radius: var(--mi-inner); background: var(--fill-1); }
+  .xfempty{ padding: 12px 0; text-align: center; font-size: 12.5px; color: var(--label-3); }
+  .xfrow{ display: flex; align-items: center; gap: 10px; padding: 9px 0; }
+  .xfrow + .xfrow{ border-top: .5px solid var(--sep); }
+  .xfk{ flex: 0 0 auto; font-size: 13px; color: var(--label-2); }
+  .xfv{ flex: 1 1 auto; min-width: 0; text-align: right; font-size: 12.5px; font-weight: 600; color: var(--label); font-variant-numeric: tabular-nums; }
+  .xfv.ok{ color: var(--ok); }
+  .xfv.warn{ color: var(--warn); }
+  .xfv.bad{ color: var(--bad); }
+  .xfv.mute{ color: var(--label-3); }
+  .xfbox input.xfnum{ flex: 0 0 auto; width: 84px; min-width: 0; min-height: 44px; padding: 0 12px; text-align: right; font-size: 16px; font-variant-numeric: tabular-nums; }
+  /* 免打扰两个 time 输入平分剩余宽度：360 宽下也不能顶出卡片 */
+  .xfbox input[type="time"]{ flex: 1 1 0; width: auto; min-width: 0; padding: 0 8px; }
+  .xfsec{ margin-top: 14px; font-size: 11.5px; font-weight: 600; letter-spacing: .2px; color: var(--label-3); }
+  .layrow{ display: flex; align-items: center; gap: 10px; padding: 10px 0; }
+  .layrow + .layrow{ border-top: .5px solid var(--sep); }
+  .laydot{ flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--label-3); box-shadow: 0 0 0 3px color-mix(in srgb, var(--label-3) 18%, transparent); }
+  .laydot.ok{ background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 20%, transparent); }
+  .laydot.bad{ background: var(--bad); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 20%, transparent); }
+  .laydot.unk{ background: var(--label-3); }
+  .laymain{ flex: 1 1 auto; min-width: 0; }
+  .layname{ font-size: 13.5px; font-weight: 600; color: var(--label); }
+  .layhint{ margin-top: 3px; font-size: 12px; line-height: 1.5; color: var(--label-2); word-break: break-word; }
+  .laybtn{ flex: none; }
+  .crow{ padding: 10px 0; }
+  .crow + .crow{ border-top: .5px solid var(--sep); }
+  .crowhd{ display: flex; align-items: center; gap: 9px; cursor: pointer; }
+  .crowt{ flex: 1 1 auto; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .crowm{ flex: none; font-size: 11px; color: var(--label-3); font-variant-numeric: tabular-nums; }
+  .ctext{ display: none; margin-top: 8px; padding: 10px 12px; border-radius: var(--btn-r-sm); background: var(--fill-2); font-size: 11.5px; line-height: 1.55; color: var(--label-2); white-space: pre-wrap; word-break: break-word; max-height: 34vh; overflow: auto; }
+  .crow.open .ctext{ display: block; }
+  .crowdel{ display: none; margin-top: 8px; }
+  .crow.open .crowdel{ display: block; }
+  .arow{ display: flex; align-items: center; gap: 9px; padding: 9px 0; }
+  .arow + .arow{ border-top: .5px solid var(--sep); }
+  .atime{ flex: none; font-size: 11px; color: var(--label-3); font-variant-numeric: tabular-nums; }
+  .atitle{ flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: var(--label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wkgrid{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+  .wkcell{ min-width: 0; padding: 10px 12px; border-radius: var(--mi-inner); background: var(--fill-1); }
+  .wkk{ font-size: 11.5px; color: var(--label-2); }
+  .wkv{ margin-top: 3px; font-size: 16px; font-weight: 600; color: var(--label); font-variant-numeric: tabular-nums; }
+  .wkbar{ display: flex; align-items: flex-end; gap: 6px; height: 58px; margin-top: 12px; }
+  .wk-col{ flex: 1 1 0; min-width: 0; min-height: 3px; border-radius: 6px 6px 3px 3px; background: color-mix(in srgb, var(--accent) 55%, transparent); }
+  .prow{ padding: 9px 0; }
+  .prow + .prow{ border-top: .5px solid var(--sep); }
+  .prowhd{ display: flex; align-items: baseline; gap: 10px; }
+  .pk{ flex: 1 1 auto; min-width: 0; font-size: 13px; color: var(--label-2); }
+  .pv{ flex: none; font-size: 12.5px; font-weight: 600; color: var(--label); font-variant-numeric: tabular-nums; }
+  .pbar{ height: 4px; margin-top: 6px; border-radius: 999px; background: var(--fill-2); overflow: hidden; }
+  .pbar > i{ display: block; height: 100%; width: 0; border-radius: 999px; background: var(--accent); transition: width .3s var(--ease); }
+  .provrow{ display: flex; align-items: center; gap: 9px; padding: 10px 0; }
+  .provrow + .provrow{ border-top: .5px solid var(--sep); }
+  .provname{ flex: 1 1 auto; min-width: 0; }
+  .provn{ font-size: 12.5px; font-weight: 600; color: var(--label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .provm{ margin-top: 2px; font-size: 11px; color: var(--label-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .provms{ flex: none; font-size: 11px; color: var(--label-2); font-variant-numeric: tabular-nums; }
 
 /* ============================================================================
    1.3.4-beta.4 · 按钮视觉层（task-23 / ui-tap）
@@ -3889,6 +3948,123 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
       <div class="hint" id="guardNote">—</div>
     </div>
 
+    <!-- 1.3.5-beta.1 · 运行分层：沙盒打底，NapCat / AstrBot 各占一层；哪层掉了只重启哪层。
+         老安装包没有 AndroidLayer 桥，整段降级成一句「这个安装包还不支持」。 -->
+    <div class="card" id="layerCard">
+      <h2><span class="dot" id="d-layer"></span>运行分层</h2>
+      <div class="hint">沙盒打底，NapCat 与 AstrBot 各跑一层：哪一层掉了就只重启那一层，另外两层不受影响，不用整机重启。</div>
+      <div id="layerBody">
+        <div id="layerRows" style="margin-top:10px"></div>
+        <div class="xfbox">
+          <div class="xfrow"><span class="xfk">当前电量</span><span class="xfv" id="protBatt">—</span></div>
+          <div class="xfrow"><span class="xfk">电池温度</span><span class="xfv" id="protTemp">—</span></div>
+          <div class="xfrow"><span class="xfk">降载状态</span><span class="xfv" id="protState">—</span></div>
+          <div class="xfrow"><span class="xfk">低电阈值</span><input class="xfnum" id="protLow" type="number" inputmode="numeric" min="1" max="60" step="1" aria-label="低电阈值百分比"><span class="xfk">%</span></div>
+          <div class="xfrow"><span class="xfk">高温阈值</span><input class="xfnum" id="protHot" type="number" inputmode="numeric" min="25" max="80" step="1" aria-label="高温阈值摄氏度"><span class="xfk">℃</span></div>
+          <div class="swrow" style="border-top:.5px solid var(--sep)">
+            <div class="swinfo">
+              <div class="swname">低电高温时降载<span class="swtag off" id="protPauseTag">已关闭</span></div>
+              <div class="swdesc">电量低于阈值或温度过高时暂停重活（重建容器、全量自检），恢复后自动继续。</div>
+            </div>
+            <button class="tgl" id="protPause" data-act="protsave" data-arg="toggle" aria-label="低电高温降载开关"></button>
+          </div>
+        </div>
+        <div class="btns" style="margin-top:10px">
+          <button class="small primary" data-act="protsave" data-arg="save" style="flex:1">保存保护阈值</button>
+        </div>
+        <div class="xfsec">崩溃现场</div>
+        <div class="xflist" id="layCrashList"><div class="xfempty">还没有崩溃记录</div></div>
+      </div>
+      <div class="hint" id="layerUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
+
+    <!-- 1.3.5-beta.1 · 告警中心（AndroidAlert）：五个分类开关 + 免打扰 + 升级 + 最近 5 条 -->
+    <div class="card" id="alertCard">
+      <h2><span class="dot" id="d-alert"></span>告警中心</h2>
+      <div class="hint">掉线、风控、空间不足、崩溃、模型异常各发一条通知；免打扰时段里只记录、不打扰。</div>
+      <div id="alertBody">
+        <div style="margin-top:4px">
+          <div class="swrow"><div class="swinfo"><div class="swname">掉线告警</div><div class="swdesc">NapCat / AstrBot 掉线超过一分钟</div></div><button class="tgl atgl" data-cat="offline" data-arg="offline" data-act="alertset" aria-label="掉线告警开关"></button></div>
+          <div class="swrow"><div class="swinfo"><div class="swname">风控告警</div><div class="swdesc">账号被要求验证、或被踢下线</div></div><button class="tgl atgl" data-cat="risk" data-arg="risk" data-act="alertset" aria-label="风控告警开关"></button></div>
+          <div class="swrow"><div class="swinfo"><div class="swname">空间告警</div><div class="swdesc">剩余存储低于安全线</div></div><button class="tgl atgl" data-cat="space" data-arg="space" data-act="alertset" aria-label="空间告警开关"></button></div>
+          <div class="swrow"><div class="swinfo"><div class="swname">崩溃告警</div><div class="swdesc">进程崩溃、被系统杀掉</div></div><button class="tgl atgl" data-cat="crash" data-arg="crash" data-act="alertset" aria-label="崩溃告警开关"></button></div>
+          <div class="swrow"><div class="swinfo"><div class="swname">模型告警</div><div class="swdesc">模型接口连续失败、额度用尽</div></div><button class="tgl atgl" data-cat="model" data-arg="model" data-act="alertset" aria-label="模型告警开关"></button></div>
+        </div>
+        <div class="xfbox">
+          <div class="xfrow"><span class="xfk">免打扰</span><input class="dltime" id="quietFrom" type="time" step="60" aria-label="免打扰开始时间"><span class="xfk">→</span><input class="dltime" id="quietTo" type="time" step="60" aria-label="免打扰结束时间"></div>
+          <div class="swrow" style="border-top:.5px solid var(--sep)">
+            <div class="swinfo"><div class="swname">告警升级<span class="swtag off" id="escTag">已关闭</span></div><div class="swdesc">同一类告警连着来，第二次起用更醒目的方式提醒。</div></div>
+            <button class="tgl" id="escTgl" data-act="alertset" data-arg="escalate" aria-label="告警升级开关"></button>
+          </div>
+        </div>
+        <div class="btns" style="margin-top:10px">
+          <button class="small" data-act="alertmute" style="flex:1">静音 1 小时</button>
+          <button class="small primary" data-act="alerttest" style="flex:1">发一条测试告警</button>
+        </div>
+        <div class="hint" id="alertMuteHint" style="margin-top:6px"></div>
+        <div class="xfsec">最近告警</div>
+        <div class="xflist" id="alertList"><div class="xfempty">最近没有告警</div></div>
+      </div>
+      <div class="hint" id="alertUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
+
+    <!-- 1.3.5-beta.1 · 周报（AndroidAlert.weekly）：四格指标 + 调用/花费 + 7 根迷你柱 -->
+    <div class="card" id="weekCard">
+      <h2><span class="dot" id="d-week"></span>周报</h2>
+      <div class="hint">最近 7 天的运行小结：可用率、消息量、平均响应和掉线时长。</div>
+      <div id="weekBody">
+        <div class="hint" id="weekRange" style="margin-top:6px">—</div>
+        <div class="wkgrid">
+          <div class="wkcell"><div class="wkk">可用率</div><div class="wkv" id="wkUp">—</div></div>
+          <div class="wkcell"><div class="wkk">消息</div><div class="wkv" id="wkMsgs">—</div></div>
+          <div class="wkcell"><div class="wkk">平均响应</div><div class="wkv" id="wkAvg">—</div></div>
+          <div class="wkcell"><div class="wkk">掉线</div><div class="wkv" id="wkOff">—</div></div>
+        </div>
+        <div class="xfbox">
+          <div class="xfrow"><span class="xfk">模型调用</span><span class="xfv" id="wkCalls">—</span></div>
+          <div class="xfrow"><span class="xfk">花费</span><span class="xfv" id="wkCost">—</span></div>
+        </div>
+        <div class="wkbar" id="wkBars"></div>
+        <div class="btns" style="margin-top:10px"><button class="small primary" data-act="weekpush" style="flex:1">生成并推送周报</button></div>
+      </div>
+      <div class="hint" id="weekUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
+
+    <!-- 1.3.5-beta.1 · 性能面板（AndroidPerf）：五行 + 2 秒实时采样（仅本页可见时） -->
+    <div class="card" id="perfCard">
+      <h2><span class="dot" id="d-perf"></span>性能面板</h2>
+      <div class="hint">内存 / CPU / 线程 / 运行时长。卡顿时先看这里，再决定要不要重启。</div>
+      <div id="perfBody">
+        <div style="margin-top:4px">
+          <div class="prow"><div class="prowhd"><span class="pk">内存</span><span class="pv" id="perfMem">—</span></div><div class="pbar"><i id="perfMemBar"></i></div></div>
+          <div class="prow"><div class="prowhd"><span class="pk">CPU</span><span class="pv" id="perfCpu">—</span></div><div class="pbar"><i id="perfCpuBar"></i></div></div>
+          <div class="prow"><div class="prowhd"><span class="pk">线程</span><span class="pv" id="perfThreads">—</span></div></div>
+          <div class="prow"><div class="prowhd"><span class="pk">运行时长</span><span class="pv" id="perfUp">—</span></div></div>
+          <div class="prow"><div class="prowhd"><span class="pk">FPS</span><span class="pv" id="perfFps">—</span></div></div>
+        </div>
+        <div class="swrow" style="margin-top:4px">
+          <div class="swinfo"><div class="swname">实时采样（每 2 秒）<span class="swtag off" id="perfTag">已关闭</span></div><div class="swdesc">只在「更多」页可见时采样，切走自动停。</div></div>
+          <button class="tgl" id="perfLive" data-act="perflive" aria-label="实时采样开关"></button>
+        </div>
+        <div class="btns" style="margin-top:10px"><button class="small" data-act="perfsample" style="flex:1">采样一次</button></div>
+      </div>
+      <div class="hint" id="perfUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
+
+    <!-- 1.3.5-beta.1 · 反馈包（AndroidFeed）：生成 + 分享，结果写在 #feedOut -->
+    <div class="card" id="feedCard">
+      <h2><span class="dot" id="d-feed"></span>反馈包</h2>
+      <div class="hint">把设备信息、最近 4 个日志、崩溃快照和脱敏配置打成一个包。只在本机生成，分享时由你选择发给谁。</div>
+      <div id="feedBody">
+        <div class="btns" style="margin-top:10px">
+          <button class="small primary" data-act="feedbuild" style="flex:1">生成反馈包</button>
+          <button class="small" id="btnFeedShare" data-act="feedshare" style="flex:1" disabled>分享最近一次</button>
+        </div>
+        <div class="hint" id="feedOut" style="margin-top:8px">还没有生成过</div>
+      </div>
+      <div class="hint" id="feedUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
+
     <!-- 厂商省电引导（功能 5）：各家的「省电策略」入口不一样，原生按 MANUFACTURER
          分支跳对应设置页（失败退回应用详情页）。只做引导，不假装能替用户改系统设置。 -->
     <div class="card" id="powerCard">
@@ -4186,6 +4362,17 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
         <button class="small" data-act="testproxy" id="btnProxyTest">测试代理</button>
       </div>
       <div class="hint" id="proxyTestOut" style="margin-top:8px"></div>
+    </div>
+
+    <!-- 1.3.5-beta.1 · Provider 体检（AndroidProv）：逐个 provider 真打一次模型接口，800ms 轮询到 done -->
+    <div class="card" id="provCard">
+      <h2><span class="dot" id="d-prov"></span>Provider 体检</h2>
+      <div class="hint" id="provNote">会把每个 provider 的模型接口真打一次，不发消息、不花钱。</div>
+      <div id="provBody">
+        <div class="xflist" id="provList"><div class="xfempty">还没有体检记录，点下面「全部体检」</div></div>
+        <div class="btns" style="margin-top:10px"><button class="small primary" data-act="provall" style="flex:1">全部体检</button></div>
+      </div>
+      <div class="hint" id="provUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
     </div>
 
     <div class="card">
@@ -6006,6 +6193,9 @@ var NO_LOCK_ACTS = [
   "portscan", "portkill",
   /* b137 日志清理：只动沙盒日志目录里的旧文件，跟容器装没装好无关 */
   "logprune", "logpruneyes", "logpruneno",
+  /* 1.3.5-beta.1：新卡都是「读状态 / 给诊断入口」，部署没完成时正是要看的时候，不该置灰 */
+  "layrestart", "protsave", "crashtgl", "crashdel", "alertset", "alertmute", "alerttest",
+  "weekpush", "perflive", "perfsample", "provall", "provone", "feedbuild", "feedshare",
   "dailytoggle"
 ];
 
@@ -8830,6 +9020,21 @@ document.addEventListener("click", function(ev){
   else if (act === "qrcopyurl") qrCopyUrl();
   /* ---------- 1.3.4-beta.9：前台常驻 ---------- */
   else if (act === "fgsfix") fgsFix();
+  /* ---------- 1.3.5-beta.1：运行分层 / 告警 / 周报 / 性能 / Provider / 反馈包 ---------- */
+  else if (act === "layrestart") layRestart(arg);
+  else if (act === "protsave") protSave(arg);
+  else if (act === "crashtgl") crashToggle(arg);
+  else if (act === "crashdel") crashDel(arg);
+  else if (act === "alertset") alertToggle(arg);
+  else if (act === "alertmute") alertMute();
+  else if (act === "alerttest") alertTest();
+  else if (act === "weekpush") weekPush();
+  else if (act === "perflive") perfSetLive(!XF.perfOn);
+  else if (act === "perfsample") { try { perfPaint(); } catch (eP1) {} extToast("已采样一次"); }
+  else if (act === "provall") provAll();
+  else if (act === "provone") provOne(arg);
+  else if (act === "feedbuild") feedBuild();
+  else if (act === "feedshare") feedShare();
   else if (act === "savebot") saveBot();
   else if (act === "cancelbot") cancelBot();
   else if (act === "pickbg") {
@@ -11519,9 +11724,508 @@ function refreshExtras(st){
   } catch (e10) {}
 }
 
+/* ===================== 1.3.5-beta.1：六张新卡 =====================
+   运行分层 / 告警中心 / 周报 / 性能面板 / Provider 体检 / 反馈包。
+   通用约定：桥一律 typeof 探测（老包没有就整卡降级成一句「这个安装包还不支持」），
+   所有桥调用裹 try/catch 且把异常当空态；轮询节制——性能只在「更多」页可见时 2 秒一次，
+   告警与周报进入页面各拉一次，Provider 体检 800ms 轮询到 done 就停。 */
+var XF = {
+  layer: null, alert: null, week: null, prov: null, feed: null,
+  perfTimer: 0, perfOn: false, perfFps: 0, fpsRaF: 0, fpsN: 0, fpsT: 0,
+  provTimer: 0, provTries: 0, alertAt: 0, weekAt: 0
+};
+var XF_UNAVAIL = "这个安装包还不支持（升级后可用）";
+
+function xfBridge(name){
+  try { var w = window[name]; return (w && typeof w === "object") ? w : null; } catch (e) { return null; }
+}
+function xfHas(name, fn){
+  try { var w = xfBridge(name); return !!(w && typeof w[fn] === "function"); } catch (e) { return false; }
+}
+/* 调一次桥方法：异常 / 空串 / 非 JSON 一律 null，调用方按空态画 */
+function xfCall(name, fn, arg){
+  var w = xfBridge(name), v = null;
+  try {
+    if (!w || typeof w[fn] !== "function") return null;
+    v = (arguments.length >= 3) ? w[fn](String(arg)) : w[fn]();
+  } catch (e) { return null; }
+  if (v && typeof v === "object") return v;
+  var t = String(v == null ? "" : v).replace(/^\s+|\s+$/g, "");
+  if (!t) return null;
+  try { var o = JSON.parse(t); return (o && typeof o === "object") ? o : null; } catch (e2) { return null; }
+}
+function xfText(id, v){
+  var n = el(id); if (!n) return;
+  var t = String(v == null ? "" : v);
+  if (n.textContent !== t) n.textContent = t;
+}
+/* 老包降级：桥不在就把整段控件藏起来，只留一句提示（不报错、不摆空壳） */
+function xfDegrade(bodyId, unId, ok){
+  var b = el(bodyId), u = el(unId);
+  if (b) b.style.display = ok ? "" : "none";
+  if (u){ u.style.display = ok ? "none" : ""; if (!ok) u.textContent = XF_UNAVAIL; }
+}
+function xfSize(b){
+  b = Number(b || 0);
+  if (b <= 0) return "—";
+  if (b >= 1048576) return (Math.round(b / 1048576 * 10) / 10) + " MB";
+  if (b >= 1024) return Math.round(b / 1024) + " KB";
+  return b + " B";
+}
+function xfClock(ms){
+  var v = Number(ms || 0);
+  if (!isFinite(v) || v <= 0) return "—";
+  var d = new Date(v);
+  function p2(x){ return (x < 10 ? "0" : "") + x; }
+  return p2(d.getMonth() + 1) + "-" + p2(d.getDate()) + " " + p2(d.getHours()) + ":" + p2(d.getMinutes());
+}
+
+/* ---------------- 运行分层 ---------------- */
+function layerPaint(){
+  var ok = xfHas("AndroidLayer", "status");
+  xfDegrade("layerBody", "layerUnavail", ok);
+  if (!ok) return;
+  var j = xfCall("AndroidLayer", "status");
+  if (!j || j.ok === false){
+    var eb = el("layerRows");
+    if (eb) setHtml(eb, '<div class="xfempty">读取运行分层失败' + (j && j.err ? "：" + esc(j.err) : "") + '</div>');
+    return;
+  }
+  XF.layer = j;
+  var items = j.items || [], bad = 0, i;
+  for (i = 0; i < items.length; i++) if (String(items[i].state) === "down") bad++;
+  var d = el("d-layer");
+  if (d) d.className = "dot " + (bad ? "bad" : (items.length ? "ok" : "mute"));
+  var h = [];
+  for (i = 0; i < items.length; i++){
+    var it = items[i] || {}, st = String(it.state || "unknown");
+    var cd = st === "ok" ? "ok" : (st === "down" ? "bad" : "unk");
+    var hint = String(it.hint || "");
+    if (it.port) hint += (hint ? " · " : "") + "127.0.0.1:" + it.port + (it.ms != null && it.ms !== "" ? "（" + it.ms + "ms）" : "");
+    if (Number(it.upMin || 0) > 0) hint += (hint ? " · " : "") + "已运行 " + extDur(Number(it.upMin) * 60);
+    if (Number(it.restarts || 0) > 0) hint += (hint ? " · " : "") + "已重启 " + it.restarts + " 次";
+    h.push('<div class="layrow" data-id="' + esc(it.id) + '">' +
+      '<span class="laydot ' + cd + '" aria-hidden="true"></span>' +
+      '<div class="laymain"><div class="layname">' + esc(it.name || it.id) + '</div>' +
+      '<div class="layhint">' + esc(hint || "—") + '</div></div>' +
+      '<button class="small laybtn" data-act="layrestart" data-arg="' + esc(it.id) + '">重启</button></div>');
+  }
+  setHtml(el("layerRows"), h.join("") || '<div class="xfempty">没有可显示的分层</div>');
+  /* 低电高温保护 */
+  var pr = j.protect || {};
+  var lv = Number(pr.level), tp = Number(pr.temp), low = Number(pr.lowPct || 0), hot = Number(pr.hotC || 0);
+  xfText("protBatt", (pr.level != null && pr.level !== "") ? (pr.level + "%") : "—");
+  xfText("protTemp", (pr.temp != null && pr.temp !== "") ? (pr.temp + "℃") : "—");
+  var pb = el("protBatt"), pt = el("protTemp");
+  if (pb) pb.className = "xfv" + (low > 0 && lv > 0 && lv <= low ? " warn" : "");
+  if (pt) pt.className = "xfv" + (hot > 0 && tp >= hot ? " warn" : "");
+  var deg = String(pr.degrade || "");
+  var ps = el("protState");
+  if (ps){
+    ps.textContent = deg ? deg : (pr.pause ? "保护已开启" : "保护已关闭");
+    ps.className = "xfv" + (deg ? " warn" : (pr.pause ? "ok" : "mute"));
+  }
+  var lo = el("protLow"), hi = el("protHot");
+  if (lo && !lo.__touched && pr.lowPct != null) lo.value = String(pr.lowPct);
+  if (hi && !hi.__touched && pr.hotC != null) hi.value = String(pr.hotC);
+  var pz = el("protPause");
+  if (pz){ pz.classList.toggle("on", !!pr.pause); pz.setAttribute("aria-checked", pr.pause ? "true" : "false"); }
+  var ptag = el("protPauseTag");
+  if (ptag){ ptag.className = "swtag " + (pr.pause ? "on" : "off"); ptag.textContent = pr.pause ? "已开启" : "已关闭"; }
+  crashPaint(null);
+}
+function crashPaint(items){
+  var box = el("layCrashList"); if (!box) return;
+  if (!items){
+    var j = xfCall("AndroidLayer", "crashList");
+    items = (j && j.items) || [];
+  }
+  if (!items.length){ setHtml(box, '<div class="xfempty">还没有崩溃记录</div>'); return; }
+  var h = [], i;
+  for (i = 0; i < items.length; i++){
+    var c = items[i] || {};
+    h.push('<div class="crow" data-id="' + esc(c.id) + '">' +
+      '<div class="crowhd" data-act="crashtgl" data-arg="' + esc(c.id) + '" role="button" tabindex="0">' +
+      '<span class="laydot bad" aria-hidden="true"></span>' +
+      '<span class="crowt">' + esc(c.title || c.kind || "崩溃") + '</span>' +
+      '<span class="crowm">' + esc(xfClock(c.at)) + ' · ' + esc(xfSize(c.size)) + '</span></div>' +
+      '<div class="ctext">点开看最近日志…</div>' +
+      '<div class="crowdel"><button class="small danger" data-act="crashdel" data-arg="' + esc(c.id) + '">删除这条</button></div></div>');
+  }
+  setHtml(box, h.join(""));
+}
+function crashToggle(id){
+  if (!id) return;
+  var row = document.querySelector('.crow[data-id="' + id + '"]');
+  if (!row) return;
+  var open = !row.classList.contains("open");
+  row.classList.toggle("open", open);
+  if (!open) return;
+  var ct = row.querySelector(".ctext");
+  var j = xfCall("AndroidLayer", "crashGet", id);
+  if (!j || j.ok === false){ if (ct) ct.textContent = (j && j.err) ? String(j.err) : "读不到这条快照"; return; }
+  var env = j.env || {};
+  var head = "时间：" + xfClock(j.at) + "　类型：" + (j.kind || "—") +
+    "\n环境：电量 " + (env.batt != null ? env.batt + "%" : "—") +
+    " · 温度 " + (env.temp != null ? env.temp + "℃" : "—") +
+    " · 内存 " + (env.memMb != null ? env.memMb + " MB" : "—") +
+    " · 已运行 " + (Number(env.upMin || 0) > 0 ? extDur(Number(env.upMin) * 60) : "—") + "\n\n";
+  if (ct) ct.textContent = head + String(j.text || "");
+}
+function crashDel(id){
+  if (!id) return;
+  var r = xfCall("AndroidLayer", "crashDel", id);
+  if (!r || r.ok === false){ extToast((r && r.err) || "删除失败，稍后再试"); return; }
+  extToast("已删除这条快照");
+  layerPaint();
+}
+function layRestart(id){
+  if (!id) return;
+  if (!xfHas("AndroidLayer", "restart")){ extToast(XF_UNAVAIL); return; }
+  var r = xfCall("AndroidLayer", "restart", id);
+  if (!r || r.ok === false){ extToast((r && r.err) || "重启失败，稍后再试"); return; }
+  extToast(r.msg || "已重启");
+  setTimeout(function(){ try { layerPaint(); } catch (e) {} }, 1500);
+}
+function protSave(arg){
+  if (!xfHas("AndroidLayer", "protect")){ extToast(XF_UNAVAIL); return; }
+  var pz = el("protPause");
+  if (arg === "toggle" && pz){ pz.classList.toggle("on"); }
+  var payload = {};
+  var lo = el("protLow"), hi = el("protHot");
+  var lv = lo ? Number(lo.value) : NaN;
+  var hv = hi ? Number(hi.value) : NaN;
+  if (isFinite(lv) && lv > 0) payload.lowPct = Math.max(1, Math.min(60, Math.round(lv)));
+  if (isFinite(hv) && hv > 0) payload.hotC = Math.max(25, Math.min(80, Math.round(hv)));
+  if (pz) payload.pause = pz.classList.contains("on");
+  var r = xfCall("AndroidLayer", "protect", JSON.stringify(payload));
+  if (!r || r.ok === false){ extToast((r && r.err) || "保存失败，稍后再试"); return; }
+  if (lo) lo.__touched = 0;
+  if (hi) hi.__touched = 0;
+  extToast("保护阈值已保存");
+  layerPaint();
+}
+
+/* ---------------- 告警中心 ---------------- */
+function alertPaint(force){
+  var ok = xfHas("AndroidAlert", "get");
+  xfDegrade("alertBody", "alertUnavail", ok);
+  if (!ok) return;
+  var now = Date.now();
+  if (!force && XF.alertAt && now - XF.alertAt < 8000) return;
+  var j = xfCall("AndroidAlert", "get");
+  if (!j || j.ok === false) return;
+  XF.alert = j; XF.alertAt = now;
+  var pr = j.prefs || {};
+  var cats = ["offline", "risk", "space", "crash", "model"], i;
+  for (i = 0; i < cats.length; i++){
+    var b = document.querySelector('[data-act="alertset"][data-arg="' + cats[i] + '"]');
+    if (!b) continue;
+    var on = pr[cats[i]] !== false;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-checked", on ? "true" : "false");
+  }
+  var escOn = pr.escalate !== false;
+  var eb = el("escTgl");
+  if (eb){ eb.classList.toggle("on", escOn); eb.setAttribute("aria-checked", escOn ? "true" : "false"); }
+  var et = el("escTag");
+  if (et){ et.className = "swtag " + (escOn ? "on" : "off"); et.textContent = escOn ? "已开启" : "已关闭"; }
+  var qf = el("quietFrom"), qt = el("quietTo");
+  if (qf && !qf.__touched && pr.quietFrom) qf.value = String(pr.quietFrom);
+  if (qt && !qt.__touched && pr.quietTo) qt.value = String(pr.quietTo);
+  var muted = Number(j.mutedUntil || 0) > now;
+  xfText("alertMuteHint", muted ? ("已静音，到 " + xfClock(j.mutedUntil) + " 恢复") : "");
+  var lst = j.last || [], h = [];
+  for (i = 0; i < lst.length && i < 5; i++){
+    var a = lst[i] || {}, lv = String(a.lv || "info");
+    h.push('<div class="arow"><span class="atime">' + esc(xfClock(a.t)) + '</span>' +
+      '<span class="dot ' + (lv === "crit" ? "bad" : (lv === "warn" ? "warn" : "mute")) + '" aria-hidden="true"></span>' +
+      '<span class="atitle">' + esc(a.title || a.body || "—") + (Number(a.n || 1) > 1 ? " ×" + a.n : "") + '</span></div>');
+  }
+  setHtml(el("alertList"), h.join("") || '<div class="xfempty">最近没有告警</div>');
+  var d = el("d-alert");
+  if (d) d.className = "dot " + (lst.length ? (String(lst[0].lv) === "crit" ? "bad" : "warn") : "mute");
+}
+function alertToggle(cat){
+  cat = String(cat || "");
+  if (!cat) return;
+  if (!xfHas("AndroidAlert", "set")){ extToast(XF_UNAVAIL); return; }
+  var node = document.querySelector('[data-act="alertset"][data-arg="' + cat + '"]');
+  var on = !(node && node.classList.contains("on"));
+  var payload = {};
+  payload[cat] = on;
+  var r = xfCall("AndroidAlert", "set", JSON.stringify(payload));
+  if (!r || r.ok === false){ extToast((r && r.err) || "保存失败，稍后再试"); return; }
+  if (node){ node.classList.toggle("on", on); node.setAttribute("aria-checked", on ? "true" : "false"); }
+  if (cat === "escalate"){
+    var t = el("escTag");
+    if (t){ t.className = "swtag " + (on ? "on" : "off"); t.textContent = on ? "已开启" : "已关闭"; }
+  }
+}
+function quietSave(){
+  if (!xfHas("AndroidAlert", "set")) return;
+  var qf = el("quietFrom"), qt = el("quietTo"), payload = {};
+  if (qf && qf.value) payload.quietFrom = qf.value;
+  if (qt && qt.value) payload.quietTo = qt.value;
+  if (payload.quietFrom == null && payload.quietTo == null) return;
+  var r = xfCall("AndroidAlert", "set", JSON.stringify(payload));
+  if (!r || r.ok === false){ extToast((r && r.err) || "免打扰保存失败"); return; }
+  if (qf) qf.__touched = 0;
+  if (qt) qt.__touched = 0;
+  extToast("免打扰时段已保存");
+  alertPaint(true);
+}
+function alertMute(){
+  if (!xfHas("AndroidAlert", "mute")){ extToast(XF_UNAVAIL); return; }
+  var r = xfCall("AndroidAlert", "mute", 60);
+  if (!r || r.ok === false){ extToast((r && r.err) || "静音失败"); return; }
+  extToast("已静音 1 小时");
+  alertPaint(true);
+}
+function alertTest(){
+  if (!xfHas("AndroidAlert", "test")){ extToast(XF_UNAVAIL); return; }
+  var r = xfCall("AndroidAlert", "test", "offline");
+  if (!r || r.ok === false){ extToast((r && r.err) || "测试告警没发出去"); return; }
+  extToast("已发一条测试告警");
+  setTimeout(function(){ try { alertPaint(true); } catch (e) {} }, 900);
+}
+
+/* ---------------- 周报 ---------------- */
+function weekPaint(force){
+  var ok = xfHas("AndroidAlert", "weekly");
+  xfDegrade("weekBody", "weekUnavail", ok);
+  if (!ok) return;
+  var now = Date.now();
+  if (!force && XF.weekAt && now - XF.weekAt < 30000) return;
+  var j = xfCall("AndroidAlert", "weekly");
+  if (!j || j.ok === false) return;
+  XF.week = j; XF.weekAt = now;
+  var rg = (j.from || j.to) ? ((j.from || "—") + " → " + (j.to || "—")) : "—";
+  xfText("weekRange", rg);
+  xfText("wkUp", (j.uptimePct != null && j.uptimePct !== "") ? (j.uptimePct + "%") : "—");
+  xfText("wkMsgs", (j.msgs != null) ? String(j.msgs) : "—");
+  xfText("wkAvg", (Number(j.avgMs || 0) > 0) ? (j.avgMs + " ms") : "—");
+  xfText("wkOff", (j.offlineMin != null) ? (j.offlineMin + " 分钟") : "—");
+  xfText("wkCalls", (j.calls != null) ? (j.calls + " 次") : "—");
+  xfText("wkCost", (Number(j.cost) >= 0) ? ("¥" + j.cost) : "未开启计价");
+  var days = j.days || [], max = 1, i;
+  for (i = 0; i < days.length; i++) max = Math.max(max, Number((days[i] || {}).msgs || 0));
+  var h = [];
+  for (i = 0; i < days.length; i++){
+    var dd = days[i] || {}, v = Number(dd.msgs || 0);
+    var px = Math.max(3, Math.round(v / max * 54));
+    h.push('<i class="wk-col" style="height:' + px + 'px" title="' + esc((dd.d || "") + " · " + v + " 条") + '"></i>');
+  }
+  setHtml(el("wkBars"), h.join(""));
+  var d = el("d-week");
+  if (d) d.className = "dot " + (Number(j.uptimePct || 0) >= 98 ? "ok" : (Number(j.uptimePct || 0) > 0 ? "warn" : "mute"));
+}
+function weekPush(){
+  if (!xfHas("AndroidAlert", "weeklyPush")){ extToast(XF_UNAVAIL); return; }
+  var r = xfCall("AndroidAlert", "weeklyPush");
+  if (!r || r.ok === false){ extToast((r && r.err) || "周报推送失败"); return; }
+  extToast("周报已生成并推送");
+  weekPaint(true);
+}
+
+/* ---------------- 性能面板 ---------------- */
+function perfPaint(){
+  var ok = xfHas("AndroidPerf", "sample");
+  xfDegrade("perfBody", "perfUnavail", ok);
+  if (!ok) return;
+  var j = xfCall("AndroidPerf", "sample");
+  if (!j || j.ok === false) return;
+  var memPct = Number(j.memPct || 0);
+  xfText("perfMem", (j.memMb != null) ? (j.memMb + " / " + (j.memMaxMb || "?") + " MB（" + Math.round(memPct) + "%）") : "—");
+  var mb = el("perfMemBar"); if (mb) mb.style.width = Math.max(0, Math.min(100, memPct)) + "%";
+  xfText("perfCpu", (j.cpuPct != null) ? (j.cpuPct + "%") : "—");
+  var cb2 = el("perfCpuBar"); if (cb2) cb2.style.width = Math.max(0, Math.min(100, Number(j.cpuPct || 0))) + "%";
+  xfText("perfThreads", (j.threads != null) ? String(j.threads) : "—");
+  xfText("perfUp", (Number(j.upMin || 0) > 0) ? extDur(Number(j.upMin) * 60) : "—");
+  xfText("perfFps", XF.perfFps > 0 ? (Math.round(XF.perfFps) + " fps") : "—");
+  var d = el("d-perf");
+  if (d) d.className = "dot " + (memPct >= 85 ? "bad" : (memPct >= 65 ? "warn" : "ok"));
+}
+function fpsStart(){
+  if (XF.fpsRaF || typeof requestAnimationFrame !== "function") return;
+  XF.fpsN = 0; XF.fpsT = Date.now();
+  var tick = function(){
+    XF.fpsRaF = requestAnimationFrame(tick);
+    XF.fpsN++;
+    var now = Date.now();
+    if (now - XF.fpsT >= 500){
+      XF.perfFps = XF.fpsN * 1000 / (now - XF.fpsT);
+      XF.fpsN = 0; XF.fpsT = now;
+      xfText("perfFps", Math.round(XF.perfFps) + " fps");
+    }
+  };
+  XF.fpsRaF = requestAnimationFrame(tick);
+}
+function fpsStop(){
+  if (!XF.fpsRaF) return;
+  try { cancelAnimationFrame(XF.fpsRaF); } catch (e) {}
+  XF.fpsRaF = 0;
+}
+function perfStart(){
+  if (XF.perfTimer) return;
+  try { perfPaint(); } catch (e0) {}
+  XF.perfTimer = setInterval(function(){
+    if (!tabOn("more") || document.hidden){ perfStop(); return; }
+    try { perfPaint(); } catch (e1) {}
+  }, 2000);
+  fpsStart();
+}
+function perfStop(){
+  if (XF.perfTimer){ clearInterval(XF.perfTimer); XF.perfTimer = 0; }
+  fpsStop();
+}
+function perfSetLive(on){
+  XF.perfOn = !!on;
+  var b = el("perfLive");
+  if (b){ b.classList.toggle("on", XF.perfOn); b.setAttribute("aria-checked", XF.perfOn ? "true" : "false"); }
+  var t = el("perfTag");
+  if (t){ t.className = "swtag " + (XF.perfOn ? "on" : "off"); t.textContent = XF.perfOn ? "采样中" : "已关闭"; }
+  if (XF.perfOn) perfStart(); else perfStop();
+}
+
+/* ---------------- Provider 体检 ---------------- */
+function provRows(j){
+  var items = (j && j.items) || [], st = String((j && j.state) || "idle");
+  var h = [], i;
+  for (i = 0; i < items.length; i++){
+    var it = items[i] || {}, s = String(it.state || "running");
+    var cd = s === "ok" ? "ok" : (s === "bad" ? "bad" : (s === "slow" ? "warn" : "unk"));
+    var ms = "检测中…";
+    if (s === "ok" || s === "slow") ms = (Number(it.ms || 0) > 0 ? it.ms + " ms" : "—");
+    else if (s === "bad") ms = (it.http ? "HTTP " + it.http : "失败");
+    h.push('<div class="provrow" data-id="' + esc(it.id) + '">' +
+      '<span class="laydot ' + cd + '" aria-hidden="true"></span>' +
+      '<div class="provname"><div class="provn">' + esc(it.name || it.id) + '</div>' +
+      '<div class="provm">' + esc(it.model || it.base || "") + (it.err ? " · " + esc(it.err) : "") + '</div></div>' +
+      '<span class="provms">' + esc(ms) + '</span>' +
+      '<button class="small" data-act="provone" data-arg="' + esc(it.id) + '">重测</button></div>');
+  }
+  setHtml(el("provList"), h.join("") || '<div class="xfempty">还没有体检记录，点下面「全部体检」</div>');
+  var note = el("provNote");
+  if (note){
+    note.textContent = st === "running" ? "正在逐个探测…"
+      : (st === "done" ? ("体检完成：" + items.length + " 个 provider") : "会把每个 provider 的模型接口真打一次，不发消息、不花钱。");
+  }
+  var bad = 0;
+  for (i = 0; i < items.length; i++) if (String((items[i] || {}).state) === "bad") bad++;
+  var d = el("d-prov");
+  if (d) d.className = "dot " + (st === "running" ? "warn" : (items.length ? (bad ? "bad" : "ok") : "mute"));
+}
+function provPaint(){
+  var ok = xfHas("AndroidProv", "poll");
+  xfDegrade("provBody", "provUnavail", ok);
+  if (!ok) return;
+  provRows(xfCall("AndroidProv", "poll"));
+}
+/* 800ms 轮询到 state=done 就停；「全部体检」和单行「重测」共用同一套 */
+function provPollStart(){
+  if (XF.provTimer){ clearInterval(XF.provTimer); XF.provTimer = 0; }
+  XF.provTries = 0;
+  XF.provTimer = setInterval(function(){
+    XF.provTries++;
+    var j = xfCall("AndroidProv", "poll");
+    provRows(j);
+    var st = String((j && j.state) || "");
+    if (st === "done" || (st === "idle" && XF.provTries > 1) || XF.provTries > 40){
+      clearInterval(XF.provTimer);
+      XF.provTimer = 0;
+    }
+  }, 800);
+}
+/* 全部体检：必须先 clear() 再 start()，否则原生侧 5 分钟缓存会直接把旧结果吐回来 */
+function provAll(){
+  if (!xfHas("AndroidProv", "start")){ extToast(XF_UNAVAIL); return; }
+  xfCall("AndroidProv", "clear");
+  provRows(xfCall("AndroidProv", "start"));
+  provPollStart();
+}
+/* 单行重测：优先 startOne(id)；老包没这个方法就退回 clear() + start() 跑全量 */
+function provOne(id){
+  if (!xfHas("AndroidProv", "poll")){ extToast(XF_UNAVAIL); return; }
+  var r = null;
+  if (xfHas("AndroidProv", "startOne")){
+    r = xfCall("AndroidProv", "startOne", String(id || ""));
+  } else {
+    xfCall("AndroidProv", "clear");
+    r = xfCall("AndroidProv", "start");
+  }
+  provRows(r);
+  provPollStart();
+}
+
+/* ---------------- 反馈包 ---------------- */
+function feedPaint(){
+  var ok = xfHas("AndroidFeed", "build");
+  xfDegrade("feedBody", "feedUnavail", ok);
+  var b = el("btnFeedShare");
+  if (b && (!XF.feed || !XF.feed.id)) b.setAttribute("disabled", "disabled");
+}
+function feedBuild(){
+  if (!xfHas("AndroidFeed", "build")){ extToast(XF_UNAVAIL); return; }
+  var r = xfCall("AndroidFeed", "build");
+  if (!r || r.ok === false){ xfText("feedOut", "生成失败：" + ((r && r.err) || "未知原因")); return; }
+  XF.feed = r;
+  var b = el("btnFeedShare");
+  if (b) b.removeAttribute("disabled");
+  var items = r.items || [];
+  xfText("feedOut", "已生成 " + (r.id || "") + " · " + xfSize(r.size) + (items.length ? " · " + items.join(" / ") : ""));
+}
+function feedShare(){
+  if (!XF.feed || !XF.feed.id){ extToast("先生成一个反馈包"); return; }
+  if (!xfHas("AndroidFeed", "share")){ extToast(XF_UNAVAIL); return; }
+  var r = xfCall("AndroidFeed", "share", XF.feed.id);
+  if (!r || r.ok === false){ extToast((r && r.err) || "分享失败，再试一次"); return; }
+  extToast("已调起系统分享");
+}
+
+/* 切页时的取样节流：进「更多」拉一次告警/周报/分层，离开就停性能采样 */
+function xfOnTab(t){
+  if (t === "more"){
+    try { layerPaint(); } catch (e1) {}
+    try { alertPaint(true); } catch (e2) {}
+    try { weekPaint(true); } catch (e3) {}
+    try { perfPaint(); } catch (e4) {}
+    try { feedPaint(); } catch (e5) {}
+    if (XF.perfOn) perfStart();
+  } else {
+    perfStop();
+  }
+  if (t === "settings"){ try { provPaint(); } catch (e6) {} }
+}
+/* 开机只做「老包降级」判定，不主动打桥（省一次 IPC），进页再拉数据 */
+function xfInit(){
+  try { xfDegrade("layerBody", "layerUnavail", xfHas("AndroidLayer", "status")); } catch (e0) {}
+  try { xfDegrade("alertBody", "alertUnavail", xfHas("AndroidAlert", "get")); } catch (e1) {}
+  try { xfDegrade("weekBody", "weekUnavail", xfHas("AndroidAlert", "weekly")); } catch (e2) {}
+  try { xfDegrade("perfBody", "perfUnavail", xfHas("AndroidPerf", "sample")); } catch (e3) {}
+  try { xfDegrade("provBody", "provUnavail", xfHas("AndroidProv", "poll")); } catch (e4) {}
+  try { xfDegrade("feedBody", "feedUnavail", xfHas("AndroidFeed", "build")); } catch (e5) {}
+  try { feedPaint(); } catch (e6) {}
+  /* 输入框一旦被人改过，轮询就不要把用户正在敲的值盖掉 */
+  try {
+    document.addEventListener("input", function(ev){
+      var t = ev.target;
+      if (!t || !t.id) return;
+      if (t.id === "protLow" || t.id === "protHot" || t.id === "quietFrom" || t.id === "quietTo") t.__touched = 1;
+    });
+    document.addEventListener("change", function(ev){
+      var t = ev.target;
+      if (!t || !t.id) return;
+      if (t.id === "quietFrom" || t.id === "quietTo") quietSave();
+    });
+  } catch (e7) {}
+}
+
 /* 切页签时按需立刻拉一次，不用等下一个轮询周期 */
 function extOnTab(t){
   try {
+    /* 1.3.5-beta.1：新卡的取样跟着切页走（更多页拉分层/告警/周报，设置页拉 Provider，离开停性能） */
+    try { xfOnTab(t); } catch (eX) {}
     if (t === "home"){ refreshInst(true); try { usgScan(false); } catch (eU) {} }
     else if (t === "more"){ refreshBk(true); refreshStorage(true); refreshCrash(true); }
     else if (t === "settings"){ refreshStats(true); refreshLan(true); try { portAuto(); } catch (eP) {} try { dailyLoad(false); } catch (eD) {} }
@@ -11642,6 +12346,7 @@ setInterval(function(){
   try { if (tabOn("home")) paintStartRow(null); } catch (e) {}
 }, 3000);
 try { upTick(); } catch (e) {}
+try { xfInit(); } catch (eXf) {}
 try { paintFoot(); } catch (e) {}
 
 /* ==========================================================================

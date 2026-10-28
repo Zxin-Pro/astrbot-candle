@@ -1,12 +1,7 @@
 package com.termux.app;
 
-import android.app.Notification;
-import android.app.NotificationChannel;
 import android.app.NotificationManager;
-import android.app.PendingIntent;
 import android.content.Context;
-import android.content.Intent;
-import android.os.Build;
 
 import org.json.JSONObject;
 
@@ -102,8 +97,14 @@ public final class RiskReader {
             StateIO.delete(StateIO.file(filesDir, NOTIFIED));
             lastKey = "";
             try {
+                // 旧的 qqbot_risk 渠道通知（1.3.5 之前发出的）还得撤，用户手机上可能还挂着
                 NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
                 if (nm != null) nm.cancel(NOTI_ID);
+            } catch (Throwable ignored) {
+            }
+            // 现在真正显示的是 QqbotAlertCenter 的 crit 通知，一并撤掉，否则点「我知道了」后它还杵在那
+            try {
+                QqbotAlertCenter.dismissRisk(c);
             } catch (Throwable ignored) {
             }
             JSONObject o = new JSONObject();
@@ -141,51 +142,24 @@ public final class RiskReader {
         post(svc, inst, r.optString("word", ""));
     }
 
+    /**
+     * 通知出口：从 1.3.5 起风控提醒不再自己发通知，统一交给 QqbotAlertCenter 的 crit 渠道。
+     * 为什么改：用户要求告警只有一个总开关，否则「五类告警」的静音/免打扰管不到风控这一条，
+     * 半夜照样弹窗。这里只负责写清「发生了什么 + 该怎么办」两句人话，剩下的分渠道、升级、
+     * 免打扰、静音按钮都由 QqbotAlertCenter 统一处理。
+     */
     private static void post(QqbotGuardService svc, String inst, String word) {
         try {
             // 标题照协议：「实例 X 可能需要验证」；拿不到实例号时不留多余空格
             String title = (inst == null || inst.length() == 0)
                     ? "实例可能需要验证"
                     : ("实例 " + inst + " 可能需要验证");
-            String text = (word == null || word.length() == 0)
-                    ? "已暂停自动重启，请到面板处理"
-                    : "已暂停自动重启（" + word + "），请到面板处理";
-            ensureChannel(svc);
-            NotificationManager nm = (NotificationManager) svc.getSystemService(Context.NOTIFICATION_SERVICE);
-            if (nm == null) return;
-            Intent i = new Intent(svc, QqbotActivity.class);
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            i.putExtra("tab", "bot");
-            PendingIntent pi = PendingIntent.getActivity(svc, 21, i, PendingIntent.FLAG_IMMUTABLE);
-            Notification.Builder b;
-            if (Build.VERSION.SDK_INT >= 26) b = new Notification.Builder(svc, CHANNEL_ID);
-            else b = new Notification.Builder(svc);
-            b.setContentTitle(title);
-            b.setContentText(text);
-            b.setAutoCancel(true);
-            b.setOnlyAlertOnce(true);
-            b.setContentIntent(pi);
-            // 24-25 没有渠道，优先级得在 Builder 上给；26+ 以渠道为准，这行只是兼容老系统。
-            try { b.setPriority(Notification.PRIORITY_DEFAULT); } catch (Throwable ignored) {}
-            try {
-                int res = svc.getResources().getIdentifier("ic_stat_qqbot", "drawable", svc.getPackageName());
-                b.setSmallIcon(res != 0 ? res : svc.getApplicationInfo().icon);
-            } catch (Throwable ignored) {}
-            nm.notify(NOTI_ID, b.build());
-        } catch (Throwable ignored) {
-        }
-    }
-
-    private static void ensureChannel(Context c) {
-        if (Build.VERSION.SDK_INT < 26) return;
-        try {
-            NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
-            if (nm == null) return;
-            if (nm.getNotificationChannel(CHANNEL_ID) != null) return;
-            NotificationChannel ch = new NotificationChannel(CHANNEL_ID, "风控提醒",
-                    NotificationManager.IMPORTANCE_DEFAULT);
-            ch.setDescription("QQ 可能被风控、需要人工验证时提醒一次");
-            nm.createNotificationChannel(ch);
+            String why = (word == null || word.length() == 0) ? "" : ("（" + word + "）");
+            // 处置建议写进正文：这条属于 crit，用户半夜被叫醒总得知道下一步点什么
+            String text = "已暂停自动重启" + why
+                    + "。建议：先在 QQ 里手动过验证，再点通知里的「重连」；"
+                    + "不确定发生了什么就先点「看日志」，也可以「静音 1 小时」等天亮处理。";
+            QqbotAlertCenter.raise(svc, "risk", "crit", title, text);
         } catch (Throwable ignored) {
         }
     }
