@@ -197,7 +197,7 @@ powershell -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch amd64
 
 | 本地文件 | 大小 | VPS 路径 | 公开地址 |
 | --- | --- | --- | --- |
-| `out\bundle-arm64.tar.xz` | 583,010,488 B（约 556 MiB） | `/data/www/zhuxin-site/dl/bundle-arm64.tar.xz` | `https://xn--15t839a.xyz/dl/bundle-arm64.tar.xz` |
+| `out\bundle-arm64.tar.xz` | 583,012,780 B（约 556 MiB；2026-10-29 安全重制后） | `/data/www/zhuxin-site/dl/bundle-arm64.tar.xz` | `https://xn--15t839a.xyz/dl/bundle-arm64.tar.xz` |
 | `out\bundle-amd64.tar.xz` | 604,245,316 B（约 576 MiB） | `/data/www/zhuxin-site/dl/bundle-amd64.tar.xz` | `https://xn--15t839a.xyz/dl/bundle-amd64.tar.xz` |
 
 上传后在 VPS 的同目录生成同名 `.sha256`（`sha256sum` 标准格式，`qq_bundle_pull()` 只取第一列）：
@@ -308,7 +308,7 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 | 1.2.10 | `versionName` / 派生 `versionCode` | `1.2.10` / `10210` |
 | 1.2.9 | `versionName` / 派生 `versionCode` | `1.2.9` / `10209` |
 
-1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.5-beta.4-arm64.apk`，`609,705,874`（约 581 MB，镜像在 APK 里），SHA-256 `16A001ADF47312DC8BE3B3A4E074637352A3BFEAD0745C4A6C0040C378A753D8`；增量包 `AstrBot-1.3.5-beta.4-arm64-update.apk`，`26,525,583`，SHA-256 `17CB1A0AA811DB1269B8E0B7B71F0AF5EF31479C62D04E4E7E11AE1C9ED9CE53`。1.3.5-beta.4 沿用旧密钥（_research\debug.keystore）签名，`versionCode 10305`，可直接覆盖 1.3.5-beta.3 / beta.2 / beta.1、1.3.4 正式版与 1.3.4 各测试版。
+1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.5-beta.4-arm64.apk`，`609,705,874`（约 581 MB，镜像在 APK 里），SHA-256 `02555D117F29B220AD9C5EE69587F98651F22E93B3A4020D73D1B70EC38A782B`；增量包 `AstrBot-1.3.5-beta.4-arm64-update.apk`，`26,525,583`，SHA-256 `17CB1A0AA811DB1269B8E0B7B71F0AF5EF31479C62D04E4E7E11AE1C9ED9CE53`。1.3.5-beta.4 沿用旧密钥（_research\debug.keystore）签名，`versionCode 10305`，可直接覆盖 1.3.5-beta.3 / beta.2 / beta.1、1.3.4 正式版与 1.3.4 各测试版。
 
 1.3.4-beta.3 又新增 5 个 Java 类（`QqbotUpdater` / `QqbotUpdaterCore` 应用内更新、`QqbotHealthBridge` 熔断与备份、`QqbotIslandView` / `QqbotIslandBridge` 灵动岛），重写了 `QqbotModelBridge`（原生直连模型接口），新增脚本 `build/opt/qqbot/crashfuse.sh`（崩溃熔断），并给 `backup.sh` 加了快照 / 回滚模式，所以增量包从 `26,300,297` 涨到 `26,361,737`。build-ui.ps1 现在还会把 `SYSTEM_ALERT_WINDOW` 与 `REQUEST_INSTALL_PACKAGES` 两个权限幂等补进 `AndroidManifest.xml`（供灵动岛与应用内安装使用），并已从杀软规避的删除清单里移出。
 
