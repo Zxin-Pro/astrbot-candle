@@ -2921,7 +2921,7 @@ html.devnotelock{ overflow: hidden; }
   .provn{ font-size: 12.5px; font-weight: 600; color: var(--label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .provm{ margin-top: 2px; font-size: 11px; color: var(--label-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .provms{ flex: none; font-size: 11px; color: var(--label-2); font-variant-numeric: tabular-nums; }
-  /* ===== 1.3.5-beta.2：换机迁移 / 系统升级 / 插件 / 自启动 / 充电 / 小组件 / 背景 v2 ===== */
+  /* ===== 1.3.5-beta.2：换机迁移 / 系统升级 / 插件 / 自启动 / 充电 / 小组件 ===== */
   .migrow{ display: flex; align-items: center; gap: 8px; padding: 10px 0; }
   .migrow + .migrow{ border-top: .5px solid var(--sep); }
   .migmain{ flex: 1 1 auto; min-width: 0; }
@@ -2943,7 +2943,19 @@ html.devnotelock{ overflow: hidden; }
   .plugform .pf-k{ flex: 0 0 36%; min-width: 0; font-size: 12.5px; color: var(--label-2); overflow-wrap: anywhere; }
   .plugform .pf-v{ flex: 1 1 auto; min-width: 0; }
   .plugform .pf-v textarea{ min-height: 88px; padding: 10px 12px; }
-  .bgp2 .fxrow{ padding: 8px 0; }
+
+  #btnReport{ width: 44px; height: 44px; min-height: 44px; border-radius: var(--btn-r); }
+  #dlgReport textarea{ min-height: 96px; padding: 10px 12px; }
+  #dlgReport .hint{ display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  #dlgReport .hint .spin{ display: none; }
+  /* 1.3.5-beta.3：分组标题 + 顶部快捷条（chip 用 span，不算按钮） */
+  .mchips{ display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 12px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .mchips::-webkit-scrollbar{ display: none; }
+  .mchip{ flex: none; display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 999px; background: var(--fill-1); color: var(--label-2); font-size: 12.5px; white-space: nowrap; }
+  .mchip:active{ background: var(--fill-2); }
+  .mgroup{ display: flex; align-items: center; gap: 8px; margin: 18px 0 12px; padding-top: 18px; border-top: .5px solid var(--sep); font-size: 12.5px; font-weight: 600; letter-spacing: .2px; color: var(--label-3); }
+  .mgroup:first-of-type{ margin-top: 6px; padding-top: 0; border-top: 0; }
+  .mgh{ flex: 1 1 auto; min-width: 0; }
 
 /* ============================================================================
    1.3.4-beta.4 · 按钮视觉层（task-23 / ui-tap）
@@ -3439,7 +3451,7 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
         <div class="sub" id="hdrSub">正在读取状态…</div>
       </div>
     </div>
-    <button class="iconbtn" id="btnSettings" data-act="settings" title="设置" aria-label="设置"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.1"/><path d="M19.5 14.6a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-2.8-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H3a2 2 0 1 1 0-4h.2a1.6 1.6 0 0 0 1.1-2.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 2.7-1.1V3a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.3 1.1z"/></svg></button>
+    <button class="iconbtn" id="btnReport" data-act="reportopen" title="上传错误报告" aria-label="上传错误报告"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg></button>
   </div>
   </header>
 <main>
@@ -3765,81 +3777,95 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
 
   <section class="tab" id="tab-more">
 
-    <div class="card">
-      <h2>关于与支持</h2>
-      <div class="lkrow">
-        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.6"/><path d="M3.4 12h17.2"/><path d="M12 3.4c2.3 2.4 3.5 5.4 3.5 8.6S14.3 18.2 12 20.6c-2.3-2.4-3.5-5.4-3.5-8.6S9.7 5.8 12 3.4z"/></svg></span>
-        <div class="lkbd"><div class="lkt">官方网站</div><div class="lkv">烛心.xyz</div></div>
-        <div class="lkbtns">
-          <button class="small" data-act="copyurl" data-arg="https://xn--15t839a.xyz">复制</button>
-          <button class="small primary" data-act="openurl" data-arg="https://xn--15t839a.xyz">打开</button>
-        </div>
-      </div>
-      <div class="lkrow">
-        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9.2" cy="8.4" r="3.3"/><path d="M3.2 20c0-3.3 2.7-5.6 6-5.6s6 2.3 6 5.6"/><path d="M16.4 5.6a3.2 3.2 0 0 1 0 6.3"/><path d="M17.6 14.9c2.2.5 3.7 2.3 3.7 4.6"/></svg></span>
-        <div class="lkbd"><div class="lkt">本软件官方群</div><div class="lkv">1127997343</div></div>
-        <div class="lkbtns">
-          <button class="small" data-act="copytext" data-arg="1127997343">复制</button>
-          <button class="small primary" data-act="openqq" data-arg="1127997343">加群</button>
-        </div>
-      </div>
-      <div class="lkrow">
-        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 12a8.4 8.4 0 1 1-2.6-6"/><path d="M20.4 3.6V9.3h-5.7"/></svg></span>
-        <div class="lkbd"><div class="lkt">检查更新</div><div class="lkv" id="updText">点右边按钮看看有没有新版本</div><div class="lkv" id="updBeta" style="display:none"></div><div class="lkv" id="siteVer">官网版本：读取中…</div></div>
-        <div class="lkbtns">
-          <button class="small primary" data-act="checkupdate" id="updBtn">检查更新</button>
-        </div>
-      </div>
-      <!-- 两个自动提醒开关：只管「查完要不要自己弹窗」，手动点「检查更新」永远弹。
-           存 localStorage，缺省都开（'0' 才算关）—— 用户装了新版本后不点回来，
-           下一次打开还能被提醒到。 -->
-      <div class="updsw">
-        <div class="swrow">
-          <div class="swinfo">
-            <div class="swname">正式版提醒<span class="swtag on" id="updSwStableTag">已开</span></div>
-            <div class="swdesc">有新版时自动弹窗提醒</div>
-          </div>
-          <button class="tgl on" id="updSwStable" data-act="updremind" data-arg="stable" title="点击切换正式版自动提醒"></button>
-        </div>
-        <div class="swrow">
-          <div class="swinfo">
-            <div class="swname">测试版提醒<span class="swtag on" id="updSwBetaTag">已开</span></div>
-            <div class="swdesc">有新版时自动弹窗提醒</div>
-          </div>
-          <button class="tgl on" id="updSwBeta" data-act="updremind" data-arg="beta" title="点击切换测试版自动提醒"></button>
-        </div>
-      </div>
-      <div class="lkrow">
-        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 5 6v5.4c0 4.2 2.9 7.6 7 8.8 4.1-1.2 7-4.6 7-8.8V6z"/><path d="M9.4 12.1l1.9 1.9 3.4-3.6"/></svg></span>
-        <div class="lkbd"><div class="lkt">隐私政策</div><div class="lkv">数据收集范围与权限用途</div></div>
-        <div class="lkbtns">
-          <button class="small primary" data-act="privacy">查看</button>
-        </div>
-      </div>
-      <div class="hint" id="updNote" style="display:none"></div>
-      <div class="hint">当前版本 <b id="v-appver">-</b></div>
-      <div class="hint">本软件官方群 <b>1127997343</b>，发现 bug 及时反馈。</div>
+    <!-- 1.3.5-beta.3：分组快捷条。用 span 而不是 button，免得被按钮 44px/22px 的口径量到；
+         点一下滚到对应分组（data-act=mgo，act 里做 scrollIntoView）。 -->
+    <div class="mchips" id="mChips">
+      <span class="mchip" data-act="mgo" data-arg="grpRun">运行</span>
+      <span class="mchip" data-act="mgo" data-arg="grpAlert">提醒</span>
+      <span class="mchip" data-act="mgo" data-arg="grpUpg">升级</span>
+      <span class="mchip" data-act="mgo" data-arg="grpLook">外观</span>
+      <span class="mchip" data-act="mgo" data-arg="grpNet">连接</span>
+      <span class="mchip" data-act="mgo" data-arg="grpData">数据</span>
+      <span class="mchip" data-act="mgo" data-arg="grpSys">系统</span>
     </div>
 
-    <!-- AstrBot 模型与人格（v1.2.0）：把模型和人格直接预置到沙盒里，
-         用户只需要贴一把中转站密钥。写的是 cmd_config.json / data_v4.db，
-         保存时先停沙盒再落盘，所以不会被运行时覆盖。 -->
-    <div class="card" id="astrCard">
-      <h2>模型与人格</h2>
-      <div class="hint" style="margin-top:0" id="astrState">检测中…</div>
-      <div class="lkrow" style="margin-top:12px">
-        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.6l2.1 4.9 5.3.5-4 3.6 1.2 5.2L12 15l-4.6 2.8 1.2-5.2-4-3.6 5.3-.5z"/></svg></span>
-        <div class="lkbd"><div class="lkt">模型中转站</div><div class="lkv">烛心推荐用这家 · 注册后复制密钥</div></div>
-        <div class="lkbtns">
-          <button class="small" data-act="copytext" data-arg="https://worldcodes.online/register?invite_code=CZLT">复制</button>
-          <button class="small primary" data-act="openurl" data-arg="https://worldcodes.online/register?invite_code=CZLT">打开</button>
-        </div>
+    <div class="mgroup" id="grpRun"><span class="mgh">运行状态</span></div>
+    <div class="card" id="guardCard">
+      <h2><span class="dot" id="d-guard"></span>前台常驻</h2>
+      <div class="hint">一条常驻通知把服务钉在前台，系统不会随便回收。</div>
+      <div class="hint" style="margin-top:6px">如果挂后台一阵子还是掉线，多半是厂商省电策略：到下面「省电策略」里点「去设置」，把本应用设为「不限制 / 允许后台高耗电」，并打开「自启动」（vivo：i管家 → 应用管理 → 自启动；设置 → 电池 → 后台耗电管理 → 允许后台高耗电）。</div>
+      <div id="guardList" style="margin-top:10px"></div>
+      <!-- 1.3.4-beta.9：前台常驻的四行只读状态。老安装包字段不全，整段降级成一句「功能不可用」。 -->
+      <div class="fgslist" id="fgsBox" style="display:none">
+        <div class="fgsrow" id="fgsRowSvc"><span class="fgsk">前台服务</span><span class="fgsv" id="fgsSvc">—</span></div>
+        <div class="fgsrow" id="fgsRowNoti"><span class="fgsk">常驻通知</span><span class="fgsv" id="fgsNoti">—</span></div>
+        <div class="fgsrow" id="fgsRowCh"><span class="fgsk">通知渠道</span><span class="fgsv" id="fgsCh">—</span></div>
+        <div class="fgsrow" id="fgsRowBatt"><span class="fgsk">电池白名单</span><span class="fgsv" id="fgsBatt">—</span></div>
       </div>
+      <div class="hint" id="fgsUnavail" style="display:none">这个安装包还不支持前台常驻检测（功能不可用）。升级到最新版本后，这里会显示前台服务的实时状态。</div>
       <div class="btns" style="margin-top:10px">
-        <button class="primary" data-act="astrconfig" style="flex:1">配置模型与人格</button>
+        <button class="small" data-act="battery" style="flex:1">申请电池优化白名单</button>
       </div>
+      <div class="btns" style="margin-top:8px">
+        <button class="small primary" id="btnFgsFix" data-act="fgsfix" style="flex:1">重新挂上前台服务</button>
+      </div>
+      <!-- 通知权限不是「关掉通知」：它是让常驻通知上那三个快捷按钮（重启 / 扫码 / 关闭进程）
+           出现的开关。没这条权限，通知栏上就没有「关闭进程」，后台只能进应用里手动停。 -->
+      <div class="btns" style="margin-top:8px" id="notiRow">
+        <button class="small primary" data-act="notiask" id="notiBtn" style="flex:1">开启通知权限（「关闭进程」按钮要用）</button>
+      </div>
+      <div class="hint" id="notiNote" style="margin-top:6px"></div>
+      <div class="hint" id="guardNote">—</div>
     </div>
-
+    <!-- 1.3.5-beta.1 · 运行分层：沙盒打底，NapCat / AstrBot 各占一层；哪层掉了只重启哪层。
+         老安装包没有 AndroidLayer 桥，整段降级成一句「这个安装包还不支持」。 -->
+    <div class="card" id="layerCard">
+      <h2><span class="dot" id="d-layer"></span>运行分层</h2>
+      <div class="hint">沙盒打底，NapCat 与 AstrBot 各跑一层：哪一层掉了就只重启那一层，另外两层不受影响，不用整机重启。</div>
+      <div id="layerBody">
+        <div id="layerRows" style="margin-top:10px"></div>
+        <div class="xfbox">
+          <div class="xfrow"><span class="xfk">当前电量</span><span class="xfv" id="protBatt">—</span></div>
+          <div class="xfrow"><span class="xfk">电池温度</span><span class="xfv" id="protTemp">—</span></div>
+          <div class="xfrow"><span class="xfk">降载状态</span><span class="xfv" id="protState">—</span></div>
+          <div class="xfrow"><span class="xfk">低电阈值</span><input class="xfnum" id="protLow" type="number" inputmode="numeric" min="1" max="60" step="1" aria-label="低电阈值百分比"><span class="xfk">%</span></div>
+          <div class="xfrow"><span class="xfk">高温阈值</span><input class="xfnum" id="protHot" type="number" inputmode="numeric" min="25" max="80" step="1" aria-label="高温阈值摄氏度"><span class="xfk">℃</span></div>
+          <div class="swrow" style="border-top:.5px solid var(--sep)">
+            <div class="swinfo">
+              <div class="swname">低电高温时降载<span class="swtag off" id="protPauseTag">已关闭</span></div>
+              <div class="swdesc">电量低于阈值或温度过高时暂停重活（重建容器、全量自检），恢复后自动继续。</div>
+            </div>
+            <button class="tgl" id="protPause" data-act="protsave" data-arg="toggle" aria-label="低电高温降载开关"></button>
+          </div>
+        </div>
+        <div class="btns" style="margin-top:10px">
+          <button class="small primary" data-act="protsave" data-arg="save" style="flex:1">保存保护阈值</button>
+        </div>
+        <div class="xfsec">崩溃现场</div>
+        <div class="xflist" id="layCrashList"><div class="xfempty">还没有崩溃记录</div></div>
+      </div>
+      <div class="hint" id="layerUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
+    <!-- 1.3.5-beta.1 · 性能面板（AndroidPerf）：五行 + 2 秒实时采样（仅本页可见时） -->
+    <div class="card" id="perfCard">
+      <h2><span class="dot" id="d-perf"></span>性能面板</h2>
+      <div class="hint">内存 / CPU / 线程 / 运行时长。卡顿时先看这里，再决定要不要重启。</div>
+      <div id="perfBody">
+        <div style="margin-top:4px">
+          <div class="prow"><div class="prowhd"><span class="pk">内存</span><span class="pv" id="perfMem">—</span></div><div class="pbar"><i id="perfMemBar"></i></div></div>
+          <div class="prow"><div class="prowhd"><span class="pk">CPU</span><span class="pv" id="perfCpu">—</span></div><div class="pbar"><i id="perfCpuBar"></i></div></div>
+          <div class="prow"><div class="prowhd"><span class="pk">线程</span><span class="pv" id="perfThreads">—</span></div></div>
+          <div class="prow"><div class="prowhd"><span class="pk">运行时长</span><span class="pv" id="perfUp">—</span></div></div>
+          <div class="prow"><div class="prowhd"><span class="pk">FPS</span><span class="pv" id="perfFps">—</span></div></div>
+        </div>
+        <div class="swrow" style="margin-top:4px">
+          <div class="swinfo"><div class="swname">实时采样（每 2 秒）<span class="swtag off" id="perfTag">已关闭</span></div><div class="swdesc">只在「更多」页可见时采样，切走自动停。</div></div>
+          <button class="tgl" id="perfLive" data-act="perflive" aria-label="实时采样开关"></button>
+        </div>
+        <div class="btns" style="margin-top:10px"><button class="small" data-act="perfsample" style="flex:1">采样一次</button></div>
+      </div>
+      <div class="hint" id="perfUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
     <!-- 重启服务（用户明确要求：以前「更多」里只有下线没有重启，改完端口/配置想让它
          立刻生效，只能跑去主页找按钮）。两步确认 + 45 秒等待提示：重启会把两个容器
          一起换掉，正在收发的消息会断，直接一键触发容易误触。 -->
@@ -3859,9 +3885,6 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
       </div>
       <div class="hint" id="restartHint" style="display:none"></div>
     </div>
-
-    <!-- 1.3.4-beta.3 §3：插件页升成底栏一级页签（第 3 位），这里不再重复放一张入口卡。 -->
-
     <!-- 功能 9：紧急下线。App / 通知栏 / 小组件 / 磁贴四处最终都落到这一张确认卡上：
          先把面板叫到前台弹确认，点了「确认下线」才真跑 Android.emergencyStop()
          （写 state/offline + stop-sandbox.sh）。只停进程，登录态、配置、AstrBot data 一律不动。
@@ -3895,138 +3918,7 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
       </div>
     </div>
 
-    <div class="card" id="appearanceCard">
-      <h2>外观</h2>
-      <!-- v7 Liquid Glass：整体走 iOS 观感。下面三组（强调色 / 背景色调 / 玻璃透明度）
-           全部落到 document.documentElement 的 CSS 变量上（--accent、--bg-tint、--glass-alpha、
-           --glass-blur），所以换主题、换背景都不会互相打架。持久化键：qqbot.accent、qqbot.bgtint、
-           qqbot.glasspct（三档薄/中/厚仍保留，点一下就是把滑块拨到对应百分比）。 -->
-      <div class="fxrow" style="flex-wrap:wrap">
-        <span class="fxlabel">强调色</span>
-        <div class="swatches" id="accentSw"></div>
-      </div>
-      <div class="fxrow" style="flex-wrap:wrap">
-        <span class="fxlabel">背景色调</span>
-        <div class="swatches" id="tintSw"></div>
-      </div>
-      <div class="fxrow" style="flex-wrap:wrap">
-        <span class="fxlabel">渐变预设</span>
-        <div class="swatches" id="swatches"></div>
-      </div>
-      <div class="fxrow fxcol">
-        <div class="fxhead"><span class="fxlabel">玻璃透明度</span><span class="fxval" id="glassVal">62%</span></div>
-        <input type="range" id="glassRange" class="rng" min="0" max="100" step="1" value="62" aria-label="玻璃透明度">
-      </div>
-      <div class="fxrow">
-        <span class="fxlabel">厚度档</span>
-        <div class="seg" id="glassSeg">
-          <button data-act="glass" data-arg="thin">薄</button>
-          <button data-act="glass" data-arg="mid" class="on">中</button>
-          <button data-act="glass" data-arg="thick">厚</button>
-        </div>
-      </div>
-      <div class="fxrow">
-        <span class="fxlabel">背景图片</span>
-        <div class="btns">
-          <button class="small primary" data-act="pickbg">选择本机图片</button>
-          <button class="small" data-act="cropbg" id="btnBgCrop" hidden>调整裁剪</button>
-          <button class="small" data-act="clearbg">恢复默认</button>
-        </div>
-      </div>
-      <!-- 1.3.5-beta.2 · 背景 v2：毛玻璃强度 / 遮罩浓度 / 按页背景。存 localStorage qqbot.bgv2，
-           滑条只改 CSS 变量（--glass-blur / --bg-mask），不动任何设计令牌。 -->
-      <div class="xfbox bgp2" style="margin-top:2px">
-        <div class="fxrow fxcol">
-          <div class="fxhead"><span class="fxlabel">毛玻璃强度</span><span class="fxval" id="bgGlassVal">56%</span></div>
-          <input type="range" id="bgGlass" class="rng" min="0" max="100" step="1" value="56" aria-label="毛玻璃强度">
-        </div>
-        <div class="fxrow fxcol">
-          <div class="fxhead"><span class="fxlabel">遮罩浓度</span><span class="fxval" id="bgMaskVal">18%</span></div>
-          <input type="range" id="bgMask" class="rng" min="0" max="90" step="1" value="18" aria-label="遮罩浓度">
-        </div>
-        <div class="fxrow" style="flex-wrap:wrap">
-          <span class="fxlabel">按页背景</span>
-          <div class="seg" id="bgPageSel">
-            <button data-act="bgpage" data-arg="home" class="on">首页</button>
-            <button data-act="bgpage" data-arg="bots">机器人</button>
-            <button data-act="bgpage" data-arg="logs">日志</button>
-            <button data-act="bgpage" data-arg="more">更多</button>
-          </div>
-        </div>
-        <div class="btns" style="margin-top:8px">
-          <button class="small" id="bgPagePick" data-act="bgpagepick" style="flex:1">钉到这一页</button>
-          <button class="small" id="bgPageClear" data-act="bgpageclear" style="flex:1">取消这一页</button>
-        </div>
-        <div class="hint" id="bgPageHint" style="margin-top:6px">—</div>
-      </div>
-      <div class="fxrow">
-        <span class="fxlabel">桌面图标</span>
-        <div class="btns">
-          <button class="small primary" data-act="iconpin" id="btnIconPin">用头像钉到桌面</button>
-        </div>
-      </div>
-      <div class="hint" id="appearHint">背景图片保存在本机，仅作显示，不上传。玻璃透明度越高越朦胧；低配机型建议 40% 以下。安卓不允许运行时改桌面上那个启动图标，所以「桌面图标」是用头像钉一个快捷方式，登录的号换了它会跟着换。</div>
-    </div>
-
-
-    <div class="card" id="guardCard">
-      <h2><span class="dot" id="d-guard"></span>前台常驻</h2>
-      <div class="hint">一条常驻通知把服务钉在前台，系统不会随便回收。</div>
-      <div class="hint" style="margin-top:6px">如果挂后台一阵子还是掉线，多半是厂商省电策略：到下面「省电策略」里点「去设置」，把本应用设为「不限制 / 允许后台高耗电」，并打开「自启动」（vivo：i管家 → 应用管理 → 自启动；设置 → 电池 → 后台耗电管理 → 允许后台高耗电）。</div>
-      <div id="guardList" style="margin-top:10px"></div>
-      <!-- 1.3.4-beta.9：前台常驻的四行只读状态。老安装包字段不全，整段降级成一句「功能不可用」。 -->
-      <div class="fgslist" id="fgsBox" style="display:none">
-        <div class="fgsrow" id="fgsRowSvc"><span class="fgsk">前台服务</span><span class="fgsv" id="fgsSvc">—</span></div>
-        <div class="fgsrow" id="fgsRowNoti"><span class="fgsk">常驻通知</span><span class="fgsv" id="fgsNoti">—</span></div>
-        <div class="fgsrow" id="fgsRowCh"><span class="fgsk">通知渠道</span><span class="fgsv" id="fgsCh">—</span></div>
-        <div class="fgsrow" id="fgsRowBatt"><span class="fgsk">电池白名单</span><span class="fgsv" id="fgsBatt">—</span></div>
-      </div>
-      <div class="hint" id="fgsUnavail" style="display:none">这个安装包还不支持前台常驻检测（功能不可用）。升级到最新版本后，这里会显示前台服务的实时状态。</div>
-      <div class="btns" style="margin-top:10px">
-        <button class="small" data-act="battery" style="flex:1">申请电池优化白名单</button>
-      </div>
-      <div class="btns" style="margin-top:8px">
-        <button class="small primary" id="btnFgsFix" data-act="fgsfix" style="flex:1">重新挂上前台服务</button>
-      </div>
-      <!-- 通知权限不是「关掉通知」：它是让常驻通知上那三个快捷按钮（重启 / 扫码 / 关闭进程）
-           出现的开关。没这条权限，通知栏上就没有「关闭进程」，后台只能进应用里手动停。 -->
-      <div class="btns" style="margin-top:8px" id="notiRow">
-        <button class="small primary" data-act="notiask" id="notiBtn" style="flex:1">开启通知权限（「关闭进程」按钮要用）</button>
-      </div>
-      <div class="hint" id="notiNote" style="margin-top:6px"></div>
-      <div class="hint" id="guardNote">—</div>
-    </div>
-
-    <!-- 1.3.5-beta.1 · 运行分层：沙盒打底，NapCat / AstrBot 各占一层；哪层掉了只重启哪层。
-         老安装包没有 AndroidLayer 桥，整段降级成一句「这个安装包还不支持」。 -->
-    <div class="card" id="layerCard">
-      <h2><span class="dot" id="d-layer"></span>运行分层</h2>
-      <div class="hint">沙盒打底，NapCat 与 AstrBot 各跑一层：哪一层掉了就只重启那一层，另外两层不受影响，不用整机重启。</div>
-      <div id="layerBody">
-        <div id="layerRows" style="margin-top:10px"></div>
-        <div class="xfbox">
-          <div class="xfrow"><span class="xfk">当前电量</span><span class="xfv" id="protBatt">—</span></div>
-          <div class="xfrow"><span class="xfk">电池温度</span><span class="xfv" id="protTemp">—</span></div>
-          <div class="xfrow"><span class="xfk">降载状态</span><span class="xfv" id="protState">—</span></div>
-          <div class="xfrow"><span class="xfk">低电阈值</span><input class="xfnum" id="protLow" type="number" inputmode="numeric" min="1" max="60" step="1" aria-label="低电阈值百分比"><span class="xfk">%</span></div>
-          <div class="xfrow"><span class="xfk">高温阈值</span><input class="xfnum" id="protHot" type="number" inputmode="numeric" min="25" max="80" step="1" aria-label="高温阈值摄氏度"><span class="xfk">℃</span></div>
-          <div class="swrow" style="border-top:.5px solid var(--sep)">
-            <div class="swinfo">
-              <div class="swname">低电高温时降载<span class="swtag off" id="protPauseTag">已关闭</span></div>
-              <div class="swdesc">电量低于阈值或温度过高时暂停重活（重建容器、全量自检），恢复后自动继续。</div>
-            </div>
-            <button class="tgl" id="protPause" data-act="protsave" data-arg="toggle" aria-label="低电高温降载开关"></button>
-          </div>
-        </div>
-        <div class="btns" style="margin-top:10px">
-          <button class="small primary" data-act="protsave" data-arg="save" style="flex:1">保存保护阈值</button>
-        </div>
-        <div class="xfsec">崩溃现场</div>
-        <div class="xflist" id="layCrashList"><div class="xfempty">还没有崩溃记录</div></div>
-      </div>
-      <div class="hint" id="layerUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
-    </div>
-
+    <div class="mgroup" id="grpAlert"><span class="mgh">提醒与报告</span></div>
     <!-- 1.3.5-beta.1 · 告警中心（AndroidAlert）：五个分类开关 + 免打扰 + 升级 + 最近 5 条 -->
     <div class="card" id="alertCard">
       <h2><span class="dot" id="d-alert"></span>告警中心</h2>
@@ -4056,7 +3948,6 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
       </div>
       <div class="hint" id="alertUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
     </div>
-
     <!-- 1.3.5-beta.1 · 周报（AndroidAlert.weekly）：四格指标 + 调用/花费 + 7 根迷你柱 -->
     <div class="card" id="weekCard">
       <h2><span class="dot" id="d-week"></span>周报</h2>
@@ -4078,292 +3969,6 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
       </div>
       <div class="hint" id="weekUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
     </div>
-
-    <!-- 1.3.5-beta.1 · 性能面板（AndroidPerf）：五行 + 2 秒实时采样（仅本页可见时） -->
-    <div class="card" id="perfCard">
-      <h2><span class="dot" id="d-perf"></span>性能面板</h2>
-      <div class="hint">内存 / CPU / 线程 / 运行时长。卡顿时先看这里，再决定要不要重启。</div>
-      <div id="perfBody">
-        <div style="margin-top:4px">
-          <div class="prow"><div class="prowhd"><span class="pk">内存</span><span class="pv" id="perfMem">—</span></div><div class="pbar"><i id="perfMemBar"></i></div></div>
-          <div class="prow"><div class="prowhd"><span class="pk">CPU</span><span class="pv" id="perfCpu">—</span></div><div class="pbar"><i id="perfCpuBar"></i></div></div>
-          <div class="prow"><div class="prowhd"><span class="pk">线程</span><span class="pv" id="perfThreads">—</span></div></div>
-          <div class="prow"><div class="prowhd"><span class="pk">运行时长</span><span class="pv" id="perfUp">—</span></div></div>
-          <div class="prow"><div class="prowhd"><span class="pk">FPS</span><span class="pv" id="perfFps">—</span></div></div>
-        </div>
-        <div class="swrow" style="margin-top:4px">
-          <div class="swinfo"><div class="swname">实时采样（每 2 秒）<span class="swtag off" id="perfTag">已关闭</span></div><div class="swdesc">只在「更多」页可见时采样，切走自动停。</div></div>
-          <button class="tgl" id="perfLive" data-act="perflive" aria-label="实时采样开关"></button>
-        </div>
-        <div class="btns" style="margin-top:10px"><button class="small" data-act="perfsample" style="flex:1">采样一次</button></div>
-      </div>
-      <div class="hint" id="perfUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
-    </div>
-
-    <!-- 1.3.5-beta.2 · 换机迁移（AndroidMigrate）：打包 → 列表分享/删除 → 选文件 → 预览 → 恢复 -->
-    <div class="card" id="migCard">
-      <h2><span class="dot" id="d-mig"></span>换机迁移</h2>
-      <div class="hint">把账号、AstrBot 配置和插件打成一个包，换手机时搬过去；恢复前会自动备份现有的。</div>
-      <div id="migBody">
-        <div class="seg" id="migMode" style="margin-top:10px">
-          <button data-act="migmode" data-arg="full" class="on">全量（含数据库）</button>
-          <button data-act="migmode" data-arg="config">只搬配置</button>
-        </div>
-        <div class="btns" style="margin-top:10px">
-          <button class="small primary" id="migBuild" data-act="migbuild" style="flex:1">开始打包</button>
-        </div>
-        <div class="progwrap" id="migProg" style="display:none">
-          <span class="spin" aria-hidden="true"></span>
-          <div class="bar"><i id="migBar"></i></div>
-          <span class="xfv" id="migMsg" style="flex:none">准备中…</span>
-        </div>
-        <div class="xfsec">已有的包</div>
-        <div class="xflist" id="migList"><div class="xfempty">还没有打包记录</div></div>
-        <div class="btns" style="margin-top:10px">
-          <button class="small" id="migPick" data-act="migpick" style="flex:1">选择要恢复的文件</button>
-        </div>
-        <div class="xfsec">待恢复</div>
-        <div class="xflist" id="migStaged"><div class="xfempty">还没选文件</div></div>
-        <div class="btns" style="margin-top:10px">
-          <button class="small primary" id="migApply" data-act="migapply" style="flex:1" disabled>恢复选中的文件</button>
-        </div>
-      </div>
-      <div class="hint" id="migUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
-    </div>
-
-    <!-- 1.3.5-beta.2 · 系统级升级（AndroidSysUp）：三行版本 + 检查更新 + 升级实时 tail -->
-    <div class="card" id="sysCard">
-      <h2><span class="dot" id="d-sys"></span>系统级升级</h2>
-      <div class="hint">Ubuntu、AstrBot、NapCat 各自升级。升级时下面会滚最近几行输出，卡住了可以停。</div>
-      <div id="sysBody">
-        <div id="sysList" style="margin-top:10px"></div>
-        <div class="btns" style="margin-top:10px">
-          <button class="small" id="sysCheck" data-act="syscheck" style="flex:1">检查更新</button>
-          <button class="small danger" id="sysStop" data-act="sysstop" style="flex:1;display:none">停止升级</button>
-        </div>
-        <div class="progwrap" id="sysProg" style="display:none">
-          <span class="spin" aria-hidden="true"></span>
-          <div class="bar"><i id="sysBar"></i></div>
-          <span class="xfv" id="sysPct" style="flex:none">0%</span>
-        </div>
-        <div class="rowmore" id="sysLogBtn" data-act="syslogfold" style="display:none"><span>升级日志</span><span class="arw" id="sysLogArw">展开</span></div>
-        <pre class="tailbox" id="sysLog" style="display:none"></pre>
-      </div>
-      <div class="hint" id="sysUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
-    </div>
-
-    <!-- 1.3.5-beta.2 · 插件中心（AndroidPlugin）：已装 / 市场、开关、重载、删除、安装、配置表单 -->
-    <div class="card" id="plugCard">
-      <h2><span class="dot" id="d-plug"></span>插件中心</h2>
-      <div class="hint">已装的可以开关、重载、删除；市场里点安装会自动拉下来。</div>
-      <div id="plugBody">
-        <div class="seg" id="plugTab" style="margin-top:10px">
-          <button data-act="plugtab" data-arg="installed" class="on">已装</button>
-          <button data-act="plugtab" data-arg="market">市场</button>
-        </div>
-        <div class="xflist" id="plugList"><div class="xfempty">还没有装插件</div></div>
-        <div class="xflist" id="plugMarket" style="display:none"><div class="xfempty">还没加载市场</div></div>
-        <div class="progwrap" id="plugProg" style="display:none">
-          <span class="spin" aria-hidden="true"></span>
-          <div class="bar"><i id="plugBar"></i></div>
-          <span class="xfv" id="plugMsg" style="flex:none">安装中…</span>
-        </div>
-        <div class="rowmore" id="plugLogBtn" data-act="pluglogfold" style="display:none"><span>安装日志</span><span class="arw" id="plugLogArw">展开</span></div>
-        <pre class="tailbox" id="plugLog" style="display:none"></pre>
-      </div>
-      <div class="hint" id="plugUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
-    </div>
-
-    <!-- 厂商省电引导（功能 5）：各家的「省电策略」入口不一样，原生按 MANUFACTURER
-         分支跳对应设置页（失败退回应用详情页）。只做引导，不假装能替用户改系统设置。 -->
-    <div class="card" id="powerCard">
-      <h2><span class="dot" id="d-power"></span>省电策略</h2>
-      <div class="hint" style="margin-top:0">手机厂商的省电策略会把后台应用「冻结」：通知还在，沙盒却不再收消息。这里按机型跳到对应的设置页，把本应用设为「不限制」。小米/红米还要在最近任务里把本应用「锁定」；vivo / iQOO 要同时打开「自启动」与「允许后台高耗电」；华为/荣耀在「应用启动管理」里关掉自动管理。</div>
-      <div class="hint" id="powerState" style="margin-top:8px">—</div>
-      <div class="btns" style="margin-top:8px">
-        <button class="small primary" data-act="powgo" id="powBtnGo">去设置</button>
-        <button class="small" data-act="powack" id="powBtnAck">知道了</button>
-      </div>
-    </div>
-
-    <!-- 备份 / 恢复（功能 50）：恢复会覆盖沙盒与配置，破坏性大，所以点「从文件恢复」
-         只展开确认区，必须再点一次「确认恢复」才真调 restorePick()——WebView 里
-         confirm() 不一定被实现，照抄日志页的两步确认。 -->
-    <div class="card" id="backupCard">
-      <h2><span class="dot" id="d-backup"></span>备份与恢复</h2>
-      <div class="hint" style="margin-top:0">把沙盒、NapCat 登录数据与 AstrBot 配置打包成一个文件。换手机、重装前先备份一次。</div>
-      <div class="bkmeta" id="bkMeta">还没有备份记录</div>
-      <div class="bar" id="bkBarWrap" style="display:none"><i id="bkBar"></i></div>
-      <div class="hint" id="bkHint" style="display:none"></div>
-      <div class="btns" style="margin-top:10px">
-        <button class="small primary" data-act="bkstart" id="bkBtnStart">立即备份</button>
-        <button class="small" data-act="bkexport" id="bkBtnExport">导出到文件</button>
-      </div>
-      <div class="btns" style="margin-top:8px">
-        <button class="small danger" data-act="bkrestoreask" id="bkBtnRestore">从文件恢复</button>
-      </div>
-      <div class="confirm" id="bkConfirm" style="display:none">
-        <div class="ct">恢复会用选中的备份文件覆盖当前沙盒与配置：NapCat 的登录状态、AstrBot 的配置与插件都会被替换，且无法撤销。确定继续吗？</div>
-        <div class="btns" style="margin-top:8px">
-          <button class="small danger" data-act="bkrestore" id="bkBtnRestoreOk">确认恢复</button>
-          <button class="small" data-act="bkcancel">取消</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 存储占用（功能 54）：五目录条形按总量归一，下面 top10 大文件方便直接看出胖在哪。
-         「清理缓存」只删可再生成的临时文件（原生侧有白名单），不动登录数据。 -->
-    <button class="rowmore" id="btnDiag" data-act="diagfold"><span>诊断信息</span><span class="arw" id="diagArw">展开</span></button>
-    <div id="diagFold" hidden>
-<div class="card" id="storageCard">
-      <h2><span class="dot" id="d-storage"></span>存储占用</h2>
-      <div class="hint" style="margin-top:0">沙盒里最占地方的目录和文件。缓存可以直接清，只删可再生成的临时文件，不动登录数据与配置。</div>
-      <div id="stgUsage" style="display:none;margin-top:10px">
-        <div class="usagebar" id="stgUsageBar"><i style="width:0"></i></div>
-        <div class="usagetx" id="stgUsageTx"></div>
-      </div>
-      <div class="hint" id="stgUsageWarn" style="display:none;margin-top:6px"></div>
-      <div class="hint" id="bundleStat" style="margin-top:8px">内置离线包：检测中…</div>
-      <div id="stgDirs" style="margin-top:6px"></div>
-      <div class="hint" id="stgTotal" style="margin-top:8px">正在统计…</div>
-      <div class="stgtop" id="stgTopWrap" style="display:none">
-        <div class="lkt" style="font-size:12px;margin-bottom:2px">最大的 10 项（文件 / 目录）</div>
-        <div id="stgTop"></div>
-      </div>
-      <!-- 日志占用（b137）：沙盒自带的 storage.sh 能报日志目录多大，也能按天数和体积裁。
-           两条命令都走 Android.exec（同步阻塞、返回 stdout 纯文本，脚本自己的 echo 会混在里面），
-           所以解析是容错的：整段 parse → 截首个 { 到末个 } → 逐行 parse → 按字段捞。
-           prune 只删沙盒日志目录 7 天以前的文件，并把总量压到 20MB 以内。 -->
-      <div class="logstg" id="logStg">
-        <div class="logstg-hd"><span class="logstg-t">日志占用</span><span class="logstg-v" id="logStgVal">—</span></div>
-        <div class="logstg-s" id="logStgSub">展开诊断信息后自动读取</div>
-        <div class="btns" style="margin-top:8px">
-          <button class="small" data-act="logprune" id="btnLogPrune">清理旧日志</button>
-        </div>
-        <div class="confirm" id="logConfirm" style="display:none">
-          <div class="ct">只删沙盒日志目录里 7 天以前的文件，并把日志总量压到 20MB 以内；最近的日志、配置和聊天数据都不动。确定清理吗？</div>
-          <div class="btns" style="margin-top:8px">
-            <button class="small danger" data-act="logpruneyes" id="btnLogPruneOk">开始清理</button>
-            <button class="small" data-act="logpruneno">取消</button>
-          </div>
-        </div>
-      </div>
-      <div class="btns" style="margin-top:10px">
-        <button class="small primary" data-act="stgclean" id="stgBtnClean">清理缓存</button>
-        <button class="small" data-act="stgrefresh">重新统计</button>
-      </div>
-      <div class="confirm" id="stgConfirm" style="display:none">
-        <div class="ct">只删可再生成的临时文件：日志、缩略图缓存、下载包解压的临时目录、旧版本残留。登录状态、配置、插件和聊天数据都不会动。确定清理吗？</div>
-        <div class="btns" style="margin-top:8px">
-          <button class="small danger" data-act="stgcleanyes" id="stgBtnCleanOk">开始清理</button>
-          <button class="small" data-act="stgcleancancel">取消</button>
-        </div>
-      </div>
-      <div class="hint" id="stgHint" style="display:none"></div>
-    </div>
-
-    <!-- 健康体检（1.3.4-beta.2）：不往设置总列表加行，只藏在「诊断信息」折叠区里。
-         三项都走 window.AndroidDiag：start(what) 开跑、poll(what) 取结果。
-         老安装包没有这个桥时整张卡不显示，绝不报错。 -->
-    <div class="card" id="healthCard" style="display:none">
-      <h2><span class="dot" id="d-health"></span>健康体检</h2>
-      <div class="hint" style="margin-top:0">三样当场查：能不能连外网（外网模型必需）、沙盒内核能不能跑 proot/fork、以及把诊断信息打包发给作者。</div>
-      <div class="hrow" id="hrowNet">
-        <div class="hbd"><div class="lkt">出网体检</div><div class="lkv" id="netSub">查 DNS 解析、443 端口、代理三项</div></div>
-        <button class="small" data-act="netdiag" id="netBtn">开始</button>
-      </div>
-      <div class="hres" id="netOut" style="display:none"></div>
-      <div class="hrow" id="hrowKernel">
-        <div class="hbd"><div class="lkt">内核能力</div><div class="lkv" id="kernelSub">看本机能不能跑 proot / fork</div></div>
-        <button class="small" data-act="kerneldiag" id="kernelBtn">检查</button>
-      </div>
-      <div class="hres" id="kernelOut" style="display:none"></div>
-      <div class="hrow" id="hrowBundle">
-        <div class="hbd"><div class="lkt">诊断包</div><div class="lkv" id="bundleSub2">把版本、日志尾部、自检结果打成一个压缩包</div></div>
-        <button class="small" data-act="bundlediag" id="bundleBtn">生成</button>
-      </div>
-      <div class="hres" id="bundleOut" style="display:none"></div>
-    </div>
-
-    <!-- 崩溃看板（功能 58）：同一签名聚合成一条，按次数排序。上传默认关闭，
-         只有打开下面的匿名统计才会把脱敏后的堆栈发出去。 -->
-    <div class="card" id="crashCard">
-      <h2><span class="dot" id="d-crash"></span>崩溃看板</h2>
-      <div class="hint" style="margin-top:0">同一处崩溃按签名聚合成一条。崩溃上报默认关闭：只有打开「设置 → 匿名统计」，才会把脱敏后的堆栈发出去，不含聊天内容与 QQ 号。</div>
-      <div id="crashList" style="margin-top:6px"></div>
-      <div class="btns" style="margin-top:10px">
-        <button class="small" data-act="crashclear" id="crashBtnClear">清空</button>
-      </div>
-    
-    </div>
-    </div>
-
-    <div class="card">
-      <h2>终端</h2>
-      <div class="hint" style="margin-top:0">需要手动执行命令时可切到 Termux 终端。常用：qqbot-start / qqbot-stop / qqbot-status / qqbot-shell。</div>
-      <div class="btns" style="margin-top:10px">
-        <button class="primary" style="flex:1" data-act="terminal">打开终端</button>
-      </div>
-    </div>
-
-    <div class="pagefoot">
-    <span class="pf1"><span class="pftitle">烛之控制台</span> · <span class="pfv" id="pfv-more">—</span></span>
-    <span class="pf2">本地运行，数据不出设备</span>
-  </div>
-</section>
-
-  <section class="tab" id="tab-settings">
-    <div class="btns" style="margin-bottom:12px">
-      <button class="small" data-act="backhome">← 返回主页</button>
-    </div>
-
-    <!-- 外观主题三档：auto 跟系统，light/dark 手动锁死。选择存 localStorage.qqbot_theme，
-         <head> 里的内联脚本和下面的 themePaint() 共用这一份偏好，避免首屏跳色。 -->
-    <div class="card" id="themeCard">
-      <h2>外观主题</h2>
-      <div class="seg" id="themeSeg" role="group" aria-label="外观主题">
-        <button data-act="theme" data-arg="auto" aria-pressed="false">跟随系统</button>
-        <button data-act="theme" data-arg="light" aria-pressed="false">浅色</button>
-        <button data-act="theme" data-arg="dark" aria-pressed="false">深色</button>
-      </div>
-      <div class="hint">「跟随系统」会跟着手机的深色模式实时切换；选择只保存在本机，不影响容器。</div>
-    </div>
-
-    <!-- 局域网访问（v1.1.31）：默认只监听 127.0.0.1。开关就是一个标记文件
-         ~/.qqbot/state/lan.on —— 用已有的 Android.exec() 建/删，不新增桥方法。
-         容器下次启动生效（run-astrbot.sh 读它决定 DASHBOARD_HOST，
-         run-napcat.sh 读它决定 webui.json 的 host）。 -->
-    <div class="card" id="lanCard">
-      <h2><span class="dot" id="d-lan"></span>局域网访问</h2>
-      <div class="swrow">
-        <div class="swinfo">
-          <div class="swname">允许同一 Wi-Fi 下的设备访问<span class="swtag off" id="lanTag">已关闭</span></div>
-          <div class="swdesc" id="lanDesc">关闭时控制台与 NapCat WebUI 只监听 127.0.0.1，只有本机能打开。开启后同一局域网里的电脑可以用手机 IP 访问，方便在电脑上管机器人。</div>
-        </div>
-        <button class="tgl" id="lanTgl" data-act="lantoggle" title="点击切换局域网访问"></button>
-      </div>
-      <div class="hint" id="lanHint" style="margin-top:8px">改完需要重启服务生效（更多 → 重启）。</div>
-    </div>
-
-    <!-- 匿名统计（功能 59）：默认关闭。第一次打开必须先看说明并点「了解并开启」
-         （说明弹窗 #dlgStats），之后开关直接生效并写原生侧 statsSet(true)。
-         「重置标识」会换一个新的 installId，历史数据从此对不上这台设备。 -->
-    <div class="card" id="statsCard">
-      <h2><span class="dot" id="d-stats"></span>匿名统计</h2>
-      <div class="swrow">
-        <div class="swinfo">
-          <div class="swname">发送匿名统计<span class="swtag off" id="statsTag">已关闭</span></div>
-          <div class="swdesc" id="statsDesc">默认关闭。只发崩溃计数与功能使用次数，不含聊天内容、QQ 号、文件路径。</div>
-        </div>
-        <button class="tgl" id="statsTgl" data-act="statstoggle" title="点击切换匿名统计"></button>
-      </div>
-      <div class="hint" id="statsId" style="margin-top:8px">安装标识：-</div>
-      <div class="btns" style="margin-top:10px">
-        <button class="small" data-act="statsreset" id="statsBtnReset">重置标识</button>
-        <button class="small" data-act="privacy">查看隐私政策</button>
-      </div>
-    </div>
-
     <!-- 消息通知（1.3.4-beta.2 §3）：桥上有 AndroidNotify 才显示，旧安装包整块隐藏。
          总开关关掉后下面三项置灰但保留，用户能看出是被总开关关了、不是坏了。 -->
     <div class="card" id="notifyCard" style="display:none">
@@ -4419,22 +4024,188 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
       <div class="hint" id="ntfHint" style="margin-top:8px">测试会立刻发一条通知。如果没看到，去系统设置里允许本应用发送通知，或者检查「勿扰模式」。</div>
     </div>
 
+    <div class="mgroup" id="grpUpg"><span class="mgh">升级与扩展</span></div>
+    <!-- 1.3.5-beta.2 · 系统级升级（AndroidSysUp）：三行版本 + 检查更新 + 升级实时 tail -->
+    <div class="card" id="sysCard">
+      <h2><span class="dot" id="d-sys"></span>系统级升级</h2>
+      <div class="hint">Ubuntu、AstrBot、NapCat 各自升级。升级时下面会滚最近几行输出，卡住了可以停。</div>
+      <div id="sysBody">
+        <div id="sysList" style="margin-top:10px"></div>
+        <div class="btns" style="margin-top:10px">
+          <button class="small" id="sysCheck" data-act="syscheck" style="flex:1">检查更新</button>
+          <button class="small danger" id="sysStop" data-act="sysstop" style="flex:1;display:none">停止升级</button>
+        </div>
+        <div class="progwrap" id="sysProg" style="display:none">
+          <span class="spin" aria-hidden="true"></span>
+          <div class="bar"><i id="sysBar"></i></div>
+          <span class="xfv" id="sysPct" style="flex:none">0%</span>
+        </div>
+        <div class="rowmore" id="sysLogBtn" data-act="syslogfold" style="display:none"><span>升级日志</span><span class="arw" id="sysLogArw">展开</span></div>
+        <pre class="tailbox" id="sysLog" style="display:none"></pre>
+      </div>
+      <div class="hint" id="sysUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
+    <!-- 1.3.5-beta.2 · 插件中心（AndroidPlugin）：已装 / 市场、开关、重载、删除、安装、配置表单 -->
+    <div class="card" id="plugCard">
+      <h2><span class="dot" id="d-plug"></span>插件中心</h2>
+      <div class="hint">已装的可以开关、重载、删除；市场里点安装会自动拉下来。</div>
+      <div id="plugBody">
+        <div class="seg" id="plugTab" style="margin-top:10px">
+          <button data-act="plugtab" data-arg="installed" class="on">已装</button>
+          <button data-act="plugtab" data-arg="market">市场</button>
+        </div>
+        <div class="xflist" id="plugList"><div class="xfempty">还没有装插件</div></div>
+        <div class="xflist" id="plugMarket" style="display:none"><div class="xfempty">还没加载市场</div></div>
+        <div class="progwrap" id="plugProg" style="display:none">
+          <span class="spin" aria-hidden="true"></span>
+          <div class="bar"><i id="plugBar"></i></div>
+          <span class="xfv" id="plugMsg" style="flex:none">安装中…</span>
+        </div>
+        <div class="rowmore" id="plugLogBtn" data-act="pluglogfold" style="display:none"><span>安装日志</span><span class="arw" id="plugLogArw">展开</span></div>
+        <pre class="tailbox" id="plugLog" style="display:none"></pre>
+      </div>
+      <div class="hint" id="plugUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
+    <!-- 1.3.5-beta.1 · Provider 体检（AndroidProv）：逐个 provider 真打一次模型接口，800ms 轮询到 done -->
+    <div class="card" id="provCard">
+      <h2><span class="dot" id="d-prov"></span>Provider 体检</h2>
+      <div class="hint" id="provNote">会把每个 provider 的模型接口真打一次，不发消息、不花钱。</div>
+      <div id="provBody">
+        <div class="xflist" id="provList"><div class="xfempty">还没有体检记录，点下面「全部体检」</div></div>
+        <div class="btns" style="margin-top:10px"><button class="small primary" data-act="provall" style="flex:1">全部体检</button></div>
+      </div>
+      <div class="hint" id="provUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
+    <!-- 1.3.5-beta.2 · 桌面小组件（AndroidWidget）：状态 + 添加到桌面 -->
+    <div class="card" id="widgetCard">
+      <h2><span class="dot" id="d-wdg"></span>桌面小组件</h2>
+      <div class="hint">把运行状态放到桌面，一眼看到沙盒活没活。</div>
+      <div id="wdgBody">
+        <div class="hint" id="wdgState" style="margin-top:8px">正在读取…</div>
+        <div class="btns" style="margin-top:10px">
+          <button class="small primary" id="wdgPin" data-act="wdgpin" style="flex:1">添加到桌面</button>
+        </div>
+      </div>
+      <div class="hint" id="wdgUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
+    <!-- 1.3.5-beta.2 · 自启动检测（AndroidBoot）：三行状态 + 去设置，顶部显示 ROM -->
+    <div class="card" id="bootCard">
+      <h2><span class="dot" id="d-boot"></span>自启动检测</h2>
+      <div class="hint" id="bootRom">正在读机型…</div>
+      <div id="bootBody">
+        <div id="bootList" style="margin-top:10px"></div>
+      </div>
+      <div class="hint" id="bootUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
+    <!-- 1.3.5-beta.2 · 充电高性能（AndroidPower）：只在充电时保持高性能，拔电自动放开 -->
+    <div class="card" id="chargeCard">
+      <h2><span class="dot" id="d-chg"></span>充电高性能</h2>
+      <div class="hint">插着电的时候不省电：保持 CPU 唤醒与 Wi-Fi，通知来得更快；拔电自动还原。</div>
+      <div id="chgBody">
+        <div class="swrow" style="margin-top:6px">
+          <div class="swinfo"><div class="swname">充电时保持高性能<span class="swtag off" id="chgTag">已关闭</span></div>
+            <div class="swdesc" id="chgHint">插着电时打开，电池不会因此多掉，只是不主动省电。</div></div>
+          <button class="tgl" id="chgTgl" data-act="chgtoggle" aria-label="充电高性能开关"></button>
+        </div>
+        <div class="hint" id="chgState">当前：—</div>
+      </div>
+      <div class="hint" id="chgUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
 
-    <div class="card">
-      <h2>组件重装</h2>
-      <div class="hint" style="margin-top:0">重装会先停掉对应容器、删掉已安装的文件再重新下载安装，耗时几分钟，期间那个容器不可用。端口与登录数据保留。进度见日志页「其它日志文件」里的 reinstall.log。</div>
-      <div class="rebox" id="reBox" style="display:none">
-        <div class="rh"><b id="reTitle">重装中…</b><span id="rePct">0%</span></div>
-        <div class="bar" style="margin-top:8px"><i id="reBar"></i></div>
-        <div class="rsteps" id="reSteps"></div>
-        <div class="hint" style="margin:8px 0 0" id="reHint"></div>
+    <div class="mgroup" id="grpLook"><span class="mgh">外观与模型</span></div>
+    <div class="card" id="appearanceCard">
+      <h2>外观</h2>
+      <!-- v7 Liquid Glass：整体走 iOS 观感。下面三组（强调色 / 背景色调 / 玻璃透明度）
+           全部落到 document.documentElement 的 CSS 变量上（--accent、--bg-tint、--glass-alpha、
+           --glass-blur），所以换主题、换背景都不会互相打架。持久化键：qqbot.accent、qqbot.bgtint、
+           qqbot.glasspct（三档薄/中/厚仍保留，点一下就是把滑块拨到对应百分比）。 -->
+      <div class="fxrow" style="flex-wrap:wrap">
+        <span class="fxlabel">强调色</span>
+        <div class="swatches" id="accentSw"></div>
+      </div>
+      <div class="fxrow" style="flex-wrap:wrap">
+        <span class="fxlabel">背景色调</span>
+        <div class="swatches" id="tintSw"></div>
+      </div>
+      <div class="fxrow" style="flex-wrap:wrap">
+        <span class="fxlabel">渐变预设</span>
+        <div class="swatches" id="swatches"></div>
+      </div>
+      <div class="fxrow fxcol">
+        <div class="fxhead"><span class="fxlabel">玻璃透明度</span><span class="fxval" id="glassVal">62%</span></div>
+        <input type="range" id="glassRange" class="rng" min="0" max="100" step="1" value="62" aria-label="玻璃透明度">
+      </div>
+      <div class="fxrow">
+        <span class="fxlabel">厚度档</span>
+        <div class="seg" id="glassSeg">
+          <button data-act="glass" data-arg="thin">薄</button>
+          <button data-act="glass" data-arg="mid" class="on">中</button>
+          <button data-act="glass" data-arg="thick">厚</button>
+        </div>
+      </div>
+      <div class="fxrow">
+        <span class="fxlabel">背景图片</span>
+        <div class="btns">
+          <button class="small primary" data-act="pickbg">选择本机图片</button>
+          <button class="small" data-act="cropbg" id="btnBgCrop" hidden>调整裁剪</button>
+          <button class="small" data-act="clearbg">恢复默认</button>
+        </div>
+      </div>
+
+      <div class="fxrow">
+        <span class="fxlabel">桌面图标</span>
+        <div class="btns">
+          <button class="small primary" data-act="iconpin" id="btnIconPin">用头像钉到桌面</button>
+        </div>
+      </div>
+      <div class="hint" id="appearHint">背景图片保存在本机，仅作显示，不上传。玻璃透明度越高越朦胧；低配机型建议 40% 以下。安卓不允许运行时改桌面上那个启动图标，所以「桌面图标」是用头像钉一个快捷方式，登录的号换了它会跟着换。</div>
+    </div>
+    <!-- 外观主题三档：auto 跟系统，light/dark 手动锁死。选择存 localStorage.qqbot_theme，
+         <head> 里的内联脚本和下面的 themePaint() 共用这一份偏好，避免首屏跳色。 -->
+    <div class="card" id="themeCard">
+      <h2>外观主题</h2>
+      <div class="seg" id="themeSeg" role="group" aria-label="外观主题">
+        <button data-act="theme" data-arg="auto" aria-pressed="false">跟随系统</button>
+        <button data-act="theme" data-arg="light" aria-pressed="false">浅色</button>
+        <button data-act="theme" data-arg="dark" aria-pressed="false">深色</button>
+      </div>
+      <div class="hint">「跟随系统」会跟着手机的深色模式实时切换；选择只保存在本机，不影响容器。</div>
+    </div>
+    <!-- AstrBot 模型与人格（v1.2.0）：把模型和人格直接预置到沙盒里，
+         用户只需要贴一把中转站密钥。写的是 cmd_config.json / data_v4.db，
+         保存时先停沙盒再落盘，所以不会被运行时覆盖。 -->
+    <div class="card" id="astrCard">
+      <h2>模型与人格</h2>
+      <div class="hint" style="margin-top:0" id="astrState">检测中…</div>
+      <div class="lkrow" style="margin-top:12px">
+        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.6l2.1 4.9 5.3.5-4 3.6 1.2 5.2L12 15l-4.6 2.8 1.2-5.2-4-3.6 5.3-.5z"/></svg></span>
+        <div class="lkbd"><div class="lkt">模型中转站</div><div class="lkv">烛心推荐用这家 · 注册后复制密钥</div></div>
+        <div class="lkbtns">
+          <button class="small" data-act="copytext" data-arg="https://worldcodes.online/register?invite_code=CZLT">复制</button>
+          <button class="small primary" data-act="openurl" data-arg="https://worldcodes.online/register?invite_code=CZLT">打开</button>
+        </div>
       </div>
       <div class="btns" style="margin-top:10px">
-        <button class="small" data-act="reinstall" data-arg="napcat">重装 NapCat</button>
-        <button class="small" data-act="reinstall" data-arg="astrbot">重装 AstrBot</button>
+        <button class="primary" data-act="astrconfig" style="flex:1">配置模型与人格</button>
       </div>
     </div>
 
+    <div class="mgroup" id="grpNet"><span class="mgh">连接与端口</span></div>
+    <!-- 局域网访问（v1.1.31）：默认只监听 127.0.0.1。开关就是一个标记文件
+         ~/.qqbot/state/lan.on —— 用已有的 Android.exec() 建/删，不新增桥方法。
+         容器下次启动生效（run-astrbot.sh 读它决定 DASHBOARD_HOST，
+         run-napcat.sh 读它决定 webui.json 的 host）。 -->
+    <div class="card" id="lanCard">
+      <h2><span class="dot" id="d-lan"></span>局域网访问</h2>
+      <div class="swrow">
+        <div class="swinfo">
+          <div class="swname">允许同一 Wi-Fi 下的设备访问<span class="swtag off" id="lanTag">已关闭</span></div>
+          <div class="swdesc" id="lanDesc">关闭时控制台与 NapCat WebUI 只监听 127.0.0.1，只有本机能打开。开启后同一局域网里的电脑可以用手机 IP 访问，方便在电脑上管机器人。</div>
+        </div>
+        <button class="tgl" id="lanTgl" data-act="lantoggle" title="点击切换局域网访问"></button>
+      </div>
+      <div class="hint" id="lanHint" style="margin-top:8px">改完需要重启服务生效（更多 → 重启）。</div>
+    </div>
     <div class="card">
       <h2>端口设置</h2>
       <div class="hint" style="margin-top:0">留空表示自动分配。改完端口请点下面的「保存并重启服务」让容器用新端口重新启动。</div>
@@ -4457,7 +4228,6 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
         <div id="psBox"><div class="ps-state" role="status" aria-live="polite"><span>还没扫描，点「扫描」看看谁占着端口</span></div></div>
       </div>
     </div>
-
     <div class="card">
       <h2>下载代理</h2>
       <div class="hint" style="margin-top:0">直连 GitHub / 腾讯下载慢或失败时，可以在这里填一个代理。留空表示直连。支持 <b>http://</b>、<b>https://</b>、<b>socks5://</b>，例如 <b>http://127.0.0.1:7890</b>。保存后，重新部署、重装组件、安装依赖都会走这个代理。</div>
@@ -4473,55 +4243,188 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
       <div class="hint" id="proxyTestOut" style="margin-top:8px"></div>
     </div>
 
-    <!-- 1.3.5-beta.1 · Provider 体检（AndroidProv）：逐个 provider 真打一次模型接口，800ms 轮询到 done -->
-    <div class="card" id="provCard">
-      <h2><span class="dot" id="d-prov"></span>Provider 体检</h2>
-      <div class="hint" id="provNote">会把每个 provider 的模型接口真打一次，不发消息、不花钱。</div>
-      <div id="provBody">
-        <div class="xflist" id="provList"><div class="xfempty">还没有体检记录，点下面「全部体检」</div></div>
-        <div class="btns" style="margin-top:10px"><button class="small primary" data-act="provall" style="flex:1">全部体检</button></div>
+    <div class="mgroup" id="grpData"><span class="mgh">数据与存储</span></div>
+    <button class="rowmore" id="btnDiag" data-act="diagfold"><span>诊断信息</span><span class="arw" id="diagArw">收起</span></button>
+    <div id="diagFold">
+<div class="card" id="storageCard">
+      <h2><span class="dot" id="d-storage"></span>存储占用</h2>
+      <div class="hint" style="margin-top:0">沙盒里最占地方的目录和文件。缓存可以直接清，只删可再生成的临时文件，不动登录数据与配置。</div>
+      <div id="stgUsage" style="display:none;margin-top:10px">
+        <div class="usagebar" id="stgUsageBar"><i style="width:0"></i></div>
+        <div class="usagetx" id="stgUsageTx"></div>
       </div>
-      <div class="hint" id="provUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
-    </div>
-
-    <!-- 1.3.5-beta.2 · 自启动检测（AndroidBoot）：三行状态 + 去设置，顶部显示 ROM -->
-    <div class="card" id="bootCard">
-      <h2><span class="dot" id="d-boot"></span>自启动检测</h2>
-      <div class="hint" id="bootRom">正在读机型…</div>
-      <div id="bootBody">
-        <div id="bootList" style="margin-top:10px"></div>
+      <div class="hint" id="stgUsageWarn" style="display:none;margin-top:6px"></div>
+      <div class="hint" id="bundleStat" style="margin-top:8px">内置离线包：检测中…</div>
+      <div id="stgDirs" style="margin-top:6px"></div>
+      <div class="hint" id="stgTotal" style="margin-top:8px">正在统计…</div>
+      <div class="stgtop" id="stgTopWrap" style="display:none">
+        <div class="lkt" style="font-size:12px;margin-bottom:2px">最大的 10 项（文件 / 目录）</div>
+        <div id="stgTop"></div>
       </div>
-      <div class="hint" id="bootUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
-    </div>
-
-    <!-- 1.3.5-beta.2 · 充电高性能（AndroidPower）：只在充电时保持高性能，拔电自动放开 -->
-    <div class="card" id="chargeCard">
-      <h2><span class="dot" id="d-chg"></span>充电高性能</h2>
-      <div class="hint">插着电的时候不省电：保持 CPU 唤醒与 Wi-Fi，通知来得更快；拔电自动还原。</div>
-      <div id="chgBody">
-        <div class="swrow" style="margin-top:6px">
-          <div class="swinfo"><div class="swname">充电时保持高性能<span class="swtag off" id="chgTag">已关闭</span></div>
-            <div class="swdesc" id="chgHint">插着电时打开，电池不会因此多掉，只是不主动省电。</div></div>
-          <button class="tgl" id="chgTgl" data-act="chgtoggle" aria-label="充电高性能开关"></button>
+      <!-- 日志占用（b137）：沙盒自带的 storage.sh 能报日志目录多大，也能按天数和体积裁。
+           两条命令都走 Android.exec（同步阻塞、返回 stdout 纯文本，脚本自己的 echo 会混在里面），
+           所以解析是容错的：整段 parse → 截首个 { 到末个 } → 逐行 parse → 按字段捞。
+           prune 只删沙盒日志目录 7 天以前的文件，并把总量压到 20MB 以内。 -->
+      <div class="logstg" id="logStg">
+        <div class="logstg-hd"><span class="logstg-t">日志占用</span><span class="logstg-v" id="logStgVal">—</span></div>
+        <div class="logstg-s" id="logStgSub">展开诊断信息后自动读取</div>
+        <div class="btns" style="margin-top:8px">
+          <button class="small" data-act="logprune" id="btnLogPrune">清理旧日志</button>
         </div>
-        <div class="hint" id="chgState">当前：—</div>
+        <div class="confirm" id="logConfirm" style="display:none">
+          <div class="ct">只删沙盒日志目录里 7 天以前的文件，并把日志总量压到 20MB 以内；最近的日志、配置和聊天数据都不动。确定清理吗？</div>
+          <div class="btns" style="margin-top:8px">
+            <button class="small danger" data-act="logpruneyes" id="btnLogPruneOk">开始清理</button>
+            <button class="small" data-act="logpruneno">取消</button>
+          </div>
+        </div>
       </div>
-      <div class="hint" id="chgUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+      <div class="btns" style="margin-top:10px">
+        <button class="small primary" data-act="stgclean" id="stgBtnClean">清理缓存</button>
+        <button class="small" data-act="stgrefresh">重新统计</button>
+      </div>
+      <div class="confirm" id="stgConfirm" style="display:none">
+        <div class="ct">只删可再生成的临时文件：日志、缩略图缓存、下载包解压的临时目录、旧版本残留。登录状态、配置、插件和聊天数据都不会动。确定清理吗？</div>
+        <div class="btns" style="margin-top:8px">
+          <button class="small danger" data-act="stgcleanyes" id="stgBtnCleanOk">开始清理</button>
+          <button class="small" data-act="stgcleancancel">取消</button>
+        </div>
+      </div>
+      <div class="hint" id="stgHint" style="display:none"></div>
     </div>
-
-    <!-- 1.3.5-beta.2 · 桌面小组件（AndroidWidget）：状态 + 添加到桌面 -->
-    <div class="card" id="widgetCard">
-      <h2><span class="dot" id="d-wdg"></span>桌面小组件</h2>
-      <div class="hint">把运行状态放到桌面，一眼看到沙盒活没活。</div>
-      <div id="wdgBody">
-        <div class="hint" id="wdgState" style="margin-top:8px">正在读取…</div>
+    <!-- 健康体检（1.3.4-beta.2）：不往设置总列表加行，只藏在「诊断信息」折叠区里。
+         三项都走 window.AndroidDiag：start(what) 开跑、poll(what) 取结果。
+         老安装包没有这个桥时整张卡不显示，绝不报错。 -->
+    <div class="card" id="healthCard" style="display:none">
+      <h2><span class="dot" id="d-health"></span>健康体检</h2>
+      <div class="hint" style="margin-top:0">三样当场查：能不能连外网（外网模型必需）、沙盒内核能不能跑 proot/fork、以及把诊断信息打包发给作者。</div>
+      <div class="hrow" id="hrowNet">
+        <div class="hbd"><div class="lkt">出网体检</div><div class="lkv" id="netSub">查 DNS 解析、443 端口、代理三项</div></div>
+        <button class="small" data-act="netdiag" id="netBtn">开始</button>
+      </div>
+      <div class="hres" id="netOut" style="display:none"></div>
+      <div class="hrow" id="hrowKernel">
+        <div class="hbd"><div class="lkt">内核能力</div><div class="lkv" id="kernelSub">看本机能不能跑 proot / fork</div></div>
+        <button class="small" data-act="kerneldiag" id="kernelBtn">检查</button>
+      </div>
+      <div class="hres" id="kernelOut" style="display:none"></div>
+      <div class="hrow" id="hrowBundle">
+        <div class="hbd"><div class="lkt">诊断包</div><div class="lkv" id="bundleSub2">把版本、日志尾部、自检结果打成一个压缩包</div></div>
+        <button class="small" data-act="bundlediag" id="bundleBtn">生成</button>
+      </div>
+      <div class="hres" id="bundleOut" style="display:none"></div>
+    </div>
+    <!-- 崩溃看板（功能 58）：同一签名聚合成一条，按次数排序。上传默认关闭，
+         只有打开下面的匿名统计才会把脱敏后的堆栈发出去。 -->
+    <div class="card" id="crashCard">
+      <h2><span class="dot" id="d-crash"></span>崩溃看板</h2>
+      <div class="hint" style="margin-top:0">同一处崩溃按签名聚合成一条。崩溃上报默认关闭：只有打开「设置 → 匿名统计」，才会把脱敏后的堆栈发出去，不含聊天内容与 QQ 号。</div>
+      <div id="crashList" style="margin-top:6px"></div>
+      <div class="btns" style="margin-top:10px">
+        <button class="small" data-act="crashclear" id="crashBtnClear">清空</button>
+      </div>
+    
+    </div>
+    </div>
+    <!-- 备份 / 恢复（功能 50）：恢复会覆盖沙盒与配置，破坏性大，所以点「从文件恢复」
+         只展开确认区，必须再点一次「确认恢复」才真调 restorePick()——WebView 里
+         confirm() 不一定被实现，照抄日志页的两步确认。 -->
+    <div class="card" id="backupCard">
+      <h2><span class="dot" id="d-backup"></span>备份与恢复</h2>
+      <div class="hint" style="margin-top:0">把沙盒、NapCat 登录数据与 AstrBot 配置打包成一个文件。换手机、重装前先备份一次。</div>
+      <div class="bkmeta" id="bkMeta">还没有备份记录</div>
+      <div class="bar" id="bkBarWrap" style="display:none"><i id="bkBar"></i></div>
+      <div class="hint" id="bkHint" style="display:none"></div>
+      <div class="btns" style="margin-top:10px">
+        <button class="small primary" data-act="bkstart" id="bkBtnStart">立即备份</button>
+        <button class="small" data-act="bkexport" id="bkBtnExport">导出到文件</button>
+      </div>
+      <div class="btns" style="margin-top:8px">
+        <button class="small danger" data-act="bkrestoreask" id="bkBtnRestore">从文件恢复</button>
+      </div>
+      <div class="confirm" id="bkConfirm" style="display:none">
+        <div class="ct">恢复会用选中的备份文件覆盖当前沙盒与配置：NapCat 的登录状态、AstrBot 的配置与插件都会被替换，且无法撤销。确定继续吗？</div>
+        <div class="btns" style="margin-top:8px">
+          <button class="small danger" data-act="bkrestore" id="bkBtnRestoreOk">确认恢复</button>
+          <button class="small" data-act="bkcancel">取消</button>
+        </div>
+      </div>
+    </div>
+    <!-- 1.3.5-beta.2 · 换机迁移（AndroidMigrate）：打包 → 列表分享/删除 → 选文件 → 预览 → 恢复 -->
+    <div class="card" id="migCard">
+      <h2><span class="dot" id="d-mig"></span>换机迁移</h2>
+      <div class="hint">把账号、AstrBot 配置和插件打成一个包，换手机时搬过去；恢复前会自动备份现有的。</div>
+      <div id="migBody">
+        <div class="seg" id="migMode" style="margin-top:10px">
+          <button data-act="migmode" data-arg="full" class="on">全量（含数据库）</button>
+          <button data-act="migmode" data-arg="config">只搬配置</button>
+        </div>
         <div class="btns" style="margin-top:10px">
-          <button class="small primary" id="wdgPin" data-act="wdgpin" style="flex:1">添加到桌面</button>
+          <button class="small primary" id="migBuild" data-act="migbuild" style="flex:1">开始打包</button>
+        </div>
+        <div class="progwrap" id="migProg" style="display:none">
+          <span class="spin" aria-hidden="true"></span>
+          <div class="bar"><i id="migBar"></i></div>
+          <span class="xfv" id="migMsg" style="flex:none">准备中…</span>
+        </div>
+        <div class="xfsec">已有的包</div>
+        <div class="xflist" id="migList"><div class="xfempty">还没有打包记录</div></div>
+        <div class="btns" style="margin-top:10px">
+          <button class="small" id="migPick" data-act="migpick" style="flex:1">选择要恢复的文件</button>
+        </div>
+        <div class="xfsec">待恢复</div>
+        <div class="xflist" id="migStaged"><div class="xfempty">还没选文件</div></div>
+        <div class="btns" style="margin-top:10px">
+          <button class="small primary" id="migApply" data-act="migapply" style="flex:1" disabled>恢复选中的文件</button>
         </div>
       </div>
-      <div class="hint" id="wdgUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+      <div class="hint" id="migUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
     </div>
 
+    <div class="mgroup" id="grpSys"><span class="mgh">系统与关于</span></div>
+    <!-- 厂商省电引导（功能 5）：各家的「省电策略」入口不一样，原生按 MANUFACTURER
+         分支跳对应设置页（失败退回应用详情页）。只做引导，不假装能替用户改系统设置。 -->
+    <div class="card" id="powerCard">
+      <h2><span class="dot" id="d-power"></span>省电策略</h2>
+      <div class="hint" style="margin-top:0">手机厂商的省电策略会把后台应用「冻结」：通知还在，沙盒却不再收消息。这里按机型跳到对应的设置页，把本应用设为「不限制」。小米/红米还要在最近任务里把本应用「锁定」；vivo / iQOO 要同时打开「自启动」与「允许后台高耗电」；华为/荣耀在「应用启动管理」里关掉自动管理。</div>
+      <div class="hint" id="powerState" style="margin-top:8px">—</div>
+      <div class="btns" style="margin-top:8px">
+        <button class="small primary" data-act="powgo" id="powBtnGo">去设置</button>
+        <button class="small" data-act="powack" id="powBtnAck">知道了</button>
+      </div>
+    </div>
+    <!-- 匿名统计（功能 59）：默认关闭。第一次打开必须先看说明并点「了解并开启」
+         （说明弹窗 #dlgStats），之后开关直接生效并写原生侧 statsSet(true)。
+         「重置标识」会换一个新的 installId，历史数据从此对不上这台设备。 -->
+    <div class="card" id="statsCard">
+      <h2><span class="dot" id="d-stats"></span>匿名统计</h2>
+      <div class="swrow">
+        <div class="swinfo">
+          <div class="swname">发送匿名统计<span class="swtag off" id="statsTag">已关闭</span></div>
+          <div class="swdesc" id="statsDesc">默认关闭。只发崩溃计数与功能使用次数，不含聊天内容、QQ 号、文件路径。</div>
+        </div>
+        <button class="tgl" id="statsTgl" data-act="statstoggle" title="点击切换匿名统计"></button>
+      </div>
+      <div class="hint" id="statsId" style="margin-top:8px">安装标识：-</div>
+      <div class="btns" style="margin-top:10px">
+        <button class="small" data-act="statsreset" id="statsBtnReset">重置标识</button>
+        <button class="small" data-act="privacy">查看隐私政策</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>组件重装</h2>
+      <div class="hint" style="margin-top:0">重装会先停掉对应容器、删掉已安装的文件再重新下载安装，耗时几分钟，期间那个容器不可用。端口与登录数据保留。进度见日志页「其它日志文件」里的 reinstall.log。</div>
+      <div class="rebox" id="reBox" style="display:none">
+        <div class="rh"><b id="reTitle">重装中…</b><span id="rePct">0%</span></div>
+        <div class="bar" style="margin-top:8px"><i id="reBar"></i></div>
+        <div class="rsteps" id="reSteps"></div>
+        <div class="hint" style="margin:8px 0 0" id="reHint"></div>
+      </div>
+      <div class="btns" style="margin-top:10px">
+        <button class="small" data-act="reinstall" data-arg="napcat">重装 NapCat</button>
+        <button class="small" data-act="reinstall" data-arg="astrbot">重装 AstrBot</button>
+      </div>
+    </div>
     <div class="card">
       <h2>维护</h2>
       <div class="btns">
@@ -4529,14 +4432,68 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
         <button class="small" data-act="status">查看状态</button>
         <button class="small" data-act="fixdpkg">修复沙盒依赖</button>
         <button class="small" data-act="doctor">检查运行环境</button>
-        <button class="small primary" data-act="uploadlogs" id="btnUploadLogs">上传错误日志</button>
+        <button class="small primary" data-act="reportopen">上传错误报告</button>
         <button class="small danger" data-act="resetdeploy">重置部署标记</button>
       </div>
       <pre id="cmdOut" style="max-height:30vh"></pre>
       <button class="rowmore" id="autoDocBtn" data-act="autodocfold" style="display:none"><span id="autoDocTitle">自动检查</span><span class="arw" id="autoDocArw">展开</span></button>
       <pre id="autoDocOut" style="max-height:30vh;display:none"></pre>
     </div>
-
+    <div class="card">
+      <h2>关于与支持</h2>
+      <div class="lkrow">
+        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.6"/><path d="M3.4 12h17.2"/><path d="M12 3.4c2.3 2.4 3.5 5.4 3.5 8.6S14.3 18.2 12 20.6c-2.3-2.4-3.5-5.4-3.5-8.6S9.7 5.8 12 3.4z"/></svg></span>
+        <div class="lkbd"><div class="lkt">官方网站</div><div class="lkv">烛心.xyz</div></div>
+        <div class="lkbtns">
+          <button class="small" data-act="copyurl" data-arg="https://xn--15t839a.xyz">复制</button>
+          <button class="small primary" data-act="openurl" data-arg="https://xn--15t839a.xyz">打开</button>
+        </div>
+      </div>
+      <div class="lkrow">
+        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9.2" cy="8.4" r="3.3"/><path d="M3.2 20c0-3.3 2.7-5.6 6-5.6s6 2.3 6 5.6"/><path d="M16.4 5.6a3.2 3.2 0 0 1 0 6.3"/><path d="M17.6 14.9c2.2.5 3.7 2.3 3.7 4.6"/></svg></span>
+        <div class="lkbd"><div class="lkt">本软件官方群</div><div class="lkv">1127997343</div></div>
+        <div class="lkbtns">
+          <button class="small" data-act="copytext" data-arg="1127997343">复制</button>
+          <button class="small primary" data-act="openqq" data-arg="1127997343">加群</button>
+        </div>
+      </div>
+      <div class="lkrow">
+        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 12a8.4 8.4 0 1 1-2.6-6"/><path d="M20.4 3.6V9.3h-5.7"/></svg></span>
+        <div class="lkbd"><div class="lkt">检查更新</div><div class="lkv" id="updText">点右边按钮看看有没有新版本</div><div class="lkv" id="updBeta" style="display:none"></div><div class="lkv" id="siteVer">官网版本：读取中…</div></div>
+        <div class="lkbtns">
+          <button class="small primary" data-act="checkupdate" id="updBtn">检查更新</button>
+        </div>
+      </div>
+      <!-- 两个自动提醒开关：只管「查完要不要自己弹窗」，手动点「检查更新」永远弹。
+           存 localStorage，缺省都开（'0' 才算关）—— 用户装了新版本后不点回来，
+           下一次打开还能被提醒到。 -->
+      <div class="updsw">
+        <div class="swrow">
+          <div class="swinfo">
+            <div class="swname">正式版提醒<span class="swtag on" id="updSwStableTag">已开</span></div>
+            <div class="swdesc">有新版时自动弹窗提醒</div>
+          </div>
+          <button class="tgl on" id="updSwStable" data-act="updremind" data-arg="stable" title="点击切换正式版自动提醒"></button>
+        </div>
+        <div class="swrow">
+          <div class="swinfo">
+            <div class="swname">测试版提醒<span class="swtag on" id="updSwBetaTag">已开</span></div>
+            <div class="swdesc">有新版时自动弹窗提醒</div>
+          </div>
+          <button class="tgl on" id="updSwBeta" data-act="updremind" data-arg="beta" title="点击切换测试版自动提醒"></button>
+        </div>
+      </div>
+      <div class="lkrow">
+        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 5 6v5.4c0 4.2 2.9 7.6 7 8.8 4.1-1.2 7-4.6 7-8.8V6z"/><path d="M9.4 12.1l1.9 1.9 3.4-3.6"/></svg></span>
+        <div class="lkbd"><div class="lkt">隐私政策</div><div class="lkv">数据收集范围与权限用途</div></div>
+        <div class="lkbtns">
+          <button class="small primary" data-act="privacy">查看</button>
+        </div>
+      </div>
+      <div class="hint" id="updNote" style="display:none"></div>
+      <div class="hint">当前版本 <b id="v-appver">-</b></div>
+      <div class="hint">本软件官方群 <b>1127997343</b>，发现 bug 及时反馈。</div>
+    </div>
     <div class="card">
       <h2>关于</h2>
       <div class="row"><span class="k">Termux</span><span class="v mono">v0.118.3</span></div>
@@ -4546,13 +4503,37 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
       <div class="row"><span class="k">AstrBot</span><span class="v mono" id="v-astrbotver">—</span></div>
       <div class="row"><span class="k">PREFIX</span><span class="v mono" id="v-prefix">-</span></div>
     </div>
+    <div class="card">
+      <h2>终端</h2>
+      <div class="hint" style="margin-top:0">需要手动执行命令时可切到 Termux 终端。常用：qqbot-start / qqbot-stop / qqbot-status / qqbot-shell。</div>
+      <div class="btns" style="margin-top:10px">
+        <button class="primary" style="flex:1" data-act="terminal">打开终端</button>
+      </div>
+    </div>
+
     <div class="pagefoot">
-    <span class="pf1"><span class="pftitle">烛之控制台</span> · <span class="pfv" id="pfv-settings">—</span></span>
+    <span class="pf1"><span class="pftitle">烛之控制台</span> · <span class="pfv" id="pfv-more">—</span></span>
     <span class="pf2">本地运行，数据不出设备</span>
   </div>
 </section>
 
 </main>
+
+<div class="dlgmask" id="dlgReport">
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="repTitle">
+    <h3 id="repTitle">上传错误报告</h3>
+    <div class="dbody">
+      <p>只发本应用的部署日志、机型与系统信息；不会包含聊天内容，token 会自动打码。</p>
+      <textarea id="repNote" maxlength="500" placeholder="选填：说说你遇到的问题" aria-label="问题描述"></textarea>
+      <div class="hint" id="repState" style="display:none"><span class="spin" aria-hidden="true"></span><span id="repStateTxt"></span></div>
+    </div>
+    <div class="dfoot">
+      <button class="small" id="repClose" data-act="reportclose">关闭</button>
+      <button class="small" id="repShare" data-act="reportshare" style="display:none">分享报告</button>
+      <button class="primary" id="repGo" data-act="reportgo" style="flex:1">开始上传</button>
+    </div>
+  </div>
+</div>
 
 <div class="dlgmask" id="dlgPlug">
   <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="plugConfTitle">
@@ -5983,14 +5964,9 @@ function showTab(t){
      就会一直挂在原来那个页签上。 */
   try { navClearNear(); } catch (e) {}
   try { navSync(); } catch (e) {}   /* 滑块跟着选中页签走 */
-  /* 设置页不在底部导航里，用顶栏那个「设置」按钮高亮表示当前在设置页；
-     nav 的 .on 逻辑不动（t === "settings" 时上面那个循环会清掉全部 nav 高亮）。 */
-  var sb = el("btnSettings");
-  if (sb) sb.classList.toggle("on", t === "settings");
   /* 页面滚动是四个页签共用的，不重置的话从滚到一半的主页切到日志页会落在页面中间 */
   window.scrollTo(0, 0);
   if (t === "logs") { fillQrSelect(); loadQr(); loadLog(); loadDuo(); }
-  if (t === "settings") { try { ntfPaint(true); } catch (e9) {} }   /* 1.3.4-beta.2：进设置页现取一次通知配置 */
   /* v1.1.30：切到哪页就立刻补一次那页的数据，不用干等下一个 4 秒轮询。
      extOnTab 内部自己 try/catch，桥缺了也只是空态。 */
   extOnTab(t);
@@ -6305,7 +6281,7 @@ var NO_LOCK_ACTS = [
   /* 上传前那层「想给开发者的话」：它属于上传流程本身（写留言 / 取消 / 上传），
      部署没成功时正是最需要它的时刻，绝不能因为未部署就把「直接上传」吞掉。 */
   "devnoteok", "devnotecancel", "devnotex",
-  "settings", "backhome", "showlogs",
+  "backhome", "showlogs",
   "pickbg", "clearbg", "cropbg", "cropreset", "cropcancel", "cropok", "bgpreset", "glass", "theme",
   "reload", "slim", "rmcard",
   /* 更新弹窗里每条卡片的「详情 / 下载」和两个自动提醒开关，全是纯前端动作
@@ -6362,7 +6338,7 @@ var NO_LOCK_ACTS = [
   "syscheck", "sysup", "sysstop", "syslogfold",
   "plugtab", "pluginstall", "plugtoggle", "plugreload", "plugremove",
   "plugconf", "plugconfsave", "plugconfclose", "plugconftgl", "pluglogfold",
-  "bootopen", "chgtoggle", "wdgpin", "bgpage", "bgpagepick", "bgpageclear",
+  "bootopen", "chgtoggle", "wdgpin", "reportopen", "reportgo", "reportshare", "reportclose", "mgo",
   "dailytoggle"
 ];
 
@@ -9237,9 +9213,13 @@ document.addEventListener("click", function(ev){
   else if (act === "bootopen") bootOpen(arg);
   else if (act === "chgtoggle") chgToggle();
   else if (act === "wdgpin") wdgPin();
-  else if (act === "bgpage") bgPageSelSet(arg);
-  else if (act === "bgpagepick") bgPagePick();
-  else if (act === "bgpageclear") bgPageClear();
+  /* ---------- 1.3.5-beta.3：上传错误报告 ---------- */
+  else if (act === "reportopen") reportOpen();
+  else if (act === "reportclose") reportClose();
+  else if (act === "reportgo") reportGo();
+  else if (act === "reportshare") reportShare();
+  /* 1.3.5-beta.3：分组快捷条 → 滚到对应分组 */
+  else if (act === "mgo") { var _g = el(arg); if (_g && _g.scrollIntoView){ try { _g.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (eM) { _g.scrollIntoView(); } } }
   else if (act === "savebot") saveBot();
   else if (act === "cancelbot") cancelBot();
   else if (act === "pickbg") {
@@ -9289,7 +9269,6 @@ document.addEventListener("click", function(ev){
     setTimeout(refreshDeploy, 12000);
   }
   /* ---- 设置页 ---- */
-  else if (act === "settings") showTab("settings");
   else if (act === "backhome") showTab("home");
   else if (act === "reinstall") doReinstall(arg);
   else if (act === "bootclose") closeBoot();
@@ -11766,7 +11745,7 @@ function paintFoot(){
   var v = "";
   try { if (S.st && S.st.appVersion) v = String(S.st.appVersion); } catch (e) {}
   if (v){
-    var ids = ["pfv-home", "pfv-bots", "pfv-logs", "pfv-more", "pfv-settings"];
+    var ids = ["pfv-home", "pfv-bots", "pfv-logs", "pfv-more"];
     for (var i = 0; i < ids.length; i++){
       var n = el(ids[i]); if (n) n.textContent = "v" + v;
     }
@@ -11777,7 +11756,7 @@ function paintFoot(){
 /* 内容没占满一屏时，把当前页撑到「一屏减去底栏」，落款才顶在底栏上方而不是浮在半空。
    按真实测量算，不靠 CSS 里猜数值。 */
 function fitFoot(){
-  var ids = ["tab-home", "tab-bots", "tab-logs", "tab-more", "tab-settings"];
+  var ids = ["tab-home", "tab-bots", "tab-logs", "tab-more"];
   var vh = window.innerHeight || document.documentElement.clientHeight || 0;
   if (!vh) return;
   var nav = document.querySelector("nav");
@@ -11889,7 +11868,7 @@ function refreshExtras(st){
     } catch (e10) {}
   }
   if (tabOn("home")){ try { usgScan(false); } catch (eU) {} }
-  if (tabOn("settings")){ try { refreshStats(false); } catch (e8) {} }
+  if (tabOn("more")){ try { refreshStats(false); } catch (e8) {} }
   /* 崩溃提示条要挂在主页，所以崩溃数据哪怕不在「更多」页也刷（读本地文件，很便宜） */
   try { refreshCrash(false); } catch (e9) {}
   /* 紧急下线卡片的状态行：有进程活着 / 端口通 = 运行中；offline 标记在 = 已下线。
@@ -12374,7 +12353,6 @@ function xfOnTab(t){
   } else {
     perfStop();
   }
-  if (t === "settings"){ try { provPaint(); } catch (e6) {} }
 }
 /* 开机只做「老包降级」判定，不主动打桥（省一次 IPC），进页再拉数据 */
 function xfInit(){
@@ -12403,8 +12381,7 @@ function xfInit(){
 var X2 = {
   migMode: "full", migTimer: 0, migStaged: null,
   sysTimer: 0, sysLogOpen: false,
-  plugTab: "installed", plugTimer: 0, plugId: "", plugSchema: null,
-  bgPage: "home"
+  plugTab: "installed", plugTimer: 0, plugId: "", plugSchema: null
 };
 function xfCall2(name, fn, a, b){
   var w = xfBridge(name), v = null;
@@ -12829,107 +12806,25 @@ function wdgPin(){
   setTimeout(function(){ try { wdgPaint(); } catch (e) {} }, 1200);
 }
 
-/* ---------------- 背景 v2 ---------------- */
-var BGV2_KEY = "qqbot.bgv2";
-function bgv2Load(){
-  try { var o = JSON.parse(localStorage.getItem(BGV2_KEY) || "{}"); return (o && typeof o === "object") ? o : {}; } catch (e) { return {}; }
-}
-function bgv2Save(o){ try { localStorage.setItem(BGV2_KEY, JSON.stringify(o)); } catch (e) {} }
-function bgv2Pages(){ var o = bgv2Load(); return (o.pages && typeof o.pages === "object") ? o.pages : {}; }
-function bgPageName(t){ return t === "bots" ? "机器人" : (t === "logs" ? "日志" : (t === "more" ? "更多" : "首页")); }
-function bgPageHint(){
-  var v = bgv2Pages()[X2.bgPage];
-  xfText("bgPageHint", v ? ("「" + bgPageName(X2.bgPage) + "」用的是单独的背景，切到别的页不受影响。")
-                        : ("「" + bgPageName(X2.bgPage) + "」跟着全局背景走。"));
-  var bs = document.querySelectorAll("#bgPageSel button");
-  for (var i = 0; i < bs.length; i++) bs[i].classList.toggle("on", bs[i].getAttribute("data-arg") === X2.bgPage);
-}
-function bgv2Apply(){
-  var o = bgv2Load();
-  var glass = Math.max(0, Math.min(100, Number(o.glass != null ? o.glass : 56)));
-  var mask = Math.max(0, Math.min(90, Number(o.mask != null ? o.mask : 18)));
-  try {
-    document.documentElement.style.setProperty("--glass-blur", Math.round(glass * 0.28) + "px");
-    document.documentElement.style.setProperty("--bg-mask", String(mask / 100));
-  } catch (e) {}
-  var g = el("bgGlass"), m = el("bgMask");
-  if (g && !g.__touched) g.value = String(glass);
-  if (m && !m.__touched) m.value = String(mask);
-  xfText("bgGlassVal", Math.round(glass) + "%");
-  xfText("bgMaskVal", Math.round(mask) + "%");
-  bgPageHint();
-}
-function bgPageApply(tab){
-  tab = String(tab || xfCurTab());
-  var lay = el("bgLayer"); if (!lay) return;
-  var v = bgv2Pages()[tab], o = bgv2Load();
-  if (v){
-    if (String(v).indexOf("img:") === 0){ lay.style.backgroundImage = "url(" + String(v).slice(4) + ")"; lay.style.backgroundSize = "cover"; }
-    else if (String(v).indexOf("tint:") === 0){ lay.style.backgroundImage = tintCss(String(v).slice(5)); lay.style.backgroundSize = "cover"; }
-    else { lay.style.backgroundImage = presetCss(String(v)); lay.style.backgroundSize = "cover"; }
-  } else {
-    try { applyBg(); } catch (e) {}
-  }
-  try {
-    if (window.Android && Android.pageBg){
-      Android.pageBg(JSON.stringify({ page: tab, bg: v || "default",
-        glass: o.glass != null ? o.glass : 56, mask: o.mask != null ? o.mask : 18 }));
-    }
-  } catch (e2) {}
-}
-function bgPagePick(){
-  var cur = "";
-  if (S.bgImg) cur = "img:" + S.bgImg;
-  else if (lsGet("qqbot.bgpreset", "")) cur = String(lsGet("qqbot.bgpreset", "space"));
-  else cur = "tint:" + String(lsGet("qqbot.bgtint", "ios"));
-  var o = bgv2Load();
-  o.pages = o.pages || {};
-  o.pages[X2.bgPage] = cur;
-  bgv2Save(o);
-  bgPageApply(xfCurTab());
-  bgPageHint();
-  extToast("已把当前背景钉到「" + bgPageName(X2.bgPage) + "」");
-}
-function bgPageClear(){
-  var o = bgv2Load();
-  if (o.pages){ delete o.pages[X2.bgPage]; }
-  bgv2Save(o);
-  bgPageApply(xfCurTab());
-  bgPageHint();
-  extToast("「" + bgPageName(X2.bgPage) + "」恢复成全局背景");
-}
-function bgPageSelSet(p){
-  X2.bgPage = (p === "bots" || p === "logs" || p === "more") ? p : "home";
-  bgPageHint();
-}
-function bgv2Set(kind, val){
-  var o = bgv2Load();
-  o[kind] = Math.max(0, Math.min(100, Number(val) || 0));
-  bgv2Save(o);
-  bgv2Apply();
-}
-
 /* 切页时给新卡取样；离开就把轮询停掉（迁移/升级/插件都不在后台空转） */
 function xfOnTab2(t){
-  try { bgPageApply(t); } catch (e0) {}
   try {
     if (t === "more"){
       try { migPaint(); } catch (e1) {}
       try { sysPaint(); } catch (e2) {}
       try { plugPaint(); } catch (e3) {}
+      try { bootPaint(); } catch (e4) {}
+      try { chgPaint(); } catch (e5) {}
+      try { wdgPaint(); } catch (e6) {}
+      try { provPaint(); } catch (e7) {}
     } else {
       if (X2.migTimer){ clearInterval(X2.migTimer); X2.migTimer = 0; }
       if (X2.sysTimer){ clearInterval(X2.sysTimer); X2.sysTimer = 0; }
       if (X2.plugTimer){ clearInterval(X2.plugTimer); X2.plugTimer = 0; }
     }
-    if (t === "settings"){
-      try { bootPaint(); } catch (e4) {}
-      try { chgPaint(); } catch (e5) {}
-      try { wdgPaint(); } catch (e6) {}
-    }
   } catch (e7) {}
 }
-/* 开机只做降级判定 + 恢复背景 v2 的滑条位置，不主动打桥 */
+/* 开机只做降级判定，不主动打桥 */
 function x2Init(){
   try { xfDegrade("migBody", "migUnavail", xfHas("AndroidMigrate", "info")); } catch (e0) {}
   try { xfDegrade("sysBody", "sysUnavail", xfHas("AndroidSysUp", "list")); } catch (e1) {}
@@ -12937,19 +12832,82 @@ function x2Init(){
   try { xfDegrade("bootBody", "bootUnavail", xfHas("AndroidBoot", "status")); } catch (e3) {}
   try { xfDegrade("chgBody", "chgUnavail", xfHas("AndroidPower", "get")); } catch (e4) {}
   try { xfDegrade("wdgBody", "wdgUnavail", xfHas("AndroidWidget", "status")); } catch (e5) {}
-  try { bgv2Apply(); } catch (e6) {}
-  try {
-    var g = el("bgGlass"), m = el("bgMask");
-    if (g){
-      g.addEventListener("input", function(){ g.__touched = 1; xfText("bgGlassVal", g.value + "%"); bgv2Set("glass", g.value); });
-      g.addEventListener("change", function(){ g.__touched = 0; });
-    }
-    if (m){
-      m.addEventListener("input", function(){ m.__touched = 1; xfText("bgMaskVal", m.value + "%"); bgv2Set("mask", m.value); });
-      m.addEventListener("change", function(){ m.__touched = 0; });
-    }
-  } catch (e7) {}
-  try { X2.bgPage = "home"; bgPageHint(); } catch (e8) {}
+
+}
+
+/* ===================== 1.3.5-beta.3：上传错误报告 =====================
+   桥 AndroidReport：start(note) 立刻返回空串、后台跑；poll() 回 state/msg/id/size；share() 调分享。
+   老包没有这个桥：按钮照样能点，弹窗里 #repGo 置灰并写明「功能不可用」。 */
+var REP = { timer: 0, id: "", size: 0 };
+function reportStop(){ if (REP.timer){ clearInterval(REP.timer); REP.timer = 0; } }
+function reportPaint(){
+  var ok = xfHas("AndroidReport", "start");
+  var g = el("repGo"), s = el("repShare"), st = el("repState"), txt = el("repStateTxt");
+  if (g){
+    if (!ok){ g.setAttribute("disabled", "disabled"); g.textContent = "功能不可用"; }
+    else if (!g.textContent || g.textContent === "功能不可用"){ g.removeAttribute("disabled"); g.textContent = "开始上传"; }
+  }
+  if (s) s.style.display = REP.id ? "" : "none";
+  if (!ok && st && txt){ st.style.display = ""; txt.textContent = XF_UNAVAIL; var sp = st.querySelector(".spin"); if (sp) sp.style.display = "none"; }
+}
+function reportRender(j){
+  if (!j) return;
+  var state = String(j.state || "idle"), msg = String(j.msg || "");
+  var st = el("repState"), txt = el("repStateTxt"), sp = st ? st.querySelector(".spin") : null, g = el("repGo");
+  if (st) st.style.display = "";
+  if (sp) sp.style.display = (state === "running") ? "" : "none";
+  if (state === "done"){
+    REP.id = String(j.id || ""); REP.size = Number(j.size || 0);
+    if (txt) txt.textContent = "已上传，编号 " + REP.id + (REP.size > 0 ? "（" + xfSize(REP.size) + "）" : "");
+    var s = el("repShare"); if (s) s.style.display = "";
+    if (g){ g.removeAttribute("disabled"); g.textContent = "重新上传"; }
+    reportStop();
+  } else if (state === "err"){
+    if (txt) txt.textContent = "上传失败：" + (msg || "原因不明") + "（可以再试一次）";
+    if (g){ g.removeAttribute("disabled"); g.textContent = "再试一次"; }
+    reportStop();
+  } else if (state === "running"){
+    if (txt) txt.textContent = msg || "正在上传…";
+  } else {
+    if (txt && !REP.id) txt.textContent = msg || "还没上传过";
+    if (sp) sp.style.display = "none";
+  }
+}
+function reportPoll(once){
+  if (!xfHas("AndroidReport", "poll")){ reportPaint(); return; }
+  var tick = function(){ reportRender(xfCall("AndroidReport", "poll")); };
+  tick();
+  if (once){ reportStop(); return; }
+  reportStop();
+  REP.timer = setInterval(tick, 700);
+}
+function reportOpen(){
+  var d = el("dlgReport"); if (d) d.classList.add("on");
+  reportPaint();
+  reportPoll(true);
+}
+function reportClose(){
+  var d = el("dlgReport"); if (d) d.classList.remove("on");
+  reportStop();
+}
+function reportGo(){
+  if (!xfHas("AndroidReport", "start")){ extToast(XF_UNAVAIL); reportPaint(); return; }
+  var note = el("repNote") ? String(el("repNote").value || "") : "";
+  if (note.length > 500) note = note.slice(0, 500);
+  try { AndroidReport.start(note); } catch (e) { extToast("上传没起来，再试一次"); return; }
+  var st = el("repState"), txt = el("repStateTxt"), sp = st ? st.querySelector(".spin") : null;
+  if (st) st.style.display = "";
+  if (sp) sp.style.display = "";
+  if (txt) txt.textContent = "正在打包并上传…";
+  var g = el("repGo"); if (g){ g.setAttribute("disabled", "disabled"); g.textContent = "上传中…"; }
+  REP.id = "";
+  reportPoll(false);
+}
+function reportShare(){
+  if (!xfHas("AndroidReport", "share")){ extToast(XF_UNAVAIL); return; }
+  var r = xfCall("AndroidReport", "share");
+  if (!r || r.ok === false){ extToast((r && r.err) || "分享面板没打开"); return; }
+  extToast(r.msg || "选一个聊天窗口发出去就行");
 }
 
 /* 切页签时按需立刻拉一次，不用等下一个轮询周期 */
@@ -12959,8 +12917,7 @@ function extOnTab(t){
     try { xfOnTab(t); } catch (eX) {}
     try { xfOnTab2(t); } catch (eY2) {}
     if (t === "home"){ refreshInst(true); try { usgScan(false); } catch (eU) {} }
-    else if (t === "more"){ refreshBk(true); refreshStorage(true); refreshCrash(true); }
-    else if (t === "settings"){ refreshStats(true); refreshLan(true); try { portAuto(); } catch (eP) {} try { dailyLoad(false); } catch (eD) {} }
+    else if (t === "more"){ refreshBk(true); refreshStorage(true); refreshCrash(true); refreshStats(true); refreshLan(true); try { ntfPaint(true); } catch (eN) {} try { portAuto(); } catch (eP) {} try { dailyLoad(false); } catch (eD) {} }
   } catch (e) {}
 }
 

@@ -49,12 +49,55 @@ cur_astrbot() {
   bare_ver "$v"
 }
 
+# 记录本次实际生效的 NapCat 版本：一行纯版本号（去掉 v 前缀）。
+# 为什么单独落一个文件：一旦升级过，宿主机上可能同时存在旧解包目录和新文件，
+# 从文件里现读容易读到写了一半的状态；这份标记是「已经成功装完」时才写的，可信。
+napcat_ver_save() {
+  local v
+  v="$(bare_ver "${1:-}" | tr -d ' \t\r\n')"
+  [ -n "$v" ] || return 0
+  # 9.x 是 QQ 主程序的版本号，绝不能写进 NapCat 的标记（写了就再也自愈不了）
+  case "$v" in
+    9.*) return 0 ;;
+  esac
+  mkdir -p "$QQBOT_CACHE" 2>/dev/null || true
+  printf '%s\n' "$v" > "$QQBOT_CACHE/napcat-ver" 2>/dev/null || true
+}
+
+# 最后一个来源：napcat.mjs 里抓版本字符串。
+# 打包产物里实测出现过这些写法： "version":"4.18.38" / version: '4.18.38' / NapCat v4.18.38。
+# 三种都试，抓不到就交白卷（上层显示「版本未知」），绝不猜、绝不拿别的版本凑数。
+napcat_mjs_ver() {
+  local f="$QQBOT_ROOTFS/opt/QQ/resources/app/app_launcher/napcat/napcat.mjs" v=""
+  [ -f "$f" ] || return 0
+  v="$(grep -oE '"?version"?[[:space:]]*[:=][[:space:]]*"?[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?"?' "$f" 2>/dev/null \
+    | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?')"
+  [ -n "$v" ] || v="$(grep -oE 'NapCat[[:space:]]*[vV]?[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?' "$f" 2>/dev/null \
+    | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?')"
+  printf '%s' "$v"
+}
+
+# NapCat 当前版本。只认下面三个来源，**绝不读 /opt/QQ/resources/app/package.json**：
+# 那是 QQ 主程序自己的 package.json，里面是 QQ 的版本号（9.x）。之前退到它当兜底，
+# 结果界面把 QQ 的 9.x 当成 NapCat 版本显示（1.3.5-beta.3 修的就是这个 bug）。
 cur_napcat() {
   local v=""
-  # NapCat 的版本在它自己的 package.json 里；Shell 版被解到 QQ 的 app_launcher 下面。
-  v="$(read_key "$QQBOT_ROOTFS/opt/QQ/resources/app/app_launcher/napcat/package.json" version)"
-  [ -n "$v" ] || v="$(read_key "$QQBOT_ROOTFS/opt/QQ/resources/app/package.json" version)"
-  bare_ver "$v"
+  # 1) 部署 / 升级成功时写下的标记，最权威
+  if [ -s "$QQBOT_CACHE/napcat-ver" ]; then
+    # tr -d '\r'：标记文件是一行纯版本号，容忍别处写入时带的回车
+    v="$(head -n 1 "$QQBOT_CACHE/napcat-ver" 2>/dev/null | tr -d '\r')"
+  fi
+  # 2) NapCat 自己的 package.json（Shell 版放在 QQ 的 app_launcher 下面）
+  [ -n "$v" ] || v="$(read_key "$QQBOT_ROOTFS/opt/QQ/resources/app/app_launcher/napcat/package.json" version)"
+  # 3) napcat.mjs 里的版本字符串
+  [ -n "$v" ] || v="$(napcat_mjs_ver)"
+  v="$(bare_ver "$v" | tr -d ' \t\r\n')"
+  # 保险丝：任何来源读出来是 9.x 的一律当读错了丢掉（NapCat 现在是 4.x）。
+  # 宁可显示「版本未知」，也不显示一个看起来很确定的错数字。
+  case "$v" in
+    9.*) v="" ;;
+  esac
+  printf '%s' "$v"
 }
 
 # 最新版本（GitHub releases/latest，common.sh 里带 24 小时缓存，不会每次都打网络）
@@ -279,6 +322,10 @@ up_napcat() {
       say "找到官方升级脚本：$rel"
       if qq_proot "bash $rel"; then
         say "NapCat 升级完成（官方脚本）"
+        # 官方脚本不告诉我们版本号，升级完从文件里读一次现状落标记。
+        # 注意先删旧标记：cur_napcat 第一优先级就是标记，不删会把升级前的旧版本原样写回去。
+        rm -f "$QQBOT_CACHE/napcat-ver" 2>/dev/null || true
+        napcat_ver_save "$(cur_napcat)"
         return 0
       fi
       say "官方脚本执行失败，改用安装包覆盖的方式"
@@ -310,6 +357,8 @@ up_napcat() {
     return 1
   fi
   say "NapCat 升级完成（${nv}），重启后生效"
+  # 覆盖装完就把版本写进标记：下次读版本直接读它，不再去文件里猜
+  napcat_ver_save "$nv"
   return 0
 }
 

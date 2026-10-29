@@ -30,6 +30,7 @@ public final class QqbotLayers {
 
     public static final int DEFAULT_LOW_PCT = 15;
     public static final int DEFAULT_HOT_C = 42;
+    public static final int DEFAULT_RESERVE_MB = 1024;
 
     private static final int PERIOD_SEC = 15;
     private static final long COOLDOWN_MS = 90L * 1000L;
@@ -37,7 +38,6 @@ public final class QqbotLayers {
     private static final long HEARTBEAT_STALE_SEC = 90L;
     private static final long BOOT_GRACE_MS = 60L * 1000L;
     private static final long PROBE_CACHE_MS = 5000L;
-    private static final long SPACE_WARN_MB = 512L;
     private static final long SPACE_ALERT_GAP_MS = 30L * 60L * 1000L;
 
     private static final Object LOCK = new Object();
@@ -861,6 +861,7 @@ public final class QqbotLayers {
           .append(",\"temp\":").append(temp)
           .append(",\"lowPct\":").append(p.lowPct)
           .append(",\"hotC\":").append(p.hotC)
+          .append(",\"reserveMb\":").append(p.reserveMb)
           .append(",\"pause\":").append(p.pause ? "true" : "false")
           .append('}');
         return sb.toString();
@@ -881,6 +882,7 @@ public final class QqbotLayers {
             Protect p = new Protect();
             p.lowPct = old.lowPct;
             p.hotC = old.hotC;
+            p.reserveMb = old.reserveMb;
             p.pause = old.pause;
             long[] v = new long[1];
             String s = json == null ? "" : json;
@@ -890,10 +892,14 @@ public final class QqbotLayers {
             if (QqbotCrashScene.numAt(s, "hotC", v)) {
                 p.hotC = (int) clamp(v[0], 35L, 60L);
             }
+            if (QqbotCrashScene.numAt(s, "reserveMb", v)) {
+                p.reserveMb = (int) clamp(v[0], 256L, 8192L);
+            }
             p.pause = QqbotCrashScene.bool(s, "pause", p.pause);
             StringBuilder sb = new StringBuilder(96);
             sb.append("{\"lowPct\":").append(p.lowPct)
               .append(",\"hotC\":").append(p.hotC)
+              .append(",\"reserveMb\":").append(p.reserveMb)
               .append(",\"pause\":").append(p.pause ? "true" : "false")
               .append('}');
             if (!StateIO.write(filesDir, "protect.json", sb.toString())) {
@@ -939,17 +945,20 @@ public final class QqbotLayers {
             return;
         }
         lastSpaceAt = now;
+        Protect p = cfg(filesDir);
+        long reserve = p.reserveMb;
         long mb = freeMb(filesDir);
-        if (mb < 0 || mb >= SPACE_WARN_MB) {
+        if (mb < 0 || mb >= reserve) {
             return;
         }
         if (now - lastSpaceAlert < SPACE_ALERT_GAP_MS) {
             return;
         }
         lastSpaceAlert = now;
-        raise("space", mb < 200 ? "crit" : "warn", "手机存储空间不足",
-                "只剩 " + mb + " MB，沙盒和日志可能写不进去");
-        log(filesDir, "空间不足：剩余 " + mb + " MB");
+        String lv = mb < reserve / 4L ? "crit" : "warn";
+        raise("space", lv, "沙盒预留空间不足",
+                "为沙盒预留了 " + reserve + " MB，现在只剩 " + mb + " MB，系统可能会杀掉后台");
+        log(filesDir, "空间不足：预留 " + reserve + " MB，剩余 " + mb + " MB");
     }
 
     static long freeMb(File filesDir) {
@@ -966,6 +975,7 @@ public final class QqbotLayers {
     private static final class Protect {
         int lowPct = DEFAULT_LOW_PCT;
         int hotC = DEFAULT_HOT_C;
+        int reserveMb = DEFAULT_RESERVE_MB;
         boolean pause = true;
     }
 
@@ -985,6 +995,9 @@ public final class QqbotLayers {
                 }
                 if (QqbotCrashScene.numAt(t, "hotC", v)) {
                     np.hotC = (int) clamp(v[0], 35L, 60L);
+                }
+                if (QqbotCrashScene.numAt(t, "reserveMb", v)) {
+                    np.reserveMb = (int) clamp(v[0], 256L, 8192L);
                 }
                 np.pause = QqbotCrashScene.bool(t, "pause", true);
             }

@@ -10,6 +10,9 @@ NV="$(qq_latest_ver napcat 2>/dev/null)"
 if [ "$NV" != "$QQBOT_NAPCAT_VER" ]; then
   qqlog "NapCat 有新版本：$QQBOT_NAPCAT_VER → $NV（内置版本作为回退保留）"
 fi
+# NV_USED 才是真正装进去的版本：自动版本下载失败会退回内置版本，
+# 那时 NV 已经不成立了，标记文件不能跟着写错（1.3.5-beta.3）。
+NV_USED="$NV"
 
 NC="$QQBOT_CACHE/NapCat.Shell.zip"
 # 1.3.1：先取后台预取好的那一份（键里带版本号，版本不一致时自然取不到、走正常下载）
@@ -29,7 +32,8 @@ if [ ! -s "$NC" ]; then
       if [ "$NV" != "$QQBOT_NAPCAT_VER" ]; then
         qqlog "自动版本 $NV 下载失败，退回内置 $QQBOT_NAPCAT_VER"
         rm -f "$NC" 2>/dev/null
-        qq_gh_dl "$NC" "https://github.com/NapNeko/NapCatQQ/releases/download/$QQBOT_NAPCAT_VER/NapCat.Shell.zip"
+        qq_gh_dl "$NC" "https://github.com/NapNeko/NapCatQQ/releases/download/$QQBOT_NAPCAT_VER/NapCat.Shell.zip" \
+          && NV_USED="$QQBOT_NAPCAT_VER"
       fi
     } || { qqerr "NapCat 下载失败"; exit 1; }
   fi
@@ -39,4 +43,11 @@ if ! qq_sandbox 50-napcat.sh; then
   qqerr "NapCat 安装失败"
   exit 1
 fi
+# 版本标记（1.3.5-beta.3）：更多页 / 升级卡片读 $QQBOT_CACHE/napcat-ver 显示
+# NapCat 版本。之前是去 QQ 的 package.json 里猜，猜出 QQ 自己的 9.x，界面全错。
+# 写失败不影响部署，最多下次退回文件读取。
+if [ -n "$NV_USED" ]; then
+  printf '%s\n' "${NV_USED#v}" > "$QQBOT_CACHE/napcat-ver" 2>/dev/null || true
+fi
+
 qqok "NapCat 已注入 Linux QQ"

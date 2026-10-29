@@ -414,6 +414,15 @@ run_steps() {
   return 0
 }
 
+# 1.3.5-beta.3：部署前先看可用空间。20-rootfs 做完之后再跑（续传/修某一步）只需要 1 GB；
+# 首次部署要解 2 GB 多的 rootfs + 装 apt 包，至少要 3 GB，否则装到一半才失败更难收拾。
+_qq_need_mb="$QQBOT_MIN_FREE_MB"
+qq_step_done "20-rootfs" && _qq_need_mb="$QQBOT_RESUME_FREE_MB"
+if ! qq_space_gate "$HOME" "$_qq_need_mb"; then
+  qqerr "先清出空间再点部署；清理入口：更多 → 存储占用 → 清理日志，或删掉手机里不用的大文件"
+  exit 3
+fi
+
 run_steps
 
 # 最后一道保险：第 3 步连着三次都失败，说明沙盒根文件系统里的 dpkg 状态已经烂到修不回来

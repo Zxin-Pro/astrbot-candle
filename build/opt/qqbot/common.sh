@@ -29,6 +29,10 @@ QQBOT_QQ_DEB_BASE="https://qqdl.gtimg.cn/qqfile/QQNT/9.9.36/beta/9ee04bef"
 QQBOT_QQ_VER="3.2.34-53644"
 QQBOT_NAPCAT_VER="v4.18.38"
 QQBOT_ASTRBOT_VER="v4.28.2"
+# 1.3.5-beta.3：沙盒空间预留。部署整包要解出 2 GB 多的 rootfs，还要装 apt 包，
+# 以前只在写目录失败后提示「只剩 xx MB」，用户看到时已经装到一半了。现在部署前先卡一道。
+QQBOT_MIN_FREE_MB="${QQBOT_MIN_FREE_MB:-3072}"     # 首次部署至少留 3 GB
+QQBOT_RESUME_FREE_MB="${QQBOT_RESUME_FREE_MB:-1024}" # 续跑/升级至少留 1 GB
 
 # ---- v1.1.31：风控改「滑动窗口」+ 自动过期 ----
 # 单次命中只告警，窗口内累计达到阈值才暂停自动重启：很多命中是某条消息触发的
@@ -75,6 +79,17 @@ qqok()   { printf '\033[32m[QQBot]\033[0m %s\n' "$*"; }
 # 的调用方普遍写成 port=$(qq_xxx_port)，若警告走 stdout 就会被命令替换一并捕获，
 # 端口变量里混进警告文本（"http://127.0.0.1:[QQBot] bots.json ...6099"）。
 qqwarn() { printf '\033[33m[QQBot]\033[0m %s\n' "$*" >&2; }
+
+# 可用空间闸门：$1=目录，$2=最少 MB。取不到 df 就放行（不能让统计失败挡住部署）。
+qq_space_gate() {
+  _sg_kb=$(df -k "$1" 2>/dev/null | awk 'NR>1 { print $4; exit }')
+  [ -n "$_sg_kb" ] || return 0
+  if [ "$_sg_kb" -lt $(($2 * 1024)) ] 2>/dev/null; then
+    qqerr "部署沙盒至少要留 $2 MB 可用空间（建议 4 GB），现在只剩 $((_sg_kb / 1024)) MB"
+    return 1
+  fi
+  return 0
+}
 
 # ---------------------------------------------------------------------------
 # 最近几条错误单独留一份给界面看（deploy.error）。
@@ -192,8 +207,8 @@ qq_fsprobe() {
     rm -f "$QQBOT_CACHE/fs-nolink" 2>/dev/null || true
     : > "$QQBOT_CACHE/fs-nowrite" 2>/dev/null || true
     qqerr "沙盒目录 $_d 写不进去：${_werr:-未知错误}"
-    if [ -n "$_avail" ] && [ "$_avail" -lt 51200 ] 2>/dev/null; then
-      qqerr "手机剩余空间不够（只剩 $((_avail / 1024)) MB），先清一点空间再试"
+    if [ -n "$_avail" ] && [ "$_avail" -lt $((QQBOT_MIN_FREE_MB * 1024)) ] 2>/dev/null; then
+      qqerr "手机剩余空间不够（只剩 $((_avail / 1024)) MB，建议至少留 ${QQBOT_MIN_FREE_MB} MB），先清一点空间再试"
     fi
     qqerr "如果这条一直出现：设置页 → 重置部署标记 → 重新部署；还不行就卸载重装（安装时选内部存储）"
     return 1

@@ -386,6 +386,7 @@ public class QqbotActivity extends Activity {
         // 1.3.5-beta.2：系统级升级（Ubuntu / AstrBot / NapCat 三条独立通道）。
         web.addJavascriptInterface(new QqbotSysUpgradeBridge(this), "AndroidSysUp");
         web.addJavascriptInterface(new QqbotPluginHubBridge(this), "AndroidPlugin");
+        web.addJavascriptInterface(new QqbotReportBridge(this), "AndroidReport");
         setContentView(web);
         // 通知栏点进来的 tab 要在第一次 loadUi 之前就记下来（singleTask 重入走 onNewIntent）
         pendingTab = tabOfIntent(getIntent());
