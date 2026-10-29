@@ -324,6 +324,12 @@
   提权固定 92×40，标签加 `nowrap` + 省略号。
 - **部署脚本退出后 `deploy.pid` 删不掉**：`cleanup_pid` 里 `= "$"` 少了转义，永远匹配不上，改成 `$`。
 
+### 安全重制（2026-10-29）
+
+- 本版首次发布的全量包在 `assets/qqbot-bundle.tar.xz` 中误带了构建机运行期数据（dashboard 口令字段、`jwt_secret`、NapCat token、`data_v4.db*`、知识库、日志、插件配置与一张旧二维码），已删除 24 个条目并重制。
+- 新全量包 `609,582,917 B`，SHA-256 `b78d2b0ecf7307b2e9647ceb01e4f76b8357afbccb1c506f881e516c0da417c0`；旧包 `9b947b17d7b138c38877b77baf2e0a5eb46d3074c1393016c5bf20df0b799061` 请勿再使用。
+- 其余受影响的旧全量包已从 GitHub 下架（增量包不受影响）；装过旧包请按 [安全重制说明](docs/SECURITY-REBUILD-b4.md) 轮换 dashboard 密码、JWT secret、NapCat Token，并重新扫码登录。
+
 ### 说明
 
 - **覆盖安装**：`versionCode` 仍是 `10304`（1.3.4 全部测试版同号），与 1.3.3 / 1.3.3 各测试版同签名，
