@@ -198,7 +198,7 @@ powershell -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch amd64
 | 本地文件 | 大小 | VPS 路径 | 公开地址 |
 | --- | --- | --- | --- |
 | `out\bundle-arm64.tar.xz` | 583,012,780 B（约 556 MiB；2026-10-29 安全重制后） | `/data/www/zhuxin-site/dl/bundle-arm64.tar.xz` | `https://xn--15t839a.xyz/dl/bundle-arm64.tar.xz` |
-| `out\bundle-amd64.tar.xz` | 604,245,316 B（约 576 MiB） | `/data/www/zhuxin-site/dl/bundle-amd64.tar.xz` | `https://xn--15t839a.xyz/dl/bundle-amd64.tar.xz` |
+| `out\bundle-amd64.tar.xz` | 571,602,828 B（约 545 MiB；2026-10-29 安全重制后） | `/data/www/zhuxin-site/dl/bundle-amd64.tar.xz` | `https://xn--15t839a.xyz/dl/bundle-amd64.tar.xz` |
 
 上传后在 VPS 的同目录生成同名 `.sha256`（`sha256sum` 标准格式，`qq_bundle_pull()` 只取第一列）：
 
