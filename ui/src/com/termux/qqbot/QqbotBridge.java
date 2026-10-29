@@ -103,6 +103,11 @@ public class QqbotBridge {
                     int bp = b.optInt("napcatPort", 6099);
                     if (bp <= 0) bp = 6099;
                     b.put("up", act.portOpen(bp));
+                    // 1.3.5-beta.2：6099 是 NapCat WebUI，进程一起来就监听，不能当登录态用。
+                    // OneBot 端口（6199）要等 QQ 真的登上才开，日志页二维码按它判「已登录」。
+                    int bq = b.optInt("onebotPort", 6199);
+                    if (bq <= 0) bq = 6199;
+                    b.put("login", act.portOpen(bq));
                     if (b.optString("id", "").equals(activeId)) {
                         napPort = bp;
                         int bo = b.optInt("onebotPort", 6199);
@@ -114,6 +119,8 @@ public class QqbotBridge {
             o.put("onebotPort", onePort);
             o.put("napcatUp", act.portOpen(napPort));
             o.put("onebotUp", act.portOpen(onePort));
+            // 顶层也报一份登录态（当前实例），没有实例信息时前端用它兜底。
+            o.put("login", act.portOpen(onePort));
             o.put("bots", bots);
             // 后台守护（Android 前台服务）状态，「更多 → 后台守护」卡用它渲染。
             // guardOn 看的是开关文件而不是服务是否在跑：用户关掉守护后服务会停，

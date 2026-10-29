@@ -454,11 +454,28 @@ if (Test-Path $andRes) {
   Write-Host '[res] ui\assets\android-res missing, skip'
 }
 $snippet = "$ROOT\ui\assets\android\widget-manifest.xml"
-# 1.3.0: the widget + quick-settings tile are disabled on purpose. Both are `exported` components
-# that no screen in this app uses, and scanner engines score extra exported components + widgets as
-# the a.gray.devicemaster family (user kept hitting the Xiaomi/Tencent warning). Keep the snippet file
-# around: re-enabling is one line (drop this block and let 3e run again).
-Write-Host '[res] widget receiver + QS tile disabled on purpose (AV heuristics), snippet skipped'
+# 1.3.5-beta.2: widget re-enabled on request (feature checklist #106). The QS tile service stays out of
+# the snippet on purpose - one less exported component for scanner engines to score.
+# Idempotent: skip when the manifest already mentions the receiver.
+if ((Test-Path $snippet) -and (Test-Path "$ROOT\_apkwork\AndroidManifest.xml")) {
+  $mani = "$ROOT\_apkwork\AndroidManifest.xml"
+  $mtxt = [System.IO.File]::ReadAllText($mani, [System.Text.Encoding]::UTF8)
+  if ($mtxt.Contains('QqbotWidgetProvider')) {
+    Write-Host '[res] widget receiver already in manifest, skip'
+  } else {
+    $snip = [System.IO.File]::ReadAllText($snippet, [System.Text.Encoding]::UTF8)
+    $idx = $mtxt.LastIndexOf('</application>')
+    if ($idx -lt 0) { Write-Host '[res] no </application> anchor, widget manifest skipped' }
+    else {
+      $mtxt = $mtxt.Substring(0, $idx) + $snip + "`r`n    " + $mtxt.Substring($idx)
+      $utf8 = New-Object System.Text.UTF8Encoding($false)
+      [System.IO.File]::WriteAllText($mani, $mtxt, $utf8)
+      Write-Host '[res] widget receiver inserted into manifest'
+    }
+  }
+} else {
+  Write-Host '[res] widget snippet or manifest missing, skip'
+}
 
 # 4) apktool b
 New-Item -ItemType Directory -Force -Path "$ROOT\out" | Out-Null

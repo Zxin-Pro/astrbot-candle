@@ -439,6 +439,8 @@ public class QqbotGuardService extends Service {
         try { QqbotCrashScene.onServiceCreate(this); } catch (Throwable ignored) {}
         // 分层看门狗：沙盒 / NapCat / AstrBot 三层探针，15 秒一轮，掉哪层只重启哪层。
         try { QqbotLayers.start(this); } catch (Throwable ignored) {}
+        // 1.3.5-beta.2：充电高性能。warm 只读开关、插着电才真持锁，没开就是空操作。
+        try { QqbotPowerBridge.warm(this); } catch (Throwable ignored) {}
         task = new QqbotGuardTask(this);
         thread = new Thread(task, "qqbot-guard");
         thread.setDaemon(true);

@@ -203,7 +203,7 @@ img{ max-width: 100%; display: block; }
 }
 
 /* 极光：把用户选的强调色以极低透明度铺在背景上，卡片才有东西可「折射」 */
-#bgMask{
+#bgAurora{
   position: fixed;
   inset: -18%;
   z-index: -2;
@@ -219,10 +219,10 @@ img{ max-width: 100%; display: block; }
   will-change: transform;
 }
 
-:root[data-theme="dark"] #bgMask{ opacity: .42; }
+:root[data-theme="dark"] #bgAurora{ opacity: .42; }
 
 /* 顶部再加一层「天光」，让玻璃边缘有渐变过渡而不是硬切 */
-#bgMask::after{
+#bgAurora::after{
   content: "";
   position: absolute;
   inset: 0;
@@ -232,7 +232,7 @@ img{ max-width: 100%; display: block; }
   mix-blend-mode: soft-light;
 }
 
-:root[data-theme="dark"] #bgMask::after{
+:root[data-theme="dark"] #bgAurora::after{
   background:
     linear-gradient(180deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,0) 40%),
     linear-gradient(0deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,0) 34%);
@@ -246,7 +246,7 @@ img{ max-width: 100%; display: block; }
 }
 
 /* 用户自定义背景图：压暗 + 文字投影，保证可读 */
-body.hasimg #bgMask{
+body.hasimg #bgAurora{
   background:
     radial-gradient(120% 80% at 50% 0%, rgba(0,0,0,.30), rgba(0,0,0,.62) 100%);
   filter: none;
@@ -2127,7 +2127,7 @@ input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin:
     radial-gradient(140% 100% at 50% -30%, #101624 0%, #080b13 42%, #04050a 100%);
 }
 
-#bgMask{
+#bgAurora{
   inset: -22%;
   opacity: 1;
   filter: blur(38px) saturate(175%);
@@ -2139,10 +2139,10 @@ input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin:
     radial-gradient(26% 20% at 46% 46%, color-mix(in srgb, var(--warn) 7%, transparent) 0%, transparent 62%);
   animation-duration: 40s;
 }
-:root[data-theme="dark"] #bgMask{ opacity: .85; }
+:root[data-theme="dark"] #bgAurora{ opacity: .85; }
 
 /* 顶光：让最上面一排卡片有「逆光」的亮边 */
-#bgMask::after{ opacity: .8; }
+#bgAurora::after{ opacity: .8; }
 
 /* ---------- Z2. 玻璃：更薄、更透、边缘有镜面环 ---------- */
 .card{
@@ -2457,7 +2457,7 @@ header::after{
 
 /* ---------- Z12. 触控目标与溢出收口（iOS 最小 44，此处至少 32） ---------- */
 html, body{ overflow-x: hidden; }
-#bgMask{ pointer-events: none; }
+#bgAurora{ pointer-events: none; }
 
 .tiny, .xdel{ min-height: 32px !important; }
 .tiny{ padding: 0 12px !important; font-size: 12px !important; }
@@ -2862,7 +2862,7 @@ html.devnotelock{ overflow: hidden; }
   /* 只读行的语义色：正常 --ok，异常 --warn（不新增任何颜色值） */
   .fgsrow[data-st="ok"] .fgsv{ color: var(--ok); }
   .fgsrow[data-st="warn"] .fgsv{ color: var(--warn); }
-  /* ===== 1.3.5-beta.1：六张新卡（运行分层 / 告警 / 周报 / 性能 / Provider / 反馈包） =====
+  /* ===== 1.3.5-beta.1：五张新卡（运行分层 / 告警 / 周报 / 性能 / Provider） =====
      只加类、不改令牌：卡片吃 --mi-card，卡内块吃 --mi-inner，按钮吃 --btn-r / --btn-r-sm。 */
   .xfbox{ margin-top: 12px; padding: 2px 14px; border-radius: var(--mi-inner); background: var(--fill-1); }
   .xflist{ margin-top: 10px; padding: 2px 14px; border-radius: var(--mi-inner); background: var(--fill-1); }
@@ -2921,6 +2921,29 @@ html.devnotelock{ overflow: hidden; }
   .provn{ font-size: 12.5px; font-weight: 600; color: var(--label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .provm{ margin-top: 2px; font-size: 11px; color: var(--label-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .provms{ flex: none; font-size: 11px; color: var(--label-2); font-variant-numeric: tabular-nums; }
+  /* ===== 1.3.5-beta.2：换机迁移 / 系统升级 / 插件 / 自启动 / 充电 / 小组件 / 背景 v2 ===== */
+  .migrow{ display: flex; align-items: center; gap: 8px; padding: 10px 0; }
+  .migrow + .migrow{ border-top: .5px solid var(--sep); }
+  .migmain{ flex: 1 1 auto; min-width: 0; }
+  .migname{ font-size: 12.5px; font-weight: 600; color: var(--label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .migsub{ margin-top: 3px; font-size: 11px; line-height: 1.5; color: var(--label-3); overflow-wrap: anywhere; }
+  .migrow > button{ flex: none; }
+  .progwrap{ margin-top: 10px; display: flex; align-items: center; gap: 9px; }
+  .progwrap .bar{ flex: 1; margin: 0; }
+  .plrow{ display: flex; align-items: center; gap: 9px; padding: 10px 0; }
+  .plrow + .plrow{ border-top: .5px solid var(--sep); }
+  .plmain{ flex: 1 1 auto; min-width: 0; }
+  .plname{ font-size: 12.5px; font-weight: 600; color: var(--label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pldesc{ margin-top: 3px; font-size: 11px; line-height: 1.5; color: var(--label-3); overflow-wrap: anywhere; }
+  .placts{ display: flex; align-items: center; gap: 6px; flex: none; }
+  .tailbox{ margin-top: 8px; padding: 8px 10px; border-radius: var(--btn-r-sm); background: var(--fill-2); font-family: var(--mono); font-size: 10.5px; line-height: 1.5; color: var(--label-2); white-space: pre-wrap; word-break: break-all; max-height: 24vh; overflow: auto; }
+  .tagchip{ flex: none; padding: 2px 7px; border-radius: 8px; background: var(--fill-2); font-size: 10px; color: var(--label-2); }
+  .plugform .pf-row{ display: flex; align-items: center; gap: 9px; padding: 9px 0; }
+  .plugform .pf-row + .pf-row{ border-top: .5px solid var(--sep); }
+  .plugform .pf-k{ flex: 0 0 36%; min-width: 0; font-size: 12.5px; color: var(--label-2); overflow-wrap: anywhere; }
+  .plugform .pf-v{ flex: 1 1 auto; min-width: 0; }
+  .plugform .pf-v textarea{ min-height: 88px; padding: 10px 12px; }
+  .bgp2 .fxrow{ padding: 8px 0; }
 
 /* ============================================================================
    1.3.4-beta.4 · 按钮视觉层（task-23 / ui-tap）
@@ -3404,7 +3427,7 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
 </head>
 <body>
 <div id="bgLayer"></div>
-<div id="bgMask"></div>
+<div id="bgAurora"></div>
 <header>
   <div class="hdrow">
     <div class="brand">
@@ -3910,6 +3933,32 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
           <button class="small" data-act="clearbg">恢复默认</button>
         </div>
       </div>
+      <!-- 1.3.5-beta.2 · 背景 v2：毛玻璃强度 / 遮罩浓度 / 按页背景。存 localStorage qqbot.bgv2，
+           滑条只改 CSS 变量（--glass-blur / --bg-mask），不动任何设计令牌。 -->
+      <div class="xfbox bgp2" style="margin-top:2px">
+        <div class="fxrow fxcol">
+          <div class="fxhead"><span class="fxlabel">毛玻璃强度</span><span class="fxval" id="bgGlassVal">56%</span></div>
+          <input type="range" id="bgGlass" class="rng" min="0" max="100" step="1" value="56" aria-label="毛玻璃强度">
+        </div>
+        <div class="fxrow fxcol">
+          <div class="fxhead"><span class="fxlabel">遮罩浓度</span><span class="fxval" id="bgMaskVal">18%</span></div>
+          <input type="range" id="bgMask" class="rng" min="0" max="90" step="1" value="18" aria-label="遮罩浓度">
+        </div>
+        <div class="fxrow" style="flex-wrap:wrap">
+          <span class="fxlabel">按页背景</span>
+          <div class="seg" id="bgPageSel">
+            <button data-act="bgpage" data-arg="home" class="on">首页</button>
+            <button data-act="bgpage" data-arg="bots">机器人</button>
+            <button data-act="bgpage" data-arg="logs">日志</button>
+            <button data-act="bgpage" data-arg="more">更多</button>
+          </div>
+        </div>
+        <div class="btns" style="margin-top:8px">
+          <button class="small" id="bgPagePick" data-act="bgpagepick" style="flex:1">钉到这一页</button>
+          <button class="small" id="bgPageClear" data-act="bgpageclear" style="flex:1">取消这一页</button>
+        </div>
+        <div class="hint" id="bgPageHint" style="margin-top:6px">—</div>
+      </div>
       <div class="fxrow">
         <span class="fxlabel">桌面图标</span>
         <div class="btns">
@@ -4051,18 +4100,78 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
       <div class="hint" id="perfUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
     </div>
 
-    <!-- 1.3.5-beta.1 · 反馈包（AndroidFeed）：生成 + 分享，结果写在 #feedOut -->
-    <div class="card" id="feedCard">
-      <h2><span class="dot" id="d-feed"></span>反馈包</h2>
-      <div class="hint">把设备信息、最近 4 个日志、崩溃快照和脱敏配置打成一个包。只在本机生成，分享时由你选择发给谁。</div>
-      <div id="feedBody">
-        <div class="btns" style="margin-top:10px">
-          <button class="small primary" data-act="feedbuild" style="flex:1">生成反馈包</button>
-          <button class="small" id="btnFeedShare" data-act="feedshare" style="flex:1" disabled>分享最近一次</button>
+    <!-- 1.3.5-beta.2 · 换机迁移（AndroidMigrate）：打包 → 列表分享/删除 → 选文件 → 预览 → 恢复 -->
+    <div class="card" id="migCard">
+      <h2><span class="dot" id="d-mig"></span>换机迁移</h2>
+      <div class="hint">把账号、AstrBot 配置和插件打成一个包，换手机时搬过去；恢复前会自动备份现有的。</div>
+      <div id="migBody">
+        <div class="seg" id="migMode" style="margin-top:10px">
+          <button data-act="migmode" data-arg="full" class="on">全量（含数据库）</button>
+          <button data-act="migmode" data-arg="config">只搬配置</button>
         </div>
-        <div class="hint" id="feedOut" style="margin-top:8px">还没有生成过</div>
+        <div class="btns" style="margin-top:10px">
+          <button class="small primary" id="migBuild" data-act="migbuild" style="flex:1">开始打包</button>
+        </div>
+        <div class="progwrap" id="migProg" style="display:none">
+          <span class="spin" aria-hidden="true"></span>
+          <div class="bar"><i id="migBar"></i></div>
+          <span class="xfv" id="migMsg" style="flex:none">准备中…</span>
+        </div>
+        <div class="xfsec">已有的包</div>
+        <div class="xflist" id="migList"><div class="xfempty">还没有打包记录</div></div>
+        <div class="btns" style="margin-top:10px">
+          <button class="small" id="migPick" data-act="migpick" style="flex:1">选择要恢复的文件</button>
+        </div>
+        <div class="xfsec">待恢复</div>
+        <div class="xflist" id="migStaged"><div class="xfempty">还没选文件</div></div>
+        <div class="btns" style="margin-top:10px">
+          <button class="small primary" id="migApply" data-act="migapply" style="flex:1" disabled>恢复选中的文件</button>
+        </div>
       </div>
-      <div class="hint" id="feedUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+      <div class="hint" id="migUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
+
+    <!-- 1.3.5-beta.2 · 系统级升级（AndroidSysUp）：三行版本 + 检查更新 + 升级实时 tail -->
+    <div class="card" id="sysCard">
+      <h2><span class="dot" id="d-sys"></span>系统级升级</h2>
+      <div class="hint">Ubuntu、AstrBot、NapCat 各自升级。升级时下面会滚最近几行输出，卡住了可以停。</div>
+      <div id="sysBody">
+        <div id="sysList" style="margin-top:10px"></div>
+        <div class="btns" style="margin-top:10px">
+          <button class="small" id="sysCheck" data-act="syscheck" style="flex:1">检查更新</button>
+          <button class="small danger" id="sysStop" data-act="sysstop" style="flex:1;display:none">停止升级</button>
+        </div>
+        <div class="progwrap" id="sysProg" style="display:none">
+          <span class="spin" aria-hidden="true"></span>
+          <div class="bar"><i id="sysBar"></i></div>
+          <span class="xfv" id="sysPct" style="flex:none">0%</span>
+        </div>
+        <div class="rowmore" id="sysLogBtn" data-act="syslogfold" style="display:none"><span>升级日志</span><span class="arw" id="sysLogArw">展开</span></div>
+        <pre class="tailbox" id="sysLog" style="display:none"></pre>
+      </div>
+      <div class="hint" id="sysUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
+
+    <!-- 1.3.5-beta.2 · 插件中心（AndroidPlugin）：已装 / 市场、开关、重载、删除、安装、配置表单 -->
+    <div class="card" id="plugCard">
+      <h2><span class="dot" id="d-plug"></span>插件中心</h2>
+      <div class="hint">已装的可以开关、重载、删除；市场里点安装会自动拉下来。</div>
+      <div id="plugBody">
+        <div class="seg" id="plugTab" style="margin-top:10px">
+          <button data-act="plugtab" data-arg="installed" class="on">已装</button>
+          <button data-act="plugtab" data-arg="market">市场</button>
+        </div>
+        <div class="xflist" id="plugList"><div class="xfempty">还没有装插件</div></div>
+        <div class="xflist" id="plugMarket" style="display:none"><div class="xfempty">还没加载市场</div></div>
+        <div class="progwrap" id="plugProg" style="display:none">
+          <span class="spin" aria-hidden="true"></span>
+          <div class="bar"><i id="plugBar"></i></div>
+          <span class="xfv" id="plugMsg" style="flex:none">安装中…</span>
+        </div>
+        <div class="rowmore" id="plugLogBtn" data-act="pluglogfold" style="display:none"><span>安装日志</span><span class="arw" id="plugLogArw">展开</span></div>
+        <pre class="tailbox" id="plugLog" style="display:none"></pre>
+      </div>
+      <div class="hint" id="plugUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
     </div>
 
     <!-- 厂商省电引导（功能 5）：各家的「省电策略」入口不一样，原生按 MANUFACTURER
@@ -4375,6 +4484,44 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
       <div class="hint" id="provUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
     </div>
 
+    <!-- 1.3.5-beta.2 · 自启动检测（AndroidBoot）：三行状态 + 去设置，顶部显示 ROM -->
+    <div class="card" id="bootCard">
+      <h2><span class="dot" id="d-boot"></span>自启动检测</h2>
+      <div class="hint" id="bootRom">正在读机型…</div>
+      <div id="bootBody">
+        <div id="bootList" style="margin-top:10px"></div>
+      </div>
+      <div class="hint" id="bootUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
+
+    <!-- 1.3.5-beta.2 · 充电高性能（AndroidPower）：只在充电时保持高性能，拔电自动放开 -->
+    <div class="card" id="chargeCard">
+      <h2><span class="dot" id="d-chg"></span>充电高性能</h2>
+      <div class="hint">插着电的时候不省电：保持 CPU 唤醒与 Wi-Fi，通知来得更快；拔电自动还原。</div>
+      <div id="chgBody">
+        <div class="swrow" style="margin-top:6px">
+          <div class="swinfo"><div class="swname">充电时保持高性能<span class="swtag off" id="chgTag">已关闭</span></div>
+            <div class="swdesc" id="chgHint">插着电时打开，电池不会因此多掉，只是不主动省电。</div></div>
+          <button class="tgl" id="chgTgl" data-act="chgtoggle" aria-label="充电高性能开关"></button>
+        </div>
+        <div class="hint" id="chgState">当前：—</div>
+      </div>
+      <div class="hint" id="chgUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
+
+    <!-- 1.3.5-beta.2 · 桌面小组件（AndroidWidget）：状态 + 添加到桌面 -->
+    <div class="card" id="widgetCard">
+      <h2><span class="dot" id="d-wdg"></span>桌面小组件</h2>
+      <div class="hint">把运行状态放到桌面，一眼看到沙盒活没活。</div>
+      <div id="wdgBody">
+        <div class="hint" id="wdgState" style="margin-top:8px">正在读取…</div>
+        <div class="btns" style="margin-top:10px">
+          <button class="small primary" id="wdgPin" data-act="wdgpin" style="flex:1">添加到桌面</button>
+        </div>
+      </div>
+      <div class="hint" id="wdgUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
+
     <div class="card">
       <h2>维护</h2>
       <div class="btns">
@@ -4406,6 +4553,20 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
 </section>
 
 </main>
+
+<div class="dlgmask" id="dlgPlug">
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="plugConfTitle">
+    <h3 id="plugConfTitle">插件配置</h3>
+    <div class="dbody">
+      <div class="plugform" id="plugConfForm"></div>
+      <div class="hint" id="plugConfNote"></div>
+    </div>
+    <div class="dfoot">
+      <button class="small" data-act="plugconfclose">取消</button>
+      <button class="primary" id="plugConfSave" data-act="plugconfsave" style="flex:1">保存</button>
+    </div>
+  </div>
+</div>
 
 <div class="dlgmask" id="dlgDisclaimer">
   <div class="dlg">
@@ -4554,7 +4715,7 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
     <button class="dlgx" data-act="astrclose" aria-label="关闭">&times;</button>
     <h3 id="astrDlgTitle">模型与人格</h3>
     <div class="dbody">
-      <div class="field"><label for="astrBase">接口地址</label><input id="astrBase" autocomplete="off" spellcheck="false" placeholder="https://worldcodes.online/v1"></div>
+      <div class="field"><label for="astrBase">接口地址</label><input id="astrBase" autocomplete="off" spellcheck="false" placeholder="https://la.worldcodes.online/v1"></div>
       <!-- 1.3.4-beta.3 §2：中转站地址与两个动作从首屏模型卡搬到这儿，紧挨着接口地址，
            改的时候一眼能对上「现在连的是哪家」；id 沿用 mcRelay*，astrHomePaint 那套填充逻辑不用改。 -->
       <div class="mcrelay" id="mcRelay" style="display:none">
@@ -6195,7 +6356,13 @@ var NO_LOCK_ACTS = [
   "logprune", "logpruneyes", "logpruneno",
   /* 1.3.5-beta.1：新卡都是「读状态 / 给诊断入口」，部署没完成时正是要看的时候，不该置灰 */
   "layrestart", "protsave", "crashtgl", "crashdel", "alertset", "alertmute", "alerttest",
-  "weekpush", "perflive", "perfsample", "provall", "provone", "feedbuild", "feedshare",
+  "weekpush", "perflive", "perfsample", "provall", "provone",
+  /* 1.3.5-beta.2：迁移 / 升级 / 插件 / 自启动 / 充电 / 小组件 / 背景 v2 —— 都是诊断与外观入口 */
+  "migmode", "migbuild", "migshare", "migdel", "migpick", "migapply",
+  "syscheck", "sysup", "sysstop", "syslogfold",
+  "plugtab", "pluginstall", "plugtoggle", "plugreload", "plugremove",
+  "plugconf", "plugconfsave", "plugconfclose", "plugconftgl", "pluglogfold",
+  "bootopen", "chgtoggle", "wdgpin", "bgpage", "bgpagepick", "bgpageclear",
   "dailytoggle"
 ];
 
@@ -8545,13 +8712,23 @@ function fillQrSelect(){
    卡片就一直挂着那张已经扫过的图。可靠信号是端口：napcatPort 只有在 QQ 真正登上之后才监听
    （run-napcat.sh 与真机实测一致），所以「该实例 up」就是「已登录」。端口读不到时退回顶层 napcatUp；
    组件被关掉时一律不算已登录（那时是「已停止」，不是登录态）。 */
-function qrBotUp(id){
+function qrBotUp(id, r){
+  /* 1.3.5-beta.2：日志页二维码不出的根因是这里判错了登录态。
+     NapCat 的 6099（WebUI）进程一起来就监听，拿它当「已登录」会让二维码永远显示成
+     「QQ 已登录」；真正可靠的是 OneBot 端口（6199，Java 侧新增 login 字段）。
+     老包没有 login 字段就退回旧口径，但二维码文件若是 2.5 分钟内新画的，一律算未登录。 */
   var bs = (S.bots && S.bots.bots) ? S.bots.bots : [];
-  for (var i = 0; i < bs.length; i++){
-    if (String(bs[i].id) === String(id)) return !!bs[i].up;
+  var hit = null;
+  for (var j = 0; j < bs.length; j++){
+    if (String(bs[j].id) === String(id)){ hit = bs[j]; break; }
   }
+  /* 下拉还没填好（id 为空）或只有一个号时，直接按那个号判：首屏刚打开、qrSel 还没接上数据时也不会误判。 */
+  if (!hit && bs.length === 1) hit = bs[0];
+  if (hit && typeof hit.login === "boolean") return hit.login;
   var st = S.st || {};
   if (st.napcatOff) return false;
+  if (r && qrFresh(r)) return false;
+  if (typeof st.login === "boolean") return st.login;
   return !!st.napcatUp;
 }
 
@@ -8561,7 +8738,7 @@ function loadQr(){
   try { r = JSON.parse(Android.qr(id)); } catch (e) { r = { ok: false }; }
   var img = el("qrImg"), none = el("qrNone");
   /* 1.3.4-beta.5：已登录就把二维码收掉（用户反馈：扫完还是显示二维码） */
-  if (qrBotUp(id)) {
+  if (qrBotUp(id, r)) {
     img.style.display = "none";
     img.removeAttribute("src");
     none.style.display = "";
@@ -8688,7 +8865,7 @@ function qrTick(){
   if (!stt.open) return;
   var r = qrProbe(stt.id);
   /* 登录成功立刻收窗：qrTick 每 6 秒跑一次，比等文件消失靠谱（1.3.4-beta.5） */
-  if (qrBotUp(stt.id)) { qrClose(true); extToast("QQ 已登录，二维码已收起"); return; }
+  if (qrBotUp(stt.id, r)) { qrClose(true); extToast("QQ 已登录，二维码已收起"); return; }
   qrApply(r, stt.id);
   if (!stt.at || Date.now() - stt.at < 40000) return;
   /* 两种情况要分开：
@@ -8732,7 +8909,10 @@ function qrAutoCheck(st){
      只放内存，下次启动重新算。 */
   if (QR_SKIP) return;
   /* 已登录就不再自动弹（1.3.4-beta.5）：文件可能还在，只看文件会把扫过的二维码又弹一次 */
-  try { if (qrBotUp((qrState().id) || (S.bots && S.bots.active) || "")) return; } catch (eL) {}
+  try {
+    var qid0 = (qrState().id) || (S.bots && S.bots.active) || "";
+    if (qrBotUp(qid0, qrProbe(qid0))) return;
+  } catch (eL) {}
   var stt = qrState();
   if (stt.open) return;
   if (Date.now() < stt.until) { try { qrCardHint(); } catch (e0) {} return; }   /* 1.3.4-beta.2：关掉弹窗后改提示卡片 */
@@ -9020,7 +9200,7 @@ document.addEventListener("click", function(ev){
   else if (act === "qrcopyurl") qrCopyUrl();
   /* ---------- 1.3.4-beta.9：前台常驻 ---------- */
   else if (act === "fgsfix") fgsFix();
-  /* ---------- 1.3.5-beta.1：运行分层 / 告警 / 周报 / 性能 / Provider / 反馈包 ---------- */
+  /* ---------- 1.3.5-beta.1：运行分层 / 告警 / 周报 / 性能 / Provider ---------- */
   else if (act === "layrestart") layRestart(arg);
   else if (act === "protsave") protSave(arg);
   else if (act === "crashtgl") crashToggle(arg);
@@ -9033,8 +9213,33 @@ document.addEventListener("click", function(ev){
   else if (act === "perfsample") { try { perfPaint(); } catch (eP1) {} extToast("已采样一次"); }
   else if (act === "provall") provAll();
   else if (act === "provone") provOne(arg);
-  else if (act === "feedbuild") feedBuild();
-  else if (act === "feedshare") feedShare();
+  /* ---------- 1.3.5-beta.2：迁移 / 系统升级 / 插件 / 自启动 / 充电 / 小组件 / 背景 v2 ---------- */
+  else if (act === "migmode") migModeSet(arg);
+  else if (act === "migbuild") migBuild();
+  else if (act === "migshare") migShare(arg);
+  else if (act === "migdel") migDel(arg);
+  else if (act === "migpick") migPick();
+  else if (act === "migapply") migApply();
+  else if (act === "syscheck") { sysPaint(); extToast("已重新检查版本"); }
+  else if (act === "sysup") sysStart(arg);
+  else if (act === "sysstop") sysStop();
+  else if (act === "syslogfold") sysLogFold();
+  else if (act === "plugtab") plugTabSet(arg);
+  else if (act === "pluginstall") plugInstall(arg);
+  else if (act === "plugtoggle") plugToggle(arg);
+  else if (act === "plugreload") plugReload(arg);
+  else if (act === "plugremove") plugRemove(arg);
+  else if (act === "plugconf") plugConfOpen(arg);
+  else if (act === "plugconfsave") plugConfSave();
+  else if (act === "plugconfclose") plugConfClose();
+  else if (act === "plugconftgl") { var _pt = el(arg); if (_pt) _pt.classList.toggle("on"); }
+  else if (act === "pluglogfold") { var _pl = el("plugLog"), _pa = el("plugLogArw"); var _po = _pl && _pl.style.display === "none"; if (_pl) _pl.style.display = _po ? "" : "none"; if (_pa) _pa.textContent = _po ? "收起" : "展开"; }
+  else if (act === "bootopen") bootOpen(arg);
+  else if (act === "chgtoggle") chgToggle();
+  else if (act === "wdgpin") wdgPin();
+  else if (act === "bgpage") bgPageSelSet(arg);
+  else if (act === "bgpagepick") bgPagePick();
+  else if (act === "bgpageclear") bgPageClear();
   else if (act === "savebot") saveBot();
   else if (act === "cancelbot") cancelBot();
   else if (act === "pickbg") {
@@ -11725,12 +11930,12 @@ function refreshExtras(st){
 }
 
 /* ===================== 1.3.5-beta.1：六张新卡 =====================
-   运行分层 / 告警中心 / 周报 / 性能面板 / Provider 体检 / 反馈包。
+   运行分层 / 告警中心 / 周报 / 性能面板 / Provider 体检。
    通用约定：桥一律 typeof 探测（老包没有就整卡降级成一句「这个安装包还不支持」），
    所有桥调用裹 try/catch 且把异常当空态；轮询节制——性能只在「更多」页可见时 2 秒一次，
    告警与周报进入页面各拉一次，Provider 体检 800ms 轮询到 done 就停。 */
 var XF = {
-  layer: null, alert: null, week: null, prov: null, feed: null,
+  layer: null, alert: null, week: null, prov: null,
   perfTimer: 0, perfOn: false, perfFps: 0, fpsRaF: 0, fpsN: 0, fpsT: 0,
   provTimer: 0, provTries: 0, alertAt: 0, weekAt: 0
 };
@@ -12158,31 +12363,6 @@ function provOne(id){
   provPollStart();
 }
 
-/* ---------------- 反馈包 ---------------- */
-function feedPaint(){
-  var ok = xfHas("AndroidFeed", "build");
-  xfDegrade("feedBody", "feedUnavail", ok);
-  var b = el("btnFeedShare");
-  if (b && (!XF.feed || !XF.feed.id)) b.setAttribute("disabled", "disabled");
-}
-function feedBuild(){
-  if (!xfHas("AndroidFeed", "build")){ extToast(XF_UNAVAIL); return; }
-  var r = xfCall("AndroidFeed", "build");
-  if (!r || r.ok === false){ xfText("feedOut", "生成失败：" + ((r && r.err) || "未知原因")); return; }
-  XF.feed = r;
-  var b = el("btnFeedShare");
-  if (b) b.removeAttribute("disabled");
-  var items = r.items || [];
-  xfText("feedOut", "已生成 " + (r.id || "") + " · " + xfSize(r.size) + (items.length ? " · " + items.join(" / ") : ""));
-}
-function feedShare(){
-  if (!XF.feed || !XF.feed.id){ extToast("先生成一个反馈包"); return; }
-  if (!xfHas("AndroidFeed", "share")){ extToast(XF_UNAVAIL); return; }
-  var r = xfCall("AndroidFeed", "share", XF.feed.id);
-  if (!r || r.ok === false){ extToast((r && r.err) || "分享失败，再试一次"); return; }
-  extToast("已调起系统分享");
-}
-
 /* 切页时的取样节流：进「更多」拉一次告警/周报/分层，离开就停性能采样 */
 function xfOnTab(t){
   if (t === "more"){
@@ -12190,7 +12370,6 @@ function xfOnTab(t){
     try { alertPaint(true); } catch (e2) {}
     try { weekPaint(true); } catch (e3) {}
     try { perfPaint(); } catch (e4) {}
-    try { feedPaint(); } catch (e5) {}
     if (XF.perfOn) perfStart();
   } else {
     perfStop();
@@ -12204,8 +12383,6 @@ function xfInit(){
   try { xfDegrade("weekBody", "weekUnavail", xfHas("AndroidAlert", "weekly")); } catch (e2) {}
   try { xfDegrade("perfBody", "perfUnavail", xfHas("AndroidPerf", "sample")); } catch (e3) {}
   try { xfDegrade("provBody", "provUnavail", xfHas("AndroidProv", "poll")); } catch (e4) {}
-  try { xfDegrade("feedBody", "feedUnavail", xfHas("AndroidFeed", "build")); } catch (e5) {}
-  try { feedPaint(); } catch (e6) {}
   /* 输入框一旦被人改过，轮询就不要把用户正在敲的值盖掉 */
   try {
     document.addEventListener("input", function(ev){
@@ -12221,11 +12398,566 @@ function xfInit(){
   } catch (e7) {}
 }
 
+/* ===================== 1.3.5-beta.2：迁移 / 系统升级 / 插件 / 自启动 / 充电 / 小组件 / 背景 v2 =====================
+   原则同上一批：桥 typeof 探测（老包整卡降级）、调用全 try/catch、轮询只在本页可见时跑。 */
+var X2 = {
+  migMode: "full", migTimer: 0, migStaged: null,
+  sysTimer: 0, sysLogOpen: false,
+  plugTab: "installed", plugTimer: 0, plugId: "", plugSchema: null,
+  bgPage: "home"
+};
+function xfCall2(name, fn, a, b){
+  var w = xfBridge(name), v = null;
+  try { if (!w || typeof w[fn] !== "function") return null; v = w[fn](a, b); } catch (e) { return null; }
+  if (v && typeof v === "object") return v;
+  var t = String(v == null ? "" : v).replace(/^\s+|\s+$/g, "");
+  if (!t) return null;
+  try { var o = JSON.parse(t); return (o && typeof o === "object") ? o : null; } catch (e2) { return null; }
+}
+function xfTail(boxId, lines){
+  var b = el(boxId); if (!b) return;
+  b.textContent = (lines || []).slice(-8).join("\n");
+}
+function xfCurTab(){
+  var s = document.querySelector("section.tab.on");
+  return s && s.id ? String(s.id).replace(/^tab-/, "") : "home";
+}
+function xfDot(items){
+  var bad = 0, warn = 0, i;
+  for (i = 0; i < items.length; i++){
+    var st = String((items[i] || {}).state || "");
+    if (st === "bad" || st === "down") bad++;
+    else if (st === "warn" || st === "old") warn++;
+  }
+  return bad ? "bad" : (warn ? "warn" : (items.length ? "ok" : "mute"));
+}
+
+/* ---------------- 换机迁移 ---------------- */
+function migPaint(){
+  var ok = xfHas("AndroidMigrate", "info");
+  xfDegrade("migBody", "migUnavail", ok);
+  if (!ok) return;
+  var j = xfCall("AndroidMigrate", "info");
+  if (!j || j.ok === false) return;
+  var items = j.items || [], h = [], i;
+  for (i = 0; i < items.length; i++){
+    var it = items[i] || {};
+    h.push('<div class="migrow" data-id="' + esc(it.id) + '">' +
+      '<div class="migmain"><div class="migname">' + esc(it.name || it.id) + '</div>' +
+      '<div class="migsub">' + esc((String(it.mode) === "config" ? "只搬配置" : "全量") + " · " + xfSize(it.size) + " · " + xfClock(it.at)) + '</div></div>' +
+      '<button class="small" data-act="migshare" data-arg="' + esc(it.id) + '">分享</button>' +
+      '<button class="small danger" data-act="migdel" data-arg="' + esc(it.id) + '">删除</button></div>');
+  }
+  setHtml(el("migList"), h.join("") || '<div class="xfempty">还没有打包记录</div>');
+  migStagedRender(j.staged || {});
+  var bs = document.querySelectorAll("#migMode button");
+  for (i = 0; i < bs.length; i++) bs[i].classList.toggle("on", bs[i].getAttribute("data-arg") === X2.migMode);
+}
+function migStagedRender(st){
+  X2.migStaged = st || {};
+  var box = el("migStaged"), ap = el("migApply");
+  if (st && st.ready){
+    var pv = (st.preview || []).join(" · ");
+    setHtml(box, '<div class="migrow"><div class="migmain"><div class="migname">' + esc(st.name || "已选文件") + '</div>' +
+      '<div class="migsub">' + esc((Number(st.files || 0)) + " 个文件 · " + xfSize(st.size) + (pv ? " · " + pv : "")) + '</div></div></div>');
+    if (ap) ap.removeAttribute("disabled");
+  } else {
+    setHtml(box, '<div class="xfempty">还没选文件，点上面「选择要恢复的文件」</div>');
+    if (ap) ap.setAttribute("disabled", "disabled");
+  }
+}
+function migModeSet(m){
+  X2.migMode = (String(m) === "config") ? "config" : "full";
+  var bs = document.querySelectorAll("#migMode button");
+  for (var i = 0; i < bs.length; i++) bs[i].classList.toggle("on", bs[i].getAttribute("data-arg") === X2.migMode);
+}
+function migPollStart(){
+  if (X2.migTimer) clearInterval(X2.migTimer);
+  X2.migTimer = setInterval(function(){
+    var j = xfCall("AndroidMigrate", "poll");
+    if (!j) return;
+    var st = String(j.state || "idle");
+    var pw = el("migProg"); if (pw && st !== "idle") pw.style.display = "";
+    var bar = el("migBar"); if (bar) bar.style.width = Math.max(0, Math.min(100, Number(j.pct || 0))) + "%";
+    xfText("migMsg", st === "done" ? "完成" : (st === "err" ? "失败" : (j.msg || "打包中…")));
+    if (st === "done" || st === "err"){
+      clearInterval(X2.migTimer); X2.migTimer = 0;
+      if (pw) setTimeout(function(){ try { pw.style.display = "none"; } catch (e) {} }, 2500);
+      extToast(st === "done" ? "打包好了" : ("打包失败：" + (j.msg || "")));
+      migPaint();
+    }
+  }, 800);
+}
+function migBuild(){
+  if (!xfHas("AndroidMigrate", "build")){ extToast(XF_UNAVAIL); return; }
+  var r = xfCall("AndroidMigrate", "build", X2.migMode);
+  if (!r || r.ok === false){ extToast((r && r.err) || "打包没起来，再试一次"); return; }
+  var pw = el("migProg"); if (pw) pw.style.display = "";
+  xfText("migMsg", "正在打包…");
+  migPollStart();
+}
+function migShare(id){
+  var r = xfCall("AndroidMigrate", "share", id);
+  if (!r || r.ok === false){ extToast((r && r.err) || "分享面板没打开"); return; }
+  extToast("选一个聊天窗口发出去就行");
+}
+function migDel(id){
+  var r = xfCall("AndroidMigrate", "del", id);
+  if (!r || r.ok === false){ extToast((r && r.err) || "删除失败"); return; }
+  extToast("已删除");
+  migPaint();
+}
+function migPick(){
+  if (!xfHas("AndroidMigrate", "pick")){ extToast(XF_UNAVAIL); return; }
+  var r = xfCall("AndroidMigrate", "pick");
+  if (!r || r.ok === false){ extToast((r && r.err) || "打不开文件选择器"); return; }
+  var n = 0, t = setInterval(function(){
+    n++;
+    var st = xfCall("AndroidMigrate", "staged");
+    if (st && st.ready){ clearInterval(t); migStagedRender(st); extToast("已选好：" + (st.name || "文件")); return; }
+    if (n > 12){ clearInterval(t); migPaint(); }
+  }, 600);
+}
+function migApply(){
+  if (!X2.migStaged || !X2.migStaged.ready){ extToast("先选一个要恢复的文件"); return; }
+  var r = xfCall("AndroidMigrate", "apply");
+  if (!r || r.ok === false){ extToast((r && r.err) || "恢复失败，文件没动"); return; }
+  extToast(r.msg || "已恢复");
+  migPaint();
+}
+
+/* ---------------- 系统级升级 ---------------- */
+function sysPaint(){
+  var ok = xfHas("AndroidSysUp", "list");
+  xfDegrade("sysBody", "sysUnavail", ok);
+  if (!ok) return;
+  var j = xfCall("AndroidSysUp", "list");
+  if (!j || j.ok === false) return;
+  var items = j.items || [], h = [], i;
+  for (i = 0; i < items.length; i++){
+    var it = items[i] || {}, st = String(it.state || "unknown");
+    var cd = st === "ok" ? "ok" : (st === "old" ? "warn" : "unk");
+    h.push('<div class="layrow" data-id="' + esc(it.id) + '"><span class="laydot ' + cd + '"></span>' +
+      '<div class="laymain"><div class="layname">' + esc(it.name || it.id) + '</div>' +
+      '<div class="layhint">' + esc((it.cur || "版本未知") + (it.note ? " · " + it.note : "")) + '</div></div>' +
+      '<button class="small" data-act="sysup" data-arg="' + esc(it.id) + '">升级</button></div>');
+  }
+  var cj = j.compat || [];
+  for (i = 0; i < cj.length; i++){
+    var c = cj[i] || {};
+    if (c.ok === false) h.push('<div class="migrow"><div class="migmain"><div class="migsub">' + esc((c.id || "") + "：" + (c.msg || "环境不满足")) + '</div></div></div>');
+  }
+  setHtml(el("sysList"), h.join("") || '<div class="xfempty">读不到版本信息</div>');
+  var d = el("d-sys"); if (d) d.className = "dot " + xfDot(items);
+}
+function sysPollStart(){
+  if (X2.sysTimer) clearInterval(X2.sysTimer);
+  var st0 = el("sysStop"); if (st0) st0.style.display = "";
+  X2.sysTimer = setInterval(function(){
+    var j = xfCall("AndroidSysUp", "poll");
+    if (!j) return;
+    var st = String(j.state || "idle");
+    var pw = el("sysProg"); if (pw && st !== "idle") pw.style.display = "";
+    var bar = el("sysBar"); if (bar) bar.style.width = Math.max(0, Math.min(100, Number(j.pct || 0))) + "%";
+    xfText("sysPct", Math.max(0, Math.min(100, Number(j.pct || 0))) + "%");
+    if (j.tail && j.tail.length){ xfTail("sysLog", j.tail); var lb = el("sysLogBtn"); if (lb) lb.style.display = ""; }
+    else if (j.line){ var b2 = el("sysLog"); if (b2) b2.textContent = String(j.line); }
+    if (st === "done" || st === "err" || st === "idle"){
+      clearInterval(X2.sysTimer); X2.sysTimer = 0;
+      if (st0) st0.style.display = "none";
+      if (pw) setTimeout(function(){ try { pw.style.display = "none"; } catch (e) {} }, 2500);
+      if (st === "done") extToast("升级完成");
+      else if (st === "err") extToast("升级失败：" + (j.line || j.msg || ""));
+      sysPaint();
+    }
+  }, 900);
+}
+function sysStart(id){
+  if (!xfHas("AndroidSysUp", "start")){ extToast(XF_UNAVAIL); return; }
+  var r = xfCall("AndroidSysUp", "start", id);
+  if (!r || r.ok === false){ extToast((r && r.err) || "升级没起来"); return; }
+  var pw = el("sysProg"); if (pw) pw.style.display = "";
+  var lg = el("sysLog"); if (lg) lg.style.display = "";
+  xfText("sysPct", "0%");
+  sysPollStart();
+}
+function sysStop(){ var r = xfCall("AndroidSysUp", "stop"); extToast((r && r.ok !== false) ? "已停止" : "停止指令没发出去"); }
+function sysLogFold(){
+  var lg = el("sysLog"), ar = el("sysLogArw");
+  var on = lg && lg.style.display === "none";
+  if (lg) lg.style.display = on ? "" : "none";
+  if (ar) ar.textContent = on ? "收起" : "展开";
+  if (on){ var j = xfCall("AndroidSysUp", "log"); if (j && j.tail) xfTail("sysLog", j.tail); }
+}
+
+/* ---------------- 插件中心 ---------------- */
+function plugPaint(){
+  var ok = xfHas("AndroidPlugin", "list");
+  xfDegrade("plugBody", "plugUnavail", ok);
+  if (!ok) return;
+  var j = xfCall("AndroidPlugin", "list");
+  if (!j || j.ok === false) return;
+  var items = j.items || [], h = [], i;
+  for (i = 0; i < items.length; i++){
+    var it = items[i] || {}, on = it.on !== false;
+    h.push('<div class="plrow" data-id="' + esc(it.id) + '">' +
+      '<div class="plmain"><div class="plname">' + esc(it.name || it.id) + '<span class="tagchip">' + esc(it.ver || "—") + '</span></div>' +
+      '<div class="pldesc">' + esc(it.desc || it.id) + '</div></div>' +
+      '<div class="placts">' +
+      '<button class="tgl' + (on ? " on" : "") + '" data-act="plugtoggle" data-arg="' + esc(it.id) + '" aria-label="启用开关"></button>' +
+      '<button class="small" data-act="plugreload" data-arg="' + esc(it.id) + '">重载</button>' +
+      (it.hasConf ? '<button class="small" data-act="plugconf" data-arg="' + esc(it.id) + '">配置</button>' : '') +
+      '<button class="small danger" data-act="plugremove" data-arg="' + esc(it.id) + '">删除</button>' +
+      '</div></div>');
+  }
+  setHtml(el("plugList"), h.join("") || '<div class="xfempty">还没有装插件</div>');
+  var d = el("d-plug"); if (d) d.className = "dot " + (items.length ? "ok" : "mute");
+}
+function plugMarketPaint(items){
+  var h = [], i;
+  for (i = 0; i < (items || []).length; i++){
+    var it = items[i] || {};
+    var tags = (it.tags || []).join(" / ");
+    h.push('<div class="plrow" data-id="' + esc(it.id) + '">' +
+      '<div class="plmain"><div class="plname">' + esc(it.name || it.id) + '</div>' +
+      '<div class="pldesc">' + esc(it.desc || "") + (tags ? " · " + esc(tags) : "") + '</div></div>' +
+      '<div class="placts">' + (it.installed
+        ? '<span class="tagchip">已装</span>'
+        : '<button class="small primary" data-act="pluginstall" data-arg="' + esc(it.id) + '">安装</button>') + '</div></div>');
+  }
+  setHtml(el("plugMarket"), h.join("") || '<div class="xfempty">市场里暂时没有可装的插件</div>');
+}
+function plugMarketLoad(force){
+  if (!xfHas("AndroidPlugin", "market")){ plugMarketPaint([]); return; }
+  var j = xfCall2("AndroidPlugin", "market", !!force);
+  plugMarketPaint((j && j.items) || []);
+}
+function plugTabSet(t){
+  X2.plugTab = (String(t) === "market") ? "market" : "installed";
+  var bs = document.querySelectorAll("#plugTab button");
+  for (var i = 0; i < bs.length; i++) bs[i].classList.toggle("on", bs[i].getAttribute("data-arg") === X2.plugTab);
+  var a = el("plugList"), b = el("plugMarket");
+  if (a) a.style.display = X2.plugTab === "installed" ? "" : "none";
+  if (b) b.style.display = X2.plugTab === "market" ? "" : "none";
+  if (X2.plugTab === "market") plugMarketLoad(false);
+}
+function plugPollStart(){
+  if (X2.plugTimer) clearInterval(X2.plugTimer);
+  X2.plugTimer = setInterval(function(){
+    var j = xfCall("AndroidPlugin", "poll");
+    if (!j) return;
+    var st = String(j.state || "idle");
+    var pw = el("plugProg"); if (pw && st !== "idle") pw.style.display = "";
+    var bar = el("plugBar"); if (bar) bar.style.width = Math.max(0, Math.min(100, Number(j.pct || 0))) + "%";
+    xfText("plugMsg", st === "done" ? "完成" : (st === "err" ? "失败" : (j.msg || "安装中…")));
+    if (j.tail && j.tail.length){ xfTail("plugLog", j.tail); var lb = el("plugLogBtn"); if (lb) lb.style.display = ""; }
+    if (st === "done" || st === "err" || st === "idle"){
+      clearInterval(X2.plugTimer); X2.plugTimer = 0;
+      if (pw) setTimeout(function(){ try { pw.style.display = "none"; } catch (e) {} }, 2500);
+      if (st === "done") extToast("装好了，开关打开就生效");
+      else if (st === "err") extToast("安装失败：" + (j.msg || ""));
+      plugPaint();
+      if (X2.plugTab === "market") plugMarketLoad(false);
+    }
+  }, 900);
+}
+function plugInstall(id){
+  if (!xfHas("AndroidPlugin", "install")){ extToast(XF_UNAVAIL); return; }
+  var r = xfCall("AndroidPlugin", "install", id);
+  if (!r || r.ok === false){ extToast((r && r.err) || "安装没起来"); return; }
+  var pw = el("plugProg"); if (pw) pw.style.display = "";
+  xfText("plugMsg", "正在下载…");
+  plugPollStart();
+}
+function plugToggle(id){
+  if (!xfHas("AndroidPlugin", "enable")){ extToast(XF_UNAVAIL); return; }
+  var node = document.querySelector('.plrow[data-id="' + id + '"] .tgl');
+  var on = !(node && node.classList.contains("on"));
+  var r = xfCall2("AndroidPlugin", "enable", String(id), !!on);
+  if (!r || r.ok === false){ extToast((r && r.err) || "切换失败"); return; }
+  if (node){ node.classList.toggle("on", on); node.setAttribute("aria-checked", on ? "true" : "false"); }
+  extToast(r.msg || (on ? "已启用" : "已停用"));
+}
+function plugReload(id){
+  var r = xfCall("AndroidPlugin", "reload", id);
+  if (!r || r.ok === false){ extToast((r && r.err) || "重载失败"); return; }
+  extToast(r.msg || "插件已重载");
+}
+function plugRemove(id){
+  var r = xfCall("AndroidPlugin", "remove", id);
+  if (!r || r.ok === false){ extToast((r && r.err) || "删除失败"); return; }
+  extToast(r.msg || "已删除");
+  plugPaint();
+}
+function plugConfOpen(id){
+  var j = xfCall("AndroidPlugin", "conf", id);
+  if (!j || j.ok === false){ extToast((j && j.err) || "这个插件没有可视化配置"); return; }
+  X2.plugId = String(id);
+  var schema = j.schema || {}, conf = j.conf || {}, keys = [], k;
+  for (k in schema) if (Object.prototype.hasOwnProperty.call(schema, k)) keys.push(k);
+  var h = [], i;
+  for (i = 0; i < keys.length; i++){
+    k = keys[i];
+    var spec = schema[k];
+    if (typeof spec !== "object" || spec === null) spec = { type: "string", description: String(spec || k) };
+    var type = String(spec.type || "string").toLowerCase();
+    var label = spec.description || spec.desc || spec.title || k;
+    var fid = "pf_" + k;
+    var val = conf[k];
+    if (val === undefined) val = spec.default;
+    h.push('<div class="pf-row"><span class="pf-k">' + esc(label) + '</span><div class="pf-v">');
+    if (type === "bool" || type === "boolean"){
+      h.push('<button class="tgl' + (val ? " on" : "") + '" id="' + fid + '" data-kind="bool" data-act="plugconftgl" data-arg="' + fid + '" aria-label="' + esc(label) + '"></button>');
+    } else if (type === "select" || (spec.options && spec.options.length)){
+      var opts = spec.options || [], o;
+      h.push('<select id="' + fid + '" data-kind="select">');
+      for (o = 0; o < opts.length; o++){
+        var ov = (opts[o] && opts[o].value != null) ? opts[o].value : opts[o];
+        var ol = (opts[o] && opts[o].label) ? opts[o].label : ov;
+        h.push('<option value="' + esc(ov) + '"' + (String(ov) === String(val) ? " selected" : "") + '>' + esc(ol) + '</option>');
+      }
+      h.push('</select>');
+    } else if (type === "text"){
+      h.push('<textarea id="' + fid + '" data-kind="text">' + esc(val == null ? "" : val) + '</textarea>');
+    } else if (type === "int" || type === "integer" || type === "float" || type === "number"){
+      var step = (type === "float" || type === "number") ? "any" : "1";
+      h.push('<input id="' + fid + '" data-kind="number" type="number" step="' + step + '" value="' + esc(val == null ? "" : val) + '">');
+    } else {
+      h.push('<input id="' + fid + '" data-kind="string" type="text" value="' + esc(val == null ? "" : val) + '">');
+    }
+    h.push('</div></div>');
+  }
+  setHtml(el("plugConfForm"), h.join("") || '<div class="xfempty">这个插件没有可改的项</div>');
+  xfText("plugConfNote", j.path ? ("配置文件：" + j.path) : "");
+  var d = el("dlgPlug"); if (d) d.classList.add("on");
+}
+function plugConfClose(){ var d = el("dlgPlug"); if (d) d.classList.remove("on"); }
+function plugConfCollect(){
+  var box = el("plugConfForm"), out = {}, rows = box ? box.querySelectorAll(".pf-row") : [], i;
+  for (i = 0; i < rows.length; i++){
+    var f = rows[i].querySelector("[data-kind]");
+    if (!f || !f.id) continue;
+    var key = String(f.id).replace(/^pf_/, "");
+    var kind = f.getAttribute("data-kind");
+    if (kind === "bool") out[key] = f.classList.contains("on");
+    else if (kind === "number"){ var n = Number(f.value); out[key] = isFinite(n) ? n : 0; }
+    else out[key] = f.value;
+  }
+  return out;
+}
+function plugConfSave(){
+  if (!X2.plugId){ plugConfClose(); return; }
+  var r = xfCall2("AndroidPlugin", "save", X2.plugId, JSON.stringify(plugConfCollect()));
+  if (!r || r.ok === false){ extToast((r && r.err) || "保存失败"); return; }
+  extToast(r.msg || "已保存");
+  plugConfClose();
+  plugPaint();
+}
+
+/* ---------------- 自启动 / 充电 / 小组件 ---------------- */
+function bootPaint(){
+  var ok = xfHas("AndroidBoot", "status");
+  xfDegrade("bootBody", "bootUnavail", ok);
+  if (!ok){ xfText("bootRom", "这个安装包还不支持自启动检测"); return; }
+  var j = xfCall("AndroidBoot", "status");
+  if (!j || j.ok === false) return;
+  xfText("bootRom", (j.rom ? ("当前机型：" + j.rom + "。") : "") + "三个都绿了，后台才稳。");
+  var items = j.items || [], h = [], i;
+  for (i = 0; i < items.length; i++){
+    var it = items[i] || {}, st = String(it.state || "unknown");
+    var cd = st === "ok" ? "ok" : (st === "warn" ? "warn" : "unk");
+    h.push('<div class="plrow" data-id="' + esc(it.id) + '"><span class="laydot ' + cd + '"></span>' +
+      '<div class="plmain"><div class="plname">' + esc(it.name || it.id) + '</div>' +
+      '<div class="pldesc">' + esc(it.hint || "") + '</div></div>' +
+      '<button class="small" data-act="bootopen" data-arg="' + esc(it.id) + '">去设置</button></div>');
+  }
+  setHtml(el("bootList"), h.join("") || '<div class="xfempty">读不到状态</div>');
+  var d = el("d-boot"); if (d) d.className = "dot " + xfDot(items);
+}
+function bootOpen(id){
+  var r = xfCall("AndroidBoot", "open", id);
+  if (!r || r.ok === false){ extToast((r && r.err) || "没打开设置页，手动去系统设置里找一下"); return; }
+  extToast(r.msg || "已打开系统设置");
+  setTimeout(function(){ try { bootPaint(); } catch (e) {} }, 2500);
+}
+function chgPaint(){
+  var ok = xfHas("AndroidPower", "get");
+  xfDegrade("chgBody", "chgUnavail", ok);
+  if (!ok){ xfText("chgState", ""); return; }
+  var j = xfCall("AndroidPower", "get");
+  if (!j || j.ok === false) return;
+  var on = !!j.on;
+  var t = el("chgTgl"); if (t){ t.classList.toggle("on", on); t.setAttribute("aria-checked", on ? "true" : "false"); }
+  var tag = el("chgTag"); if (tag){ tag.className = "swtag " + (on ? "on" : "off"); tag.textContent = on ? "已开启" : "已关闭"; }
+  if (j.hint) xfText("chgHint", String(j.hint));
+  var s = xfCall("AndroidPower", "state") || {};
+  var line = "当前：" + (j.charging ? "正在充电" : "没插电");
+  if (j.level != null) line += " · 电量 " + j.level + "%";
+  if (j.temp != null) line += " · 温度 " + j.temp + "℃";
+  if (s && s.active) line += " · 高性能进行中";
+  else if (on) line += " · 等插电后自动生效";
+  xfText("chgState", line);
+  var d = el("d-chg"); if (d) d.className = "dot " + (s && s.active ? "ok" : (on ? "warn" : "mute"));
+}
+function chgToggle(){
+  if (!xfHas("AndroidPower", "set")){ extToast(XF_UNAVAIL); return; }
+  var t = el("chgTgl");
+  var on = !(t && t.classList.contains("on"));
+  var r = xfCall("AndroidPower", "set", JSON.stringify({ on: !!on }));
+  if (!r || r.ok === false){ extToast((r && r.err) || "设置失败"); return; }
+  extToast(r.msg || (on ? "已开启" : "已关闭"));
+  chgPaint();
+}
+function wdgPaint(){
+  var ok = xfHas("AndroidWidget", "status");
+  xfDegrade("wdgBody", "wdgUnavail", ok);
+  if (!ok) return;
+  var j = xfCall("AndroidWidget", "status");
+  if (!j || j.ok === false) return;
+  var sup = j.supported !== false;
+  xfText("wdgState", sup ? (j.pinned ? "已经加到桌面了；想挪位置长按拖动。" : "还没加到桌面，点下面按钮，系统会弹窗确认。")
+                        : "这个系统版本不支持往桌面加小组件。");
+  var b = el("wdgPin");
+  if (b){ if (sup) b.removeAttribute("disabled"); else b.setAttribute("disabled", "disabled"); }
+  var d = el("d-wdg"); if (d) d.className = "dot " + (sup ? (j.pinned ? "ok" : "warn") : "mute");
+}
+function wdgPin(){
+  if (!xfHas("AndroidWidget", "pin")){ extToast(XF_UNAVAIL); return; }
+  var r = xfCall("AndroidWidget", "pin");
+  if (!r || r.ok === false){ extToast((r && r.err) || "系统没让加，去桌面长按手动添加"); return; }
+  extToast(r.msg || "已请求添加到桌面");
+  setTimeout(function(){ try { wdgPaint(); } catch (e) {} }, 1200);
+}
+
+/* ---------------- 背景 v2 ---------------- */
+var BGV2_KEY = "qqbot.bgv2";
+function bgv2Load(){
+  try { var o = JSON.parse(localStorage.getItem(BGV2_KEY) || "{}"); return (o && typeof o === "object") ? o : {}; } catch (e) { return {}; }
+}
+function bgv2Save(o){ try { localStorage.setItem(BGV2_KEY, JSON.stringify(o)); } catch (e) {} }
+function bgv2Pages(){ var o = bgv2Load(); return (o.pages && typeof o.pages === "object") ? o.pages : {}; }
+function bgPageName(t){ return t === "bots" ? "机器人" : (t === "logs" ? "日志" : (t === "more" ? "更多" : "首页")); }
+function bgPageHint(){
+  var v = bgv2Pages()[X2.bgPage];
+  xfText("bgPageHint", v ? ("「" + bgPageName(X2.bgPage) + "」用的是单独的背景，切到别的页不受影响。")
+                        : ("「" + bgPageName(X2.bgPage) + "」跟着全局背景走。"));
+  var bs = document.querySelectorAll("#bgPageSel button");
+  for (var i = 0; i < bs.length; i++) bs[i].classList.toggle("on", bs[i].getAttribute("data-arg") === X2.bgPage);
+}
+function bgv2Apply(){
+  var o = bgv2Load();
+  var glass = Math.max(0, Math.min(100, Number(o.glass != null ? o.glass : 56)));
+  var mask = Math.max(0, Math.min(90, Number(o.mask != null ? o.mask : 18)));
+  try {
+    document.documentElement.style.setProperty("--glass-blur", Math.round(glass * 0.28) + "px");
+    document.documentElement.style.setProperty("--bg-mask", String(mask / 100));
+  } catch (e) {}
+  var g = el("bgGlass"), m = el("bgMask");
+  if (g && !g.__touched) g.value = String(glass);
+  if (m && !m.__touched) m.value = String(mask);
+  xfText("bgGlassVal", Math.round(glass) + "%");
+  xfText("bgMaskVal", Math.round(mask) + "%");
+  bgPageHint();
+}
+function bgPageApply(tab){
+  tab = String(tab || xfCurTab());
+  var lay = el("bgLayer"); if (!lay) return;
+  var v = bgv2Pages()[tab], o = bgv2Load();
+  if (v){
+    if (String(v).indexOf("img:") === 0){ lay.style.backgroundImage = "url(" + String(v).slice(4) + ")"; lay.style.backgroundSize = "cover"; }
+    else if (String(v).indexOf("tint:") === 0){ lay.style.backgroundImage = tintCss(String(v).slice(5)); lay.style.backgroundSize = "cover"; }
+    else { lay.style.backgroundImage = presetCss(String(v)); lay.style.backgroundSize = "cover"; }
+  } else {
+    try { applyBg(); } catch (e) {}
+  }
+  try {
+    if (window.Android && Android.pageBg){
+      Android.pageBg(JSON.stringify({ page: tab, bg: v || "default",
+        glass: o.glass != null ? o.glass : 56, mask: o.mask != null ? o.mask : 18 }));
+    }
+  } catch (e2) {}
+}
+function bgPagePick(){
+  var cur = "";
+  if (S.bgImg) cur = "img:" + S.bgImg;
+  else if (lsGet("qqbot.bgpreset", "")) cur = String(lsGet("qqbot.bgpreset", "space"));
+  else cur = "tint:" + String(lsGet("qqbot.bgtint", "ios"));
+  var o = bgv2Load();
+  o.pages = o.pages || {};
+  o.pages[X2.bgPage] = cur;
+  bgv2Save(o);
+  bgPageApply(xfCurTab());
+  bgPageHint();
+  extToast("已把当前背景钉到「" + bgPageName(X2.bgPage) + "」");
+}
+function bgPageClear(){
+  var o = bgv2Load();
+  if (o.pages){ delete o.pages[X2.bgPage]; }
+  bgv2Save(o);
+  bgPageApply(xfCurTab());
+  bgPageHint();
+  extToast("「" + bgPageName(X2.bgPage) + "」恢复成全局背景");
+}
+function bgPageSelSet(p){
+  X2.bgPage = (p === "bots" || p === "logs" || p === "more") ? p : "home";
+  bgPageHint();
+}
+function bgv2Set(kind, val){
+  var o = bgv2Load();
+  o[kind] = Math.max(0, Math.min(100, Number(val) || 0));
+  bgv2Save(o);
+  bgv2Apply();
+}
+
+/* 切页时给新卡取样；离开就把轮询停掉（迁移/升级/插件都不在后台空转） */
+function xfOnTab2(t){
+  try { bgPageApply(t); } catch (e0) {}
+  try {
+    if (t === "more"){
+      try { migPaint(); } catch (e1) {}
+      try { sysPaint(); } catch (e2) {}
+      try { plugPaint(); } catch (e3) {}
+    } else {
+      if (X2.migTimer){ clearInterval(X2.migTimer); X2.migTimer = 0; }
+      if (X2.sysTimer){ clearInterval(X2.sysTimer); X2.sysTimer = 0; }
+      if (X2.plugTimer){ clearInterval(X2.plugTimer); X2.plugTimer = 0; }
+    }
+    if (t === "settings"){
+      try { bootPaint(); } catch (e4) {}
+      try { chgPaint(); } catch (e5) {}
+      try { wdgPaint(); } catch (e6) {}
+    }
+  } catch (e7) {}
+}
+/* 开机只做降级判定 + 恢复背景 v2 的滑条位置，不主动打桥 */
+function x2Init(){
+  try { xfDegrade("migBody", "migUnavail", xfHas("AndroidMigrate", "info")); } catch (e0) {}
+  try { xfDegrade("sysBody", "sysUnavail", xfHas("AndroidSysUp", "list")); } catch (e1) {}
+  try { xfDegrade("plugBody", "plugUnavail", xfHas("AndroidPlugin", "list")); } catch (e2) {}
+  try { xfDegrade("bootBody", "bootUnavail", xfHas("AndroidBoot", "status")); } catch (e3) {}
+  try { xfDegrade("chgBody", "chgUnavail", xfHas("AndroidPower", "get")); } catch (e4) {}
+  try { xfDegrade("wdgBody", "wdgUnavail", xfHas("AndroidWidget", "status")); } catch (e5) {}
+  try { bgv2Apply(); } catch (e6) {}
+  try {
+    var g = el("bgGlass"), m = el("bgMask");
+    if (g){
+      g.addEventListener("input", function(){ g.__touched = 1; xfText("bgGlassVal", g.value + "%"); bgv2Set("glass", g.value); });
+      g.addEventListener("change", function(){ g.__touched = 0; });
+    }
+    if (m){
+      m.addEventListener("input", function(){ m.__touched = 1; xfText("bgMaskVal", m.value + "%"); bgv2Set("mask", m.value); });
+      m.addEventListener("change", function(){ m.__touched = 0; });
+    }
+  } catch (e7) {}
+  try { X2.bgPage = "home"; bgPageHint(); } catch (e8) {}
+}
+
 /* 切页签时按需立刻拉一次，不用等下一个轮询周期 */
 function extOnTab(t){
   try {
     /* 1.3.5-beta.1：新卡的取样跟着切页走（更多页拉分层/告警/周报，设置页拉 Provider，离开停性能） */
     try { xfOnTab(t); } catch (eX) {}
+    try { xfOnTab2(t); } catch (eY2) {}
     if (t === "home"){ refreshInst(true); try { usgScan(false); } catch (eU) {} }
     else if (t === "more"){ refreshBk(true); refreshStorage(true); refreshCrash(true); }
     else if (t === "settings"){ refreshStats(true); refreshLan(true); try { portAuto(); } catch (eP) {} try { dailyLoad(false); } catch (eD) {} }
@@ -12347,6 +13079,7 @@ setInterval(function(){
 }, 3000);
 try { upTick(); } catch (e) {}
 try { xfInit(); } catch (eXf) {}
+try { x2Init(); } catch (eX2) {}
 try { paintFoot(); } catch (e) {}
 
 /* ==========================================================================
@@ -13065,11 +13798,34 @@ function astrBaseNorm(b){
   if (!m) return s.toLowerCase();
   return m[1].toLowerCase() + "://" + m[2].toLowerCase() + m[3];
 }
+/* 1.3.5-beta.2：默认接口地址换成 la.worldcodes.online（老域名 worldcodes.online 仍然认）。
+   密钥框的提示语跟着接口地址走：只有填的是本家中转站才说「中转站密钥」，
+   填别家（OpenAI、DeepSeek 官方…）就说「模型密钥」，免得用户以为必须去中转站买密钥。 */
+var ASTR_DEF_BASE = "https://la.worldcodes.online/v1";
+function astrIsRelayUrl(b){
+  var n = astrBaseNorm(b);
+  if (!n) return false;
+  if (n === astrBaseNorm(ASTR_DEF_BASE)) return true;
+  return n === astrBaseNorm("https://worldcodes.online/v1");
+}
+function astrKeyPlaceholder(b){
+  return astrIsRelayUrl(b) ? "粘贴中转站密钥" : "粘贴模型密钥";
+}
+/* 用户一边改接口地址，密钥提示语跟着变；已经存过密钥时保留「已保存，留空表示不修改」。 */
+function astrKeyHint(){
+  var kb = el("astrKey");
+  if (!kb) return;
+  var j = null;
+  try { j = astrInfo(); } catch (e) { j = null; }
+  if (j && j.hasKey) return;
+  kb.placeholder = astrKeyPlaceholder(el("astrBase") ? el("astrBase").value : "");
+};
+
 /* 卡片上那一行问的是「密钥是哪一家的」：只有 base 精确等于我们那家中转站的默认值，
    才认作本家（World中转站）。…/v1beta、不带 /v1、或者别的域名，一律算「模型商」——
    用户自己换的站跟我们的注册页、邀请码没有半点关系。 */
 function astrRelayIsOurs(j){
-  return astrBaseNorm(astrRelayUrl(j)) === "https://worldcodes.online/v1";
+  return astrIsRelayUrl(astrRelayUrl(j));
 }
 /* 卡片上只显示主机名（worldcodes.online）。完整接口地址 …/v1 对用户没有意义，
    长度还会把「复制 / 打开」挤到第二行；真要看完整地址，点开「模型与人格」弹窗里就有。 */
@@ -13214,12 +13970,16 @@ function astrOpen(){
   var j = astrInfo(true) || {};
   var m = el("dlgAstr");
   if (!m) return;
-  if (el("astrBase")) el("astrBase").value = j.base || j.defaultBase || "https://worldcodes.online/v1";
+  var baseVal = j.base || j.defaultBase || ASTR_DEF_BASE;
+  if (el("astrBase")) {
+    el("astrBase").value = baseVal;
+    el("astrBase").oninput = astrKeyHint;
+  }
   if (el("astrKey")) {
     el("astrKey").value = "";
     el("astrKey").placeholder = j.hasKey
       ? ("已保存，留空表示不修改（尾号 " + (j.keyTail || "----") + "）")
-      : (j.model ? "已保存但读不到，重贴一次即可" : "粘贴中转站密钥");
+      : (j.model ? ("已保存但读不到，重贴一次" + (astrIsRelayUrl(baseVal) ? "中转站密钥" : "模型密钥")) : astrKeyPlaceholder(baseVal));
   }
   if (el("astrModel")) el("astrModel").value = j.model || "";
   if (el("astrPersona")) el("astrPersona").value = j.persona || j.defaultPersona || "";

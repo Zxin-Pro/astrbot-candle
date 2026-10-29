@@ -32,8 +32,8 @@ public final class AstrCfg {
     public static final String PROVIDER_ID = "candle";
     /** 人格 id：AstrBot 的 "default" 是内置常量，不能覆盖，所以自建一个。 */
     public static final String PERSONA_ID = "zhuxin";
-    /** 默认中转站地址（worldcodes 的 OpenAI 兼容入口）。 */
-    public static final String DEFAULT_BASE = "https://worldcodes.online/v1";
+    /** 默认中转站地址（worldcodes 的 OpenAI 兼容入口；1.3.5-beta.2 起换成 la 子域）。 */
+    public static final String DEFAULT_BASE = "https://la.worldcodes.online/v1";
     /** 推荐注册地址，界面上做「烛心推荐用这家」的入口。 */
     public static final String RELAY_REG = "https://worldcodes.online/register?invite_code=CZLT";
     /** 控制台初始账号 / 密码，见 build/opt/qqbot/sandbox/run-astrbot.sh 的 ASTRBOT_DASHBOARD_INITIAL_PASSWORD。 */

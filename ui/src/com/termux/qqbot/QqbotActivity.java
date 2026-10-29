@@ -154,6 +154,65 @@ public class QqbotActivity extends Activity {
     private static final int REQ_BACKUP_SAVE = 7002;
     /** 功能 50：恢复时选备份包（ACTION_OPEN_DOCUMENT）。 */
     private static final int REQ_RESTORE_OPEN = 7003;
+    /** 1.3.5-beta.2：换机迁移选迁移包（必须与 QqbotMigrateBridge.REQ_PICK_ZIP 一致）。 */
+    private static final int REQ_MIGRATE_PICK = 7004;
+
+    /** 1.3.5-beta.2：把用户选的迁移包复制进 $HOME/.qqbot/migrate/incoming，桥的 staged() 会挑最新的一个。 */
+    private void copyMigratePick(int resultCode, Intent data) {
+        try {
+            File dir = new File(qqbotDir(), "migrate/incoming");
+            if (!dir.isDirectory()) {
+                dir.mkdirs();
+            }
+            if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+                return;
+            }
+            Uri u = data.getData();
+            String name = "picked-" + System.currentTimeMillis() + ".zip";
+            try {
+                String seg = u.getLastPathSegment();
+                if (seg != null) {
+                    int k = seg.lastIndexOf('/');
+                    String base = (k >= 0) ? seg.substring(k + 1) : seg;
+                    if (base.toLowerCase().endsWith(".zip")) {
+                        name = base;
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+            InputStream in = getContentResolver().openInputStream(u);
+            if (in == null) {
+                doToast("读不到这个文件");
+                return;
+            }
+            File out = new File(dir, name);
+            FileOutputStream fos = new FileOutputStream(out);
+            long total = 0L;
+            try {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) > 0) {
+                    fos.write(buf, 0, n);
+                    total += n;
+                    // 迁移包正常情况下几十 MB；超过 512MB 直接截断，避免把存储写满。
+                    if (total > 512L * 1024L * 1024L) {
+                        break;
+                    }
+                }
+            } finally {
+                try { fos.flush(); } catch (Throwable ignored) { }
+                try { fos.close(); } catch (Throwable ignored) { }
+                try { in.close(); } catch (Throwable ignored) { }
+            }
+            doToast("已选好：" + name);
+            try {
+                web.evaluateJavascript("window.migPicked && window.migPicked()", null);
+            } catch (Throwable ignored) {
+            }
+        } catch (Throwable t) {
+            doToast("导入失败：" + t.getClass().getSimpleName());
+        }
+    }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -166,6 +225,12 @@ public class QqbotActivity extends Activity {
         }
         if (requestCode == REQ_RESTORE_OPEN) {
             BackupFlow.onRestoreResult(this, resultCode, data);
+            return;
+        }
+        // 1.3.5-beta.2：换机迁移选完 zip。桥只负责拉起选择器，落盘在这里做，
+        // 因为 startActivityForResult 的结果只会回到 Activity。
+        if (requestCode == REQ_MIGRATE_PICK) {
+            copyMigratePick(resultCode, data);
             return;
         }
         if (requestCode != REQ_PICK_BG) return;
@@ -306,14 +371,21 @@ public class QqbotActivity extends Activity {
         web.addJavascriptInterface(new QqbotUsageBridge(this), "AndroidUsage");
         web.addJavascriptInterface(new QqbotPortBridge(this), "AndroidPort");
         web.addJavascriptInterface(new QqbotDailyReport(this), "AndroidDaily");
-        // 1.3.5-beta.1：运行分层 / 告警中心 / Provider 体检 / 性能面板 / 反馈包。
-        // 五个都是独立类，页面按 window.AndroidLayer|AndroidAlert|AndroidProv|AndroidPerf|AndroidFeed 用；
+        // 1.3.5-beta.1：运行分层 / 告警中心 / Provider 体检 / 性能面板。
+        // 都是独立类，页面按 window.AndroidLayer|AndroidAlert|AndroidProv|AndroidPerf 用；
         // 老包（没有这些桥）会在 UI 侧整卡显示「功能不可用」，不会报错。
         web.addJavascriptInterface(new QqbotLayerBridge(this), "AndroidLayer");
         web.addJavascriptInterface(new QqbotAlertBridge(this), "AndroidAlert");
         web.addJavascriptInterface(new QqbotProviderBridge(this), "AndroidProv");
         web.addJavascriptInterface(new QqbotPerfBridge(this), "AndroidPerf");
-        web.addJavascriptInterface(new QqbotFeedbackBridge(this), "AndroidFeed");
+        // 1.3.5-beta.2：换机迁移 / 自启动检测 / 充电高性能 / 桌面小组件。
+        web.addJavascriptInterface(new QqbotMigrateBridge(this), "AndroidMigrate");
+        web.addJavascriptInterface(new QqbotBootCheckBridge(this), "AndroidBoot");
+        web.addJavascriptInterface(new QqbotPowerBridge(this), "AndroidPower");
+        web.addJavascriptInterface(new QqbotWidgetBridge(this), "AndroidWidget");
+        // 1.3.5-beta.2：系统级升级（Ubuntu / AstrBot / NapCat 三条独立通道）。
+        web.addJavascriptInterface(new QqbotSysUpgradeBridge(this), "AndroidSysUp");
+        web.addJavascriptInterface(new QqbotPluginHubBridge(this), "AndroidPlugin");
         setContentView(web);
         // 通知栏点进来的 tab 要在第一次 loadUi 之前就记下来（singleTask 重入走 onNewIntent）
         pendingTab = tabOfIntent(getIntent());

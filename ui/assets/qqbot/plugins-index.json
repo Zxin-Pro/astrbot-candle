@@ -1,0 +1,167 @@
+{
+  "v": 1,
+  "updated": "2026-10-29",
+  "url": "https://api.soulter.top/astrbot/plugins",
+  "items": [
+    {
+      "id": "astrbot_plugin_essential",
+      "name": "astrbot_plugin_essential",
+      "desc": "随机二次元图、以图搜番、MC 服务器状态、一言、今天吃什么等小功能合集",
+      "repo": "https://github.com/Soulter/astrbot_plugin_essential",
+      "tags": [
+        "娱乐",
+        "工具"
+      ]
+    },
+    {
+      "id": "astrbot_plugin_proactive_chat",
+      "name": "主动消息 (Proactive Chat)",
+      "desc": "让 Bot 在私聊和群聊里主动找你聊天，带情绪和免打扰时段",
+      "repo": "https://github.com/Pancakes-Labs/astrbot_plugin_proactive_chat",
+      "tags": [
+        "主动消息",
+        "聊天"
+      ]
+    },
+    {
+      "id": "astrbot_plugin_private_companion",
+      "name": "我会永远陪着你",
+      "desc": "一对一长期陪伴，记得你说过的话，也会主动关心你",
+      "repo": "https://github.com/menglimi/astrbot_plugin_private_companion",
+      "tags": [
+        "陪伴",
+        "AI"
+      ]
+    },
+    {
+      "id": "astrbot_plugin_group_chat_plus",
+      "name": "chat_plus",
+      "desc": "以 AI 读空气为主的群聊效果增强，发言更像真人",
+      "repo": "https://github.com/Him666233/astrbot_plugin_group_chat_plus",
+      "tags": [
+        "群聊",
+        "娱乐"
+      ]
+    },
+    {
+      "id": "astrbot_plugin_qq_group_daily_analysis",
+      "name": "群分析总结插件",
+      "desc": "每天自动总结群聊，生成日报和热词榜",
+      "repo": "https://github.com/SXP-Simon/astrbot_plugin_qq_group_daily_analysis",
+      "tags": [
+        "群分析",
+        "总结"
+      ]
+    },
+    {
+      "id": "astrbot_plugin_meme_manager",
+      "name": "表情包管理器",
+      "desc": "表情包仓库管理，自动收藏，按关键词发图",
+      "repo": "https://github.com/anka-afk/astrbot_plugin_meme_manager",
+      "tags": [
+        "表情包",
+        "娱乐"
+      ]
+    },
+    {
+      "id": "astrbot_plugin_parser",
+      "name": "集合下载器",
+      "desc": "万能链接解析：B 站、抖音、推特等链接自动转成内容",
+      "repo": "https://github.com/chq201019/astrbot_plugin_parser",
+      "tags": [
+        "解析",
+        "工具"
+      ]
+    },
+    {
+      "id": "astrbot_plugin_music",
+      "name": "点歌插件",
+      "desc": "点歌插件，支持 AI 点歌、卡片播放、语音播放和歌词",
+      "repo": "https://github.com/Zhalslar/astrbot_plugin_music",
+      "tags": [
+        "点歌",
+        "音乐"
+      ]
+    },
+    {
+      "id": "astrbot_plugin_qqadmin",
+      "name": "QQ群管",
+      "desc": "QQ 群管：禁言、踢人、改名片、发公告、撤回消息",
+      "repo": "https://github.com/Zhalslar/astrbot_plugin_qqadmin",
+      "tags": [
+        "群管",
+        "管理"
+      ]
+    },
+    {
+      "id": "astrbot_plugin_knowledge_base",
+      "name": "astrbot_plugin_knowledge_base",
+      "desc": "给机器人挂一个知识库，回答前先查资料",
+      "repo": "https://github.com/lxfight/astrbot_plugin_knowledge_base",
+      "tags": [
+        "知识库",
+        "文档"
+      ]
+    },
+    {
+      "id": "astrbot_plugin_memelite",
+      "name": "表情包生成器",
+      "desc": "表情包生成器，能拼出各种沙雕表情",
+      "repo": "https://github.com/Zhalslar/astrbot_plugin_memelite",
+      "tags": [
+        "表情包",
+        "生成"
+      ]
+    },
+    {
+      "id": "astrbot_plugin_debounce",
+      "name": "消息防抖",
+      "desc": "消息防抖，把连着发的几条图文合成一次提问，省 token",
+      "repo": "https://github.com/advent259141/astrbot_plugin_debounce",
+      "tags": [
+        "防抖",
+        "省token"
+      ]
+    },
+    {
+      "id": "astrbot_plugin_pokepro",
+      "name": "专业戳一戳",
+      "desc": "专业戳一戳，被戳会反戳、回表情或语音",
+      "repo": "https://github.com/Zhalslar/astrbot_plugin_pokepro",
+      "tags": [
+        "互动",
+        "娱乐"
+      ]
+    },
+    {
+      "id": "astrbot_plugin_mnemosyne",
+      "name": "astrbot_plugin_mnemosyne",
+      "desc": "基于 Milvus 的长期记忆，跨会话记住每个用户",
+      "repo": "https://github.com/lxfight/astrbot_plugin_mnemosyne",
+      "tags": [
+        "记忆",
+        "长期记忆"
+      ]
+    },
+    {
+      "id": "astrbot_plugin_biliread",
+      "name": "BiliRead - 让 AI 真正看懂 B 站视频",
+      "desc": "让 AI 真的看懂 B 站视频内容再回答",
+      "repo": "https://github.com/SodaCodeSave/astrbot_plugin_biliread",
+      "tags": [
+        "视频",
+        "B站"
+      ]
+    },
+    {
+      "id": "astrbot_plugin_cost_control",
+      "name": "Token成本控制",
+      "desc": "token 预算监控、超支提醒，配合用量页看更直观",
+      "repo": "https://github.com/leafliber/astrbot_plugin_cost_control",
+      "tags": [
+        "用量",
+        "成本"
+      ]
+    }
+  ]
+}
