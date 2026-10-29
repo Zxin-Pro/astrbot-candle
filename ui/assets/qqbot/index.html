@@ -427,6 +427,7 @@ main{
   letter-spacing: -.1px;
   margin: 0 0 10px;
   color: var(--label);
+  overflow-wrap: anywhere;
 }
 .card h2:last-child{ margin-bottom: 0; }
 
@@ -445,6 +446,7 @@ main{
   line-height: 1.62;
   color: var(--label-2);
   margin-top: 6px;
+  overflow-wrap: anywhere;
 }
 .hint b{ color: var(--label); font-weight: 600; }
 
@@ -535,7 +537,7 @@ button.small{
   color: var(--label);
   box-shadow: none;
 }
-button.small.primary{ background-color: var(--accent); border-color: var(--accent); color: #fff; }
+button.small.primary{ background-color: var(--btn-bg, var(--accent)); border-color: var(--btn-bg, var(--accent)); color: #fff; }
 button.small.danger{ color: var(--bad); background-color: transparent; border-color: var(--bad); }
 button.small.ok{ color: var(--ok); background-color: transparent; border-color: var(--ok); }
 button.small.quiet{ color: var(--label-2); background-color: transparent; border-color: transparent; }
@@ -929,10 +931,10 @@ input::placeholder, textarea::placeholder{ color: var(--label-3); }
   background: color-mix(in srgb, var(--accent) 13%, transparent);
 }
 .lkic svg{ width: 19px; height: 19px; }
-.lkbd{ flex: 1; min-width: 0; }
+.lkbd{ flex: 1 1 auto; min-width: 0; }
 .lkt{ font-size: 14.5px; font-weight: 560; }
 .lkv{ margin-top: 1px; font-size: 12.5px; color: var(--label-2); word-break: break-all; }
-.lkbtns{ display: flex; gap: 6px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+.lkbtns{ display: flex; gap: 6px; flex: 0 1 auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
 
 .row{
   display: flex;
@@ -2321,6 +2323,7 @@ nav{
   right: var(--nav-inset);
   bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   height: var(--nav-h);
+  max-width: calc(100vw - var(--nav-inset) * 2);
   padding: 0 6px;
   border-top: 0;
   border-radius: 26px;
@@ -2848,7 +2851,6 @@ html.devnotelock{ overflow: hidden; }
   .swrow .tgl{ position: relative; }
   .swrow .tgl::before{ content: ""; position: absolute; left: -8px; right: -8px; top: -7px; bottom: -7px; border-radius: 999px; }
   #qrFall .btns > button{ min-height: 44px; }
-  @media (prefers-reduced-motion: reduce){ .startrow .spin{ animation: none !important; } }
   /* 底栏标签一律单行，图标固定 22px */
   nav button{ white-space: nowrap; }
   nav button .ic{ width: 22px; height: 22px; }
@@ -2949,9 +2951,11 @@ html.devnotelock{ overflow: hidden; }
   #dlgReport .hint{ display: flex; align-items: center; gap: 8px; margin-top: 10px; }
   #dlgReport .hint .spin{ display: none; }
   /* 1.3.5-beta.3：分组标题 + 顶部快捷条（chip 用 span，不算按钮） */
-  .mchips{ display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 12px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .mchips{ display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 12px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
   .mchips::-webkit-scrollbar{ display: none; }
   .mchip{ flex: none; display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 999px; background: var(--fill-1); color: var(--label-2); font-size: 12.5px; white-space: nowrap; }
+  .mchip{ position: relative; }
+  .mchip::before{ content: ""; position: absolute; left: 0; right: 0; top: -4px; bottom: -4px; }
   .mchip:active{ background: var(--fill-2); }
   .mgroup{ display: flex; align-items: center; gap: 8px; margin: 18px 0 12px; padding-top: 18px; border-top: .5px solid var(--sep); font-size: 12.5px; font-weight: 600; letter-spacing: .2px; color: var(--label-3); }
   .mgroup:first-of-type{ margin-top: 6px; padding-top: 0; border-top: 0; }
@@ -3037,13 +3041,13 @@ button.locked, button[aria-disabled="true"], .qk.lock{ opacity: .5; }
 /* ---------------------------------------------------------------- 主按钮 */
 button.primary{
   color: #fff;
-  background-color: var(--accent);
-  border-color: var(--accent);
+  background-color: var(--btn-bg, var(--accent));
+  border-color: var(--btn-bg, var(--accent));
 }
 @media (hover: hover) and (pointer: fine){
-  button.primary:hover{ background-color: color-mix(in srgb, var(--accent) 94%, #fff); }   /* 提亮 6% */
+  button.primary:hover{ background-color: color-mix(in srgb, var(--btn-bg, var(--accent)) 94%, #fff); }   /* 提亮 6% */
 }
-button.primary:active{ background-color: color-mix(in srgb, var(--accent) 92%, #000); }  /* 压暗 8% */
+button.primary:active{ background-color: color-mix(in srgb, var(--btn-bg, var(--accent)) 92%, #000); }  /* 压暗 8% */
 
 /* ---------------------------------------------------------------- 危险 / 成功 */
 /* 禁止整块大红：danger 只是红字 + 10% 底。 */
@@ -3107,7 +3111,7 @@ button.small, button.tiny{ border-radius: var(--btn-r-sm); }
   border: 1px solid var(--line);
   border-radius: var(--btn-r);
   background-color: transparent;
-  color: var(--accent);
+  color: var(--acc-ink, var(--accent));
 }
 .iconbtn:active{ transform: scale(.98); background-color: var(--fill-2); }
 
@@ -3232,7 +3236,7 @@ nav button:active{ transform: none; background-color: transparent; }
   background-color: rgba(255,255,255,.10);
   color: #fff;
 }
-.crop-acts button.primary{ border-color: var(--accent); background-color: var(--accent); }
+.crop-acts button.primary{ border-color: var(--btn-bg, var(--accent)); background-color: var(--btn-bg, var(--accent)); }
 .crop-acts button:active{ transform: scale(.98); }
 
 .depov-off{
@@ -3474,7 +3478,7 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
   box-shadow: none;
 }
 .mgh:active{ transform: none; background: none; }
-.mglabel{ flex: 1 1 auto; min-width: 0; }
+.mglabel{ flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .mgcount{ flex: none; font-size: 11px; font-weight: 500; color: var(--label-3); opacity: .8; }
 .mgarw{
   flex: none;
@@ -3546,7 +3550,10 @@ button:active{ transform: scale(.97); transition-duration: 120ms; }
 .mchip:active{ transform: none; scale: .97; }
 @media (prefers-reduced-motion: reduce){
   .mgroup .mbody{ transition: none; }
-  .mgroup .mwrap{ transition: none; }
+.mgroup .mwrap, .mgroup.open .mwrap{ transition: none !important; }
+  /* beta.5 B1：全局 * 块会把 .spin 也压停（1e-05s ×1），加载圈停住＝用户以为卡死。
+     reduce 语义是「少动 / 慢动」不是「不动」：降一倍速，保留生命迹象。 */
+  .spin{ animation-duration: 1.6s !important; animation-iteration-count: infinite !important; }
   .tab#tab-more.on #mChips, .tab#tab-more.on .mgh{ animation: none !important; }
   .tab.on{ animation: none !important; }
   nav .nav-thumb{ transition: none !important; scale: 1 !important; }
@@ -5791,6 +5798,46 @@ function applyAccent(id, quiet){
      深色下就成了一块"实心蓝"的色块。改成带 alpha 的派生色，光晕才只剩颜色，不出边界。 */
   s.setProperty("--acc-soft", hexA(at, dark ? .30 : .24));
   s.setProperty("--acc-soft-2", hexA(bt, dark ? .26 : .20));
+  /* 1.3.5-beta.5：白字按钮底与图标色按当前强调色实时求解（AA 4.55 / 3.2） */
+  function accRgb(h){
+    h = String(h || "").replace("#", "");
+    if (h.length === 3) h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+    var n = parseInt(h, 16);
+    if (!isFinite(n)) n = 0x3c96ca;
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  function accLum(c){
+    var v = [], i, x;
+    for (i = 0; i < 3; i++){ x = c[i] / 255; v.push(x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4)); }
+    return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+  }
+  function accCr(a, b){
+    var la = accLum(a), lb = accLum(b);
+    if (la < lb){ var t = la; la = lb; lb = t; }
+    return (la + 0.05) / (lb + 0.05);
+  }
+  function accMix(a, b, p){
+    return [Math.round(a[0] * p + b[0] * (1 - p)), Math.round(a[1] * p + b[1] * (1 - p)), Math.round(a[2] * p + b[2] * (1 - p))];
+  }
+  function accHex(c){
+    var s = "#", i;
+    for (i = 0; i < 3; i++) s += ("0" + c[i].toString(16)).slice(-2);
+    return s;
+  }
+  function accTextSafe(bg, ink){
+    var p = 1, c = bg;
+    while (p > 0 && accCr(c, [255, 255, 255]) < 4.55){ p -= 0.02; if (p < 0) p = 0; c = accMix(bg, ink, p); }
+    return accHex(c);
+  }
+  function accInkSafe(fg, bg, toward){
+    var p = 1, c = fg;
+    while (p > 0 && accCr(c, bg) < 3.2){ p -= 0.02; if (p < 0) p = 0; c = accMix(fg, toward, p); }
+    return accHex(c);
+  }
+  var INK_HEX = [6, 18, 28];
+  s.setProperty("--btn-bg", accTextSafe(accRgb(at), INK_HEX));
+  s.setProperty("--acc-ink", dark ? accInkSafe(accRgb(at), [36, 36, 36], [255, 255, 255])
+                                : accInkSafe(accRgb(at), [244, 246, 249], INK_HEX));
   S.accent = cur.id;
   if (!quiet) lsSet("qqbot.accent", cur.id);
   var box = el("accentSw");
@@ -6076,8 +6123,14 @@ function showTab(t){
   var tabs = document.querySelectorAll(".tab");
   for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove("on");
   el("tab-" + t).classList.add("on");
-  var bs = document.querySelectorAll("nav button");
-  for (var j = 0; j < bs.length; j++) bs[j].classList.toggle("on", bs[j].getAttribute("data-tab") === t);
+  var bs = document.querySelectorAll("nav button[data-tab]");
+  for (var j = 0; j < bs.length; j++){
+    var on = bs[j].getAttribute("data-tab") === t;
+    bs[j].classList.toggle("on", on);
+    bs[j].setAttribute("aria-selected", on ? "true" : "false");
+    bs[j].setAttribute("tabindex", on ? "0" : "-1");
+    if (on) bs[j].setAttribute("aria-current", "page"); else bs[j].removeAttribute("aria-current");
+  }
   /* 1.3.4-beta.6：切页时顺手清掉拖动残留的 .near 高亮。之前只有 pointerup / pointercancel
      会清，一旦手势被系统打断（来电、侧边返回手势、WebView 失焦），那块「半透明高亮」
      就会一直挂在原来那个页签上。 */
@@ -6282,6 +6335,9 @@ function navDown(e){
   if (i < 0) return;
   s.dragging = true; s.moved = 0; s.press = i; s.hover = i;
   s.startX = e.clientX;
+  /* beta.5 D1：加 .dragging 会 transition:none，正在跑的 320ms 过渡会被直接落到它的终点（旧页签），
+     连点时会先跳回中间页签再窜出去。先把当前帧的计算值写回内联样式，滑块就停在原地。 */
+  s.thumb.style.transform = getComputedStyle(s.thumb).transform;
   s.liveTab = navCurTab();      /* 抬手前页面就在这个页签上，别再多切一次 */
   s.swN = 0;
   navStopFlush();
@@ -6356,6 +6412,28 @@ function navInit(){
   s.thumb = document.getElementById("navThumb");
   if (!s.nav || !s.thumb) return;
   s.btns = Array.prototype.slice.call(s.nav.querySelectorAll("button[data-tab]"));
+  /* 1.3.5-beta.5 无障碍：底栏按 tablist 语义补齐 */
+  s.nav.setAttribute("role", "tablist");
+  s.nav.setAttribute("aria-label", "主导航");
+  for (var ni = 0; ni < s.btns.length; ni++){
+    var tb = s.btns[ni], tn = tb.getAttribute("data-tab") || "";
+    tb.setAttribute("role", "tab");
+    if (!tb.id) tb.id = "navTab-" + tn;
+    tb.setAttribute("aria-controls", "tab-" + tn);
+    var panel = document.getElementById("tab-" + tn);
+    if (panel){ panel.setAttribute("role", "tabpanel"); panel.setAttribute("aria-labelledby", tb.id); }
+  }
+  s.nav.addEventListener("keydown", function(e){
+    var k = e.key, cur = s.btns.indexOf(document.activeElement), n = -1;
+    if (cur < 0) return;
+    if (k === "ArrowRight") n = (cur + 1) % s.btns.length;
+    else if (k === "ArrowLeft") n = (cur - 1 + s.btns.length) % s.btns.length;
+    else if (k === "Home") n = 0;
+    else if (k === "End") n = s.btns.length - 1;
+    else return;
+    e.preventDefault();
+    try { s.btns[n].focus(); showTab(s.btns[n].getAttribute("data-tab")); } catch (e2) {}
+  });
   if (!s.btns.length) return;
   s.nav.classList.add("navjs");
   navCalibrate();
@@ -8835,23 +8913,30 @@ function fillQrSelect(){
    （run-napcat.sh 与真机实测一致），所以「该实例 up」就是「已登录」。端口读不到时退回顶层 napcatUp；
    组件被关掉时一律不算已登录（那时是「已停止」，不是登录态）。 */
 function qrBotUp(id, r){
+  function sameBotId(a, b){
+    return String(a == null ? "" : a).trim() === String(b == null ? "" : b).trim();
+  }
   /* 1.3.5-beta.2：日志页二维码不出的根因是这里判错了登录态。
      NapCat 的 6099（WebUI）进程一起来就监听，拿它当「已登录」会让二维码永远显示成
      「QQ 已登录」；真正可靠的是 OneBot 端口（6199，Java 侧新增 login 字段）。
      老包没有 login 字段就退回旧口径，但二维码文件若是 2.5 分钟内新画的，一律算未登录。 */
   var bs = (S.bots && S.bots.bots) ? S.bots.bots : [];
   var hit = null;
+  var want = String(id == null ? "" : id).trim();
   for (var j = 0; j < bs.length; j++){
-    if (String(bs[j].id) === String(id)){ hit = bs[j]; break; }
+    if (sameBotId(bs[j].id, want)){ hit = bs[j]; break; }
   }
   /* 下拉还没填好（id 为空）或只有一个号时，直接按那个号判：首屏刚打开、qrSel 还没接上数据时也不会误判。 */
-  if (!hit && bs.length === 1) hit = bs[0];
+  if (!hit && !want && bs.length === 1) hit = bs[0];
   var st = S.st || {};
   if (st.napcatOff) return false;
   /* 1.3.5-beta.4：Java 侧 login 每次现算（看 per-uin 配置 mtime），比二维码文件新旧更可靠。
      先信它，扫码成功后二维码文件还在也会立刻收掉；只有老包没有 login 字段时，才退回「2.5 分钟内的
      新二维码一律算未登录」——这一条专治旧 login=true 残留导致日志页二维码不显示。 */
   if (hit && typeof hit.login === "boolean") return hit.login;
+  /* 选中的实例不在 bots 列表，且 qr() 明确回报的是另一个实例：不能拿顶层 st.login 兜底，
+     否则会把“另一个号已登录”显示成“当前选中的号已登录”。 */
+  if (want && r && r.id && !sameBotId(r.id, want)) return false;
   if (typeof st.login === "boolean") return st.login;
   if (r && qrFresh(r)) return false;
   return !!st.napcatUp;
@@ -13212,6 +13297,45 @@ document.addEventListener("keydown", function(ev){
   if (t.getAttribute("aria-disabled") === "true") return;
   ev.preventDefault();
   try { t.click(); } catch (e) {}
+});
+
+/* 1.3.5-beta.5 无障碍：所有 .dlgmask 弹窗统一 Esc 关闭。
+   两个已有的局部 Esc 处理保持优先：
+   - 5421 裁剪层：CR.open 时本函数先 return，不抢它的 Esc；
+   - 5711 标题编辑：contenteditable 聚焦时先 return，保持「Esc 退出编辑」。
+   叠层按 DOM 顺序取最后一个 .on —— 同 z-index 下它一定画在最上面（隐私政策盖免责声明就是这么排的）。
+   dlgDisclaimer 故意不进表：它是「同意才能继续」的闸门，Esc 关掉等于绕过同意。 */
+var DLG_ESC = {
+  dlgReport: function(){ reportClose(); },
+  dlgPlug: function(){ plugConfClose(); },
+  dlgPrivacy: function(){ hidePrivacy(); },
+  dlgUpdate: function(){ updCloseDialog(); },
+  dlgStats: function(){ statsDialogHide(); },
+  dlgQr: function(){ qrClose(); },
+  dlgAstr: function(){ astrClose(); },
+  dlgAstrLogin: function(){ astrLoginClose(); },
+  dlgShareLog: function(){ shlClose(); }
+};
+var DLG_OPENER = null;   /* 关窗后把焦点还给打开它的那颗按钮 */
+document.addEventListener("click", function(e){
+  var b = e.target && e.target.closest ? e.target.closest("button, [data-act]") : null;
+  if (b) DLG_OPENER = b;
+}, true);
+document.addEventListener("keydown", function(e){
+  if (e.key !== "Escape" && e.keyCode !== 27) return;
+  if (e.defaultPrevented) return;
+  try { if (window.CR && CR.open) return; } catch (e1) {}
+  var ae = document.activeElement;
+  if (ae && (ae.isContentEditable || ae.id === "appTitle")) return;
+  var ms = document.querySelectorAll(".dlgmask.on"), m = null, i;
+  for (i = 0; i < ms.length; i++) m = ms[i];
+  if (!m) return;
+  var f = DLG_ESC[m.id];
+  if (!f) return;
+  e.preventDefault();
+  try { f(); } catch (e2) { m.classList.remove("on"); }
+  var op = DLG_OPENER;
+  try { if (op && document.contains(op)) op.focus(); } catch (e3) {}
 });
 
 /* 15 秒一轮：实例在线时长与「最近掉线」的分钟级更新；存储只在「更多」页刷 */

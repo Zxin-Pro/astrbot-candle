@@ -1213,6 +1213,13 @@ public class QqbotActivity extends Activity {
      *
      *  返回 null 表示成功；否则是给界面看的失败原因。
      */
+    /** 失败时清掉 .bundle-pending：否则 20-rootfs 会一直等一份永远不会来的内置包，
+     *  白等 600 秒。日志里的失败原因由调用方展示。 */
+    private String bundleFail(String msg) {
+        try { bundlePendingFile().delete(); } catch (Throwable ignored) {}
+        return msg;
+    }
+
     public String ensureBundle() {
         if (!hasBundle()) return null;
         if (bundleReady()) return null;
@@ -1225,7 +1232,7 @@ public class QqbotActivity extends Activity {
         try {
             if (!writeFileRobust(bundlePendingFile(), bundleStamp().getBytes("UTF-8"))) {
                 // 没有这个标记，20-rootfs 不会等内置包，会直接走 600 MB 在线下载。
-                return "内置包待拷标记写入失败";
+                return bundleFail("内置包待拷标记写入失败");
             }
             in = new BufferedInputStream(getAssets().open(BUNDLE_ASSET), 1 << 20);
             out = new BufferedOutputStream(new FileOutputStream(part), 1 << 20);
@@ -1243,13 +1250,13 @@ public class QqbotActivity extends Activity {
                 if (dst.exists()) dst.delete();
                 if (!part.renameTo(dst)) {
                     part.delete();
-                    return "内置包写入失败";
+                    return bundleFail("内置包写入失败");
                 }
             }
             if (!writeFileRobust(bundleOkFile(), bundleStamp().getBytes("UTF-8"))) {
                 // 标记写不进去，20-rootfs 就永远认不到这份包，下次启动还会重拷 600 MB。
                 // 如实返回，让日志里留下原因。
-                return "内置包标记写入失败";
+                return bundleFail("内置包标记写入失败");
             }
             return null;
         } catch (Throwable t) {
@@ -1263,7 +1270,7 @@ public class QqbotActivity extends Activity {
                         ("bundle copy failed: " + t + (char) 10).getBytes("UTF-8"));
             } catch (Throwable ignored) {
             }
-            return "内置包释放失败：" + t;
+            return bundleFail("内置包释放失败：" + t);
         } finally {
             try {
                 if (in != null) in.close();
@@ -1692,17 +1699,41 @@ public class QqbotActivity extends Activity {
         return f == null ? "" : uinOfConfigName(f.getName());
     }
 
+    /** 与 run-napcat.sh 的 [ -x "$QQDIR/qq" ] 保持同一判据。 */
+    private static boolean instanceQqReady(File qqDir) {
+        return qqDir != null && new File(qqDir, "qq").canExecute();
+    }
+
+    /** beta.5 P1-3：run-napcat.sh 每次启动会在 QQ 目录写 .qqbot-start；
+     *  没有标记（老脚本）按旧行为 true；有标记时只认启动后写过的 per-uin 配置，
+     *  过滤 cp -al 从 /opt/QQ 继承来的旧登录配置。 */
+    private static boolean uinAfterStart(File f, File qqDir) {
+        try {
+            File start = new File(qqDir, ".qqbot-start");
+            if (!start.isFile()) return true;
+            return f.lastModified() >= start.lastModified();
+        } catch (Throwable t) {
+            return true;
+        }
+    }
+
     /** 返回该实例最新的 per-uin 配置文件；实例目录没有时，active 才看共享 opt/QQ。 */
     private File scanNapcatUinFile(String id, boolean active) {
         String iid = botIdOf(id);
         if (!safeBotId(iid)) return null;
         File ub = new File(homeDir(), "ubuntu");
-        File f = scanNapcatUinDirFile(new File(ub,
-                "opt/qqbot-inst/" + iid + "/QQ/resources/app/app_launcher/napcat/config"));
-        if (f != null) return f;
+        File instQQ = new File(new File(new File(ub, "opt/qqbot-inst"), iid), "QQ");
+        if (instanceQqReady(instQQ)) {
+            File f = scanNapcatUinDirFile(new File(instQQ,
+                    "resources/app/app_launcher/napcat/config"));
+            if (f != null) return uinAfterStart(f, instQQ) ? f : null;
+        }
         if (!active) return null;
-        return scanNapcatUinDirFile(new File(ub,
-                "opt/QQ/resources/app/app_launcher/napcat/config"));
+        File primaryQQ = new File(ub, "opt/QQ");
+        if (!instanceQqReady(primaryQQ)) return null;
+        File f = scanNapcatUinDirFile(new File(primaryQQ,
+                "resources/app/app_launcher/napcat/config"));
+        return f != null && uinAfterStart(f, primaryQQ) ? f : null;
     }
 
     /**
@@ -1724,7 +1755,7 @@ public class QqbotActivity extends Activity {
             File uin = scanNapcatUinFile(want, isActive);
             if (uin == null) return false;
             QrFind qr = probeQr(want, isActive);
-            return qr.file == null || qr.file.lastModified() <= uin.lastModified();
+            return qr.file == null || qr.file.lastModified() < uin.lastModified();
         } catch (Throwable t) {
             return false;
         }
@@ -2165,7 +2196,8 @@ public class QqbotActivity extends Activity {
     private QrFind probeQr(String id, boolean active) {
         try {
             File ub = new File(homeDir(), "ubuntu");
-            File inst = new File(new File(new File(ub, "opt/qqbot-inst"), id + "/QQ"),
+            File instQQ = new File(new File(new File(ub, "opt/qqbot-inst"), id), "QQ");
+            File inst = new File(instQQ,
                     "resources/app/app_launcher/napcat/cache/qrcode.png");
             File primary = new File(new File(ub, "opt/QQ"),
                     "resources/app/app_launcher/napcat/cache/qrcode.png");
@@ -2175,7 +2207,7 @@ public class QqbotActivity extends Activity {
             File found = null;
             String badWhy = "no-file";
             String badPath = attempted.getAbsolutePath();
-            if (inst.isFile()) {
+            if (instanceQqReady(instQQ) && inst.isFile()) {
                 if (inst.length() <= 0L) {
                     badWhy = "no-file";
                     badPath = inst.getAbsolutePath();
@@ -2186,11 +2218,11 @@ public class QqbotActivity extends Activity {
                     found = inst;
                 }
             }
-            if (found == null) {
+            if (instanceQqReady(instQQ)) {
                 File alt = scanQrPng(instNp, 0);
-                if (alt != null) found = alt;
+                if (alt != null && (found == null || alt.lastModified() > found.lastModified())) found = alt;
             }
-            if (found == null && active) {
+            if (found == null && active && instanceQqReady(new File(ub, "opt/QQ"))) {
                 if (primary.isFile()) {
                     if (primary.length() <= 0L) {
                         badWhy = "no-file";
@@ -2202,9 +2234,9 @@ public class QqbotActivity extends Activity {
                         found = primary;
                     }
                 }
-                if (found == null) {
+                if (instanceQqReady(new File(ub, "opt/QQ"))) {
                     File alt = scanQrPng(primaryNp, 0);
-                    if (alt != null) found = alt;
+                    if (alt != null && (found == null || alt.lastModified() > found.lastModified())) found = alt;
                 }
             }
             if (found != null) return new QrFind(found, "ok", found.getAbsolutePath());
@@ -2252,6 +2284,7 @@ public class QqbotActivity extends Activity {
 
     public String qr(String wantId) {
         JSONObject o = new JSONObject();
+        QrFind r = null;
         try {
             JSONObject bots = new JSONObject(readBots());
             String active = effectiveActive(bots);
@@ -2259,15 +2292,21 @@ public class QqbotActivity extends Activity {
             if (foundId.length() == 0) foundId = active;
             o.put("id", foundId);
             o.put("active", active);
-            QrFind r = qrFindInfo(foundId, bots);
+            r = qrFindInfo(foundId, bots);
             o.put("why", r.why);
             o.put("path", r.path);
             if (r.file == null) {
                 o.put("ok", false);
                 return o.toString();
             }
+            long flen = r.file.length();
+            if (flen <= 0L || flen > MAX_QR_BYTES) {
+                o.put("ok", false);
+                o.put("why", flen <= 0L ? "empty" : "too-big");
+                return o.toString();
+            }
             RandomAccessFile raf = new RandomAccessFile(r.file, "r");
-            byte[] buf = new byte[(int) raf.length()];
+            byte[] buf = new byte[(int) flen];
             try {
                 raf.readFully(buf);
             } finally {
@@ -2280,7 +2319,7 @@ public class QqbotActivity extends Activity {
         } catch (Throwable t) {
             try {
                 o.put("ok", false);
-                o.put("why", "no-bots");
+                o.put("why", (r != null && r.file != null) ? "read-failed" : "no-bots");
                 o.put("path", "");
             } catch (Throwable ignored) {
             }

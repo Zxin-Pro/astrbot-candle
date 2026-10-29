@@ -17,6 +17,34 @@
 
 ---
 
+## [1.3.5-beta.5] - 2026-10-29
+
+> **测试版**：这一版不新增功能，聚焦二维码多实例边界、安装包镜像压缩方式、首启解包失败清理，以及一批无障碍 / 200% 字号 / reduce 动效收口。`versionCode` 仍是 `10305`，可直接覆盖 1.3.5-beta.4 / beta.3 / beta.2 / beta.1、1.3.4 全系。
+
+### 变更
+
+- **实例二维码判定收紧**：`QqbotActivity` 新增 `instanceQqReady(File)` 与 `uinAfterStart(File, File)`。实例目录里的 `qq` 不可执行时不再读该实例的旧配置 / 旧码，只有当前 active 实例才回退共享 `/opt/QQ`；`run-napcat.sh` 在选定 QQ 目录后写 `.qqbot-start`，`loggedIn()` 只认标记之后的 per-uin 配置。
+- **二维码取码更细**：主 `qrcode.png` 与 `scanQrPng()` 找到的备码按 mtime 取更新的一张（同 mtime 保留主文件），0 字节 / 超过 8 MB 跳过，读取失败返回 `read-failed`；`qrBotUp()` 增加 bot id 一致性与 trim 守卫。
+- **安装包镜像条目改 STORED**：`tools/ApkReplace2.java` 对 `.tar.xz` / `.zip` / ≥64 MB 的条目使用 STORED，两遍流式写 size / compressedSize / CRC32，避免 DEFLATE 把 583 MB 镜像撑大 170 KB；新增 `tools/verify_bundle_entry.py` 核对 `BUNDLE_SIZE` / `BUNDLE_ARCH` / 条目字节。
+- **首启解包失败清理标记**：`ensureBundle()` 的写标记失败、重命名失败、`.bundle-ok` 写失败与异常分支统一删 `.bundle-pending`，避免 `20-rootfs.sh` 白等 600 秒。
+- **界面无障碍与极端字号**：9 个弹窗支持 Esc 关闭；白字按钮改用求解后的 `--btn-bg`（浅 / 深都 ≥4.55:1）；`#btnReport` 用强调色；200% 字号下底栏 `max-width` 不再把第 4 个页签挤出屏幕、`.lkbd` 不再被压到 16px；长串 `overflow-wrap:anywhere`；底栏补 `role=tablist` / 方向键；`.mchip` 命中区扩到 44px。
+- **动效收口**：reduce 下 `.spin` 保持 1.6s 循环；`.mwrap` 过渡改为并集，避免收起 / 展开闪空帧；拖动底栏滑块前先把 computed transform 写回，连点不再被旧目标钉住 1–3 帧。
+
+### 修复
+
+- 修好实例 QQ 不可执行时读到旧实例二维码 / 旧登录态的问题。
+- 修好配置 mtime 与二维码相同被误判为已登录的问题。
+- 修好二维码文件存在但读取失败时诊断信息只写 `no-bots` 的问题。
+- 修好 200% 字号下第 4 个页签出界、`.lkbd` 文字被裁切与长串撑宽页面的问题。
+
+### 说明
+
+- 全量包 `609,542,034 B`，SHA-256 `16d416d908386d045564a5e3b7998bd557ba25eb8cc41b502a1d43639c9ca5cb`；增量包 `26,529,679 B`，SHA-256 `a40e54cd751686460257408c6583be6060505c800c0854c3b31aa6c8733a4151`。
+- out/b1354_verify.py 全量 75/75 PASS（187.8s，含 L1 更多页 110.3ms / 首页 122.0ms）；out/_b4_pkgqa.py 21/21 PASS，out/_b5_qr_fixture.py 13 PASS + 3 XFAIL。
+- `javac` 全量 109 个源文件 rc=0；`node --check` 两段内联脚本通过。
+
+---
+
 ## [1.3.5-beta.4] - 2026-10-29
 
 > **测试版**：这一版把「更多」页收成可折叠的 7 组，并重做了切页与底栏滑块的动效；日志页的

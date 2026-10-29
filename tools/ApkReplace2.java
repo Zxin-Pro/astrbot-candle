@@ -30,17 +30,7 @@ public class ApkReplace2 {
                 if (replaced) {
                     seen.add(name);
                     Path p = repl.get(name);
-                    long size = Files.size(p);
-                    ZipEntry ne = new ZipEntry(name);
-                    ne.setTime(e.getTime());
-                    ne.setMethod(ZipEntry.DEFLATED);
-                    zo.putNextEntry(ne);
-                    try (InputStream fi = new BufferedInputStream(Files.newInputStream(p), 1 << 20)) {
-                        int n;
-                        while ((n = fi.read(buf)) > 0) zo.write(buf, 0, n);
-                    }
-                    zo.closeEntry();
-                    System.out.println("replaced: " + name + " -> " + size + " bytes (streamed)");
+                    putFile(zo, name, p, e.getTime(), buf);
                 } else if (e.isDirectory()) {
                     ZipEntry ne = new ZipEntry(name);
                     ne.setTime(e.getTime());
@@ -83,19 +73,49 @@ public class ApkReplace2 {
             }
             for (Map.Entry<String, Path> m : repl.entrySet()) {
                 if (seen.contains(m.getKey())) continue;
-                Path p = m.getValue();
-                long size = Files.size(p);
-                ZipEntry ne = new ZipEntry(m.getKey());
-                ne.setMethod(ZipEntry.DEFLATED);
-                zo.putNextEntry(ne);
-                try (InputStream fi = new BufferedInputStream(Files.newInputStream(p), 1 << 20)) {
-                    int n;
-                    while ((n = fi.read(buf)) > 0) zo.write(buf, 0, n);
-                }
-                zo.closeEntry();
-                System.out.println("added: " + m.getKey() + " -> " + size + " bytes (streamed)");
+                putFile(zo, m.getKey(), m.getValue(), 0L, buf);
             }
         }
         System.out.println("copiedEntries=" + copied + " outSize=" + Files.size(Paths.get(out)));
     }
+
+    // 已经是压缩格式的载荷再 deflate 只会变大（实测 bundle +170,002 B，0.029%），
+    // 而且只有 STORED 条目才能让 AssetManager.openFd() 直接返回 fd —— 设备上就能
+    // 省掉一次 583 MB 的 inflate。>=64 MB 的条目一律 STORED，不再逐个判断扩展名。
+    private static boolean shouldStore(String name, long size) {
+        return name.endsWith(".tar.xz") || name.endsWith(".zip") || size >= (64L << 20);
+    }
+
+    // 流式写一条（永不整条进 byte[]）：STORED 必须在 putNextEntry 之前给出
+    // size / compressedSize / crc，所以 STORED 走两遍 —— 第一遍只算 CRC，第二遍写入。
+    private static void putFile(ZipOutputStream zo, String name, Path p, long time, byte[] buf) throws IOException {
+        long size = Files.size(p);
+        boolean store = shouldStore(name, size);
+        ZipEntry ne = new ZipEntry(name);
+        if (time > 0) ne.setTime(time);
+        if (store) {
+            CRC32 c = new CRC32();
+            try (InputStream fi = new BufferedInputStream(Files.newInputStream(p), 1 << 20)) {
+                int n;
+                while ((n = fi.read(buf)) > 0) c.update(buf, 0, n);
+            }
+            ne.setMethod(ZipEntry.STORED);
+            ne.setSize(size);
+            ne.setCompressedSize(size);
+            ne.setCrc(c.getValue());
+        } else {
+            ne.setMethod(ZipEntry.DEFLATED);
+        }
+        zo.putNextEntry(ne);
+        long written = 0;
+        try (InputStream fi = new BufferedInputStream(Files.newInputStream(p), 1 << 20)) {
+            int n;
+            while ((n = fi.read(buf)) > 0) { zo.write(buf, 0, n); written += n; }
+        }
+        // 两遍之间文件被改写会让 CRC/size 对不上，这里先拦一道给出可读的错误。
+        if (written != size) throw new IOException("payload changed while packing: " + name);
+        zo.closeEntry();
+        System.out.println((store ? "stored: " : "deflated: ") + name + " -> " + size + " bytes");
+    }
+
 }

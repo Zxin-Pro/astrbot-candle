@@ -1099,6 +1099,10 @@ start_inst() {
     cp -al "$QQBASE" "$QQDIR" 2>/dev/null || cp -a "$QQBASE" "$QQDIR"
   fi
 
+  # beta.5 P1-3：记录本次启动时间；Java 用它过滤 cp -al 继承来的旧 per-uin 配置。
+  # 老 Java 不读这个文件；写失败只忽略，绝不影响启动。
+  touch "$QQDIR/.qqbot-start" 2>/dev/null || true
+
   INSTHOME="/root/qqinst/$id"
   LOGF="$LOGDIR/qq-$id.log"
   NAP="$QQDIR/resources/app/app_launcher/napcat"
