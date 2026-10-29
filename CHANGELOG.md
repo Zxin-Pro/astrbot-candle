@@ -26,7 +26,7 @@
 
 ### 安全重制（2026-10-29）
 
-- 首次发布的全量包在 `assets/qqbot-bundle.tar.xz` 中误带构建机运行期数据：dashboard 口令相关字段、`jwt_secret`、NapCat WebUI token、`data_v4.db*`、知识库、日志、插件配置与一张旧二维码。已从镜像删除 24 个条目并重建全量包（arm64 与站内 amd64 镜像都已清理），GitHub Release 资产已替换；功能与版本号不变。
+- 首次发布的全量包在 `assets/qqbot-bundle.tar.xz` 中误带构建机运行期数据：dashboard 口令相关字段、`jwt_secret`、NapCat WebUI token、`data_v4.db*`、知识库、日志、插件配置与一张旧二维码。已从镜像删除 24 个条目并重建全量包（arm64 与站内 amd64 镜像都已清理），beta.4 与 1.3.4 的 GitHub Release 资产已替换；其余 28 个受影响旧全量包已下架，增量包保留；功能与版本号不变。
 - 新全量包 `609,705,874 B`，SHA-256 `02555d117f29b220ad9c5ee69587f98651f22e93b3a4020d73d1b70ec38a782b`；旧包 `16a001adf47312dc8be3b3a4e074637352a3bfead0745c4a6c0040c378a753d8` 请勿再使用。
 - 装过旧全量包的用户请按 [安全重制说明](docs/SECURITY-REBUILD-b4.md) 轮换 dashboard 密码、JWT secret、NapCat Token，并重新扫码登录。
 

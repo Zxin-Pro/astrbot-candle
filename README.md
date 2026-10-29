@@ -17,7 +17,7 @@
 | 安装包 SHA-256 | `02555D117F29B220AD9C5EE69587F98651F22E93B3A4020D73D1B70EC38A782B` |
 | Release | [v1.3.5-beta.4](https://github.com/Zxin-Pro/astrbot-candle/releases/tag/v1.3.5-beta.4)（2026-10-29 发布；测试版，勾了 pre-release，不进 latest） |
 | 签名证书 SHA-256 | `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3） |
-| 安全重制 | 2026-10-29 全量包已替换（旧包镜像曾含运行期配置与凭据），处置见 [安全重制说明](docs/SECURITY-REBUILD-b4.md) |
+| 安全重制 | 2026-10-29 全量包已替换（旧包镜像曾含运行期配置与凭据）；beta.4 与 1.3.4 均已重制，28 个旧全量包已下架，处置见 [安全重制说明](docs/SECURITY-REBUILD-b4.md) |
 | 项目地址 | [github.com/Zxin-Pro/astrbot-candle](https://github.com/Zxin-Pro/astrbot-candle) |
 | 下载安装包 | 官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的 AstrBot 下载页与 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 提供**正式版**（约 581 MB，**站内直接下载，不用跳 GitHub**）；`-beta.N` 测试版只手动发给验收的人，不进官网、不进 latest |
 | 官方网站 | [烛心.xyz](https://烛心.xyz) |
