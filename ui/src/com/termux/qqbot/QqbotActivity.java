@@ -1601,14 +1601,14 @@ public class QqbotActivity extends Activity {
             JSONArray found = new JSONArray();
             String raw = readBots();
             JSONObject root = new JSONObject(raw);
-            String active = root.optString("active", "");
+            String active = effectiveActive(root);
             JSONArray bs = root.optJSONArray("bots");
             if (bs != null) {
                 for (int i = 0; i < bs.length(); i++) {
                     JSONObject b = bs.optJSONObject(i);
                     if (b == null) continue;
-                    String id = b.optString("id", "");
-                    if (id.length() == 0) continue;
+                    String id = botIdOf(b.optString("id", ""));
+                    if (id.length() == 0 || !safeBotId(id)) continue;
                     String qq = scanNapcatUin(id, id.equals(active));
                     if (qq.length() == 0) continue;
                     JSONObject f = new JSONObject();
@@ -1629,50 +1629,148 @@ public class QqbotActivity extends Activity {
     }
 
     /**
-     * 实例自己的 QQ 目录优先；只有 bots.json 里的 active 实例才会用共享的 opt/QQ。
+     * 与 run-napcat.sh 的 ACTIVE 解析保持一致：bots.json 的 active 必须在实例列表里
+     * 且没有被 enable=false 禁用；否则真正占用共享 /opt/QQ 的是第一个启用实例。
+     * active 指向已删除/已禁用实例时，不能还按它判断登录与二维码。
+     */
+    public String effectiveActive(JSONObject bots) {
+        try {
+            if (bots == null) return "";
+            JSONArray bs = bots.optJSONArray("bots");
+            if (bs == null || bs.length() == 0) return "";
+            String want = botIdOf(bots.optString("active", ""));
+            if (want.length() > 0) {
+                JSONObject hit = findBot(bots, want);
+                if (hit != null && botEnabled(hit) && safeBotId(want)) return want;
+            }
+            for (int i = 0; i < bs.length(); i++) {
+                JSONObject b = bs.optJSONObject(i);
+                String id = botIdOf(b == null ? "" : b.optString("id", ""));
+                if (id.length() > 0 && safeBotId(id) && botEnabled(b)) return id;
+            }
+        } catch (Throwable ignored) {
+        }
+        return "";
+    }
+
+    /** 在 bots.json 的 bots 数组里按 id 找实例；id 按 run-napcat.sh 的口径去掉首尾空白。 */
+    private static JSONObject findBot(JSONObject bots, String id) {
+        try {
+            if (bots == null || id == null) return null;
+            JSONArray bs = bots.optJSONArray("bots");
+            if (bs == null) return null;
+            String want = botIdOf(id);
+            for (int i = 0; i < bs.length(); i++) {
+                JSONObject b = bs.optJSONObject(i);
+                if (b != null && want.equals(botIdOf(b.optString("id", "")))) return b;
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private static String botIdOf(String raw) {
+        return raw == null ? "" : raw.trim();
+    }
+
+    /** 脚本中只有 JSON 布尔 false 才算禁用；字段缺失/其它值都按启用处理。 */
+    private static boolean botEnabled(JSONObject b) {
+        if (b == null) return false;
+        Object v = b.opt("enable");
+        return !(v instanceof Boolean) || ((Boolean) v).booleanValue();
+    }
+
+    /**
+     * 实例自己的 QQ 目录优先；只有当前实例（effectiveActive）才会用共享的 opt/QQ。
      *
      * 根目录是 home/ubuntu，不是 files/usr：files/usr 是 Termux 的前缀（只有
      * bin/etc/lib/opt/qqbot），QQ 与实例目录都装在 home/ubuntu 下面。
      * 这跟同一个类里 qr() 取二维码的路径必须一致，否则「扫完码读不到 QQ 号」。
      */
     private String scanNapcatUin(String id, boolean active) {
+        File f = scanNapcatUinFile(id, active);
+        return f == null ? "" : uinOfConfigName(f.getName());
+    }
+
+    /** 返回该实例最新的 per-uin 配置文件；实例目录没有时，active 才看共享 opt/QQ。 */
+    private File scanNapcatUinFile(String id, boolean active) {
+        String iid = botIdOf(id);
+        if (!safeBotId(iid)) return null;
         File ub = new File(homeDir(), "ubuntu");
-        String q = scanNapcatUinDir(new File(ub,
-                "opt/qqbot-inst/" + id + "/QQ/resources/app/app_launcher/napcat/config"));
-        if (q.length() > 0) return q;
-        if (!active) return "";
-        return scanNapcatUinDir(new File(ub,
+        File f = scanNapcatUinDirFile(new File(ub,
+                "opt/qqbot-inst/" + iid + "/QQ/resources/app/app_launcher/napcat/config"));
+        if (f != null) return f;
+        if (!active) return null;
+        return scanNapcatUinDirFile(new File(ub,
                 "opt/QQ/resources/app/app_launcher/napcat/config"));
     }
 
-    /** 在 config 目录里找 napcat_<数字>.json，取最新改过的那份（换号登录后会留下多份）。 */
-    private static String scanNapcatUinDir(File dir) {
+    /**
+     * 某个实例是否真的登录了 QQ。
+     *
+     * 不能拿 OneBot 端口是否监听起来判断：NapCat 在 QQ 未登录时也会先把 6199 端口开出来，
+     * 于是日志页会把还在显示的二维码误判成「已登录」并收掉。登录成功的可靠信号是 NapCat
+     * 在 config 目录里按 uin 写下的 per-uin 配置文件，复用扫码取号同一套目录扫描。
+     * 如果二维码比最新 per-uin 文件还新，说明 NapCat 又重画了码（例如掉线），也不算登录。
+     */
+    public boolean loggedIn(String id) {
         try {
-            if (dir == null || !dir.isDirectory()) return "";
+            String want = botIdOf(id);
+            if (!safeBotId(want)) return false;
+            JSONObject bots = new JSONObject(readBots());
+            if (findBot(bots, want) == null) return false;
+            String active = effectiveActive(bots);
+            boolean isActive = want.equals(active);
+            File uin = scanNapcatUinFile(want, isActive);
+            if (uin == null) return false;
+            QrFind qr = probeQr(want, isActive);
+            return qr.file == null || qr.file.lastModified() <= uin.lastModified();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 在 config 目录里找 napcat_<数字>.json / onebot11_<数字>.json，取最新改过的那份。 */
+    private static File scanNapcatUinDirFile(File dir) {
+        try {
+            if (dir == null || !dir.isDirectory()) return null;
             File[] fs = dir.listFiles();
-            if (fs == null) return "";
-            String best = "";
-            long bestAt = -1;
+            if (fs == null) return null;
+            File best = null;
+            long bestAt = -1L;
             for (int i = 0; i < fs.length; i++) {
                 File f = fs[i];
-                if (f == null || !f.isFile()) continue;
-                String n = f.getName();
-                /* 登录成功后 NapCat 会写两份 per-uin 文件：napcat_<uin>.json 与
-                   onebot11_<uin>.json。前者偶尔会因为 selfInfo.uin 还没填好而退化回
-                   不带 uin 的名字，所以后者也认上作兜底。 */
-                String pre = "";
-                if (n.startsWith("napcat_")) pre = "napcat_";
-                else if (n.startsWith("onebot11_")) pre = "onebot11_";
-                if (pre.length() == 0 || !n.endsWith(".json")) continue;
-                String num = n.substring(pre.length(), n.length() - 5);
-                if (!isQqDigits(num)) continue;
+                if (f == null || !f.isFile() || !isUinConfigName(f.getName())) continue;
                 long t = f.lastModified();
-                if (t > bestAt) { bestAt = t; best = num; }
+                if (t > bestAt) {
+                    bestAt = t;
+                    best = f;
+                }
             }
             return best;
         } catch (Throwable t) {
-            return "";
+            return null;
         }
+    }
+
+    /** 登录成功后 NapCat 会写两份 per-uin 文件；文件名里的数字就是 QQ 号。 */
+    private static boolean isUinConfigName(String n) {
+        if (n == null || !n.endsWith(".json")) return false;
+        String pre = "";
+        if (n.startsWith("napcat_")) pre = "napcat_";
+        else if (n.startsWith("onebot11_")) pre = "onebot11_";
+        if (pre.length() == 0 || n.length() <= pre.length() + 5) return false;
+        return isQqDigits(n.substring(pre.length(), n.length() - 5));
+    }
+
+    private static String uinOfConfigName(String n) {
+        if (n == null || !n.endsWith(".json")) return "";
+        String pre = "";
+        if (n.startsWith("napcat_")) pre = "napcat_";
+        else if (n.startsWith("onebot11_")) pre = "onebot11_";
+        if (pre.length() == 0 || n.length() <= pre.length() + 5) return "";
+        String num = n.substring(pre.length(), n.length() - 5);
+        return isQqDigits(num) ? num : "";
     }
 
     private static boolean isQqDigits(String s) {
@@ -1998,73 +2096,195 @@ public class QqbotActivity extends Activity {
 
     // 返回某个 NapCat 实例的登录二维码（NapCat 会把二维码存成 cache/qrcode.png）。
     // 直接读文件并转成 data: URL 交给 WebView，避免 file:// 跨源被拦。
-    /** 实例 id 会拼进文件路径：只放行字母数字、下划线、连字符和点，并禁掉 .. */
+    /**
+     * 实例 id 会拼进文件路径：拒绝 / \\、.. 和控制字符；中文与空格保留。
+     * 是否真的存在由 findBot(bots, id) 再校验，不能凭空拿任意 id 拼路径。
+     */
     private static boolean safeBotId(String id) {
-        if (id == null || id.length() == 0 || id.length() > 64 || id.indexOf("..") >= 0) return false;
+        if (id == null || id.length() == 0 || id.length() > 128 || id.indexOf("..") >= 0) return false;
         for (int i = 0; i < id.length(); i++) {
             char c = id.charAt(i);
-            if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
-                    || c == '_' || c == '-' || c == '.')) return false;
+            if (c == '/' || c == '\\' || Character.isISOControl(c)) return false;
         }
         return true;
+    }
+
+    /** 二维码 PNG 上限：单项超过 8 MB 只可能是坏文件，不能按 length() 直接分配数组。 */
+    private static final long MAX_QR_BYTES = 8L * 1024L * 1024L;
+
+    /** 路径漂移兜底：在 napcat 目录下最多向下找 3 层。 */
+    private static final int QR_SCAN_DEPTH = 3;
+
+    /** qrFind 的中间结果：文件 + 诊断原因 + 实际/尝试路径。 */
+    private static final class QrFind {
+        final File file;
+        final String why;
+        final String path;
+
+        QrFind(File file, String why, String path) {
+            this.file = file;
+            this.why = why == null ? "" : why;
+            this.path = path == null ? "" : path;
+        }
     }
 
     /** 找某个实例的登录二维码文件：返回 null 表示没有可用的图。 */
     private File qrFind(String wantId) {
         try {
-            JSONObject bots = new JSONObject(readBots());
-            String active = bots.optString("active", "");
-            if (wantId == null || wantId.length() == 0) wantId = active;
-            // WebView 里传进来的 id 不可信：直接拼进 /opt/qqbot-inst/<id>/QQ 会被
-            // "../.." 穿越到任意目录读文件（再 base64 回页面）。这里按白名单挡掉。
-            if (!safeBotId(wantId)) return null;
-            // 与 run-napcat.sh 的 QQ 目录选择保持一致：实例一旦建好自己的
-            // /opt/qqbot-inst/<id>/QQ 副本就一直用它；没有副本的实例里，只有
-            // 「当前实例」才占用 /opt/QQ。
+            return qrFindInfo(wantId, new JSONObject(readBots())).file;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
+     * 查二维码并带出失败原因，给 qr() 的 why/path 字段用。
+     * why: no-bots / bad-id / no-file / too-big / ok。
+     */
+    private QrFind qrFindInfo(String wantId, JSONObject bots) {
+        try {
+            if (bots == null) return new QrFind(null, "no-bots", "");
+            JSONArray arr = bots.optJSONArray("bots");
+            if (arr == null || arr.length() == 0) return new QrFind(null, "no-bots", "");
+            String active = effectiveActive(bots);
+            String want = botIdOf(wantId);
+            if (want.length() == 0) want = active;
+            // WebView 里传进来的 id 不可信：除了结构校验，还必须是 bots.json 里真实存在的实例。
+            if (!safeBotId(want) || findBot(bots, want) == null) return new QrFind(null, "bad-id", "");
+            return probeQr(want, want.equals(active));
+        } catch (Throwable t) {
+            return new QrFind(null, "no-bots", "");
+        }
+    }
+
+    /**
+     * 按 run-napcat.sh 的目录选择顺序找图：实例自己的 QQ 副本优先；没有副本时，
+     * 当前实例才用共享的 /opt/QQ。主文件不存在/为 0 字节/超过上限时继续递归找
+     * qrcode*.png（NapCat 升级后路径可能漂移），最后才报 no-file / too-big。
+     */
+    private QrFind probeQr(String id, boolean active) {
+        try {
             File ub = new File(homeDir(), "ubuntu");
-            File inst = new File(new File(new File(ub, "opt/qqbot-inst"), wantId + "/QQ"),
+            File inst = new File(new File(new File(ub, "opt/qqbot-inst"), id + "/QQ"),
                     "resources/app/app_launcher/napcat/cache/qrcode.png");
             File primary = new File(new File(ub, "opt/QQ"),
                     "resources/app/app_launcher/napcat/cache/qrcode.png");
+            File instNp = inst.getParentFile() == null ? null : inst.getParentFile().getParentFile();
+            File primaryNp = primary.getParentFile() == null ? null : primary.getParentFile().getParentFile();
+            File attempted = active ? primary : inst;
             File found = null;
+            String badWhy = "no-file";
+            String badPath = attempted.getAbsolutePath();
             if (inst.isFile()) {
-                found = inst;
-            } else if (wantId.equals(active) || active.length() == 0) {
-                found = primary;
+                if (inst.length() <= 0L) {
+                    badWhy = "no-file";
+                    badPath = inst.getAbsolutePath();
+                } else if (inst.length() > MAX_QR_BYTES) {
+                    badWhy = "too-big";
+                    badPath = inst.getAbsolutePath();
+                } else {
+                    found = inst;
+                }
             }
-            // 二维码是几百 KB 的 PNG；超过 4 MB 只可能是文件坏了或是被替换的别的东西，
-            // 不能直接按 length() 分配数组（大文件会把 JavaBridge 线程 OOM 掉）。
-            if (found == null || !found.isFile() || found.length() <= 0
-                    || found.length() > 4L * 1024 * 1024) return null;
-            return found;
+            if (found == null) {
+                File alt = scanQrPng(instNp, 0);
+                if (alt != null) found = alt;
+            }
+            if (found == null && active) {
+                if (primary.isFile()) {
+                    if (primary.length() <= 0L) {
+                        badWhy = "no-file";
+                        badPath = primary.getAbsolutePath();
+                    } else if (primary.length() > MAX_QR_BYTES) {
+                        badWhy = "too-big";
+                        badPath = primary.getAbsolutePath();
+                    } else {
+                        found = primary;
+                    }
+                }
+                if (found == null) {
+                    File alt = scanQrPng(primaryNp, 0);
+                    if (alt != null) found = alt;
+                }
+            }
+            if (found != null) return new QrFind(found, "ok", found.getAbsolutePath());
+            return new QrFind(null, badWhy, badPath);
+        } catch (Throwable t) {
+            return new QrFind(null, "no-bots", "");
+        }
+    }
+
+    /** 递归找 qrcode*.png，返回 mtime 最新的合格文件；深度从 0 开始，最多到 3。 */
+    private static File scanQrPng(File dir, int depth) {
+        try {
+            if (dir == null || !dir.isDirectory() || depth > QR_SCAN_DEPTH) return null;
+            File[] fs = dir.listFiles();
+            if (fs == null) return null;
+            File best = null;
+            long bestAt = -1L;
+            for (int i = 0; i < fs.length; i++) {
+                File f = fs[i];
+                if (f == null) continue;
+                if (f.isDirectory()) {
+                    if (depth >= QR_SCAN_DEPTH) continue;
+                    File sub = scanQrPng(f, depth + 1);
+                    if (sub != null && sub.lastModified() > bestAt) {
+                        best = sub;
+                        bestAt = sub.lastModified();
+                    }
+                    continue;
+                }
+                String n = f.getName();
+                if (!n.startsWith("qrcode") || !n.endsWith(".png")) continue;
+                long len = f.length();
+                if (len <= 0L || len > MAX_QR_BYTES) continue;
+                long t = f.lastModified();
+                if (t > bestAt) {
+                    best = f;
+                    bestAt = t;
+                }
+            }
+            return best;
         } catch (Throwable t) {
             return null;
         }
     }
 
     public String qr(String wantId) {
+        JSONObject o = new JSONObject();
         try {
             JSONObject bots = new JSONObject(readBots());
-            String active = bots.optString("active", "");
-            String foundId = (wantId == null || wantId.length() == 0) ? active : wantId;
-            File found = qrFind(foundId);
-            JSONObject o = new JSONObject();
+            String active = effectiveActive(bots);
+            String foundId = botIdOf(wantId);
+            if (foundId.length() == 0) foundId = active;
             o.put("id", foundId);
             o.put("active", active);
-            if (found == null) {
+            QrFind r = qrFindInfo(foundId, bots);
+            o.put("why", r.why);
+            o.put("path", r.path);
+            if (r.file == null) {
                 o.put("ok", false);
                 return o.toString();
             }
-            RandomAccessFile raf = new RandomAccessFile(found, "r");
+            RandomAccessFile raf = new RandomAccessFile(r.file, "r");
             byte[] buf = new byte[(int) raf.length()];
-            raf.readFully(buf);
-            raf.close();
+            try {
+                raf.readFully(buf);
+            } finally {
+                raf.close();
+            }
             o.put("ok", true);
-            o.put("mtime", found.lastModified());
+            o.put("mtime", r.file.lastModified());
             o.put("data", "data:image/png;base64," + Base64.encodeToString(buf, Base64.NO_WRAP));
             return o.toString();
         } catch (Throwable t) {
-            return "{\"ok\":false}";
+            try {
+                o.put("ok", false);
+                o.put("why", "no-bots");
+                o.put("path", "");
+            } catch (Throwable ignored) {
+            }
+            return o.toString();
         }
     }
 
@@ -2106,8 +2326,9 @@ public class QqbotActivity extends Activity {
         try {
             ensureExternalAppsAllowed();
             JSONObject bots = new JSONObject(readBots());
-            String active = bots.optString("active", "");
-            String foundId = (wantId == null || wantId.length() == 0) ? active : wantId;
+            String active = effectiveActive(bots);
+            String foundId = botIdOf(wantId);
+            if (foundId.length() == 0) foundId = active;
             File f = qrFind(foundId);
             JSONObject o = new JSONObject();
             if (f == null) {

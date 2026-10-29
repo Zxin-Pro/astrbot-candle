@@ -85,7 +85,8 @@ qq_space_gate() {
   _sg_kb=$(df -k "$1" 2>/dev/null | awk 'NR>1 { print $4; exit }')
   [ -n "$_sg_kb" ] || return 0
   if [ "$_sg_kb" -lt $(($2 * 1024)) ] 2>/dev/null; then
-    qqerr "部署沙盒至少要留 $2 MB 可用空间（建议 4 GB），现在只剩 $((_sg_kb / 1024)) MB"
+    _sg_gb=$((($2 + 511) / 1024))
+    qqerr "手机剩余空间不够：部署沙盒至少要留 ${_sg_gb} GB 可用空间（建议 4 GB），现在只剩 $((_sg_kb / 1024)) MB。先清一点空间再试"
     return 1
   fi
   return 0
@@ -208,7 +209,7 @@ qq_fsprobe() {
     : > "$QQBOT_CACHE/fs-nowrite" 2>/dev/null || true
     qqerr "沙盒目录 $_d 写不进去：${_werr:-未知错误}"
     if [ -n "$_avail" ] && [ "$_avail" -lt $((QQBOT_MIN_FREE_MB * 1024)) ] 2>/dev/null; then
-      qqerr "手机剩余空间不够（只剩 $((_avail / 1024)) MB，建议至少留 ${QQBOT_MIN_FREE_MB} MB），先清一点空间再试"
+      qqerr "手机剩余空间不够：部署沙盒至少要留 $((QQBOT_MIN_FREE_MB / 1024)) GB 可用空间（建议 4 GB），现在只剩 $((_avail / 1024)) MB。先清一点空间再试"
     fi
     qqerr "如果这条一直出现：设置页 → 重置部署标记 → 重新部署；还不行就卸载重装（安装时选内部存储）"
     return 1

@@ -11,10 +11,11 @@
 | --- | --- |
 | 应用名 | **AstrBot烛版** |
 | 控制台标题 | **烛之控制台** |
-| 安装包 | `AstrBot-1.3.5-beta.3-arm64.apk`（`609,697,682`，约 581 MB；**自带装好的运行环境镜像，第一次部署就是解压它，全程不用联网**） |
+| 安装包 | `AstrBot-1.3.5-beta.4-arm64.apk`（`609,705,874`，约 581 MB；**自带装好的运行环境镜像，第一次部署就是解压它，全程不用联网**） |
 | 包名 | `zhuxin.astrbot`（1.2.1 及更早为 `com.termux`） |
-| 当前版本 | **v1.3.5-beta.3（测试版）**（versionCode `10305`，可直接覆盖 1.3.5-beta.2 / beta.1、1.3.4 正式版、1.3.4-beta.10 / beta.9 / beta.8 / beta.7 / beta.6 / beta.5 / beta.4 / beta.3 / beta.2 / beta.1、1.3.3 正式版、1.3.3-beta.10 … beta.1 或 1.3.2 安装） |
-| 安装包 SHA-256 | `A40FF4EC565C6E9A2B3A35EC4B9338C9400078772859E136EB946CA5BA6AFA6B` |
+| 当前版本 | **v1.3.5-beta.4（测试版）**（versionCode `10305`，可直接覆盖 1.3.5-beta.3 / beta.2 / beta.1、1.3.4 正式版、1.3.4-beta.10 / beta.9 / beta.8 / beta.7 / beta.6 / beta.5 / beta.4 / beta.3 / beta.2 / beta.1、1.3.3 正式版、1.3.3-beta.10 … beta.1 或 1.3.2 安装） |
+| 安装包 SHA-256 | `16A001ADF47312DC8BE3B3A4E074637352A3BFEAD0745C4A6C0040C378A753D8` |
+| Release | [v1.3.5-beta.4](https://github.com/Zxin-Pro/astrbot-candle/releases/tag/v1.3.5-beta.4)（2026-10-29 发布；测试版，勾了 pre-release，不进 latest） |
 | 签名证书 SHA-256 | `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3） |
 | 项目地址 | [github.com/Zxin-Pro/astrbot-candle](https://github.com/Zxin-Pro/astrbot-candle) |
 | 下载安装包 | 官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的 AstrBot 下载页与 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest) 提供**正式版**（约 581 MB，**站内直接下载，不用跳 GitHub**）；`-beta.N` 测试版只手动发给验收的人，不进官网、不进 latest |
@@ -30,7 +31,7 @@
 - 打开应用 → 自动在手机里建立一个 **Ubuntu 24.04 的 proot 沙盒**（无需 root、无需刷机、无需 Termux 命令行）；
 - 在沙盒里自动部署 **Linux QQ 3.2.34-53644** + **NapCat v4.18.38** + **AstrBot v4.28.2**；
 - 三者**出厂即预接线**：NapCat 通过反向 WebSocket 连到 AstrBot 的 aiocqhttp 平台（`ws://127.0.0.1:6199/ws`）；
-- 用户界面是一个**本地 HTML 控制台**（WebView 加载 `file:///android_asset/qqbot/index.html`），有 **主页 / 机器人 / 日志 / 更多** 四个页签（1.3.4-beta.5 起底栏滑条划到哪页就切到哪页，1.3.4-beta.6 起按钮统一 22px 大圆角；1.3.4-beta.7 起删掉「插件」页签与整个插件页，插件改在 AstrBot 自己的 WebUI 里管；1.3.4-beta.8 起 Android 16 上常驻通知变成带百分比的状态栏胶囊，加载转圈也不再被拉成长条；1.3.4-beta.9 起灵动岛整套删除，换成一条真正的前台常驻通知 —— 标题跟状态走、运行中挂系统计时器、启动中挂确定进度条、被系统从通知栏清掉会自己重新挂回前台，「更多 → 前台常驻」能看四行只读状态并一键重挂；1.3.4-beta.10 起「模型用量」卡的「粗估花费」可以点开，自己填输入 / 缓存命中 / 输出三个单价（元/百万 token），面板里同时给出输入与缓存命中的拆分和缓存命中率），**1.3.4 正式版**把 1.3.4 的十个测试版（beta.1 … beta.10）合并发布；扫码、开关服务、看日志、改端口全在界面里点。**1.3.5-beta.1** 起新增分层看门狗（沙盒 / NapCat / AstrBot 三层分开探、只重启掉的那层）、崩溃现场快照、低电高温保护阈值、分级告警中心（含通知内直接操作与告警升级）、周报、Provider 体检、桌面图标长按菜单、性能面板与一键反馈包。**1.3.5-beta.2** 起再加换机迁移（只搬配置的小包）、系统级升级（Ubuntu / AstrBot / NapCat 三条独立通道）、插件中心（插件市场 + 可视化配置 + 热重载）、桌面小组件、背景图 v2（毛玻璃强度 / 遮罩 / 按页背景；1.3.5-beta.3 已下线）、自启动检测与充电高性能；同时把默认接口地址换成 `https://la.worldcodes.online/v1`，修好日志页二维码出不来的问题，并下线「更多」页的反馈包。**1.3.5-beta.3** 起背景图 v2 下线（原有背景图与玻璃透明度保留），「设置」页整体并入「更多」页并按 7 组重排（顶部有快捷跳转），顶栏齿轮位置换成「上传错误报告」；同时修好 NapCat 版本被误读成 QQ 9.x 的问题，并把沙盒空间预留提高到部署 3 GB / 续跑 1 GB。
+- 用户界面是一个**本地 HTML 控制台**（WebView 加载 `file:///android_asset/qqbot/index.html`），有 **主页 / 机器人 / 日志 / 更多** 四个页签（1.3.4-beta.5 起底栏滑条划到哪页就切到哪页，1.3.4-beta.6 起按钮统一 22px 大圆角；1.3.4-beta.7 起删掉「插件」页签与整个插件页，插件改在 AstrBot 自己的 WebUI 里管；1.3.4-beta.8 起 Android 16 上常驻通知变成带百分比的状态栏胶囊，加载转圈也不再被拉成长条；1.3.4-beta.9 起灵动岛整套删除，换成一条真正的前台常驻通知 —— 标题跟状态走、运行中挂系统计时器、启动中挂确定进度条、被系统从通知栏清掉会自己重新挂回前台，「更多 → 前台常驻」能看四行只读状态并一键重挂；1.3.4-beta.10 起「模型用量」卡的「粗估花费」可以点开，自己填输入 / 缓存命中 / 输出三个单价（元/百万 token），面板里同时给出输入与缓存命中的拆分和缓存命中率），**1.3.4 正式版**把 1.3.4 的十个测试版（beta.1 … beta.10）合并发布；扫码、开关服务、看日志、改端口全在界面里点。**1.3.5-beta.1** 起新增分层看门狗（沙盒 / NapCat / AstrBot 三层分开探、只重启掉的那层）、崩溃现场快照、低电高温保护阈值、分级告警中心（含通知内直接操作与告警升级）、周报、Provider 体检、桌面图标长按菜单、性能面板与一键反馈包。**1.3.5-beta.2** 起再加换机迁移（只搬配置的小包）、系统级升级（Ubuntu / AstrBot / NapCat 三条独立通道）、插件中心（插件市场 + 可视化配置 + 热重载）、桌面小组件、背景图 v2（毛玻璃强度 / 遮罩 / 按页背景；1.3.5-beta.3 已下线）、自启动检测与充电高性能；同时把默认接口地址换成 `https://la.worldcodes.online/v1`，修好日志页二维码出不来的问题，并下线「更多」页的反馈包。**1.3.5-beta.3** 起背景图 v2 下线（原有背景图与玻璃透明度保留），「设置」页整体并入「更多」页并按 7 组重排（顶部有快捷跳转），顶栏齿轮位置换成「上传错误报告」；同时修好 NapCat 版本被误读成 QQ 9.x 的问题，并把沙盒空间预留提高到部署 3 GB / 续跑 1 GB。**1.3.5-beta.4** 起「更多」页收成 7 个可折叠组（关于两卡置顶、默认只展开运行状态），更多页去掉进场动画，底栏滑块只过渡 `transform`，日志页二维码按当前实例现算登录态（多实例不再找错码，扫码成功后自动收窗）。
 - 从 **1.3.0** 起：**界面整体换成 iOS 液态玻璃风**，提供跟随系统 / 浅色 / 深色三档主题，以及 8 套强调色、8 套背景色调、6 套渐变预设和 0–100 的玻璃透明度滑块（全部记在 localStorage，重开保留），「外观」卡从「诊断信息」折叠搬到「更多」页顶层；毛玻璃只留在顶栏、底栏胶囊与弹窗遮罩，卡片不模糊，静止 CPU 仍为 0%。左上角图标跟随登录 QQ 号头像（12 小时缓存，未登录回落原图标），「更多 → 外观」可把带头像的快捷方式钉到桌面；顶栏「烛之控制台」支持双击改名（最长 16 字）。访问地址卡的 Token / 账号 / 密码改成读 NapCat 与 AstrBot 的真实配置文件，找不到时显示 —；清单再删 VIBRATE、桌面小部件与快捷设置磁贴，普通权限只剩 6 条，电池优化改走系统总列表。
 - 从 **1.2.13** 起：**关于页读真实版本、关闭进程真关但下次打开自动恢复、重装后不再卡「正在启动」、新手引导整套移除**。「更多 → 关于」里的 AstrBot 版本不再写死 `v4.28.2`：桥方法 `envVers()` 直接读 `<home>/ubuntu/opt/AstrBot/astrbot/__init__.py` 的 `__version__`（5 分钟缓存），沙盒里现在是 **4.29.1**，读不到显示 `—`、绝不编一个数字。通知栏「关闭进程」改成真的关掉应用：写 `state/offline` → 脱离进程跑 `stop-sandbox.sh` → 收常驻通知 → `killProcess`（带 5 秒兜底的 `KillWatchdog`），同时留一张 `state/closed` 便条，**下次进应用时 `QqbotActivity.onCreate` 把便条和 offline 标记一起清掉、沙盒照常自动启动**，不用再点「启动服务」；界面上自己点的「紧急下线」不写这张便条，仍然是「别再自己起来」，要用卡片上的「启动服务」恢复。修好**重装后主页一直写「正在启动」**：`paintHero()` 里「全绿」（NapCat / AstrBot / OneBot 都在线）判定提到 `bootPending()` 的 120 秒开机窗口**前面**，全绿优先，「重启服务」也会重置窗口。**移除新手引导**：首页「第 N/5 步」引导卡与「发一条测试消息」整套删掉，`onboard` 相关 HTML / CSS / JS 清干净；顺手补回 `refreshExtras()` 开头被连带删掉的 `var E = ext(), now = Date.now();`（缺这行时函数每次抛 `E is not defined` 又被外层 try/catch 吞掉，表现为下线后卡片永远写「沙盒运行中」、也不出现「启动服务」按钮）。
 - 从 **1.2.10** 起：**模型配置终于读得对了，改参数也不用再重启沙盒**。AstrBot v4.29 启动时会把 `cmd_config.json` 里的 provider 拆成 `provider[]` + `provider_sources[]`（密钥 / API 地址搬到后者），App 原来只翻 `provider[]`，于是「配过模型、第二次打开又显示没配置」；现在按 AstrBot 运行时的合并顺序读，并优先显示默认对话模型指向的那条。保存模型 / 人格改成走 AstrBot 的 HTTP 接口**热生效**（`provider-sources` → `providers` → `personas` → `system-config` 四步），实测一秒内卡片就变、机器人不中断，只有接口够不着时才回落到停沙盒改文件的旧流程。另外：主页模型卡显示中转站主机名 `worldcodes.online`（「复制 / 打开」给的是带邀请码的注册地址 `https://worldcodes.online/register?invite_code=CZLT`）、第一次点「控制台」弹账号密码卡可复制、NapCat 直达链接自带 token、登录 QQ 后自动回填 QQ 号、AstrBot 冷启动时 OneBot 磁贴显示「启动中」不再误报未连接。
@@ -66,7 +67,7 @@
 2. **注入脚本**：Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 是一个 **ELF 头 + 内嵌 ZIP 段 + 动态段/节头表尾部** 的混合体（ELF 头 1328 字节，内嵌 ZIP 段 29388903 字节，尾部 2761 字节，文件总长 29392992 字节）。我们用一个**自己写的 Java 工具** `RepackBootstrap` 打开这个内嵌 ZIP，把 `build/` 目录下的沙盒脚本（部署流程、启停脚本、守护循环、`profile.d` 钩子）作为新条目塞进去，再按原布局写回。
    - 内嵌 ZIP 段在原始包里是**填满的**，所以要塞进新文件就必须删掉一些用不到的条目（man/info/doc 文档、C 头文件、测试二进制等），这些被删的条目部署流程永远不会执行，安全。
 3. **换回 APK**：用 `ApkReplace` 把重新打包好的 `.so` 换回 APK 的 `lib/arm64-v8a/` 下。
-4. **改包名并重新签名**：`[3c/5]` 用 `tools/reloc_bootstrap.py` 对 `libtermux-bootstrap.so` 内嵌的用户态做**原地等长改写** —— 长路径 `/data/data/<包名>/files/usr` 缩成 `/data/data/<包名>/u`、`files/home` 缩成 `/h`，由应用启动时建的符号链接（`PrefixAlias`：`files/u → files/usr`、`files/h → files/home`）解析，替换后剩余字节用 NUL 填满，`.so` 仍是 29,392,992 字节、程序头 / 节头 / 偏移一个字节都不动（这是 `dlopen` 与真机 `execve` 都能过的前提）；`[4b/5]` 用 `out/patch_manifest.py` 重写二进制 `AndroidManifest.xml` 的字符串池（package、`com.termux.RUN_COMMAND` 权限、documents/filereceiver/files authorities）；`out/patch_smali.py` 只替换不是 `com.termux.app.` 的引用（Java 类仍在 `com.termux.app` 包）。最后用 [uber-apk-signer](https://github.com/patrickfav/uber-apk-signer) 重新签名，产出可安装的 `AstrBot-<版本号>.apk`（当前版本即 `AstrBot-1.3.0-arm64.apk`，只发这一个包）。
+4. **改包名并重新签名**：`[3c/5]` 用 `tools/reloc_bootstrap.py` 对 `libtermux-bootstrap.so` 内嵌的用户态做**原地等长改写** —— 长路径 `/data/data/<包名>/files/usr` 缩成 `/data/data/<包名>/u`、`files/home` 缩成 `/h`，由应用启动时建的符号链接（`PrefixAlias`：`files/u → files/usr`、`files/h → files/home`）解析，替换后剩余字节用 NUL 填满，`.so` 仍是 29,392,992 字节、程序头 / 节头 / 偏移一个字节都不动（这是 `dlopen` 与真机 `execve` 都能过的前提）；`[4b/5]` 用 `out/patch_manifest.py` 重写二进制 `AndroidManifest.xml` 的字符串池（package、`com.termux.RUN_COMMAND` 权限、documents/filereceiver/files authorities）；`out/patch_smali.py` 只替换不是 `com.termux.app.` 的引用（Java 类仍在 `com.termux.app` 包）。最后用 [uber-apk-signer](https://github.com/patrickfav/uber-apk-signer) 重新签名，产出可安装的 `AstrBot-<版本号>.apk`（当前版本即 `AstrBot-1.3.5-beta.4-arm64.apk`，只发这一个包）。
 5. **原生控制台**：`ui/src/` 下的 Java 源码（`com.termux.qqbot.*`）编译成 dex、转成 smali、和 `ui/assets/qqbot/index.html` 一起由 apktool 打进 APK。
 
 装到手机上以后：
@@ -97,7 +98,7 @@
 1. **先卸载 1.2.1 及更早的 AstrBot烛版**。
    1.2.1 及更早的包名是 `com.termux`，1.2.2 改成了 `zhuxin.astrbot`，**不能直接覆盖安装**。卸载会清掉旧包名下的沙盒数据，请先在旧版「更多 → 备份与恢复」导出备份，装好 1.2.2（或更新版本）后再导回。
    官方 Termux / 应用商店版 / F-Droid 版与 1.2.2 起的包名不同，**不再冲突**，可以共存。
-2. 到官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的下载页（或 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest)）下载 `AstrBot-1.3.0-arm64.apk`（只发一个包，模拟器也能直接装；文件名后缀就是版本号），传到手机，点击安装。
+2. 到官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的下载页（或 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest)）下载 `AstrBot-1.3.5-beta.4-arm64.apk`（只发一个包，模拟器也能直接装；文件名后缀就是版本号），传到手机，点击安装。
 3. 安装时系统会提示「**未知来源应用**」，需要允许安装。
    - **小米 / Redmi（HyperOS）用户**：如果被拦下、提示「应用缺少隐私政策」且没有「继续安装」，
      这是小米安装器的风险提示，不是包坏了。关掉手机管家的「安装监控 / 安全守护 / 应用防护」、
@@ -109,7 +110,7 @@
 
 ## 五、首次使用
 
-首次打开应用会**自动开始部署**，主页最上面的「自动部署」卡里会显示进度条、八步清单和实时日志：
+首次打开应用会**自动开始部署**，主页最上面的「自动部署」卡里会显示进度条、九步清单和实时日志：
 
 | 步骤 | 内容 | 大致下载量 |
 | --- | --- | --- |
@@ -146,7 +147,7 @@
 - **通知栏权限提醒**（按需出现）：没授权时提示「常驻通知上的『关闭进程』就用不了」，点「开启」弹系统权限框，授权后自动消失。
 - **四个常用动作**：NapCat / 控制台 / 日志 / 重启。
 - **实例卡**：每个 QQ 号一张卡，显示昵称、已运行时长 / 未运行、最近掉线时间（在线状态取实时端口探测）。
-- **更多工具**（默认折叠）：自动部署卡（进度条、八步清单、实时日志、开始/继续/停止/重新部署）、组件开关卡、机器人连接卡、访问地址卡。
+- **更多工具**（默认折叠）：自动部署卡（进度条、九步清单、实时日志、开始/继续/停止/重新部署）、组件开关卡、机器人连接卡、访问地址卡。
 
 ### 2. 机器人
 
@@ -186,7 +187,7 @@
 
 ### 更多页的七组设置（原设置页）
 
-「更多」页从 1.3.5-beta.3 起把原设置页整页并入，按**运行状态 / 提醒与报告 / 升级与扩展 / 外观与模型 / 连接与端口 / 数据与存储 / 系统与关于**七组排开，顶部有一排胶囊点一下就跳到那一组。原设置里的卡片都在：**组件重装**（单独重装 NapCat 或 AstrBot，两步确认，端口与登录数据保留）、**端口设置**（留空＝自动分配；改完点「保存并重启服务」约 15 秒生效）、**下载代理**（支持 `http://` / `https://` / `socks5://`，留空＝直连）、**维护**（重新部署 / 查看状态 / **修复沙盒依赖** / 重置部署标记）、**关于**（各组件版本与安装路径前缀）。
+「更多」页从 1.3.5-beta.3 起把原设置页整页并入，按**运行状态 / 提醒与报告 / 升级与扩展 / 外观与模型 / 连接与端口 / 数据与存储 / 系统与维护**七组排开，顶部有一排胶囊点一下就跳到那一组。原设置里的卡片都在：**组件重装**（单独重装 NapCat 或 AstrBot，两步确认，端口与登录数据保留）、**端口设置**（留空＝自动分配；改完点「保存并重启服务」约 15 秒生效）、**下载代理**（支持 `http://` / `https://` / `socks5://`，留空＝直连）、**维护**（重新部署 / 查看状态 / **修复沙盒依赖** / 重置部署标记）、**关于**（各组件版本与安装路径前缀）。
 
 ---
 
@@ -326,7 +327,7 @@ qqbot-sandbox/
 │     ├─ reinstall.sh           # 组件重装
 │     ├─ delbot.sh              # 删除实例
 │     ├─ start-sandbox.sh / stop-sandbox.sh
-│     ├─ steps/                 # 部署的八步：10-termux ~ 90-summary
+│     ├─ steps/                 # 部署的九步：10-termux ~ 90-start
 │     └─ sandbox/               # 沙盒内脚本：run-all.sh（守护循环）、run-napcat.sh、run-astrbot.sh 等
 ├─ ui/
 │  ├─ src/com/termux/qqbot/     # 原生控制台 Java 源码（Activity / Bridge / Task / Client）
@@ -408,6 +409,6 @@ open ios/AstrBotIOS.xcodeproj        # 选个 Team 就能跑模拟器
 | **MINOR**（0.X.0） | 新增功能 | 1.1.0 |
 | **PATCH**（0.0.X） | 修 bug、文案、性能 | 1.0.1 |
 
-当前版本：**versionName `1.3.0`，versionCode `10300`**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本：**versionName `1.3.5-beta.4`，versionCode `10305`**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 版本号的唯一来源是仓库根目录的 `VERSION` 文件（内容形如 `1.0.2`），`build-ui.ps1` 打包时自动换算成 `versionCode` 写进 APK。

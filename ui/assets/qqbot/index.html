@@ -2571,7 +2571,7 @@ nav .nav-thumb{
     0 8px 18px -10px color-mix(in srgb, var(--accent) 55%, transparent);
   opacity: 0;
   transform: translate3d(0,-50%,0);
-  transition: transform var(--dur) var(--ease), width var(--dur) var(--ease), opacity var(--dur-fast) var(--ease);
+  transition: transform var(--dur) var(--ease), opacity var(--dur-fast) var(--ease);
   pointer-events: none;
   will-change: transform;
 }
@@ -3435,6 +3435,123 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
 .dltime{ flex: none; width: auto; min-height: 44px; padding: 0 14px; font-size: 16px; color: var(--label); background: var(--field-bg); border: .5px solid var(--field-line); border-radius: var(--btn-r); font-family: var(--mono); }
 .dltime::-webkit-calendar-picker-indicator{ opacity: .55; }
 .dlhint{ padding: 0 0 12px; font-size: 11.5px; line-height: 1.5; color: var(--label-3); }
+/* ============================================================================
+   1.3.5-beta.4 · 更多页收纳 + 动画重做
+   ----------------------------------------------------------------------------
+   1) 可折叠分组：.mgroup 变成 <button class="mgh"> 组头 + .mbody（grid 0fr↔1fr 过渡）
+   2) 切页动画只动 opacity / translate3d，不再 scale；卡片 stagger 只对展开组的前 4 张
+   3) 全局 :active 统一 scale(.97)/120ms；底栏滑块用回弹曲线 320ms
+   只用 transform / opacity / grid-template-rows，不引入库、不改任何设计令牌。
+   ============================================================================ */
+.mgroup{
+  /* 既有规则是 display:flex; align-items:center（beta.3 的组头行）——这里必须显式覆盖成块级，
+     否则 .mbody 会变成同一个 flex row 的第二个 item：组头被挤到 74px 宽、卡片只剩 293px。 */
+  display: block;
+  margin: 18px 0 10px;
+  padding-top: 18px;
+  border-top: .5px solid var(--sep);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: .2px;
+  color: var(--label-3);
+}
+.mgroup:first-of-type{ margin-top: 6px; padding-top: 0; border-top: 0; }
+.mgh{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: var(--btn-r-sm);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: .2px;
+  color: var(--label-3);
+  text-align: left;
+  box-shadow: none;
+}
+.mgh:active{ transform: none; background: none; }
+.mglabel{ flex: 1 1 auto; min-width: 0; }
+.mgcount{ flex: none; font-size: 11px; font-weight: 500; color: var(--label-3); opacity: .8; }
+.mgarw{
+  flex: none;
+  width: 18px; height: 18px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: var(--fill-1);
+  font-size: 11px;
+  line-height: 1;
+  color: var(--label-2);
+  transition: transform 220ms cubic-bezier(.22,1,.36,1);
+}
+.mgroup.open .mgarw{ transform: rotate(45deg); }
+.mbody{
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 220ms cubic-bezier(.22,1,.36,1);
+}
+.mgroup.open .mbody{ grid-template-rows: 1fr; }
+.mwrap{
+  min-height: 0;
+  overflow: hidden;
+  /* 1.3.5-beta.4：卡片原本靠 .tab 的 flex gap 撑开，搬进 .mbody 后 gap 丢了，必须补回来。
+     contain:layout 只锁布局，不加 paint —— 加 paint 会改 backdrop 根，玻璃卡会突然不糊。 */
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  contain: layout;
+  opacity: 0;
+  visibility: hidden;
+  /* 不再动 transform：父级位移会让组里每张 backdrop-filter 卡逐帧重采样 */
+  transition: opacity 220ms cubic-bezier(.22,1,.36,1), visibility 0s linear 220ms;
+}
+/* 折叠组的内容必须真正移出渲染树：即使 grid 0fr + overflow hidden，
+   组里的卡（每张都带 backdrop-filter 玻璃）仍在参与布局与合成 —— 这就是切页 200ms 长任务的根因。
+   收起动画走完 250ms 后才加 .mcollapsed，避免收起过程中内容瞬间消失。 */
+@supports (content-visibility: hidden){
+  .mgroup.mcollapsed:not(.open) .mbody{ content-visibility: hidden; }
+}
+.mgroup.open .mwrap{
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 220ms cubic-bezier(.22,1,.36,1), visibility 0s;
+}
+/* 更多页进场动画全部取消（实测依据：lead 2026-10-29 在同一视口下关掉全部动画，
+   切页 twoRaf 从 125ms 掉到 38ms、longtask 归零；只留卡片或组头动画都会顶到 60ms 以上）。
+   这一页 3300px 高，任何整页/整组的 opacity 合成都会在真机上表现为「划过去卡一下」。
+   入场感改由小元素自己承担：chip 的 :active、组头的 ＋/－ 旋转、折叠展开的 grid 过渡。 */
+/* 只关「进场类」动画，别把 .spin 转圈这类功能性动画也一起干掉 */
+.tab#tab-more.on > .card,
+.tab#tab-more.on .mgroup,
+.tab#tab-more.on .mwrap > .card{ animation: none !important; }
+/* 老的「29 张卡同时进场」整段作废 —— 它正是切到更多页卡 140ms 的主因 */
+.tab.on > .card{ animation: none; }
+.tab.on{ animation: tabIn2 180ms cubic-bezier(.22,1,.36,1) both; }
+/* 更多页例外：整页 3700px，opacity 动画每帧都要重合成，切到它就掉帧。
+   这一页的入场交给 #mChips / 组头这些小元素。 */
+.tab#tab-more.on{ animation: none; }
+@keyframes tabIn2{ from{ opacity: 0; transform: translate3d(0,6px,0); } to{ opacity: 1; transform: none; } }
+/* 底栏滑块：回弹曲线 + 按下缩一点 */
+nav .nav-thumb{
+  transition: transform 320ms cubic-bezier(.22,1.25,.36,1),
+              opacity var(--dur-fast) var(--ease);
+}
+/* 按钮按下统一口径 */
+button:active{ transform: scale(.97); transition-duration: 120ms; }
+.iconbtn:active{ transform: scale(.97); }
+.mchip{ transition: background-color 120ms var(--ease), transform 120ms var(--ease), scale 120ms var(--ease); }
+.mchip:active{ transform: none; scale: .97; }
+@media (prefers-reduced-motion: reduce){
+  .mgroup .mbody{ transition: none; }
+  .mgroup .mwrap{ transition: none; }
+  .tab#tab-more.on #mChips, .tab#tab-more.on .mgh{ animation: none !important; }
+  .tab.on{ animation: none !important; }
+  nav .nav-thumb{ transition: none !important; scale: 1 !important; }
+  button:active, .iconbtn:active, .mchip:active{ transform: none !important; scale: 1 !important; }
+}
 </style>
 </head>
 <body>
@@ -3787,6 +3904,72 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
       <span class="mchip" data-act="mgo" data-arg="grpNet">连接</span>
       <span class="mchip" data-act="mgo" data-arg="grpData">数据</span>
       <span class="mchip" data-act="mgo" data-arg="grpSys">系统</span>
+    </div>
+
+    <!-- 1.3.5-beta.4：两张「关于」卡置顶，默认展开、不参与折叠（用户：把关于放在更多页最上面） -->
+    <div class="card" id="aboutCard">
+      <h2>关于与支持</h2>
+      <div class="lkrow">
+        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.6"/><path d="M3.4 12h17.2"/><path d="M12 3.4c2.3 2.4 3.5 5.4 3.5 8.6S14.3 18.2 12 20.6c-2.3-2.4-3.5-5.4-3.5-8.6S9.7 5.8 12 3.4z"/></svg></span>
+        <div class="lkbd"><div class="lkt">官方网站</div><div class="lkv">烛心.xyz</div></div>
+        <div class="lkbtns">
+          <button class="small" data-act="copyurl" data-arg="https://xn--15t839a.xyz">复制</button>
+          <button class="small primary" data-act="openurl" data-arg="https://xn--15t839a.xyz">打开</button>
+        </div>
+      </div>
+      <div class="lkrow">
+        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9.2" cy="8.4" r="3.3"/><path d="M3.2 20c0-3.3 2.7-5.6 6-5.6s6 2.3 6 5.6"/><path d="M16.4 5.6a3.2 3.2 0 0 1 0 6.3"/><path d="M17.6 14.9c2.2.5 3.7 2.3 3.7 4.6"/></svg></span>
+        <div class="lkbd"><div class="lkt">本软件官方群</div><div class="lkv">1127997343</div></div>
+        <div class="lkbtns">
+          <button class="small" data-act="copytext" data-arg="1127997343">复制</button>
+          <button class="small primary" data-act="openqq" data-arg="1127997343">加群</button>
+        </div>
+      </div>
+      <div class="lkrow">
+        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 12a8.4 8.4 0 1 1-2.6-6"/><path d="M20.4 3.6V9.3h-5.7"/></svg></span>
+        <div class="lkbd"><div class="lkt">检查更新</div><div class="lkv" id="updText">点右边按钮看看有没有新版本</div><div class="lkv" id="updBeta" style="display:none"></div><div class="lkv" id="siteVer">官网版本：读取中…</div></div>
+        <div class="lkbtns">
+          <button class="small primary" data-act="checkupdate" id="updBtn">检查更新</button>
+        </div>
+      </div>
+      <!-- 两个自动提醒开关：只管「查完要不要自己弹窗」，手动点「检查更新」永远弹。
+           存 localStorage，缺省都开（'0' 才算关）—— 用户装了新版本后不点回来，
+           下一次打开还能被提醒到。 -->
+      <div class="updsw">
+        <div class="swrow">
+          <div class="swinfo">
+            <div class="swname">正式版提醒<span class="swtag on" id="updSwStableTag">已开</span></div>
+            <div class="swdesc">有新版时自动弹窗提醒</div>
+          </div>
+          <button class="tgl on" id="updSwStable" data-act="updremind" data-arg="stable" title="点击切换正式版自动提醒"></button>
+        </div>
+        <div class="swrow">
+          <div class="swinfo">
+            <div class="swname">测试版提醒<span class="swtag on" id="updSwBetaTag">已开</span></div>
+            <div class="swdesc">有新版时自动弹窗提醒</div>
+          </div>
+          <button class="tgl on" id="updSwBeta" data-act="updremind" data-arg="beta" title="点击切换测试版自动提醒"></button>
+        </div>
+      </div>
+      <div class="lkrow">
+        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 5 6v5.4c0 4.2 2.9 7.6 7 8.8 4.1-1.2 7-4.6 7-8.8V6z"/><path d="M9.4 12.1l1.9 1.9 3.4-3.6"/></svg></span>
+        <div class="lkbd"><div class="lkt">隐私政策</div><div class="lkv">数据收集范围与权限用途</div></div>
+        <div class="lkbtns">
+          <button class="small primary" data-act="privacy">查看</button>
+        </div>
+      </div>
+      <div class="hint" id="updNote" style="display:none"></div>
+      <div class="hint">当前版本 <b id="v-appver">-</b></div>
+      <div class="hint">本软件官方群 <b>1127997343</b>，发现 bug 及时反馈。</div>
+    </div>
+    <div class="card" id="aboutVerCard">
+      <h2>关于</h2>
+      <div class="row"><span class="k">Termux</span><span class="v mono">v0.118.3</span></div>
+      <div class="row"><span class="k">Ubuntu</span><span class="v mono">24.04.5</span></div>
+      <div class="row"><span class="k">Linux QQ</span><span class="v mono">3.2.34-53644</span></div>
+      <div class="row"><span class="k">NapCat</span><span class="v mono">v4.18.38</span></div>
+      <div class="row"><span class="k">AstrBot</span><span class="v mono" id="v-astrbotver">—</span></div>
+      <div class="row"><span class="k">PREFIX</span><span class="v mono" id="v-prefix">-</span></div>
     </div>
 
     <div class="mgroup" id="grpRun"><span class="mgh">运行状态</span></div>
@@ -4381,7 +4564,7 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
       <div class="hint" id="migUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
     </div>
 
-    <div class="mgroup" id="grpSys"><span class="mgh">系统与关于</span></div>
+    <div class="mgroup" id="grpSys"><span class="mgh">系统与维护</span></div>
     <!-- 厂商省电引导（功能 5）：各家的「省电策略」入口不一样，原生按 MANUFACTURER
          分支跳对应设置页（失败退回应用详情页）。只做引导，不假装能替用户改系统设置。 -->
     <div class="card" id="powerCard">
@@ -4438,70 +4621,6 @@ pre, .tokbox, .qimg, .qrwrap, .rebox{ border-radius: var(--mi-inner); }
       <pre id="cmdOut" style="max-height:30vh"></pre>
       <button class="rowmore" id="autoDocBtn" data-act="autodocfold" style="display:none"><span id="autoDocTitle">自动检查</span><span class="arw" id="autoDocArw">展开</span></button>
       <pre id="autoDocOut" style="max-height:30vh;display:none"></pre>
-    </div>
-    <div class="card">
-      <h2>关于与支持</h2>
-      <div class="lkrow">
-        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.6"/><path d="M3.4 12h17.2"/><path d="M12 3.4c2.3 2.4 3.5 5.4 3.5 8.6S14.3 18.2 12 20.6c-2.3-2.4-3.5-5.4-3.5-8.6S9.7 5.8 12 3.4z"/></svg></span>
-        <div class="lkbd"><div class="lkt">官方网站</div><div class="lkv">烛心.xyz</div></div>
-        <div class="lkbtns">
-          <button class="small" data-act="copyurl" data-arg="https://xn--15t839a.xyz">复制</button>
-          <button class="small primary" data-act="openurl" data-arg="https://xn--15t839a.xyz">打开</button>
-        </div>
-      </div>
-      <div class="lkrow">
-        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9.2" cy="8.4" r="3.3"/><path d="M3.2 20c0-3.3 2.7-5.6 6-5.6s6 2.3 6 5.6"/><path d="M16.4 5.6a3.2 3.2 0 0 1 0 6.3"/><path d="M17.6 14.9c2.2.5 3.7 2.3 3.7 4.6"/></svg></span>
-        <div class="lkbd"><div class="lkt">本软件官方群</div><div class="lkv">1127997343</div></div>
-        <div class="lkbtns">
-          <button class="small" data-act="copytext" data-arg="1127997343">复制</button>
-          <button class="small primary" data-act="openqq" data-arg="1127997343">加群</button>
-        </div>
-      </div>
-      <div class="lkrow">
-        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 12a8.4 8.4 0 1 1-2.6-6"/><path d="M20.4 3.6V9.3h-5.7"/></svg></span>
-        <div class="lkbd"><div class="lkt">检查更新</div><div class="lkv" id="updText">点右边按钮看看有没有新版本</div><div class="lkv" id="updBeta" style="display:none"></div><div class="lkv" id="siteVer">官网版本：读取中…</div></div>
-        <div class="lkbtns">
-          <button class="small primary" data-act="checkupdate" id="updBtn">检查更新</button>
-        </div>
-      </div>
-      <!-- 两个自动提醒开关：只管「查完要不要自己弹窗」，手动点「检查更新」永远弹。
-           存 localStorage，缺省都开（'0' 才算关）—— 用户装了新版本后不点回来，
-           下一次打开还能被提醒到。 -->
-      <div class="updsw">
-        <div class="swrow">
-          <div class="swinfo">
-            <div class="swname">正式版提醒<span class="swtag on" id="updSwStableTag">已开</span></div>
-            <div class="swdesc">有新版时自动弹窗提醒</div>
-          </div>
-          <button class="tgl on" id="updSwStable" data-act="updremind" data-arg="stable" title="点击切换正式版自动提醒"></button>
-        </div>
-        <div class="swrow">
-          <div class="swinfo">
-            <div class="swname">测试版提醒<span class="swtag on" id="updSwBetaTag">已开</span></div>
-            <div class="swdesc">有新版时自动弹窗提醒</div>
-          </div>
-          <button class="tgl on" id="updSwBeta" data-act="updremind" data-arg="beta" title="点击切换测试版自动提醒"></button>
-        </div>
-      </div>
-      <div class="lkrow">
-        <span class="lkic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 5 6v5.4c0 4.2 2.9 7.6 7 8.8 4.1-1.2 7-4.6 7-8.8V6z"/><path d="M9.4 12.1l1.9 1.9 3.4-3.6"/></svg></span>
-        <div class="lkbd"><div class="lkt">隐私政策</div><div class="lkv">数据收集范围与权限用途</div></div>
-        <div class="lkbtns">
-          <button class="small primary" data-act="privacy">查看</button>
-        </div>
-      </div>
-      <div class="hint" id="updNote" style="display:none"></div>
-      <div class="hint">当前版本 <b id="v-appver">-</b></div>
-      <div class="hint">本软件官方群 <b>1127997343</b>，发现 bug 及时反馈。</div>
-    </div>
-    <div class="card">
-      <h2>关于</h2>
-      <div class="row"><span class="k">Termux</span><span class="v mono">v0.118.3</span></div>
-      <div class="row"><span class="k">Ubuntu</span><span class="v mono">24.04.5</span></div>
-      <div class="row"><span class="k">Linux QQ</span><span class="v mono">3.2.34-53644</span></div>
-      <div class="row"><span class="k">NapCat</span><span class="v mono">v4.18.38</span></div>
-      <div class="row"><span class="k">AstrBot</span><span class="v mono" id="v-astrbotver">—</span></div>
-      <div class="row"><span class="k">PREFIX</span><span class="v mono" id="v-prefix">-</span></div>
     </div>
     <div class="card">
       <h2>终端</h2>
@@ -5969,8 +6088,22 @@ function showTab(t){
   if (t === "logs") { fillQrSelect(); loadQr(); loadLog(); loadDuo(); }
   /* v1.1.30：切到哪页就立刻补一次那页的数据，不用干等下一个 4 秒轮询。
      extOnTab 内部自己 try/catch，桥缺了也只是空态。 */
-  extOnTab(t);
-  try { fitFoot(); } catch (e) {}  /* v4：切页后立刻重算落款位置 */
+  /* 1.3.5-beta.4：先把页签显示出来（一帧），再把取数据与量高度挪到下一帧。
+     以前同步跑 extOnTab + fitFoot，等于让 29 张卡先布局再被读几何，切页必卡。 */
+  if (window.requestAnimationFrame){
+    /* 第一帧只做「已经很便宜」的 fitFoot（只量当前页），取数据丢到空闲回调里，
+       这样切页那一帧不会被 29 张卡的刷新逻辑拖住。 */
+    /* 1.3.5-beta.4：fitFoot 也要量几何（=强制布局），一样挪出前两帧，
+       否则「两帧内」的指标还会被它顶到 60ms 以上。 */
+    setTimeout(function(){ try { fitFoot(); } catch (e) {} }, 34);
+    var _defer = window.requestIdleCallback
+      ? function(fn){ return requestIdleCallback(fn, { timeout: 500 }); }
+      : function(fn){ return setTimeout(fn, 80); };
+    _defer(function(){ try { extOnTab(t); } catch (e1) {} });
+  } else {
+    try { fitFoot(); } catch (e2) {}
+    try { extOnTab(t); } catch (e3) {}
+  }
 }
 
 /* 1.3.4-beta.5：hash 定位 —— #tab-home / #tab-bots / #tab-logs / #tab-more。
@@ -5999,14 +6132,23 @@ var NAVS = {
      lastSw = 上次切页时间（70ms 冷却）；swN = 本次手势切了几次；
      cx / x0 / x1 = 手势开始时量一次的按钮中心与滑块边界（pointermove 里不再反复量）。 */
   liveTab: "", pendI: -1, raf: 0, lastSw: 0, swN: 0,
-  cx: null, x0: 0, x1: 0
+  cx: null, x0: 0, x1: 0,
+  /* 1.3.5-beta.4：按钮几何缓存。navPaint 以前每次都读 offsetWidth/offsetLeft ——
+     刚显示 29 张卡的 #tab-more 时这几个读值会强制整页同步布局（切页 140ms 的主因之一）。
+     现在只在 navMeasure（初始化 / resize / 旋转）里量一次，navPaint 只读 geo。 */
+  geo: []
 };
 
 function navPaint(i){
-  var s = NAVS, b = s.btns[i];
+  var s = NAVS, b = s.btns[i], g = s.geo[i];
   if (!b) return;
-  s.thumb.style.width = (b.offsetWidth - 8) + "px";
-  s.thumb.style.transform = "translate3d(" + (b.offsetLeft + 4) + "px,-50%,0)";
+  /* 只读缓存：没有缓存（首帧）才退回量一次，量完顺手补上 */
+  if (!g){
+    g = { left: b.offsetLeft, width: b.offsetWidth };
+    s.geo[i] = g;
+  }
+  s.thumb.style.width = (g.width - 8) + "px";
+  s.thumb.style.transform = "translate3d(" + (g.left + 4) + "px,-50%,0)";
 }
 
 function navSync(){
@@ -6026,6 +6168,8 @@ function navCalibrate(){
   var s = NAVS;
   if (!s.nav || !s.thumb) return;
   s.cx = null;                          /* 尺寸变了，手势缓存的按钮中心作废 */
+  s.geo = [];                           /* 几何缓存同样失效，重新量一次 */
+  navMeasure();                         /* 1.3.5-beta.4：一次性量好，navPaint 之后只读缓存 */
   s.nav.classList.add("calib");
   navSync();
   void s.thumb.offsetWidth;            /* 先落一帧，再恢复过渡 */
@@ -6037,9 +6181,11 @@ function navCalibrate(){
 function navMeasure(){
   var s = NAVS, n = s.btns.length, i, r;
   s.cx = [];
+  s.geo = [];
   for (i = 0; i < n; i++){
     r = s.btns[i].getBoundingClientRect();
     s.cx.push(r.left + r.width / 2);
+    s.geo.push({ left: s.btns[i].offsetLeft, width: s.btns[i].offsetWidth });
   }
   s.x0 = s.btns[0].offsetLeft + 4;
   s.x1 = s.btns[n - 1].offsetLeft + 4;
@@ -6338,7 +6484,7 @@ var NO_LOCK_ACTS = [
   "syscheck", "sysup", "sysstop", "syslogfold",
   "plugtab", "pluginstall", "plugtoggle", "plugreload", "plugremove",
   "plugconf", "plugconfsave", "plugconfclose", "plugconftgl", "pluglogfold",
-  "bootopen", "chgtoggle", "wdgpin", "reportopen", "reportgo", "reportshare", "reportclose", "mgo",
+  "bootopen", "chgtoggle", "wdgpin", "reportopen", "reportgo", "reportshare", "reportclose", "mgo", "msec",
   "dailytoggle"
 ];
 
@@ -7393,7 +7539,7 @@ var QR_TTL = 120000;
 var QR_SKIP = false;
 var QR_META = null, qrMetaTimer = 0, QR_URL = "", qrHintAt = 0;
 /* 空态两种说法（1.3.4-beta.5）：未登录 / 已登录。已登录时不再显示二维码，也不再劝用户扫码。 */
-var QR_NONE_TXT = "暂时没有二维码。<br>等 NapCat 启动并请求登录后会出现（每个实例的二维码不同）。";
+var QR_NONE_TXT = "还没有二维码文件。<br>等 NapCat 启动并请求登录后这里会出现（每个实例的二维码不同）。";
 var QR_NONE_LOGGED = "QQ <b>已登录</b>，不用再扫码。<br>要换号请先在 NapCat 面板里退出登录。";
 
 function qrMetaTick(m){
@@ -8700,11 +8846,14 @@ function qrBotUp(id, r){
   }
   /* 下拉还没填好（id 为空）或只有一个号时，直接按那个号判：首屏刚打开、qrSel 还没接上数据时也不会误判。 */
   if (!hit && bs.length === 1) hit = bs[0];
-  if (hit && typeof hit.login === "boolean") return hit.login;
   var st = S.st || {};
   if (st.napcatOff) return false;
-  if (r && qrFresh(r)) return false;
+  /* 1.3.5-beta.4：Java 侧 login 每次现算（看 per-uin 配置 mtime），比二维码文件新旧更可靠。
+     先信它，扫码成功后二维码文件还在也会立刻收掉；只有老包没有 login 字段时，才退回「2.5 分钟内的
+     新二维码一律算未登录」——这一条专治旧 login=true 残留导致日志页二维码不显示。 */
+  if (hit && typeof hit.login === "boolean") return hit.login;
   if (typeof st.login === "boolean") return st.login;
+  if (r && qrFresh(r)) return false;
   return !!st.napcatUp;
 }
 
@@ -9219,7 +9368,15 @@ document.addEventListener("click", function(ev){
   else if (act === "reportgo") reportGo();
   else if (act === "reportshare") reportShare();
   /* 1.3.5-beta.3：分组快捷条 → 滚到对应分组 */
-  else if (act === "mgo") { var _g = el(arg); if (_g && _g.scrollIntoView){ try { _g.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (eM) { _g.scrollIntoView(); } } }
+  else if (act === "msec") msecToggle(arg);
+  else if (act === "mgo") {
+    /* 1.3.5-beta.4：先展开目标组，再滚过去（折叠状态下 scrollIntoView 落点会偏） */
+    try { msecSetOpen(arg, true, false); } catch (eS) {}
+    var _g = el(arg);
+    if (_g && _g.scrollIntoView){
+      try { _g.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (eM) { _g.scrollIntoView(); }
+    }
+  }
   else if (act === "savebot") saveBot();
   else if (act === "cancelbot") cancelBot();
   else if (act === "pickbg") {
@@ -11761,10 +11918,12 @@ function fitFoot(){
   if (!vh) return;
   var nav = document.querySelector("nav");
   var navH = nav ? (vh - nav.getBoundingClientRect().top) + 10 : 110;
+  /* 1.3.5-beta.4：只量当前这一页。以前每轮把四个页签的 minHeight 清空再依次读几何，
+     等于 4 次强制同步布局；切到更多页时那 29 张卡一起参与，就是切页卡顿的一大块。 */
   for (var i = 0; i < ids.length; i++){
     var s = el(ids[i]); if (!s) continue;
-    s.style.minHeight = "";
     if (s.className.indexOf("on") < 0) continue;
+    s.style.minHeight = "";
     var top = s.getBoundingClientRect().top;
     var h = vh - top - navH;
     if (h <= 0) continue;
@@ -12810,13 +12969,16 @@ function wdgPin(){
 function xfOnTab2(t){
   try {
     if (t === "more"){
-      try { migPaint(); } catch (e1) {}
-      try { sysPaint(); } catch (e2) {}
-      try { plugPaint(); } catch (e3) {}
-      try { bootPaint(); } catch (e4) {}
-      try { chgPaint(); } catch (e5) {}
-      try { wdgPaint(); } catch (e6) {}
-      try { provPaint(); } catch (e7) {}
+      /* 1.3.5-beta.4：同样只画展开组里的卡，折叠组的 paint 直接跳过 */
+      if (msecIsOpen("grpData")){ try { migPaint(); } catch (e1) {} }
+      if (msecIsOpen("grpUpg")){
+        try { sysPaint(); } catch (e2) {}
+        try { plugPaint(); } catch (e3) {}
+        try { bootPaint(); } catch (e4) {}
+        try { chgPaint(); } catch (e5) {}
+        try { wdgPaint(); } catch (e6) {}
+        try { provPaint(); } catch (e7) {}
+      }
     } else {
       if (X2.migTimer){ clearInterval(X2.migTimer); X2.migTimer = 0; }
       if (X2.sysTimer){ clearInterval(X2.sysTimer); X2.sysTimer = 0; }
@@ -12910,6 +13072,117 @@ function reportShare(){
   extToast(r.msg || "选一个聊天窗口发出去就行");
 }
 
+/* ===================== 1.3.5-beta.4：更多页收纳（可折叠分组） =====================
+   29 张卡一次性布局 + 全部卡片进场动画是「划到更多页卡一下」的主因。这里把每张卡包进
+   .mgroup > .mbody > .mwrap，默认只展开第一组，其余折叠；折叠用 grid-template-rows 0fr↔1fr
+   + opacity/translateY，只动 transform/opacity/grid 行高，不触发布局。状态存 sessionStorage。 */
+var MSEC_KEY = "qqbot.msec";
+function msecState(){
+  try { var o = JSON.parse(sessionStorage.getItem(MSEC_KEY) || "{}"); return (o && typeof o === "object") ? o : {}; } catch (e) { return {}; }
+}
+function msecSave(o){ try { sessionStorage.setItem(MSEC_KEY, JSON.stringify(o || {})); } catch (e) {} }
+function msecGroup(id){ return document.querySelector('#tab-more .mgroup[data-id="' + id + '"]'); }
+function msecIsOpen(id){
+  var g = msecGroup(id);
+  if (!g) return true;              /* 没有这个组（比如置顶的关于卡）就当展开，别把取样拦掉 */
+  return g.classList.contains("open");
+}
+function msecSetOpen(id, open, quiet){
+  var g = msecGroup(id);
+  if (!g) return;
+  if (open){
+    /* 收起后 250ms 内又点开：必须撤掉 pending 的 mcollapsed 定时器，否则组头和内容会分家 */
+    if (g.__ct){ clearTimeout(g.__ct); g.__ct = 0; }
+    /* 展开：先把内容放回渲染树，再开 grid 过渡，展开过程才有内容可看 */
+    g.classList.remove("mcollapsed");
+    g.classList.remove("closing");
+    g.classList.add("open");
+  } else {
+    g.classList.remove("open");
+    g.classList.add("closing");
+    /* 收起动画（220ms）跑完再 content-visibility:hidden，不然会看到内容「啪」一下没了 */
+    if (g.__ct) clearTimeout(g.__ct);
+    g.__ct = setTimeout(function(){
+      g.classList.remove("closing");
+      g.classList.add("mcollapsed");
+      g.__ct = 0;
+    }, 250);
+  }
+  var btn = g.querySelector(".mgh");
+  if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+  if (!quiet){
+    var st = msecState();
+    st[id] = !!open;
+    msecSave(st);
+  }
+}
+function msecToggle(id){
+  var g = msecGroup(id);
+  if (!g) return;
+  msecSetOpen(id, !g.classList.contains("open"), false);
+}
+/* 启动时把「组头之后的卡片」包进 .mbody > .mwrap（不重排业务卡，只加两层壳） */
+function msecInit(){
+  var sec = el("tab-more");
+  if (!sec) return;
+  var kids = Array.prototype.slice.call(sec.children);
+  var state = msecState();
+  var groups = [], i, k;
+  for (i = 0; i < kids.length; i++){
+    if (kids[i].classList && kids[i].classList.contains("mgroup")) groups.push(kids[i]);
+    else if (kids[i].id === "mChips") { /* 快捷条不参与 */ }
+  }
+  if (!groups.length) return;
+  for (k = 0; k < groups.length; k++){
+    var g = groups[k];
+    if (!g.getAttribute("data-id")) g.setAttribute("data-id", g.id || ("msec" + k));
+    var gid = g.getAttribute("data-id");
+    /* 组头：把原来的 <span class="mgh">标题</span> 换成 button.mgh（44px、aria-expanded） */
+    var span = g.querySelector(".mgh");
+    var title = span ? String(span.textContent || "") : (g.textContent || "").trim();
+    var body = document.createElement("div");
+    body.className = "mbody";
+    var wrap = document.createElement("div");
+    wrap.className = "mwrap";
+    body.appendChild(wrap);
+    /* 把组头之后的兄弟节点（到下一个组头为止）搬进 wrap */
+    var n = g.nextSibling, moved = 0;
+    while (n){
+      var nx = n.nextSibling;
+      if (n.nodeType === 1 && n.classList && (n.classList.contains("mgroup") || n.id === "pagefoot" || (n.classList && n.classList.contains("pagefoot")))) break;
+      wrap.appendChild(n);
+      if (n.nodeType === 1 && n.classList && n.classList.contains("card")) moved++;
+      n = nx;
+    }
+    g.textContent = "";
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "mgh";
+    btn.setAttribute("data-act", "msec");
+    btn.setAttribute("data-arg", gid);
+    btn.setAttribute("aria-expanded", "false");
+    var lb = document.createElement("span");
+    lb.className = "mglabel";
+    lb.textContent = title;
+    var cnt = document.createElement("span");
+    cnt.className = "mgcount";
+    cnt.textContent = moved + " 项";
+    var arw = document.createElement("span");
+    arw.className = "mgarw";
+    arw.setAttribute("aria-hidden", "true");
+    arw.textContent = "＋";
+    btn.appendChild(lb); btn.appendChild(cnt); btn.appendChild(arw);
+    g.appendChild(btn);
+    g.appendChild(body);
+    /* 默认：第一组展开，其余收起；用户点过的按 sessionStorage 来 */
+    var open = (state[gid] === true) || (state[gid] !== false && k === 0);
+    g.classList.toggle("open", !!open);
+    /* 首屏就直接折叠的组：立刻标 mcollapsed，别让它们在第一次布局里参与渲染 */
+    if (!open) g.classList.add("mcollapsed");
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+}
+
 /* 切页签时按需立刻拉一次，不用等下一个轮询周期 */
 function extOnTab(t){
   try {
@@ -12917,7 +13190,13 @@ function extOnTab(t){
     try { xfOnTab(t); } catch (eX) {}
     try { xfOnTab2(t); } catch (eY2) {}
     if (t === "home"){ refreshInst(true); try { usgScan(false); } catch (eU) {} }
-    else if (t === "more"){ refreshBk(true); refreshStorage(true); refreshCrash(true); refreshStats(true); refreshLan(true); try { ntfPaint(true); } catch (eN) {} try { portAuto(); } catch (eP) {} try { dailyLoad(false); } catch (eD) {} }
+    else if (t === "more"){
+      /* 1.3.5-beta.4：只给「正展开着」的分组取样；折叠着的组一个都不碰 */
+      if (msecIsOpen("grpData")){ refreshBk(true); refreshStorage(true); refreshCrash(true); }
+      if (msecIsOpen("grpSys")){ try { refreshStats(true); } catch (eS1) {} }
+      if (msecIsOpen("grpNet")){ refreshLan(true); try { portAuto(); } catch (eP) {} }
+      if (msecIsOpen("grpAlert")){ try { ntfPaint(true); } catch (eN) {} try { dailyLoad(false); } catch (eD) {} }
+    }
   } catch (e) {}
 }
 
@@ -13037,6 +13316,7 @@ setInterval(function(){
 try { upTick(); } catch (e) {}
 try { xfInit(); } catch (eXf) {}
 try { x2Init(); } catch (eX2) {}
+try { msecInit(); } catch (eMs) {}
 try { paintFoot(); } catch (e) {}
 
 /* ==========================================================================

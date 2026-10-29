@@ -1,6 +1,6 @@
 # 从源码构建 AstrBot烛版
 
-本文说明如何从本仓库的源码重新构建出可安装的 `AstrBot-<版本>-<架构>.apk`（当前版本 1.3.0，发布产物 `AstrBot-1.3.0-arm64.apk`，只发这一个包）。
+本文说明如何从本仓库的源码重新构建出可安装的 `AstrBot-<版本>-<架构>.apk`（当前版本 1.3.5-beta.4，发布产物 `AstrBot-1.3.5-beta.4-arm64.apk`，只发这一个包）。
 
 > 构建过程**只能在一台配好工具链的 Windows 机器上**完成（脚本是 PowerShell + 本机 JDK）。
 > 构建不联网、不跑 Gradle，也不需要 Android Studio。
@@ -274,7 +274,8 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 | 版本 | 字段 | 值 |
 | --- | --- | --- |
-| **1.3.5-beta.3（当前，测试版）** | `versionName` / 派生 `versionCode` | `1.3.5-beta.3` / `10305` |
+| **1.3.5-beta.4（当前，测试版）** | `versionName` / 派生 `versionCode` | `1.3.5-beta.4` / `10305` |
+| 1.3.5-beta.3 | `versionName` / 派生 `versionCode` | `1.3.5-beta.3` / `10305` |
 | 1.3.5-beta.2 | `versionName` / 派生 `versionCode` | `1.3.5-beta.2` / `10305` |
 | 1.3.5-beta.1 | `versionName` / 派生 `versionCode` | `1.3.5-beta.1` / `10305` |
 | 1.3.4（正式版） | `versionName` / 派生 `versionCode` | `1.3.4` / `10304` |
@@ -307,7 +308,7 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 | 1.2.10 | `versionName` / 派生 `versionCode` | `1.2.10` / `10210` |
 | 1.2.9 | `versionName` / 派生 `versionCode` | `1.2.9` / `10209` |
 
-1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.5-beta.3-arm64.apk`，`609,697,682`（约 581 MB，镜像在 APK 里），SHA-256 `A40FF4EC565C6E9A2B3A35EC4B9338C9400078772859E136EB946CA5BA6AFA6B`；增量包 `AstrBot-1.3.5-beta.3-arm64-update.apk`，`26,517,391`，SHA-256 `77E18E9CD15AD12CEB2F7F15060CDE15A7FC09FA8069CC6B23010E9A1F44ECCF`。1.3.5-beta.3 沿用旧密钥（_research\debug.keystore）签名，`versionCode 10305`，可直接覆盖 1.3.5-beta.2 / beta.1、1.3.4 正式版与 1.3.4 各测试版。
+1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.5-beta.4-arm64.apk`，`609,705,874`（约 581 MB，镜像在 APK 里），SHA-256 `16A001ADF47312DC8BE3B3A4E074637352A3BFEAD0745C4A6C0040C378A753D8`；增量包 `AstrBot-1.3.5-beta.4-arm64-update.apk`，`26,525,583`，SHA-256 `17CB1A0AA811DB1269B8E0B7B71F0AF5EF31479C62D04E4E7E11AE1C9ED9CE53`。1.3.5-beta.4 沿用旧密钥（_research\debug.keystore）签名，`versionCode 10305`，可直接覆盖 1.3.5-beta.3 / beta.2 / beta.1、1.3.4 正式版与 1.3.4 各测试版。
 
 1.3.4-beta.3 又新增 5 个 Java 类（`QqbotUpdater` / `QqbotUpdaterCore` 应用内更新、`QqbotHealthBridge` 熔断与备份、`QqbotIslandView` / `QqbotIslandBridge` 灵动岛），重写了 `QqbotModelBridge`（原生直连模型接口），新增脚本 `build/opt/qqbot/crashfuse.sh`（崩溃熔断），并给 `backup.sh` 加了快照 / 回滚模式，所以增量包从 `26,300,297` 涨到 `26,361,737`。build-ui.ps1 现在还会把 `SYSTEM_ALERT_WINDOW` 与 `REQUEST_INSTALL_PACKAGES` 两个权限幂等补进 `AndroidManifest.xml`（供灵动岛与应用内安装使用），并已从杀软规避的删除清单里移出。
 
@@ -334,6 +335,8 @@ UI 侧这一版只动 `ui/assets/qqbot/index.html` 与 `ui/assets/qqbot/plugins.
 1.3.5-beta.2 新增六个 Java 类：`QqbotMigrateBridge`（换机迁移，`info/build/poll/share/del/pick/staged/apply`，只打包 `qqbot/` 配置与 `astrbot/` 的 `cmd_config.json`、`config/`、`shared_preferences.json`、`personas/`、插件配置，`full` 模式额外带 `data_v4.db`，恢复前自动全量备份）、`QqbotSysUpgradeBridge`（系统升级，`list/start/poll/stop/log`，后台 `nohup setsid` 起 `sysup.sh`，按日志 `[NN]` 与耗时外推进度，停止时 `kill -TERM` 整个进程组）、`QqbotPluginHubBridge`（插件中心，`list/market/install/poll/remove/enable/reload/conf/save/log`；启停改 AstrBot 的 `shared_preferences.json` 的 `inactivated_plugins`，配置写 `data/config/<插件>_config.json`，重载走后台任务，`market(false)` 只读本地缓存不联网）、`QqbotBootCheckBridge`（自启动检测，18 条 ROM `ComponentName` 兜底链）、`QqbotPowerBridge`（充电高性能，插电且开启时持 `PARTIAL_WAKE_LOCK` + 高性能 `WifiLock`，`QqbotGuardService` 里 `QqbotPowerBridge.warm(this)` 预热）、`QqbotWidgetBridge`（桌面小组件，`pin/refresh/status`）。删除 `QqbotFeedbackBridge`（反馈包下线），`QqbotActivity` 的 `addJavascriptInterface` 现有 19 处（新增 `AndroidMigrate` / `AndroidSysUp` / `AndroidPlugin` / `AndroidBoot` / `AndroidPower` / `AndroidWidget`），并新增 `REQ_MIGRATE_PICK = 7004` 与 `copyMigratePick()` 把选中的 zip 复制进 `migrate/incoming`。`build-ui.ps1` 的小组件段从「刻意跳过清单」改成幂等插入 `QqbotWidgetProvider` receiver（片段在 `ui/assets/android/widget-manifest.xml`），`QqbotGuardService` 的 `foregroundServiceType` 继续是 `specialUse`。界面侧 `index.html` 新增六张卡（换机迁移 / 系统升级 / 插件中心 / 自启动 / 充电高性能 / 桌面小组件）与背景图 v2 的两个滑条 + 按页背景；`QqbotBridge.state()` 给每个实例与顶层加 `login`（OneBot 端口 6199）修掉二维码误判，`AstrCfg.DEFAULT_BASE` 换成 `https://la.worldcodes.online/v1`。验收：`out/b1352_verify.py` 全量 61 项全绿（A–J，129.9s），`out/b135_verify.py` 的 I 组与 `out/b135_static.py` 同步通过，Java 全量 108 源 `javac -source 11 -target 11` 通过。
 
 1.3.5-beta.3 是五项收口版，不新增功能。Java 侧新增 `QqbotReportBridge.java`（桥名 `AndroidReport`，`start(note)` / `poll()` / `share()`）：留言去 CR、限 500 字 / 2000 字节后写 `files/home/devnote.txt` 并镜像到 `.qqbot`，后台用 `QqbotShell.run(filesDir, "bash " + script + " " + version, 180)` 跑 `usr/opt/qqbot/upload-log.sh`，状态落 `files/home/.qqbot/state/report.json`，`poll()` 返回 `{ok,state:idle|running|done|err,msg,id,size,at}` 并从输出里抠「编号 <id>」，`share()` 把 `cache/errreport.txt` 复制到 `files/share/` 后走 `QqbotShare` 的 `ACTION_SEND`。`QqbotLayers.java` 新增 `DEFAULT_RESERVE_MB = 1024`、`Protect.reserveMb`（clamp 256..8192），`checkSpace` 不再用固定的 512 MB / `mb < 200`，改成「剩余 < 预留/4 → crit、剩余 < 预留 → warn」，`protect.json` 与 `protectJson()` 都带 `reserveMb`。`QqbotActivity` 注册 `AndroidReport` 后 `addJavascriptInterface` 共 21 处。脚本侧：`common.sh` 新增 `QQBOT_MIN_FREE_MB`（3072）与 `QQBOT_RESUME_FREE_MB`（1024）及 `qq_space_gate()`，`deploy.sh` 在 `run_steps` 前按 `20-rootfs` 是否完成选阈值过闸门（不足 exit 3）；`sysup.sh` 的 `cur_napcat()` 只认 `cache/napcat-ver`、`app_launcher/napcat/package.json` 与 `napcat.mjs`，**绝不读 `/opt/QQ/resources/app/package.json`**（那是 QQ 自己的 9.x 版本），`steps/50-napcat.sh` 安装成功后写 `cache/napcat-ver`。界面侧 `index.html` 删掉背景图 v2 的全部 UI / CSS / JS（老背景链路保留），把 `#tab-settings` 整页并入 `#tab-more` 并按七组重排（顶部 7 个 `#mChips` 胶囊），顶栏 `#btnSettings` 换成 `#btnReport` + `#dlgReport`（`reportOpen/reportClose/reportPaint/reportPoll/reportGo/reportShare`）；维护卡里的「上传错误日志」也改走 `data-act="reportopen"`，避免旧的同步上传阻塞 55 秒。验收 `out/b1353_verify.py` **69/69 PASS**（165.6 秒，新增 K1~K8）、`out/b135_static.py` **24/24 PASS**，`javac` 全量 109 个源文件 rc=0。
+
+1.3.5-beta.4（2026-10-29）是五项收口版，不新增功能，只动 Java、界面与空间提示。Java 侧 `QqbotActivity` 新增 `effectiveActive(JSONObject bots)`：`bots.active` 必须真实存在、`enable` 不是 JSON 布尔 `false`、id 过 `safeBotId`，否则取第一个启用实例；这里比脚本更严格：active 被禁用时 Java 也回退第一个启用实例，而 `run-napcat.sh` 只在 active 不在实例列表时回退（见 run-napcat.sh:1494）；`loggedIn(id)` 改为扫该实例 `QQ/resources/app/app_launcher/napcat/config` 下最新的 `napcat_<uin>.json` / `onebot11_<uin>.json`，并比较 mtime——配置 mtime ≥ 二维码才算登录（二维码比配置新说明 NapCat 又重画了码，仍按未登录）。二维码查找拆成 `qrFindInfo()` / `probeQr()` / `scanQrPng()`：实例目录优先，递归最多 3 层、跳过 0 字节与超过 8 MB 的文件，取 mtime 最新一张，只有当前实例才回退共享 `opt/QQ`；`qr()` / `qrShare()` 都改用 `effectiveActive()`，前端 `qrBotUp()` 优先信 Java 每次现算的 `login` 字段。界面侧 `index.html` 把更多页收成 7 个折叠组（`.mgroup > .mgh` + `.mbody`，`grid-template-rows 0fr↔1fr`，状态记 `sessionStorage["qqbot.msec"]`，收起动画结束 250ms 后才加 `mcollapsed` / `content-visibility:hidden`，展开分支先 `clearTimeout` 修快速连点空白），两张「关于」卡置顶，「系统与关于」改名「系统与维护」；更多页去掉整页 / 组头 / 卡片的进场动画，其它页签统一 `tabIn2` 180ms，底栏 `#navThumb` 只过渡 `transform` 320ms `cubic-bezier(.22,1.25,.36,1)`（删掉 `width` 过渡与 `nav:active` 的 `scale:.96`）。脚本侧只把 `common.sh` 的空间提示统一成 GB（阈值 `QQBOT_MIN_FREE_MB=3072` / `QQBOT_RESUME_FREE_MB=1024` 未动）。产物 `609,705,874` / 增量 `26,525,583`；验收 `out/b1354_verify.py` **75/75 PASS**（188.4 秒，A–L 组，D 组二维码 4/4、J 组功能面 40/40），视觉验收 24 个视图 0 控制台报错 / 0 重复 id / 0 横向溢出，`javac` 全量 109 个源文件 rc=0。
 
 规则：`versionCode = MAJOR*10000 + MINOR*100 + PATCH`。
 

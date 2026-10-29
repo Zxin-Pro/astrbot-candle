@@ -89,7 +89,7 @@ public class QqbotBridge {
             // 端口一律按「当前使用」的实例推导，多实例时主页显示的才是真正在跑的那一个
             JSONObject bots = (botsRoot != null) ? botsRoot : new JSONObject();
             JSONArray bl = bots.optJSONArray("bots");
-            String activeId = bots.optString("active", "");
+            String activeId = act.effectiveActive(bots);
             int napPort = 6099;
             int onePort = 6199;
             if (bl != null) {
@@ -104,23 +104,29 @@ public class QqbotBridge {
                     if (bp <= 0) bp = 6099;
                     b.put("up", act.portOpen(bp));
                     // 1.3.5-beta.2：6099 是 NapCat WebUI，进程一起来就监听，不能当登录态用。
-                    // OneBot 端口（6199）要等 QQ 真的登上才开，日志页二维码按它判「已登录」。
+                    // OneBot 端口（6199）也不能可靠判断：QQ 未登录时它也可能先监听；保留 onebotUp 供排障。
                     int bq = b.optInt("onebotPort", 6199);
                     if (bq <= 0) bq = 6199;
-                    b.put("login", act.portOpen(bq));
-                    if (b.optString("id", "").equals(activeId)) {
+                    // 1.3.5-beta.4：OneBot 端口在 QQ 未登录时也可能监听，不能当登录态。
+                    // 真正的登录信号是 NapCat 登录后写的 per-uin 配置文件（config/napcat_<uin>.json）。
+                    b.put("onebotUp", act.portOpen(bq));
+                    b.put("login", act.loggedIn(b.optString("id", "")));
+                    if (b.optString("id", "").trim().equals(activeId)) {
                         napPort = bp;
                         int bo = b.optInt("onebotPort", 6199);
                         onePort = (bo <= 0) ? 6199 : bo;
                     }
                 }
             }
+            // 把脚本实际采用的 active 回给前端：active 指向已删除/禁用实例时，
+            // 前端仍能选中正在跑 /opt/QQ 的那个实例。
+            if (bl != null) bots.put("active", activeId);
             o.put("napcatPort", napPort);
             o.put("onebotPort", onePort);
             o.put("napcatUp", act.portOpen(napPort));
             o.put("onebotUp", act.portOpen(onePort));
             // 顶层也报一份登录态（当前实例），没有实例信息时前端用它兜底。
-            o.put("login", act.portOpen(onePort));
+            o.put("login", act.loggedIn(activeId));
             o.put("bots", bots);
             // 后台守护（Android 前台服务）状态，「更多 → 后台守护」卡用它渲染。
             // guardOn 看的是开关文件而不是服务是否在跑：用户关掉守护后服务会停，

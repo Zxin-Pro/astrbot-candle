@@ -13,6 +13,7 @@
 #   prune  → 删过期日志 + 截断超大日志（默认 --days 7 --max-mb 20），
 #            stdout 一行 JSON：{"ok":true,"freed":N,"removed":N}
 #            红线同 clean：绝不删登录数据 / 配置 / 插件 / 数据库
+#            运行期由应用在可用空间低于预留值时提示用户来清（部署门槛 3 GB）
 #
 # total 的算法：rootfs 本身（它已经包含 AstrBot、插件、登录数据）+ 日志。
 # 五个 dirs 是「分类展示」，加起来会大于 total（插件在 AstrBot 里、AstrBot 在容器里），
