@@ -13,9 +13,9 @@
 | 控制台标题 | **烛之控制台** |
 | 安装包 | **随 Release 发布** —— 每次发布同时上传全量包（约 581 MB）与增量包（约 25 MB），正文附字节数与 SHA-256；构建方法见 [docs/BUILD.md](docs/BUILD.md) |
 | 包名 | `zhuxin.astrbot`（1.2.1 及更早为 `com.termux`） |
-| 安装包哈希 | 全量包 `AstrBot-1.3.5-beta.7-arm64.apk`，`609,578,898 B`，SHA-256 `F09BC4737FFFBC0E7FFC3B87B39642CD02CEDFDA8A2E9232EB2AFF1912B915F7`；增量包 `AstrBot-1.3.5-beta.7-arm64-update.apk`，`26,566,543 B`，SHA-256 `2B14CCEE488F614515FF7701B53FDFB7238AF48F587FAE5E7EEFE1709FE2261E` |
-| 当前版本 | **v1.3.5-beta.7（测试版）**（versionCode `103057`，可直接覆盖 1.3.6-beta.1（`10306`）、1.3.5 全系（含 1.3.5 正式版）、1.3.4 全系、1.3.3 全系或 1.3.2 安装；`versionCode` 规则见 [docs/VERSIONING.md](docs/VERSIONING.md)） |
-| Release | [v1.3.5-beta.7](https://github.com/Zxin-Pro/astrbot-candle/releases/tag/v1.3.5-beta.7)（2026-11-04；源码 tag + 全量包 / 增量包） |
+| 安装包哈希 | 全量包 `AstrBot-1.3.5-arm64.apk`，`609,578,898 B`，SHA-256 `C12B30745ACE56267A4B5D19046F4003F41BC12DFF0B86D7679CCC5832222321`；增量包 `AstrBot-1.3.5-arm64-update.apk`，`26,566,543 B`，SHA-256 `851B221A33C74FA2913724DF42D6CBF6A2F7561E870CCA33CB0F24BB57FFB5F5` |
+| 当前版本 | **v1.3.5（正式版）**（versionCode `10305`，与 `1.3.5-beta.N` 同号 —— 装过 1.3.5-beta.5 / beta.6、1.3.4 全系、1.3.3 全系的设备直接覆盖即可；装过 `1.3.5-beta.7`（`103057`）或已撤回的 1.3.6-beta.1（`10306`）的设备需卸载一次。规则见 [docs/VERSIONING.md](docs/VERSIONING.md)） |
+| Release | [v1.3.5](https://github.com/Zxin-Pro/astrbot-candle/releases/tag/v1.3.5)（2026-11-04；源码 tag + 全量包 / 增量包） |
 | 签名材料 | **不入库、不公开**：keystore 与签名证书只在作者本机，仓库历史与 Release 资产都不包含 |
 | 安全重制 | 2026-10-29 全量包已替换（旧包镜像曾含运行期配置与凭据）；beta.4 与 1.3.4 均已重制，28 个旧全量包已下架，处置见 [安全重制说明](docs/SECURITY-REBUILD-b4.md) |
 | 项目地址 | [github.com/Zxin-Pro/astrbot-candle](https://github.com/Zxin-Pro/astrbot-candle) |
@@ -419,7 +419,7 @@ versionCode = MAJOR*10000 + MINOR*100 + PATCH
 | **MINOR**（0.X.0） | 新增功能 | 1.1.0 |
 | **PATCH**（0.0.X） | 修 bug、文案、性能 | 1.0.1 |
 
-当前版本：**versionName 1.3.5-beta.7，versionCode 103057**（这一版是按已废止的 6 位制发出的唯一一个包，见下）。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本：**versionName 1.3.5，versionCode 10305**（正式版，与 `1.3.5-beta.N` 同号；`1.3.5-beta.7` 那次 6 位制例外见下）。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 版本号的唯一来源是仓库根目录的 `VERSION` 文件（内容形如 `1.3.5-beta.7`），`build-ui.ps1` 打包时自动换算成
 `versionCode` 写进 APK，并用 `versionCode.floor`（记录已发布的最大 code 与最后一次发布的版本名）拦住任何回退：

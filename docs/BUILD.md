@@ -1,6 +1,6 @@
 # 从源码构建 AstrBot烛版
 
-本文说明如何从本仓库的源码重新构建出可安装的 `AstrBot-<版本>-<架构>.apk`（当前版本 1.3.5-beta.7，发布产物 `AstrBot-1.3.5-beta.7-arm64.apk` 全量包 + `AstrBot-1.3.5-beta.7-arm64-update.apk` 增量包，两个都要发）。
+本文说明如何从本仓库的源码重新构建出可安装的 `AstrBot-<版本>-<架构>.apk`（当前版本 1.3.5，发布产物 `AstrBot-1.3.5-arm64.apk` 全量包 + `AstrBot-1.3.5-arm64-update.apk` 增量包，两个都要发）。
 
 > 构建过程**只能在一台配好工具链的 Windows 机器上**完成（脚本是 PowerShell + 本机 JDK）。
 > 构建不联网、不跑 Gradle，也不需要 Android Studio。
@@ -274,7 +274,8 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 | 版本 | 字段 | 值 |
 | --- | --- | --- |
-| **1.3.5-beta.7（当前，测试版）** | versionName / 派生 versionCode | 1.3.5-beta.7 / **103057**（新公式） |
+| **1.3.5（当前，正式版）** | versionName / 派生 versionCode | 1.3.5 / **10305**（同号规则；就是 1.3.5-beta.7 去掉后缀重打） |
+| 1.3.5-beta.7（测试版，已由 1.3.5 转正） | versionName / versionCode | 1.3.5-beta.7 / **103057**（当日 6 位制，已废止） |
 | 1.3.6-beta.1（已撤回） | versionName / versionCode | 1.3.6-beta.1 / 10306（旧公式，设备上仍可能残留） |
 | 1.3.5-beta.6 | versionName / 派生 versionCode | 1.3.5-beta.6 / 10305 |
 | 1.3.5-beta.5 | versionName / 派生 versionCode | 1.3.5-beta.5 / 10305 |
@@ -312,7 +313,9 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 | 1.2.10 | `versionName` / 派生 `versionCode` | `1.2.10` / `10210` |
 | 1.2.9 | `versionName` / 派生 `versionCode` | `1.2.9` / `10209` |
 
-自 1.3.5-beta.7 起每版成对出全量包与增量包（1.3.1 … 1.3.5-beta.6 各版也都成对产出过，只是个别文档写成「只发一个包」，已按实际改正）。当前构建 `AstrBot-1.3.5-beta.7-arm64.apk`，`609,578,898`（约 581 MB，镜像在 APK 里），SHA-256 `F09BC4737FFFBC0E7FFC3B87B39642CD02CEDFDA8A2E9232EB2AFF1912B915F7`；增量包 `AstrBot-1.3.5-beta.7-arm64-update.apk`，`26,566,543`，SHA-256 `2B14CCEE488F614515FF7701B53FDFB7238AF48F587FAE5E7EEFE1709FE2261E`。两个包都用本机自备的 keystore 签名（**签名材料不入库、不随 Release 分发**），`versionCode 103057`（新公式），可直接覆盖 1.3.6-beta.1（`10306`）、1.3.5 全系（含 1.3.5 正式版）、1.3.4 全系与 1.3.3 全系。
+自 1.3.5 起每版成对出全量包与增量包（1.3.1 … 1.3.5-beta.7 各版也都成对产出过，只是个别文档写成「只发一个包」，已按实际改正）。当前构建 `AstrBot-1.3.5-arm64.apk`，`609,578,898`（约 581 MB，镜像在 APK 里），SHA-256 `C12B30745ACE56267A4B5D19046F4003F41BC12DFF0B86D7679CCC5832222321`；增量包 `AstrBot-1.3.5-arm64-update.apk`，`26,566,543`，SHA-256 `851B221A33C74FA2913724DF42D6CBF6A2F7561E870CCA33CB0F24BB57FFB5F5`。两个包都用本机自备的 keystore 签名（**签名材料不入库、不随 Release 分发**），`versionCode 10305`（同号规则），可直接覆盖 1.3.5-beta.5 / beta.6、1.3.4 全系与 1.3.3 全系；装过 1.3.5-beta.7（`103057`）或 1.3.6-beta.1（`10306`）的设备需先卸载一次。
+
+1.3.5（2026-11-04）是 1.3.5-beta.7 的转正版：`VERSION` 去掉 `-beta.N` 后缀，`versionCode` 仍是 `10305`，代码与资源改动为零（同一份 `_apkwork` 重打），两个包的字节数与 beta.7 完全一致（`609,578,898` / `26,566,543`），只是内部版本名从 `1.3.5-beta.7` 变成 `1.3.5`。同日把版本号规则从「每个 beta 独立号段」改回「测试版与正式版同号」，闸门由 `-le` 改 `-lt`（同号放行），规则见 [docs/VERSIONING.md](VERSIONING.md)；门禁脚本 `out/_b135_release_gate.py`。
 
 1.3.5-beta.7（2026-11-04）是「版本号制度 + 链路加固」版，不改产品功能面。构建侧：`build-ui.ps1` 的 `versionCode` 公式换成 `base = MAJOR*10000 + MINOR*100 + PATCH`、预发布 `base*10 + N`、正式版 `base*10 + 9`（1.3.5-beta.7 = `103057`），新增 `param([switch]$AllowVersionCodeReuse)` 与读仓库根 `versionCode.floor` 的单调闸门（新 code 必须严格大于 floor、版本名不许回退，违反 `exit 1`），规则与检查单见 [docs/VERSIONING.md](VERSIONING.md)。Java 侧：`NetReconnect.java` 683 → 1235 行，按 `bots.json` 逐实例维护状态、端口 + OneBot + 日志三方交叉验证、AstrBot 端口不通时整轮 `unknown` 不重启、`cache/svc/*.off` 与「还没登录 QQ」两种否决、日志 15 分钟 mtime 窗口 + 行内时间戳 + 2048 行 hash 去重，`reconnect.json` 增加 `instances[]`；`QqbotCfgBridge.java` 1547 行，备份改成带 `format` / `formatVersion` / `checksums` 的容器（`cmd_config.json` + `prefs.json` + `bots.json` 三份），新增 `validate` / `importPreview`（含 diff 与敏感值打码），写盘走 `.beta7tmp` + `renameTo` 并在失败时逆序回滚，恢复前先 `backupCurrent`。界面侧：导入改成「校验并预览 → 确认导入」两段式，备份列表显示格式 / 文件数 / 来源。上游组件本版**未升级**，审计与回退开关见 [docs/UPSTREAM.md](UPSTREAM.md)。产物全量 `609,578,898` / 增量 `26,566,543`，`javac` 全量 112 个源文件 rc=0，`node --check` 两段内联脚本通过，门禁 `out/_b1357_release_gate.py` 全项通过。
 
