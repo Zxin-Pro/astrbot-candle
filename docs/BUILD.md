@@ -17,8 +17,8 @@
 | **可安装包** | `out\signed\termux-qqbot-aligned-debugSigned.apk` | uber-apk-signer 对齐 + 签名后的成品（发布用副本由 `build-apk.ps1` 自动复制到仓库根目录，命名为 `AstrBot-<版本>-<架构>.apk`；`-Bundle` 全量包同名，只是体积不同） |
 
 版本号（`versionCode` / `versionName`）不是写死在 APK 里的，而是由仓库根目录的 **`VERSION`** 文件决定：
-内容形如 `1.3.5-beta.7`。`build-ui.ps1` 按 [VERSIONING.md](VERSIONING.md) 的公式换算成 `versionCode` 一并写进
-`_apkwork\apktool.yml`，写盘前还会用根目录的 `versionCode.floor` 做单调递增校验（不满足直接 `exit 1`）。
+内容形如 `1.3.5-beta.8`。`build-ui.ps1` 按 [VERSIONING.md](VERSIONING.md) 的公式换算成 `versionCode` 一并写进（`versionCode = MAJOR*10000 + MINOR*100 + PATCH`，`-beta.N` 后缀只进 `versionName`，**测试版与正式版同号**）
+`_apkwork\apktool.yml`，写盘前还会用根目录的 `versionCode.floor` 做下限校验（新 code 不得低于已发布最高 code、版本名不得回退，同号放行；不满足直接 `exit 1`）。
 要发新版本：改 `VERSION` 一行 → 构建 → 发版后把 `versionCode.floor` 的 `code` / `name` 同步成新包的值。
 
 > 从 **1.1.29** 起，`build-ui.ps1` 还会顺手把 `_apkwork\AndroidManifest.xml` 里的
@@ -348,17 +348,16 @@ UI 侧这一版只动 `ui/assets/qqbot/index.html` 与 `ui/assets/qqbot/plugins.
 
 1.3.5-beta.4（2026-10-29）是五项收口版，不新增功能，只动 Java、界面与空间提示。Java 侧 `QqbotActivity` 新增 `effectiveActive(JSONObject bots)`：`bots.active` 必须真实存在、`enable` 不是 JSON 布尔 `false`、id 过 `safeBotId`，否则取第一个启用实例；这里比脚本更严格：active 被禁用时 Java 也回退第一个启用实例，而 `run-napcat.sh` 只在 active 不在实例列表时回退（见 run-napcat.sh:1494）；`loggedIn(id)` 改为扫该实例 `QQ/resources/app/app_launcher/napcat/config` 下最新的 `napcat_<uin>.json` / `onebot11_<uin>.json`，并比较 mtime——配置 mtime ≥ 二维码才算登录（二维码比配置新说明 NapCat 又重画了码，仍按未登录）。二维码查找拆成 `qrFindInfo()` / `probeQr()` / `scanQrPng()`：实例目录优先，递归最多 3 层、跳过 0 字节与超过 8 MB 的文件，取 mtime 最新一张，只有当前实例才回退共享 `opt/QQ`；`qr()` / `qrShare()` 都改用 `effectiveActive()`，前端 `qrBotUp()` 优先信 Java 每次现算的 `login` 字段。界面侧 `index.html` 把更多页收成 7 个折叠组（`.mgroup > .mgh` + `.mbody`，`grid-template-rows 0fr↔1fr`，状态记 `sessionStorage["qqbot.msec"]`，收起动画结束 250ms 后才加 `mcollapsed` / `content-visibility:hidden`，展开分支先 `clearTimeout` 修快速连点空白），两张「关于」卡置顶，「系统与关于」改名「系统与维护」；更多页去掉整页 / 组头 / 卡片的进场动画，其它页签统一 `tabIn2` 180ms，底栏 `#navThumb` 只过渡 `transform` 320ms `cubic-bezier(.22,1.25,.36,1)`（删掉 `width` 过渡与 `nav:active` 的 `scale:.96`）。脚本侧只把 `common.sh` 的空间提示统一成 GB（阈值 `QQBOT_MIN_FREE_MB=3072` / `QQBOT_RESUME_FREE_MB=1024` 未动）。产物 `609,542,034` / 增量 `26,529,679`；验收 `out/b1354_verify.py` **75/75 PASS**（188.4 秒，A–L 组，D 组二维码 4/4、J 组功能面 40/40），视觉验收 24 个视图 0 控制台报错 / 0 重复 id / 0 横向溢出，`javac` 全量 109 个源文件 rc=0。
 
-规则（自 1.3.5-beta.7 起，完整说明见 [VERSIONING.md](VERSIONING.md)）：
+规则（测试版与正式版同号，完整说明见 [VERSIONING.md](VERSIONING.md)）：
 
 ```
-base   = MAJOR*10000 + MINOR*100 + PATCH     # 历史映射，1.3.5 -> 10305
-预发布 = base*10 + N                          # N = beta 序号（1..8）
-正式版 = base*10 + 9
+versionCode = MAJOR*10000 + MINOR*100 + PATCH     # 后缀 -beta.N 不参与计算
 ```
 
-例：`1.3.5-beta.7` → `103057`；`1.3.5`（正式版）→ `103059`；`1.3.6` → `103069`。
-`build-ui.ps1` 还会对 `versionCode.floor` 做两道校验：新 code 必须严格大于已发布的最大 code，
+例：`1.3.5` / `1.3.5-beta.8` → `10305`；`1.3.6` / `1.3.6-beta.1` → `10306`。
+`build-ui.ps1` 还会对 `versionCode.floor` 做两道校验：新 code 不得低于已发布到用户手里的最高 code（同号放行），
 新版本名的数字段不得低于最后一次发布的版本名。要绕过（只给内部重打同一版用）加 `-AllowVersionCodeReuse`。
+唯一例外是 `1.3.5-beta.7`（`103057`）：它按当日已废止的 6 位制发出，装过它的设备装 5 位制新包需要卸载一次。
 
 - **MAJOR**（X.0.0）：不兼容改动，例如换沙盒方案、需要重装 APK 才能升级；
 - **MINOR**（0.X.0）：新增功能；

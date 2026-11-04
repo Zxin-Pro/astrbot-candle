@@ -405,12 +405,12 @@ open ios/AstrBotIOS.xcodeproj        # 选个 Team 就能跑模拟器
 ## 版本号制度
 
 本项目采用 **语义化版本号**：`MAJOR.MINOR.PATCH`（测试版为 `MAJOR.MINOR.PATCH-beta.N`，N=1..8）。
-`versionCode` 自 1.3.5-beta.7 起按下面的公式换算，并强制单调递增（详见 [docs/VERSIONING.md](docs/VERSIONING.md)）：
+**测试版与正式版同号**：`-beta.N` 后缀只写在 `versionName` 里，不参与 `versionCode` 换算，验收通过后去掉后缀重打即可原地覆盖（详见 [docs/VERSIONING.md](docs/VERSIONING.md)）：
 
 ```
-base   = MAJOR*10000 + MINOR*100 + PATCH     # 历史映射：1.3.5 -> 10305
-预发布 = base*10 + N                          # 1.3.5-beta.7 -> 103057
-正式版 = base*10 + 9                          # 1.3.5 -> 103059
+versionCode = MAJOR*10000 + MINOR*100 + PATCH
+              1.3.5 -> 10305    1.3.5-beta.8 -> 10305    1.3.5 正式版 -> 10305
+              1.3.6 -> 10306    1.3.6-beta.1 -> 10306    1.3.6 正式版 -> 10306
 ```
 
 | 位 | 什么时候 +1 | 例子 |
@@ -419,11 +419,14 @@ base   = MAJOR*10000 + MINOR*100 + PATCH     # 历史映射：1.3.5 -> 10305
 | **MINOR**（0.X.0） | 新增功能 | 1.1.0 |
 | **PATCH**（0.0.X） | 修 bug、文案、性能 | 1.0.1 |
 
-当前版本：**versionName 1.3.5-beta.7，versionCode 103057**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本：**versionName 1.3.5-beta.7，versionCode 103057**（这一版是按已废止的 6 位制发出的唯一一个包，见下）。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 版本号的唯一来源是仓库根目录的 `VERSION` 文件（内容形如 `1.3.5-beta.7`），`build-ui.ps1` 打包时自动换算成
 `versionCode` 写进 APK，并用 `versionCode.floor`（记录已发布的最大 code 与最后一次发布的版本名）拦住任何回退：
-新 code 必须严格更大、版本名不得倒退，否则构建直接失败。
+**新 code 不得低于它、版本名不得倒退**，否则构建直接失败（同号放行——beta 与正式版本来就同号）。
 
 > 为什么要有这道闸：1.3.6-beta.1 撤回后重新发 1.3.5-beta.6，两版 code 分别是 10306 与 10305，
-> 装过 10306 的设备无法覆盖安装、只能卸载重装。新规则保证这种情况不再出现。
+> 装过 10306 的设备无法覆盖安装、只能卸载重装。闸门保证「发出去的包一定不比设备上的旧」。
+>
+> 一次例外：`1.3.5-beta.7` 曾短暂试过 6 位制（`base*10 + N`），发成 `103057`，当日废止并回归同号规则。
+> 装过它的设备再装 5 位制新包（10305 / 10306）会被系统按降级拒装，需要卸载一次；其余版本不受影响。

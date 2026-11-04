@@ -91,13 +91,13 @@ if (-not (Test-Path "$ROOT\_apkwork\apktool.yml")) { Write-Host 'MISSING _apkwor
 # 3b) version stamp: the VERSION file at the repo root is the single source of truth.
 #     versionName is VERSION verbatim and may carry a pre-release suffix ("1.3.5-beta.7").
 #
-#     永久单调递增的 versionCode（1.3.5-beta.7 起，规则见 docs/VERSIONING.md）：
-#       base    = MAJOR*10000 + MINOR*100 + PATCH   历史 GA 映射，1.3.5 -> 10305
-#       预发布  = base*10 + N                       N = 后缀里的 beta 序号（1..8）
-#       正式版  = base*10 + 9
-#     同一 base 内 预发布 < 正式版，所以「装 beta 再装正式版」仍是原地升级；
-#     1.3.5-beta.7 = 103057，高于历史已发布的 10305（1.3.5-beta.6）与
-#     10306（1.3.6-beta.1），装过那两版的设备可以直接覆盖安装。
+#     versionCode（测试版与正式版同号，规则见 docs/VERSIONING.md）：
+#       VC = MAJOR*10000 + MINOR*100 + PATCH     1.3.5 -> 10305，1.3.5-beta.7 也是 10305
+#     后缀 "-beta.N" 只进 versionName，不参与 versionCode：
+#       · beta 与它要转正的正式版同号，验收通过后去掉后缀重打即可原地覆盖（同号覆盖安装 Android 允许）；
+#       · 升级链由 versionCode.floor 兜住：新 code 低于「已发出去的最高 code」直接构建失败。
+#     唯一例外：1.3.5-beta.7 曾按 6 位制发成 103057，装过它的设备装 5 位制新包会被系统拒装，
+#     需要卸载一次（见 versionCode.floor 注释与 CHANGELOG）。
 $VER = '1.0.0'
 if (Test-Path "$ROOT\VERSION") { $VER = (Get-Content "$ROOT\VERSION" -Raw).Trim() }
 if ($VER -notmatch '^(\d+)\.(\d+)\.(\d+)(-([0-9A-Za-z][0-9A-Za-z.-]*))?$') { Write-Host "BAD VERSION file: $VER"; exit 1 }
@@ -107,19 +107,23 @@ $VPatch = [int]$Matches[3]
 $VSuffix = $Matches[5]
 $VCBase = $VMajor * 10000 + $VMinor * 100 + $VPatch
 if ($VSuffix) {
-  $pre = 1
-  if ($VSuffix -match '(\d+)$') { $pre = [int]$Matches[1] }
+  # 后缀只做合法性校验，不参与 versionCode（beta 与正式版同号）
+  if ($VSuffix -notmatch '^beta\.(\d+)$') {
+    Write-Host ("BAD VERSION " + $VER + " : only -beta.N suffix is supported")
+    exit 1
+  }
+  $pre = [int]$Matches[1]
   if ($pre -lt 1 -or $pre -gt 8) { Write-Host "BAD VERSION $VER : pre-release number must be 1..8"; exit 1 }
-  $VC = $VCBase * 10 + $pre
-} else {
-  $VC = $VCBase * 10 + 9
 }
-# 单调下限：versionCode.floor 记两件事——
-#   code=<已经发布到用户手里（含已撤回但装到过设备上）的最大 versionCode>
+$VC = $VCBase
+# 下限保护：versionCode.floor 记两件事——
+#   code=<已经发布到用户手里（含已撤回但装到过设备上）的最高 versionCode>
 #   name=<最后一次发布的 versionName>
-# 两条都要满足：(1) 新 versionCode 严格大于 code；(2) 新版本名数字段不低于 name。
-# (2) 拦的是「版本名回退」（1.3.6-beta.1 之后又发 1.3.5-beta.x 那种），(1) 拦的是
-# 「同一版本名重打但 code 没涨」。仅内部重打同一版时才用 -AllowVersionCodeReuse 绕过。
+# 两条都要满足：(1) 新 versionCode 不得低于 code（同号是允许的：beta 与正式版同号）；
+#              (2) 新版本名数字段不得低于 name（拦住「版本名回退」）。
+# (1) 拦的是「发出去比用户手上更小的包」——那会让设备只能卸载重装；
+# (2) 拦的是 1.3.6 之后又发 1.3.5 这种名次回退。
+# 仅内部重打同一版时才用 -AllowVersionCodeReuse 绕过。
 # 发版后必须把这两个值改成新包的（见 docs/VERSIONING.md「发版检查单」）。
 $FLOOR = 0
 $FLOORNAME = ''
@@ -129,7 +133,7 @@ if (Test-Path "$ROOT\versionCode.floor") {
   if ($floorText -match 'name\s*=\s*([^\r\n]+)') { $FLOORNAME = $Matches[1].Trim() }
 }
 $viol = ''
-if ($VC -le $FLOOR) { $viol = "versionCode $VC <= floor code $FLOOR" }
+if ($VC -lt $FLOOR) { $viol = "versionCode $VC < floor code $FLOOR (已发布过更高的包)" }
 if (-not $viol -and $FLOORNAME -match '^(\d+)\.(\d+)\.(\d+)') {
   $flMaj = [int]$Matches[1]; $flMin = [int]$Matches[2]; $flPat = [int]$Matches[3]
   $nameLower = ($VMajor -lt $flMaj) -or ($VMajor -eq $flMaj -and $VMinor -lt $flMin) -or ($VMajor -eq $flMaj -and $VMinor -eq $flMin -and $VPatch -lt $flPat)

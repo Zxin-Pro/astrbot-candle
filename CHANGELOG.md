@@ -3,7 +3,7 @@
 本文件格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-版本号规则：`MAJOR.MINOR.PATCH`，对应 `versionCode = MAJOR*10000 + MINOR*100 + PATCH`。
+版本号规则：`MAJOR.MINOR.PATCH`，对应 `versionCode = MAJOR*10000 + MINOR*100 + PATCH`（`-beta.N` 后缀只进版本名，**测试版与正式版同号**）。
 
 - **MAJOR**（X.0.0）：不兼容改动，例如换沙盒方案、需要重装 APK 才能升级
 - **MINOR**（0.X.0）：新增功能
@@ -17,13 +17,19 @@
 
 ---
 
+## [未发布] - 2026-11-04
+
+### 变更
+- **版本号规则回归「测试版与正式版同号」**：`versionCode = MAJOR*10000 + MINOR*100 + PATCH`，`-beta.N` 后缀只进 `versionName`。1.3.5 与 1.3.5-beta.8 都是 `10305`，转正式版时去掉后缀重打、号不变，可直接覆盖；1.3.6 系是 `10306`。`build-ui.ps1` 的换算与 `versionCode.floor` 闸门同步改回：新 code 不得低于「已发出去的最高 code」（**同号放行**），版本名数字段不得回退，违反直接 `exit 1`（内部重打用 `-AllowVersionCodeReuse`）。
+- **6 位制废止**：`1.3.5-beta.7` 曾短暂采用 `base*10 + N` 产出 `103057`，是唯一一个 6 位包（已发布）。装过它的设备再装 5 位制新包（`10305` / `10306`）会被系统按降级拒装，**需要卸载一次**；这是本次规则回归的一次性代价，`docs/VERSIONING.md`、`README.md`、`使用说明.md` 均已写明。`10305` 及以下的历史版本不受影响，正常覆盖。
+
 ## [1.3.5-beta.7] - 2026-11-04
 
 > **测试版**：这一版把「版本号会倒退」这个坑彻底堵上（新 versionCode 规则 + 单调闸门），并加固了自动重连与配置备份两条最容易伤数据的链路，同时把文档里对不上的版本口径全部对齐到实物。versionCode 103057，**装过已撤回的 1.3.6-beta.1（10306）的设备可以直接覆盖安装**。
 
 ### 新增
 
-- **版本号制度（docs/VERSIONING.md）**：base = MAJOR*10000 + MINOR*100 + PATCH，预发布 base*10 + N（beta 序号 1…8），正式版 base*10 + 9。1.3.5-beta.7 → 103057，1.3.5 正式版 → 103059，1.3.6 → 103069。旧公式下一串 beta 共用同一个 versionCode（1.3.5-beta.5 与 beta.6 都是 10305），正是 1.3.6-beta.1 撤回后无法回退的根因。
+- **版本号制度（docs/VERSIONING.md）**：base = MAJOR*10000 + MINOR*100 + PATCH，预发布 base*10 + N（beta 序号 1…8），正式版 base*10 + 9。1.3.5-beta.7 → 103057，1.3.5 正式版 → 103059，1.3.6 → 103069。旧公式下一串 beta 共用同一个 versionCode（1.3.5-beta.5 与 beta.6 都是 10305），正是 1.3.6-beta.1 撤回后无法回退的根因。**该 6 位规则已于当日废止、回归同号规则**，见顶部 `[未发布]` 段。
 - **versionCode.floor 与构建闸门**：仓库根新增 versionCode.floor（code=10306 / name=1.3.5-beta.6，即「已经发到用户手里、装到过设备的最高版本」）。build-ui.ps1 算完 versionCode 后先比 floor：新 versionCode 必须严格大于 floor 的 code，版本名数字段也不得低于 floor 的 name，违反就 exit 1；确实需要复用（改文案重出同版本）时显式加 -AllowVersionCodeReuse。该文件在 beta.7 发版后已按检查单同步为 `code=103057` / `name=1.3.5-beta.7`（初建值是 code=10306 / name=1.3.5-beta.6）。
 - **配置备份升级为带 manifest 的容器**（AndroidCfg）：备份文件从「裸 cmd_config.json」变成 format=astrbot-candle-cfg / formatVersion=1 的容器，内含 files（state/cmd_config.json、state/prefs.json、bots.json 三份）与逐文件 checksums（紧凑 JSON 字节的 SHA-256）、app、createdAt、skipped。
 - **validate() 与 importPreview()**：导入前先把 JSON 解析、结构校验、和当前值做 diff（每个文件的 added / removed / changed 明细，最多 20 处，超出标 truncated），并把 token / password / secret / apikey / uin / qq 这类键的值打码；前端因此可以「校验并预览 → 确认导入」两段式操作，预览这一步不写盘。
