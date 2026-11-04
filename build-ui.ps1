@@ -10,6 +10,8 @@
 # NOTE 2: this script and build-apk.ps1 MUST run serially - both write
 #         out\termux-ui-unsigned.apk. Always build-ui first.
 # =====================================================================
+param([switch]$AllowVersionCodeReuse)
+
 $ErrorActionPreference = 'Continue'
 
 # --- JDK bin directory ----------------------------------------------
@@ -86,16 +88,62 @@ if ($LASTEXITCODE -ne 0) { Write-Host 'DEXTOSMALI FAIL'; exit 1 }
 if (-not (Test-Path "$ROOT\ui\smali")) { Write-Host 'MISSING ui\smali after DexToSmali'; exit 1 }
 if (-not (Test-Path "$ROOT\_apkwork\apktool.yml")) { Write-Host 'MISSING _apkwork - run apktool d first (see docs/BUILD.md)'; exit 1 }
 
-# 3b) version stamp: the VERSION file at the repo root is the single source of truth
-#     versionName is VERSION verbatim and may carry a pre-release suffix ("1.3.2-beta.1"),
-#     so a test build is recognisable in 设置页 and in crash reports;
-#     versionCode = MAJOR*10000 + MINOR*100 + PATCH regardless of the suffix
-#     (see CHANGELOG.md) -- that makes "install beta, then install the final build"
-#     an in-place upgrade, no uninstall needed.
+# 3b) version stamp: the VERSION file at the repo root is the single source of truth.
+#     versionName is VERSION verbatim and may carry a pre-release suffix ("1.3.5-beta.7").
+#
+#     永久单调递增的 versionCode（1.3.5-beta.7 起，规则见 docs/VERSIONING.md）：
+#       base    = MAJOR*10000 + MINOR*100 + PATCH   历史 GA 映射，1.3.5 -> 10305
+#       预发布  = base*10 + N                       N = 后缀里的 beta 序号（1..8）
+#       正式版  = base*10 + 9
+#     同一 base 内 预发布 < 正式版，所以「装 beta 再装正式版」仍是原地升级；
+#     1.3.5-beta.7 = 103057，高于历史已发布的 10305（1.3.5-beta.6）与
+#     10306（1.3.6-beta.1），装过那两版的设备可以直接覆盖安装。
 $VER = '1.0.0'
 if (Test-Path "$ROOT\VERSION") { $VER = (Get-Content "$ROOT\VERSION" -Raw).Trim() }
-if ($VER -notmatch '^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z][0-9A-Za-z.-]*)?$') { Write-Host "BAD VERSION file: $VER"; exit 1 }
-$VC = ([int]$Matches[1]) * 10000 + ([int]$Matches[2]) * 100 + ([int]$Matches[3])
+if ($VER -notmatch '^(\d+)\.(\d+)\.(\d+)(-([0-9A-Za-z][0-9A-Za-z.-]*))?$') { Write-Host "BAD VERSION file: $VER"; exit 1 }
+$VMajor = [int]$Matches[1]
+$VMinor = [int]$Matches[2]
+$VPatch = [int]$Matches[3]
+$VSuffix = $Matches[5]
+$VCBase = $VMajor * 10000 + $VMinor * 100 + $VPatch
+if ($VSuffix) {
+  $pre = 1
+  if ($VSuffix -match '(\d+)$') { $pre = [int]$Matches[1] }
+  if ($pre -lt 1 -or $pre -gt 8) { Write-Host "BAD VERSION $VER : pre-release number must be 1..8"; exit 1 }
+  $VC = $VCBase * 10 + $pre
+} else {
+  $VC = $VCBase * 10 + 9
+}
+# 单调下限：versionCode.floor 记两件事——
+#   code=<已经发布到用户手里（含已撤回但装到过设备上）的最大 versionCode>
+#   name=<最后一次发布的 versionName>
+# 两条都要满足：(1) 新 versionCode 严格大于 code；(2) 新版本名数字段不低于 name。
+# (2) 拦的是「版本名回退」（1.3.6-beta.1 之后又发 1.3.5-beta.x 那种），(1) 拦的是
+# 「同一版本名重打但 code 没涨」。仅内部重打同一版时才用 -AllowVersionCodeReuse 绕过。
+# 发版后必须把这两个值改成新包的（见 docs/VERSIONING.md「发版检查单」）。
+$FLOOR = 0
+$FLOORNAME = ''
+if (Test-Path "$ROOT\versionCode.floor") {
+  $floorText = Get-Content "$ROOT\versionCode.floor" -Raw
+  if ($floorText -match 'code\s*=\s*(\d+)') { $FLOOR = [int]$Matches[1] }
+  if ($floorText -match 'name\s*=\s*([^\r\n]+)') { $FLOORNAME = $Matches[1].Trim() }
+}
+$viol = ''
+if ($VC -le $FLOOR) { $viol = "versionCode $VC <= floor code $FLOOR" }
+if (-not $viol -and $FLOORNAME -match '^(\d+)\.(\d+)\.(\d+)') {
+  $flMaj = [int]$Matches[1]; $flMin = [int]$Matches[2]; $flPat = [int]$Matches[3]
+  $nameLower = ($VMajor -lt $flMaj) -or ($VMajor -eq $flMaj -and $VMinor -lt $flMin) -or ($VMajor -eq $flMaj -and $VMinor -eq $flMin -and $VPatch -lt $flPat)
+  if ($nameLower) { $viol = "version $VER is older than last published $FLOORNAME" }
+}
+if ($viol) {
+  if (-not $AllowVersionCodeReuse) {
+    Write-Host ("VERSION GUARD: " + $viol + " (bump VERSION / versionCode.floor, or pass -AllowVersionCodeReuse for an internal rebuild)")
+    exit 1
+  }
+  Write-Host ("WARN VERSION GUARD: " + $viol + " (allowed by -AllowVersionCodeReuse)")
+} else {
+  Write-Host ("VERSION GUARD ok: last published " + $FLOORNAME + " / " + $FLOOR + " -> " + $VER + " / " + $VC)
+}
 $yml = Get-Content "$ROOT\_apkwork\apktool.yml" -Raw
 $yml = $yml -replace 'versionCode: \d+', "versionCode: $VC"
 $yml = $yml -replace 'versionName: .*', "versionName: $VER"

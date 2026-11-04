@@ -1,6 +1,6 @@
 # 从源码构建 AstrBot烛版
 
-本文说明如何从本仓库的源码重新构建出可安装的 `AstrBot-<版本>-<架构>.apk`（当前版本 1.3.5-beta.6，发布产物 `AstrBot-1.3.5-beta.6-arm64.apk`，只发这一个包）。
+本文说明如何从本仓库的源码重新构建出可安装的 `AstrBot-<版本>-<架构>.apk`（当前版本 1.3.5-beta.7，发布产物 `AstrBot-1.3.5-beta.7-arm64.apk` 全量包 + `AstrBot-1.3.5-beta.7-arm64-update.apk` 增量包，两个都要发）。
 
 > 构建过程**只能在一台配好工具链的 Windows 机器上**完成（脚本是 PowerShell + 本机 JDK）。
 > 构建不联网、不跑 Gradle，也不需要 Android Studio。
@@ -17,8 +17,9 @@
 | **可安装包** | `out\signed\termux-qqbot-aligned-debugSigned.apk` | uber-apk-signer 对齐 + 签名后的成品（发布用副本由 `build-apk.ps1` 自动复制到仓库根目录，命名为 `AstrBot-<版本>-<架构>.apk`；`-Bundle` 全量包同名，只是体积不同） |
 
 版本号（`versionCode` / `versionName`）不是写死在 APK 里的，而是由仓库根目录的 **`VERSION`** 文件决定：
-内容形如 `1.0.2`，`build-ui.ps1` 打包时换算成 `versionCode = MAJOR*10000 + MINOR*100 + PATCH` 一并写进 `_apkwork\apktool.yml`。
-要发新版本，改 `VERSION` 一行即可，同时记得在 [CHANGELOG.md](../CHANGELOG.md) 里补一条。
+内容形如 `1.3.5-beta.7`。`build-ui.ps1` 按 [VERSIONING.md](VERSIONING.md) 的公式换算成 `versionCode` 一并写进
+`_apkwork\apktool.yml`，写盘前还会用根目录的 `versionCode.floor` 做单调递增校验（不满足直接 `exit 1`）。
+要发新版本：改 `VERSION` 一行 → 构建 → 发版后把 `versionCode.floor` 的 `code` / `name` 同步成新包的值。
 
 > 从 **1.1.29** 起，`build-ui.ps1` 还会顺手把 `_apkwork\AndroidManifest.xml` 里的
 > `android:debuggable="true"` 删掉（幂等，删不到就跳过）。原因：debug 包是被小米安装器判成
@@ -113,13 +114,12 @@ powershell -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch arm64
 powershell -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch amd64
 ```
 
-> `-Arch amd64|arm64` 现在默认出**全量包**（约 600 MB）：里面带着 `assets/qqbot-bundle.tar.xz`。
+> `-Arch amd64|arm64` 现在默认出**全量包**（约 581 MB，609,562,514 B 量级）：里面带着 `assets/qqbot-bundle.tar.xz`。
 > 手机端第一次部署就是把这份镜像解压进 `/data`（2~5 分钟，不用联网），在线 apt 流程只在镜像缺失时才走
 > （`export QQBOT_BUNDLE=1` 是「从 `QQBOT_CDN` 下镜像」的开关，APK 自带镜像时不需要它，见第四节）。
 >
-> **发版规矩（2026-10-24 起）：每版只出一个全量包。** 带 `-Arch` 构建时默认就把 `out\bundle-<arch>.tar.xz` 塞进 APK（约 600 MB），产物是 `AstrBot-<ver>-<arch>.apk`；手机端第一次部署就是把这份镜像解压出来，全程不需要联网。
->
-> `-Update` 保留作热修逃生门（打 25 MB 瘦包、写入 0 字节 `assets/qqbot-update-pkg` 标记、文件名带 `-update`，不会覆盖全量包），正常发版不用它。
+> **发版规矩（2026-11 起）：每版成对发两个包。** 先 `-Arch arm64 -Update` 打 25 MB 增量包（写入 0 字节 `assets/qqbot-update-pkg` 标记、文件名带 `-update`，给装过旧版的手机覆盖升级用），再 `-Arch arm64` 打全量包（约 581 MB，把 `out\bundle-<arch>.tar.xz` 塞进 APK，手机端第一次部署就是把这份镜像解压出来，全程不需要联网）。
+> 两个包的 `versionName` / `versionCode` 必须完全一致（同一个 `VERSION` 算出），发版前用 `aapt dump badging` 各读一遍核对。
 
 这一步分五小步（对应脚本日志里的 `[1/5]`～`[5/5]`）：
 
@@ -168,11 +168,11 @@ powershell -ExecutionPolicy Bypass -File .\build-apk.ps1 -Arch amd64
 `build-apk.ps1` 最后会自动把 `out\signed\termux-qqbot-aligned-debugSigned.apk` 复制到仓库根目录，
 命名为 `AstrBot-<版本>-<架构>.apk`（`VERSION` 文件的内容就是版本号），这个文件就是发布用的安装包。
 
-只出全量包以后，根目录里的 `AstrBot-<版本>-<架构>.apk` 就是约 600 MB 的全量包；只有跑 `-Update` 才会多出一个 `-update.apk`。
+根目录里的 `AstrBot-<版本>-<架构>.apk` 是约 581 MB 的全量包，`-Update` 产出的 `AstrBot-<版本>-<架构>-update.apk` 是约 25 MB 的增量包，两者版本号相同。
 `-Arch` 仍存在（arm64 / amd64 都能构建），但两个包内容相同（724 个条目里只有 `assets/qqbot-scripts.zip` 的时间戳不同）；1.2.5 起发布只发 arm64 一个，模拟器也直接装这个包。
 
-> **发布只发一个精简包**：只上传 `AstrBot-<版本>-arm64.apk` 到 GitHub Release；模拟器也直接装这个包（内容与真机包相同）。
-> 全量包就是唯一的 Release 资产。
+> **发布成对上传两个包**：`AstrBot-<版本>-arm64.apk`（全量，主下载）与 `AstrBot-<版本>-arm64-update.apk`（增量，覆盖升级）都传到 GitHub Release；
+> 模拟器装全量包即可（内容与真机包相同）。站点同步脚本 `pick_apk()` 只挑非 `-update` 的那个当主下载。
 > 沙盒镜像单独传到 VPS 的 `/dl/` 目录（见第四节），不随版本发布。
 
 > **两个脚本必须串行执行**：`build-ui.ps1` 会**写出** `out\termux-ui-unsigned.apk`，`build-apk.ps1` 会**读取并覆盖**它，
@@ -274,7 +274,9 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 | 版本 | 字段 | 值 |
 | --- | --- | --- |
-| **1.3.5-beta.6（当前，测试版）** | versionName / 派生 versionCode | 1.3.5-beta.6 / 10305 |
+| **1.3.5-beta.7（当前，测试版）** | versionName / 派生 versionCode | 1.3.5-beta.7 / **103057**（新公式） |
+| 1.3.6-beta.1（已撤回） | versionName / versionCode | 1.3.6-beta.1 / 10306（旧公式，设备上仍可能残留） |
+| 1.3.5-beta.6 | versionName / 派生 versionCode | 1.3.5-beta.6 / 10305 |
 | 1.3.5-beta.5 | versionName / 派生 versionCode | 1.3.5-beta.5 / 10305 |
 | 1.3.5-beta.4 | versionName / 派生 versionCode | 1.3.5-beta.4 / 10305 |
 | 1.3.5-beta.3 | `versionName` / 派生 `versionCode` | `1.3.5-beta.3` / `10305` |
@@ -310,7 +312,9 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 | 1.2.10 | `versionName` / 派生 `versionCode` | `1.2.10` / `10210` |
 | 1.2.9 | `versionName` / 派生 `versionCode` | `1.2.9` / `10209` |
 
-1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.5-beta.6-arm64.apk`，`609,562,514`（约 581 MB，镜像在 APK 里），SHA-256 `97C90E420E6BD0E69C046EEEFDF34F8A5D6DE12177CDEF279EC224226AB4DFC2`；增量包 `AstrBot-1.3.5-beta.6-arm64-update.apk`，`26,550,159`，SHA-256 `DE241B014F5BB5C5F4A36FA9AD60B63622DA1A6F0E3CD03935347F08D4855B1C`。1.3.5-beta.6 用本机自备的 keystore 签名（**签名材料不入库、不随 Release 分发**），`versionCode 10305`，可直接覆盖 1.3.5 全系（含 1.3.5 正式版）、1.3.4 正式版与 1.3.4 各测试版。
+自 1.3.5-beta.7 起每版成对出全量包与增量包（1.3.1 … 1.3.5-beta.6 各版也都成对产出过，只是个别文档写成「只发一个包」，已按实际改正）。当前构建 `AstrBot-1.3.5-beta.7-arm64.apk`，`609,578,898`（约 581 MB，镜像在 APK 里），SHA-256 `EA3D59B4EDB3A9B3302FBBC202C899CE018504B58666D17CAC4F579BC4D6F044`；增量包 `AstrBot-1.3.5-beta.7-arm64-update.apk`，`26,566,543`，SHA-256 `147AD0C87F0198A08E5B652556F0011AB9C906A8B757DB0C9E4271308B833330`。两个包都用本机自备的 keystore 签名（**签名材料不入库、不随 Release 分发**），`versionCode 103057`（新公式），可直接覆盖 1.3.6-beta.1（`10306`）、1.3.5 全系（含 1.3.5 正式版）、1.3.4 全系与 1.3.3 全系。
+
+1.3.5-beta.7（2026-11-04）是「版本号制度 + 链路加固」版，不改产品功能面。构建侧：`build-ui.ps1` 的 `versionCode` 公式换成 `base = MAJOR*10000 + MINOR*100 + PATCH`、预发布 `base*10 + N`、正式版 `base*10 + 9`（1.3.5-beta.7 = `103057`），新增 `param([switch]$AllowVersionCodeReuse)` 与读仓库根 `versionCode.floor` 的单调闸门（新 code 必须严格大于 floor、版本名不许回退，违反 `exit 1`），规则与检查单见 [docs/VERSIONING.md](VERSIONING.md)。Java 侧：`NetReconnect.java` 683 → 1235 行，按 `bots.json` 逐实例维护状态、端口 + OneBot + 日志三方交叉验证、AstrBot 端口不通时整轮 `unknown` 不重启、`cache/svc/*.off` 与「还没登录 QQ」两种否决、日志 15 分钟 mtime 窗口 + 行内时间戳 + 2048 行 hash 去重，`reconnect.json` 增加 `instances[]`；`QqbotCfgBridge.java` 1547 行，备份改成带 `format` / `formatVersion` / `checksums` 的容器（`cmd_config.json` + `prefs.json` + `bots.json` 三份），新增 `validate` / `importPreview`（含 diff 与敏感值打码），写盘走 `.beta7tmp` + `renameTo` 并在失败时逆序回滚，恢复前先 `backupCurrent`。界面侧：导入改成「校验并预览 → 确认导入」两段式，备份列表显示格式 / 文件数 / 来源。上游组件本版**未升级**，审计与回退开关见 [docs/UPSTREAM.md](UPSTREAM.md)。产物全量 `609,578,898` / 增量 `26,566,543`，`javac` 全量 112 个源文件 rc=0，`node --check` 两段内联脚本通过，门禁 `out/_b1357_release_gate.py` 全项通过。
 
 1.3.5-beta.6（2026-11-04）是「沙盒可维护性」版，新增 Java 类 `QqbotCfgBridge`（JS 名 `AndroidCfg`，10 个方法：`info` / `backupNow` / `listBackups` / `restore` / `exportCfg` / `importText` / `exportLogs` / `getPrompt` / `setPrompt` / `resetPrompt`，全部同步返回 JSON、内部兜底不抛异常，无 lambda / 匿名类）、`SysPrompt`（系统层级提示词存 `state/prefs.json` 的 `sysPrompt`，上限 8000 字，空值回落 `AstrCfg.DEFAULT_PERSONA`，保存时尽力写回 `data_v4.db` 的 persona）与 `NetReconnect`（NapCat 断连三态机 + 自动重连，挂在 `KeepAlive.rescue` 的 2 分钟体检上，不新增唤醒；退避 3s→10s→30s→60s→60s，10 分钟窗口最多 5 次，状态落 `state/reconnect.json`）。`AstrCfg.personaPrompt()` 与保存人格两条路径改为读 `SysPrompt.get()`；`QqbotActivity` 注册新桥后 JS 接口从 21 个涨到 22 个。界面侧 `index.html` 新增「故障排查」折叠组（6 条 FAQ + 可复制命令 + 导出运行日志）、「配置与备份」卡、「系统提示词」卡与导入弹窗，共 51 个新元素 id，全部走 `xfHas` / `xfCall` 探测，老包缺桥时整体降级为「这个安装包还不支持（升级后可用）」。产物全量 609,562,514 / 增量 26,550,159；`javac` 全量 112 个源文件 rc=0，`node --check` 两段内联脚本通过，门禁 `out/_b1361_release_gate.py` 与 MuMu（Android 15）上的 CDP 探测（桥 10 方法、51 个 id、6 条 FAQ、提示词读写往返、备份 1 份 / 导出配置 8,286 B / 导出日志 8 文件 12,134 B、非法 JSON 被拒、`reconnect.json` 落盘）全部通过。
 
@@ -344,16 +348,25 @@ UI 侧这一版只动 `ui/assets/qqbot/index.html` 与 `ui/assets/qqbot/plugins.
 
 1.3.5-beta.4（2026-10-29）是五项收口版，不新增功能，只动 Java、界面与空间提示。Java 侧 `QqbotActivity` 新增 `effectiveActive(JSONObject bots)`：`bots.active` 必须真实存在、`enable` 不是 JSON 布尔 `false`、id 过 `safeBotId`，否则取第一个启用实例；这里比脚本更严格：active 被禁用时 Java 也回退第一个启用实例，而 `run-napcat.sh` 只在 active 不在实例列表时回退（见 run-napcat.sh:1494）；`loggedIn(id)` 改为扫该实例 `QQ/resources/app/app_launcher/napcat/config` 下最新的 `napcat_<uin>.json` / `onebot11_<uin>.json`，并比较 mtime——配置 mtime ≥ 二维码才算登录（二维码比配置新说明 NapCat 又重画了码，仍按未登录）。二维码查找拆成 `qrFindInfo()` / `probeQr()` / `scanQrPng()`：实例目录优先，递归最多 3 层、跳过 0 字节与超过 8 MB 的文件，取 mtime 最新一张，只有当前实例才回退共享 `opt/QQ`；`qr()` / `qrShare()` 都改用 `effectiveActive()`，前端 `qrBotUp()` 优先信 Java 每次现算的 `login` 字段。界面侧 `index.html` 把更多页收成 7 个折叠组（`.mgroup > .mgh` + `.mbody`，`grid-template-rows 0fr↔1fr`，状态记 `sessionStorage["qqbot.msec"]`，收起动画结束 250ms 后才加 `mcollapsed` / `content-visibility:hidden`，展开分支先 `clearTimeout` 修快速连点空白），两张「关于」卡置顶，「系统与关于」改名「系统与维护」；更多页去掉整页 / 组头 / 卡片的进场动画，其它页签统一 `tabIn2` 180ms，底栏 `#navThumb` 只过渡 `transform` 320ms `cubic-bezier(.22,1.25,.36,1)`（删掉 `width` 过渡与 `nav:active` 的 `scale:.96`）。脚本侧只把 `common.sh` 的空间提示统一成 GB（阈值 `QQBOT_MIN_FREE_MB=3072` / `QQBOT_RESUME_FREE_MB=1024` 未动）。产物 `609,542,034` / 增量 `26,529,679`；验收 `out/b1354_verify.py` **75/75 PASS**（188.4 秒，A–L 组，D 组二维码 4/4、J 组功能面 40/40），视觉验收 24 个视图 0 控制台报错 / 0 重复 id / 0 横向溢出，`javac` 全量 109 个源文件 rc=0。
 
-规则：`versionCode = MAJOR*10000 + MINOR*100 + PATCH`。
+规则（自 1.3.5-beta.7 起，完整说明见 [VERSIONING.md](VERSIONING.md)）：
+
+```
+base   = MAJOR*10000 + MINOR*100 + PATCH     # 历史映射，1.3.5 -> 10305
+预发布 = base*10 + N                          # N = beta 序号（1..8）
+正式版 = base*10 + 9
+```
+
+例：`1.3.5-beta.7` → `103057`；`1.3.5`（正式版）→ `103059`；`1.3.6` → `103069`。
+`build-ui.ps1` 还会对 `versionCode.floor` 做两道校验：新 code 必须严格大于已发布的最大 code，
+新版本名的数字段不得低于最后一次发布的版本名。要绕过（只给内部重打同一版用）加 `-AllowVersionCodeReuse`。
 
 - **MAJOR**（X.0.0）：不兼容改动，例如换沙盒方案、需要重装 APK 才能升级；
 - **MINOR**（0.X.0）：新增功能；
 - **PATCH**（0.0.X）：修 bug、文案、性能。
 
-**预发布后缀**：`VERSION` 允许写 `1.3.2-beta.1` 这种带后缀的测试版，`build-ui.ps1` 会把它原样写进
-`versionName`（应用「设置」页、崩溃上报里都看得到），`versionCode` 仍按数字段算 `10302`。
-**不要为了区分 beta 去改 `versionCode`**：beta 与随后的正式版 `versionCode` 必须相同，
-否则正式版对装了 beta 的手机就是「降级」，覆盖安装会被系统拒绝。
+**预发布后缀**：`VERSION` 允许写 `1.3.5-beta.7` 这种带后缀的测试版，`build-ui.ps1` 会把它原样写进
+`versionName`（应用「设置」页、崩溃上报里都看得到），`versionCode` 按上面的公式带上 beta 序号。
+同一个 base 内 beta 序号递增、正式版取 `+9`，所以「先装 beta 再装正式版」永远是升级，不会被系统判成降级。
 
 改完记得同步更新 `CHANGELOG.md`。
 
@@ -445,7 +458,7 @@ UI 侧这一版只动 `ui/assets/qqbot/index.html` 与 `ui/assets/qqbot/plugins.
 `zhuxin-astrbot-dl.service`（oneshot）+ `zhuxin-astrbot-dl.timer`（每日）跑 `/data/www/zhuxin-site/scripts/astrbot_download_sync.py`，
 把安装包镜像到 `/data/www/zhuxin-site/downloads/`（最多留 4 个版本），再改写 `data/astrbot.json`。本仓库的 `vps-deploy/astrbot_download_sync.py` 只是源文件。
 
-1.3.1 起每个 Release 的**主下载**是全量包（`AstrBot-<版本>-arm64.apk`，约 600 MB，镜像在里面，断网也能装完）；
+1.3.1 起每个 Release 的**主下载**是全量包（`AstrBot-<版本>-arm64.apk`，约 581 MB，镜像在里面，断网也能装完）；
 站点同步 `pick_apk()` 只认它。测试版还会多放一个 `AstrBot-<版本>-update.apk`（约 25 MB），供应用内覆盖升级用。
 沙盒镜像本体按第四节单独传到 VPS 的 `/dl/`，不单独作为 Release 资产。
 
@@ -487,17 +500,17 @@ UI 侧这一版只动 `ui/assets/qqbot/index.html` 与 `ui/assets/qqbot/plugins.
    —— beta 段也要写全，验收的人就是照着它逐条测。正式版再单独写一段（不要直接改 beta 那段）。
 3. **构建**（顺序不能反，`build-apk.ps1` 用的是 `build-ui.ps1` 产出的 UI APK）：
    `build-ui.ps1` → `build-apk.ps1 -Arch arm64 -Update` → `build-apk.ps1 -Arch arm64`。
-4. **交付 beta**：把 `AstrBot-1.3.2-beta.1-arm64.apk`（全量）与 `AstrBot-1.3.2-beta.1-arm64-update.apk`
-   （覆盖安装用）连同 SHA-256 发给验收的人；打 tag `v1.3.2-beta.1` 并 `git push origin refs/tags/v1.3.2-beta.1`。
-   要发 GitHub，就用 `POST /repos/{owner}/{repo}/releases` 建 **`prerelease=true`** 的 Release（tag 填 `v1.3.2-beta.1`），
+4. **交付 beta**：把 `AstrBot-<版本>-arm64.apk`（全量）与 `AstrBot-<版本>-arm64-update.apk`
+   （覆盖安装用）连同 SHA-256 发给验收的人；打 tag `v<版本>` 并 `git push origin refs/tags/v<版本>`。
+   要发 GitHub，就用 `POST /repos/{owner}/{repo}/releases` 建 **`prerelease=true`** 的 Release（tag 填 `v<版本>`），
    两个包按 §八 第 6 条用 `curl` 上传。beta **不进官网、不推 GitHub latest**。
-5. **验收通过 → 发正式版**：`VERSION` 去掉后缀写成 `1.3.2`，`CHANGELOG.md` 加正式版那段，
-   重新走一遍第 3 步构建（`versionCode` 不变，装了 beta 的手机直接覆盖安装即可），打 tag `v1.3.2`，
+5. **验收通过 → 发正式版**：`VERSION` 去掉后缀写成 `1.3.6`，`CHANGELOG.md` 加正式版那段，
+   重新走一遍第 3 步构建（`versionCode` 按公式变成 `base*10+9`，比 beta 大，装了 beta 的手机直接覆盖安装即可），打 tag `v1.3.6`，
    把全量包传到 GitHub Release（**不要**勾 pre-release，本 tag 成为 latest），官网同步脚本第二天会自动更新下载卡。
 6. **收尾核对**：`/releases/tags/<tag>` 看 `prerelease` 与两个资产的 `state=uploaded`、`size`、`digest`；
    beta 阶段再确认 `/releases/latest` 仍是上一正式版；`git rev-list -n 1 <tag>` 与远端 `refs/tags/<tag>^{}` 一致。
 
-beta 与正式版之间不需要卸载重装：同一 `versionCode` 的覆盖安装是允许的，数据（沙盒、账号、配置）全部保留。
+beta 与正式版之间不需要卸载重装：正式版 `versionCode` 比同 base 的 beta 大，覆盖安装是升级，数据（沙盒、账号、配置）全部保留。
 
 ### 9.1 直连 `github.com:443` 不通时怎么发
 

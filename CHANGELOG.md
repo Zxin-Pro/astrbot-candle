@@ -17,6 +17,42 @@
 
 ---
 
+## [1.3.5-beta.7] - 2026-11-04
+
+> **测试版**：这一版把「版本号会倒退」这个坑彻底堵上（新 versionCode 规则 + 单调闸门），并加固了自动重连与配置备份两条最容易伤数据的链路，同时把文档里对不上的版本口径全部对齐到实物。versionCode 103057，**装过已撤回的 1.3.6-beta.1（10306）的设备可以直接覆盖安装**。
+
+### 新增
+
+- **版本号制度（docs/VERSIONING.md）**：base = MAJOR*10000 + MINOR*100 + PATCH，预发布 base*10 + N（beta 序号 1…8），正式版 base*10 + 9。1.3.5-beta.7 → 103057，1.3.5 正式版 → 103059，1.3.6 → 103069。旧公式下一串 beta 共用同一个 versionCode（1.3.5-beta.5 与 beta.6 都是 10305），正是 1.3.6-beta.1 撤回后无法回退的根因。
+- **versionCode.floor 与构建闸门**：仓库根新增 versionCode.floor（code=10306 / name=1.3.5-beta.6，即「已经发到用户手里、装到过设备的最高版本」）。build-ui.ps1 算完 versionCode 后先比 floor：新 versionCode 必须严格大于 floor 的 code，版本名数字段也不得低于 floor 的 name，违反就 exit 1；确实需要复用（改文案重出同版本）时显式加 -AllowVersionCodeReuse。
+- **配置备份升级为带 manifest 的容器**（AndroidCfg）：备份文件从「裸 cmd_config.json」变成 format=astrbot-candle-cfg / formatVersion=1 的容器，内含 files（state/cmd_config.json、state/prefs.json、bots.json 三份）与逐文件 checksums（紧凑 JSON 字节的 SHA-256）、app、createdAt、skipped。
+- **validate() 与 importPreview()**：导入前先把 JSON 解析、结构校验、和当前值做 diff（每个文件的 added / removed / changed 明细，最多 20 处，超出标 truncated），并把 token / password / secret / apikey / uin / qq 这类键的值打码；前端因此可以「校验并预览 → 确认导入」两段式操作，预览这一步不写盘。
+- **自动重连多实例化**（NetReconnect.java 683 → 1235 行）：按 bots.json 逐实例维护 napcatPort / onebotPort / 状态，reconnect.json 新增 instances[]（at 为 epoch 秒，与顶层同单位）；只有全部在线实例都判为 unlinked 才触发重启，部分在线时取 unknown 并在原因里写「有实例仍在线，已暂停自动重连以免打断其它实例」。
+
+### 修复
+
+- **AstrBot 自己不通不再连坐 NapCat**：每轮体检先探 AstrBot 端口（DEFAULT_ASTR=6185，300 ms 超时），不通就整轮标 unknown、不计数、不重启 —— 避免「AstrBot 挂了却把 NapCat 重启一遍」。
+- **手动关闭与未登录不再被判成断连**：新增 offSwitch()（cache/svc/napcat.off 或 cache/svc/<id>.off 存在即 unknown）与 loginState()（按 resources/app/app_launcher/napcat/config 下 napcat_<uin>.json / onebot11_<uin>.json 的 mtime 判断：有配置目录但没有 uin、或 cache/qrcode.png 比 uin 新，判「还没登录」，先不重连；路径漂移时返回 -1 放行，交给端口与日志继续判）。
+- **历史日志误判**：日志扫描改成 mtime 15 分钟窗口 + 行内时间戳不早于本次会话（2 秒余量）+ 2048 行 FNV-1a hash 去重 + 长度变短判轮转，重启后不会再拿上一次运行的报错当新断连。
+- **配置恢复不再是「直接覆盖」**：写盘统一走 <name>.beta7tmp + renameTo，写前把现状复制成 <name>.beta7bak，任一文件失败按逆序回滚；restore 的新旧两种格式都先 backupCurrent() 再动手，旧版裸 JSON 备份也能读。
+- **导入路径白名单**：只认 state/cmd_config.json、state/prefs.json、bots.json 三条逻辑路径，其余（含试图用 ../ 越界的）一律拒绝；备份与恢复完全不碰 .qqbot/data 里的 QQ 登录数据。
+
+### 变更
+
+- **cmd_config.json 落点修正**：真实文件在 $HOME/ubuntu/opt/AstrBot/data/cmd_config.json（AstrCfg.cfgFile），备份容器里仍用逻辑路径做键；state/cmd_config.json 存在时优先用它，保持老用户可预期。
+- **前端导入两段式**：CFG 增加 impOk / impText / imp；弹窗加 #cfgImpPrev 预览区，首次点击是「校验并预览」，成功后才把按钮换成「确认导入（N 处差异）」；老安装包没有 importPreview 时退化成一次点击直接导入，不报错。
+- **备份列表信息更足**：每行显示配置版本 / 文件数 / 新格式 vN 或 旧格式 / 来源 app / 文件名。
+- 文档口径统一：README.md、使用说明.md、docs/BUILD.md 的版本号制度改写为新公式；部署步骤由 8 说成 9（build/opt/qqbot/steps/ 实有 9 个脚本）；「只出一个全量包」改正为「成对发布全量包与增量包」；全量包体积统一写 581 MB（以实测字节为准）；AstrBot 版本区分「镜像内置 v4.28.2（common.sh 回退值）」与「在线升级后的实测 v4.29.1」。
+
+### 说明
+
+- 全量包 609,578,898 B（约 581 MB），SHA-256 `EA3D59B4EDB3A9B3302FBBC202C899CE018504B58666D17CAC4F579BC4D6F044`；增量包 26,566,543 B（约 25 MB），SHA-256 `147AD0C87F0198A08E5B652556F0011AB9C906A8B757DB0C9E4271308B833330`；两包 versionName / versionCode 一致（1.3.5-beta.7 / 103057），签名与此前所有版本同证书，可直接覆盖。
+- 门禁 out/_b1357_release_gate.py：包名 / versionName + versionCode / 签名 v2 + v3 / zipalign -c 4 / dex 数量 / 关键类与桥名 / 包内 index.html 与源码逐字节一致 / bundle 与 scripts 资产 / 文档记账。
+- javac 全量 112 个源文件 rc=0；node --check 两段内联脚本通过。
+- 覆盖升级实测（MuMu 模拟器，Android 15）：先装已撤回的 1.3.6-beta.1（10306），再 `adb install -r` 本版 609,578,898 B 全量包 → **Success，未卸载**；dumpsys 复核 versionName=1.3.5-beta.7 / versionCode=103057，firstInstallTime 保持原值（应用数据未清）。「装过 10306 的设备可直接升级」由实测证明，不需要卸载重装。
+- 未执行项（如实记录）：真机 ARM64 + Android 15/16 全流程、多实例（双/三实例）资源数据、OneBot 实际收发、真机自动重连触发、备份恢复运行时往返，本机只有模拟器，均未执行。
+- 上游组件本版**未升级**（审计结论见 docs/UPSTREAM.md）：镜像内置 AstrBot 4.28.2 / NapCat 4.18.38 / Linux QQ 3.2.34-53644 / Ubuntu 24.04.5，上游最新分别为 4.29.4 / 4.18.42 / 未核实 / 24.04.5。AstrBot 4.29.4 新增 opentelemetry-* / pyotp / reportlab / xlrd 依赖，arm64 + proot 下的可装性没有仓库内证据，需真机验证后再随下一版升级。
+
 ## [1.3.5-beta.6] - 2026-11-04
 
 > **测试版**：把沙盒从「黑盒」打开一角 —— 新增故障排查页、运行日志导出、配置备份 / 导入导出、系统层级提示词编辑，以及 NapCat 断连自动重连。`versionCode` `10305`，可直接覆盖 1.3.5 全系（含 1.3.5 正式版）与更早安装。

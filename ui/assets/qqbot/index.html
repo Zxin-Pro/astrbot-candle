@@ -4891,13 +4891,14 @@ code.cmd:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
   <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="cfgImpTitle">
     <h3 id="cfgImpTitle">导入配置</h3>
     <div class="dbody">
-      <p>把「导出配置」拿到的那份 cmd_config.json 全文粘进来。点「校验并导入」会先验 JSON 与配置段，通过了才落盘，覆盖前自动备份当前配置。</p>
+      <p>把「导出配置」拿到的那份 cmd_config.json，或者一份备份包，全文粘进来。点「校验并预览」先只校验、不动磁盘：列出格式版本、来源版本、每个文件的校验结果，以及和当前配置的差异；看过没问题再点「确认导入」，这时才会写盘，写盘前自动备份当前配置。</p>
       <textarea id="cfgImportText" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder='{ "provider": { … } }' aria-label="粘贴配置 JSON"></textarea>
+      <div id="cfgImpPrev" style="display:none"></div>
       <div class="hint" id="cfgImportMsg"></div>
     </div>
     <div class="dfoot">
       <button class="small" data-act="cfgimportclose">取消</button>
-      <button class="primary" id="cfgImportGo" data-act="cfgimportgo" style="flex:1">校验并导入</button>
+      <button class="primary" id="cfgImportGo" data-act="cfgimportgo" style="flex:1">校验并预览</button>
     </div>
   </div>
 </div>
@@ -13448,7 +13449,8 @@ function reportShare(){
    约定与前几批一致：xfHas 探测 → xfCall 取对象（异常 / 空串 / 非 JSON 一律 null）→
    老包没有桥就把整段控件藏起来、只留一句「这个安装包还不支持」，不报错也不摆空壳。
    打桥只发生在「更多」页可见时（extOnTab 里调），没有任何后台轮询。 */
-var CFG = { info: null, bak: [], restoreName: "", exportPath: "", logPath: "" };
+var CFG = { info: null, bak: [], restoreName: "", exportPath: "", logPath: "",
+  impOk: false, impText: "", imp: null };
 var PM = { max: 8000, defLen: 0, dirty: false };
 
 /* ---------------- 故障排查：六条可展开行 ---------------- */
@@ -13538,7 +13540,12 @@ function cfgListPaint(items){
   var h = [], n = Math.min(items.length, 5), i;
   for (i = 0; i < n; i++){
     var it = items[i] || {};
-    var sub = xfSize(it.size) + (it.ver ? " · 版本 " + it.ver : "") + " · " + String(it.name || "");
+    var sub = xfSize(it.size) +
+      (it.ver ? " · 配置版本 " + it.ver : "") +
+      (Number(it.files || 0) > 1 ? " · " + Number(it.files) + " 个文件" : "") +
+      (it.legacy ? " · 旧格式" : (it.formatVersion ? " · 包格式 v" + Number(it.formatVersion) : "")) +
+      (it.app ? " · " + String(it.app) : "") +
+      " · " + String(it.name || "");
     h.push('<div class="migrow"><div class="migmain">' +
       '<div class="migname">' + esc(it.at || it.name || "备份") + '</div>' +
       '<div class="migsub">' + esc(sub) + '</div></div>' +
@@ -13614,36 +13621,127 @@ function cfgExport(){
   extToast("已导出配置");
 }
 function cfgShare(){ tpShare("AstrBot 配置", CFG.exportPath, "先导出一份配置"); }
-/* 导入：弹窗里贴 JSON → importText(json)；失败把原生侧那句 msg 原样摆出来 */
+/* 导入：两段式。第一下 importPreview（只读，列差异）→ 第二下 importText（才写盘）。
+   老包没有 importPreview 时退化成一次点击直接 importText，行为与 1.3.5-beta.6 一致。 */
+function cfgImpReset(){
+  CFG.impOk = false; CFG.impText = ""; CFG.imp = null;
+  var b = el("cfgImportGo");
+  if (b) b.textContent = xfHas("AndroidCfg", "importPreview") ? "校验并预览" : "校验并导入";
+  cfgImpPaint(null);
+}
+/* 预览面板：把原生侧 importPreview 返回的 files / problems / warnings / diffs 摊开。
+   值已经在原生侧按 SENSITIVE 规则脱敏，这里只做转义和排版。 */
+function cfgImpPaint(j){
+  var box = el("cfgImpPrev");
+  if (!box) return;
+  if (!j){ box.style.display = "none"; setHtml(box, ""); return; }
+  box.style.display = "";
+  var h = [], i, k;
+  var bad = (j.ok === false);
+  h.push('<div class="xfv ' + (bad ? "bad" : "ok") + '" style="display:block">' + esc(String(j.msg || (bad ? "校验没通过" : "校验通过"))) + '</div>');
+  var meta = [];
+  if (j.format) meta.push("格式 " + String(j.format) + " v" + Number(j.formatVersion || 0));
+  if (j.legacy) meta.push("旧格式（裸 cmd_config.json）");
+  if (j.app) meta.push("来自 " + String(j.app));
+  if (j.createdAtText) meta.push("创建于 " + String(j.createdAtText));
+  if (meta.length) h.push('<div class="hint">' + esc(meta.join(" · ")) + '</div>');
+  var files = j.files || [];
+  for (i = 0; i < files.length; i++){
+    var f = files[i] || {};
+    var okf = !(f.ok === false);
+    h.push('<div class="hint" style="color:inherit">' +
+      (okf ? "✓ " : "✗ ") + esc(String(f.path || "?")) + " · " + xfSize(f.bytes || 0) +
+      (f.sha256Ok === false ? " · 校验和对不上" : (f.sha256Ok === true ? " · 校验和一致" : "")) + '</div>');
+  }
+  var probs = j.problems || [];
+  for (i = 0; i < probs.length; i++){
+    h.push('<div class="xfv bad" style="display:block">' + esc(String(probs[i])) + '</div>');
+  }
+  var warns = j.warnings || [];
+  for (i = 0; i < warns.length; i++){
+    h.push('<div class="xfv warn" style="display:block">' + esc(String(warns[i])) + '</div>');
+  }
+  var diffs = j.diffs || [];
+  for (i = 0; i < diffs.length; i++){
+    var d = diffs[i] || {};
+    var bits = [];
+    if (d.added) bits.push("+" + Number(d.added));
+    if (d.removed) bits.push("-" + Number(d.removed));
+    if (d.changed) bits.push("~" + Number(d.changed));
+    h.push('<div class="hint" style="color:inherit"><b>' + esc(String(d.path || "?")) + '</b> · ' +
+      (d.exists ? "已有这份文件" : "新增") + ' · 差异 ' + Number(d.total || 0) + ' 处' +
+      (bits.length ? '（' + esc(bits.join(" ")) + '）' : '') + '</div>');
+    var ents = d.entries || [];
+    for (k = 0; k < ents.length; k++){
+      var en = ents[k] || {};
+      var line = String(en.key || "");
+      if (en.kind === "changed") line += "：" + String(en.from || "") + " → " + String(en.to || "");
+      else if (en.kind === "added") line += " = " + String(en.to || "");
+      else if (en.kind === "removed") line += "（删除）";
+      h.push('<div class="hint" style="padding-left:14px">' + esc(line) + '</div>');
+    }
+    if (d.more) h.push('<div class="hint" style="padding-left:14px">…还有 ' + Number(d.more) + ' 处没列</div>');
+  }
+  if (j.diffs && j.diffs.length){
+    h.push('<div class="hint">合计 ' + Number(j.changes || 0) + ' 处差异' + (j.truncated ? "，只列了前 20 条" : "") + '</div>');
+  }
+  setHtml(box, h.join(""));
+}
 function cfgImportOpen(){
   var d = el("dlgCfgImport");
   if (d) d.classList.add("on");
+  cfgImpReset();
   var m = el("cfgImportMsg");
-  if (m) m.textContent = "粘进来后点「校验并导入」，通过了才会落盘。";
+  if (m) m.textContent = xfHas("AndroidCfg", "importPreview")
+    ? "粘进来后点「校验并预览」：这一步只校验、不写盘，看完差异再确认。"
+    : "粘进来后点「校验并导入」，通过了才会落盘。";
   var t = el("cfgImportText");
   if (t){ try { t.focus(); } catch (e) {} }
 }
 function cfgImportClose(){
   var d = el("dlgCfgImport");
   if (d) d.classList.remove("on");
+  cfgImpReset();
 }
 function cfgImportGo(){
   if (!xfHas("AndroidCfg", "importText")){ extToast(XF_UNAVAIL); return; }
   var m = el("cfgImportMsg"), t = el("cfgImportText"), b = el("cfgImportGo");
   var s = t ? String(t.value || "") : "";
   if (!s.replace(/\s+/g, "")){
-    if (m) m.textContent = "内容为空，先粘贴一份 cmd_config.json";
+    if (m) m.textContent = "内容为空，先粘贴一份配置";
     return;
   }
-  if (b){ b.setAttribute("disabled", "disabled"); b.textContent = "校验中…"; }
+  var canPrev = xfHas("AndroidCfg", "importPreview");
+  if (canPrev && !(CFG.impOk && CFG.impText === s)){
+    if (b){ b.setAttribute("disabled", "disabled"); b.textContent = "校验中…"; }
+    var v = xfCall("AndroidCfg", "importPreview", s);
+    if (b) b.removeAttribute("disabled");
+    CFG.imp = v || null;
+    cfgImpPaint(v || null);
+    if (!v || v.ok === false){
+      CFG.impOk = false; CFG.impText = "";
+      if (b) b.textContent = "校验并预览";
+      if (m) m.textContent = (v && v.msg) ? String(v.msg) : "校验没通过，没有写入";
+      return;
+    }
+    CFG.impOk = true; CFG.impText = s;
+    if (b) b.textContent = "确认导入（" + Number(v.changes || 0) + " 处差异）";
+    if (m) m.textContent = "这一步还没写盘。确认上面的差异没问题，再点一次才会覆盖；覆盖前会自动备份当前配置。";
+    return;
+  }
+  if (b){ b.setAttribute("disabled", "disabled"); b.textContent = "写入中…"; }
   var r = xfCall("AndroidCfg", "importText", s);
-  if (b){ b.removeAttribute("disabled"); b.textContent = "校验并导入"; }
+  if (b) b.removeAttribute("disabled");
   if (!r || r.ok === false){
+    if (b) b.textContent = canPrev ? "校验并预览" : "校验并导入";
     if (m) m.textContent = (r && r.msg) ? String(r.msg) : "导入失败，稍后再试";
     return;
   }
-  if (m) m.textContent = "已导入，重启 AstrBot 后生效" + (r.msg ? "（" + r.msg + "）" : "");
+  var extra = r.warnings && r.warnings.length ? "；注意：" + r.warnings.join("；") : "";
+  if (m) m.textContent = "已导入，重启 AstrBot 后生效" + (r.msg ? "（" + r.msg + "）" : "") + extra;
   extToast("已导入，重启 AstrBot 后生效");
+  CFG.impOk = false; CFG.impText = "";
+  if (b) b.textContent = "校验并预览";
   cfgPaint();
   setTimeout(function(){ try { cfgImportClose(); } catch (e) {} }, 1200);
 }

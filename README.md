@@ -13,9 +13,9 @@
 | 控制台标题 | **烛之控制台** |
 | 安装包 | **随 Release 发布** —— 每次发布同时上传全量包（约 581 MB）与增量包（约 25 MB），正文附字节数与 SHA-256；构建方法见 [docs/BUILD.md](docs/BUILD.md) |
 | 包名 | `zhuxin.astrbot`（1.2.1 及更早为 `com.termux`） |
-| 安装包哈希 | 全量包 `AstrBot-1.3.5-beta.6-arm64.apk`，`609,562,514 B`，SHA-256 `97C90E420E6BD0E69C046EEEFDF34F8A5D6DE12177CDEF279EC224226AB4DFC2`；增量包 `AstrBot-1.3.5-beta.6-arm64-update.apk`，`26,550,159 B`，SHA-256 `DE241B014F5BB5C5F4A36FA9AD60B63622DA1A6F0E3CD03935347F08D4855B1C` |
-| 当前版本 | **v1.3.5-beta.6（测试版）**（versionCode `10305`，可直接覆盖 1.3.5 全系（含 1.3.5 正式版）、1.3.4 正式版与 1.3.4-beta.1 … beta.10、1.3.3 正式版、1.3.3-beta.10 … beta.1 或 1.3.2 安装） |
-| Release | [v1.3.5-beta.6](https://github.com/Zxin-Pro/astrbot-candle/releases/tag/v1.3.5-beta.6)（2026-11-04；源码 tag + 全量包 / 增量包） |
+| 安装包哈希 | 全量包 `AstrBot-1.3.5-beta.7-arm64.apk`，`609,578,898 B`，SHA-256 `EA3D59B4EDB3A9B3302FBBC202C899CE018504B58666D17CAC4F579BC4D6F044`；增量包 `AstrBot-1.3.5-beta.7-arm64-update.apk`，`26,566,543 B`，SHA-256 `147AD0C87F0198A08E5B652556F0011AB9C906A8B757DB0C9E4271308B833330` |
+| 当前版本 | **v1.3.5-beta.7（测试版）**（versionCode `103057`，可直接覆盖 1.3.6-beta.1（`10306`）、1.3.5 全系（含 1.3.5 正式版）、1.3.4 全系、1.3.3 全系或 1.3.2 安装；`versionCode` 规则见 [docs/VERSIONING.md](docs/VERSIONING.md)） |
+| Release | [v1.3.5-beta.7](https://github.com/Zxin-Pro/astrbot-candle/releases/tag/v1.3.5-beta.7)（2026-11-04；源码 tag + 全量包 / 增量包） |
 | 签名材料 | **不入库、不公开**：keystore 与签名证书只在作者本机，仓库历史与 Release 资产都不包含 |
 | 安全重制 | 2026-10-29 全量包已替换（旧包镜像曾含运行期配置与凭据）；beta.4 与 1.3.4 均已重制，28 个旧全量包已下架，处置见 [安全重制说明](docs/SECURITY-REBUILD-b4.md) |
 | 项目地址 | [github.com/Zxin-Pro/astrbot-candle](https://github.com/Zxin-Pro/astrbot-candle) |
@@ -30,7 +30,9 @@
 **AstrBot烛版** 是一个 Android 应用，它把一整套「QQ 机器人运行环境」打包成了一次安装：
 
 - 打开应用 → 自动在手机里建立一个 **Ubuntu 24.04 的 proot 沙盒**（无需 root、无需刷机、无需 Termux 命令行）；
-- 在沙盒里自动部署 **Linux QQ 3.2.34-53644** + **NapCat v4.18.38** + **AstrBot v4.28.2**；
+- 在沙盒里自动部署 **Linux QQ 3.2.34-53644** + **NapCat v4.18.38** + **AstrBot v4.28.2**
+  （这三个是离线镜像里**内置**的版本，也写在 `build/opt/qqbot/common.sh` 的 `QQBOT_QQ_VER` / `QQBOT_NAPCAT_VER` / `QQBOT_ASTRBOT_VER` 里当回退值；
+  在线部署时 `steps/60-astrbot.sh` 与 `steps/50-napcat.sh` 会先问上游最新版，问到就装最新 —— 4.29.1 是作者机上**在线升级后**的实测值，不是镜像里的内置版本，两者别混）；
 - 三者**出厂即预接线**：NapCat 通过反向 WebSocket 连到 AstrBot 的 aiocqhttp 平台（`ws://127.0.0.1:6199/ws`）；
 - 用户界面是一个**本地 HTML 控制台**（WebView 加载 `file:///android_asset/qqbot/index.html`），有 **主页 / 机器人 / 日志 / 更多** 四个页签（1.3.4-beta.5 起底栏滑条划到哪页就切到哪页，1.3.4-beta.6 起按钮统一 22px 大圆角；1.3.4-beta.7 起删掉「插件」页签与整个插件页，插件改在 AstrBot 自己的 WebUI 里管；1.3.4-beta.8 起 Android 16 上常驻通知变成带百分比的状态栏胶囊，加载转圈也不再被拉成长条；1.3.4-beta.9 起灵动岛整套删除，换成一条真正的前台常驻通知 —— 标题跟状态走、运行中挂系统计时器、启动中挂确定进度条、被系统从通知栏清掉会自己重新挂回前台，「更多 → 前台常驻」能看四行只读状态并一键重挂；1.3.4-beta.10 起「模型用量」卡的「粗估花费」可以点开，自己填输入 / 缓存命中 / 输出三个单价（元/百万 token），面板里同时给出输入与缓存命中的拆分和缓存命中率），**1.3.4 正式版**把 1.3.4 的十个测试版（beta.1 … beta.10）合并发布；扫码、开关服务、看日志、改端口全在界面里点。**1.3.5-beta.1** 起新增分层看门狗（沙盒 / NapCat / AstrBot 三层分开探、只重启掉的那层）、崩溃现场快照、低电高温保护阈值、分级告警中心（含通知内直接操作与告警升级）、周报、Provider 体检、桌面图标长按菜单、性能面板与一键反馈包。**1.3.5-beta.2** 起再加换机迁移（只搬配置的小包）、系统级升级（Ubuntu / AstrBot / NapCat 三条独立通道）、插件中心（插件市场 + 可视化配置 + 热重载）、桌面小组件、背景图 v2（毛玻璃强度 / 遮罩 / 按页背景；1.3.5-beta.3 已下线）、自启动检测与充电高性能；同时把默认接口地址换成 `https://la.worldcodes.online/v1`，修好日志页二维码出不来的问题，并下线「更多」页的反馈包。**1.3.5-beta.3** 起背景图 v2 下线（原有背景图与玻璃透明度保留），「设置」页整体并入「更多」页并按 7 组重排（顶部有快捷跳转），顶栏齿轮位置换成「上传错误报告」；同时修好 NapCat 版本被误读成 QQ 9.x 的问题，并把沙盒空间预留提高到部署 3 GB / 续跑 1 GB。**1.3.5-beta.4** 起「更多」页收成 7 个可折叠组（关于两卡置顶、默认只展开运行状态），更多页去掉进场动画，底栏滑块只过渡 `transform`，日志页二维码按当前实例现算登录态（多实例不再找错码，扫码成功后自动收窗）。**1.3.5-beta.5** 起二维码判定再收紧：实例目录里的 QQ 不可执行时不读旧实例的码，只有当前实例才回退共享 `/opt/QQ`；扫码后按实例的 `.qqbot-start` 标记判断新旧，配置 mtime 与二维码相同也按未登录处理；主码与备码取更新的一张，0 字节 / 超过 8MB 的码跳过，读取失败返回明确原因。构建侧把 `.tar.xz` / `.zip` / 超大条目改成 STORED（不再被 DEFLATE 撑大 170 KB），新增 `tools/verify_bundle_entry.py` 核对包内 `BUNDLE_SIZE` 与架构；界面补上弹窗 Esc、白字按钮对比度、200% 字号底栏与长文本换行，动效补上 reduce 下的转圈、折叠过渡和底栏连点回弹。
 - 从 **1.3.0** 起：**界面整体换成 iOS 液态玻璃风**，提供跟随系统 / 浅色 / 深色三档主题，以及 8 套强调色、8 套背景色调、6 套渐变预设和 0–100 的玻璃透明度滑块（全部记在 localStorage，重开保留），「外观」卡从「诊断信息」折叠搬到「更多」页顶层；毛玻璃只留在顶栏、底栏胶囊与弹窗遮罩，卡片不模糊，静止 CPU 仍为 0%。左上角图标跟随登录 QQ 号头像（12 小时缓存，未登录回落原图标），「更多 → 外观」可把带头像的快捷方式钉到桌面；顶栏「烛之控制台」支持双击改名（最长 16 字）。访问地址卡的 Token / 账号 / 密码改成读 NapCat 与 AstrBot 的真实配置文件，找不到时显示 —；清单再删 VIBRATE、桌面小部件与快捷设置磁贴，普通权限只剩 6 条，电池优化改走系统总列表。
@@ -402,7 +404,14 @@ open ios/AstrBotIOS.xcodeproj        # 选个 Team 就能跑模拟器
 
 ## 版本号制度
 
-本项目采用 **语义化版本号**：`MAJOR.MINOR.PATCH`，对应的 Android `versionCode = MAJOR*10000 + MINOR*100 + PATCH`。
+本项目采用 **语义化版本号**：`MAJOR.MINOR.PATCH`（测试版为 `MAJOR.MINOR.PATCH-beta.N`，N=1..8）。
+`versionCode` 自 1.3.5-beta.7 起按下面的公式换算，并强制单调递增（详见 [docs/VERSIONING.md](docs/VERSIONING.md)）：
+
+```
+base   = MAJOR*10000 + MINOR*100 + PATCH     # 历史映射：1.3.5 -> 10305
+预发布 = base*10 + N                          # 1.3.5-beta.7 -> 103057
+正式版 = base*10 + 9                          # 1.3.5 -> 103059
+```
 
 | 位 | 什么时候 +1 | 例子 |
 | --- | --- | --- |
@@ -410,6 +419,11 @@ open ios/AstrBotIOS.xcodeproj        # 选个 Team 就能跑模拟器
 | **MINOR**（0.X.0） | 新增功能 | 1.1.0 |
 | **PATCH**（0.0.X） | 修 bug、文案、性能 | 1.0.1 |
 
-当前版本：**versionName 1.3.5-beta.6，versionCode 10305**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本：**versionName 1.3.5-beta.7，versionCode 103057**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
 
-版本号的唯一来源是仓库根目录的 `VERSION` 文件（内容形如 `1.0.2`），`build-ui.ps1` 打包时自动换算成 `versionCode` 写进 APK。
+版本号的唯一来源是仓库根目录的 `VERSION` 文件（内容形如 `1.3.5-beta.7`），`build-ui.ps1` 打包时自动换算成
+`versionCode` 写进 APK，并用 `versionCode.floor`（记录已发布的最大 code 与最后一次发布的版本名）拦住任何回退：
+新 code 必须严格更大、版本名不得倒退，否则构建直接失败。
+
+> 为什么要有这道闸：1.3.6-beta.1 撤回后重新发 1.3.5-beta.6，两版 code 分别是 10306 与 10305，
+> 装过 10306 的设备无法覆盖安装、只能卸载重装。新规则保证这种情况不再出现。
