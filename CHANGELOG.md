@@ -31,6 +31,7 @@
 
 ### 修复
 
+- **看门狗不再整层重启 NapCat**（QqbotLayers.java）：旧版探针取的是 `onebotPort`（6199）——那是 AstrBot 侧的 WS 监听口，NapCat 只是客户端连上去，于是 AstrBot 一崩就被判成「NapCat 掉线」；而重启走 `restart-svc.sh` 的 napcat 分支，needle 是 `/opt/QQ` 与 `/opt/qqbot-inst/`，一次会杀掉**全部实例**的 QQ，5 秒内多号同时重登正好踩在 run-napcat.sh 自己写的封号风险上。现在探针改 `napcatPort`（默认 6099，NapCat 自己的 HTTP/WebUI 服务），且 NapCat 层不再自动整层重启，实例级拉起交回 run-napcat.sh 的 3 秒主循环（按实例 pid 判定，只拉掉线的那个）。
 - **AstrBot 自己不通不再连坐 NapCat**：每轮体检先探 AstrBot 端口（DEFAULT_ASTR=6185，300 ms 超时），不通就整轮标 unknown、不计数、不重启 —— 避免「AstrBot 挂了却把 NapCat 重启一遍」。
 - **手动关闭与未登录不再被判成断连**：新增 offSwitch()（cache/svc/napcat.off 或 cache/svc/<id>.off 存在即 unknown）与 loginState()（按 resources/app/app_launcher/napcat/config 下 napcat_<uin>.json / onebot11_<uin>.json 的 mtime 判断：有配置目录但没有 uin、或 cache/qrcode.png 比 uin 新，判「还没登录」，先不重连；路径漂移时返回 -1 放行，交给端口与日志继续判）。
 - **历史日志误判**：日志扫描改成 mtime 15 分钟窗口 + 行内时间戳不早于本次会话（2 秒余量）+ 2048 行 FNV-1a hash 去重 + 长度变短判轮转，重启后不会再拿上一次运行的报错当新断连。
@@ -46,7 +47,7 @@
 
 ### 说明
 
-- 全量包 609,578,898 B（约 581 MB），SHA-256 `EA3D59B4EDB3A9B3302FBBC202C899CE018504B58666D17CAC4F579BC4D6F044`；增量包 26,566,543 B（约 25 MB），SHA-256 `147AD0C87F0198A08E5B652556F0011AB9C906A8B757DB0C9E4271308B833330`；两包 versionName / versionCode 一致（1.3.5-beta.7 / 103057），签名与此前所有版本同证书，可直接覆盖。
+- 全量包 609,578,898 B（约 581 MB），SHA-256 `F09BC4737FFFBC0E7FFC3B87B39642CD02CEDFDA8A2E9232EB2AFF1912B915F7`；增量包 26,566,543 B（约 25 MB），SHA-256 `2B14CCEE488F614515FF7701B53FDFB7238AF48F587FAE5E7EEFE1709FE2261E`；两包 versionName / versionCode 一致（1.3.5-beta.7 / 103057），签名与此前所有版本同证书，可直接覆盖。
 - 门禁 out/_b1357_release_gate.py：包名 / versionName + versionCode / 签名 v2 + v3 / zipalign -c 4 / dex 数量 / 关键类与桥名 / 包内 index.html 与源码逐字节一致 / bundle 与 scripts 资产 / 文档记账。
 - javac 全量 112 个源文件 rc=0；node --check 两段内联脚本通过。
 - 覆盖升级实测（MuMu 模拟器，Android 15）：先装已撤回的 1.3.6-beta.1（10306），再 `adb install -r` 本版 609,578,898 B 全量包 → **Success，未卸载**；dumpsys 复核 versionName=1.3.5-beta.7 / versionCode=103057，firstInstallTime 保持原值（应用数据未清）。「装过 10306 的设备可直接升级」由实测证明，不需要卸载重装。

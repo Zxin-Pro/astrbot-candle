@@ -13,7 +13,7 @@
 | 控制台标题 | **烛之控制台** |
 | 安装包 | **随 Release 发布** —— 每次发布同时上传全量包（约 581 MB）与增量包（约 25 MB），正文附字节数与 SHA-256；构建方法见 [docs/BUILD.md](docs/BUILD.md) |
 | 包名 | `zhuxin.astrbot`（1.2.1 及更早为 `com.termux`） |
-| 安装包哈希 | 全量包 `AstrBot-1.3.5-beta.7-arm64.apk`，`609,578,898 B`，SHA-256 `EA3D59B4EDB3A9B3302FBBC202C899CE018504B58666D17CAC4F579BC4D6F044`；增量包 `AstrBot-1.3.5-beta.7-arm64-update.apk`，`26,566,543 B`，SHA-256 `147AD0C87F0198A08E5B652556F0011AB9C906A8B757DB0C9E4271308B833330` |
+| 安装包哈希 | 全量包 `AstrBot-1.3.5-beta.7-arm64.apk`，`609,578,898 B`，SHA-256 `F09BC4737FFFBC0E7FFC3B87B39642CD02CEDFDA8A2E9232EB2AFF1912B915F7`；增量包 `AstrBot-1.3.5-beta.7-arm64-update.apk`，`26,566,543 B`，SHA-256 `2B14CCEE488F614515FF7701B53FDFB7238AF48F587FAE5E7EEFE1709FE2261E` |
 | 当前版本 | **v1.3.5-beta.7（测试版）**（versionCode `103057`，可直接覆盖 1.3.6-beta.1（`10306`）、1.3.5 全系（含 1.3.5 正式版）、1.3.4 全系、1.3.3 全系或 1.3.2 安装；`versionCode` 规则见 [docs/VERSIONING.md](docs/VERSIONING.md)） |
 | Release | [v1.3.5-beta.7](https://github.com/Zxin-Pro/astrbot-candle/releases/tag/v1.3.5-beta.7)（2026-11-04；源码 tag + 全量包 / 增量包） |
 | 签名材料 | **不入库、不公开**：keystore 与签名证书只在作者本机，仓库历史与 Release 资产都不包含 |

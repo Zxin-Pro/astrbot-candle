@@ -265,16 +265,19 @@ public final class QqbotLayers {
             set(NAPCAT_LAYER, "unknown", "已手动关闭（组件开关）", 0, -1);
             return;
         }
-        int port = portFromBots(qq, "onebotPort", 6199);
+        // 探针必须是 NapCat 自己的端口（napcatPort，默认 6099 的 WebUI/HTTP 服务）。
+        // 旧版探的是 onebotPort —— 那是 AstrBot 侧的 WS 监听口，NapCat 只是客户端连上去，
+        // 于是 AstrBot 一崩就会被判成「NapCat 掉线」，再整层重启把所有实例的 QQ 杀一遍。
+        int port = portFromBots(qq, "napcatPort", 6099);
         NAPCAT_LAYER.port = port;
         int ms = tcpMs(port, 450);
         if (ms >= 0) {
             long pid = findPid("run-napcat.sh");
-            set(NAPCAT_LAYER, "ok", "OneBot 端口 " + port + " 正常（" + ms + " ms）", pid > 0 ? pidAgeMin(pid) : 0, ms);
+            set(NAPCAT_LAYER, "ok", "NapCat 端口 " + port + " 正常（" + ms + " ms）", pid > 0 ? pidAgeMin(pid) : 0, ms);
             return;
         }
         long pid = findPid("run-napcat.sh");
-        String hint = "OneBot 端口 " + port + " 没响应";
+        String hint = "NapCat 端口 " + port + " 没响应";
         if (pid > 0) {
             hint += "（进程还在，可能卡死）";
         } else {
@@ -518,6 +521,14 @@ public final class QqbotLayers {
     }
 
     private static void maybeRestart(File filesDir, Layer L, long now) {
+        if (NAPCAT.equals(L.id)) {
+            // NapCat 这一层不自动重启：restart-svc.sh 的 napcat 分支按 needle 杀的是
+            // /opt/QQ 与 /opt/qqbot-inst/，一次会带走全部实例的 QQ，5 秒内多号同时重登
+            // 会触发风控（run-napcat.sh 自己也写了这条警告）。实例级的拉起交给
+            // run-napcat.sh 的 3 秒主循环，它按实例 pid 判断、只拉起掉线的那个。
+            log(filesDir, "NapCat 层不自动重启：整层重启会误杀全部实例，交给 run-napcat.sh 逐实例拉起");
+            return;
+        }
         if (L.autoTries >= MAX_AUTO) {
             if (!L.capNotified) {
                 L.capNotified = true;
