@@ -41,9 +41,11 @@ base       = MAJOR*10000 + MINOR*100 + PATCH      // 历史映射：1.3.5 -> 103
 仓库根目录的 `versionCode.floor` 记录「世界上已经存在过的最高版本」：
 
 ```
-code=10306          # 已发布到用户手里的最大 versionCode（含已撤回但装到过设备的）
-name=1.3.5-beta.6   # 最后一次正式对外发布的 versionName
+code=103057         # 已发布到用户手里的最大 versionCode（含已撤回但装到过设备的）
+name=1.3.5-beta.7   # 最后一次正式对外发布的 versionName
 ```
+
+上面这段就是仓库里 `versionCode.floor` 的**当前实际内容**（1.3.5-beta.7 发布后已同步）。下次构建必须是 `> 103057` 的 code、且版本名不低于 `1.3.5-beta.7`，比如 1.3.5-beta.8（`103058`）、1.3.5 正式版（`103059`）、1.3.6-beta.1（`103061`）。
 
 `build-ui.ps1` 在写 `apktool.yml` 之前强制校验两条：
 

@@ -24,7 +24,7 @@
 ### 新增
 
 - **版本号制度（docs/VERSIONING.md）**：base = MAJOR*10000 + MINOR*100 + PATCH，预发布 base*10 + N（beta 序号 1…8），正式版 base*10 + 9。1.3.5-beta.7 → 103057，1.3.5 正式版 → 103059，1.3.6 → 103069。旧公式下一串 beta 共用同一个 versionCode（1.3.5-beta.5 与 beta.6 都是 10305），正是 1.3.6-beta.1 撤回后无法回退的根因。
-- **versionCode.floor 与构建闸门**：仓库根新增 versionCode.floor（code=10306 / name=1.3.5-beta.6，即「已经发到用户手里、装到过设备的最高版本」）。build-ui.ps1 算完 versionCode 后先比 floor：新 versionCode 必须严格大于 floor 的 code，版本名数字段也不得低于 floor 的 name，违反就 exit 1；确实需要复用（改文案重出同版本）时显式加 -AllowVersionCodeReuse。
+- **versionCode.floor 与构建闸门**：仓库根新增 versionCode.floor（code=10306 / name=1.3.5-beta.6，即「已经发到用户手里、装到过设备的最高版本」）。build-ui.ps1 算完 versionCode 后先比 floor：新 versionCode 必须严格大于 floor 的 code，版本名数字段也不得低于 floor 的 name，违反就 exit 1；确实需要复用（改文案重出同版本）时显式加 -AllowVersionCodeReuse。该文件在 beta.7 发版后已按检查单同步为 `code=103057` / `name=1.3.5-beta.7`（初建值是 code=10306 / name=1.3.5-beta.6）。
 - **配置备份升级为带 manifest 的容器**（AndroidCfg）：备份文件从「裸 cmd_config.json」变成 format=astrbot-candle-cfg / formatVersion=1 的容器，内含 files（state/cmd_config.json、state/prefs.json、bots.json 三份）与逐文件 checksums（紧凑 JSON 字节的 SHA-256）、app、createdAt、skipped。
 - **validate() 与 importPreview()**：导入前先把 JSON 解析、结构校验、和当前值做 diff（每个文件的 added / removed / changed 明细，最多 20 处，超出标 truncated），并把 token / password / secret / apikey / uin / qq 这类键的值打码；前端因此可以「校验并预览 → 确认导入」两段式操作，预览这一步不写盘。
 - **自动重连多实例化**（NetReconnect.java 683 → 1235 行）：按 bots.json 逐实例维护 napcatPort / onebotPort / 状态，reconnect.json 新增 instances[]（at 为 epoch 秒，与顶层同单位）；只有全部在线实例都判为 unlinked 才触发重启，部分在线时取 unknown 并在原因里写「有实例仍在线，已暂停自动重连以免打断其它实例」。
