@@ -17,6 +17,34 @@
 
 ---
 
+## [1.3.6-beta.1] - 2026-11-04
+
+> **测试版**：把沙盒从「黑盒」打开一角 —— 新增故障排查页、运行日志导出、配置备份 / 导入导出、系统层级提示词编辑，以及 NapCat 断连自动重连。`versionCode` `10306`，可直接覆盖 1.3.5 全系（含 1.3.5 正式版）与更早安装。
+
+### 新增
+
+- **故障排查页**（更多 → 故障排查；顶部胶囊第 8 个「排查」一跳直达）：6 条按现象组织的排查顺序（NapCat 掉线 / QQ 未登录、服务被系统杀掉、端口被占、磁盘满、嵌入模型卡住、部署卡在中途），每条给可一键复制的命令（`ports.sh table`、`diagnose.sh netcheck --text`）与这台手机上真实的日志路径 `~/.qqbot/cache/logs/*.log`、`~/.qqbot/logs/*.log`；未部署完成也能打开。
+- **导出运行日志**：新增 `AndroidCfg.exportLogs()`，把 `~/.qqbot/logs` 与 `state/*.json` 打成一个 zip（上限 20 MB，超限标 `truncated`）写到「下载/AstrBot烛版/」，失败回落 `filesDir/exports`；卡片显示文件名 / 大小 / 文件数，路径可点复制，也能走系统分享发出去。
+- **配置备份与恢复**（更多 → 数据与存储 → 配置与备份）：`backupNow` / `listBackups` / `restore`，备份落 `state/cfg-bak/cfg-YYYYMMDD-HHMMSS.json`（文件名白名单 `cfg-[0-9]{8}-[0-9]{6}\.json`），**只保留最近 5 份**；恢复走两步确认，且恢复前自动把当前这份再备份一次。
+- **配置导入导出**：`exportCfg` 把 `cmd_config.json` 复制到「下载/AstrBot烛版/」；`importText` 在弹窗里粘贴 JSON，先校验（必须是 JSON 对象且含 `provider` / `dashboard` / `platform` 等段）再覆盖，非法输入只报错不落盘。
+- **系统层级提示词编辑**（更多 → 外观与模型 → 系统提示词）：`getPrompt` / `setPrompt` / `resetPrompt`，存 `state/prefs.json` 的 `sysPrompt`（上限 8000 字），空值回落出厂「烛心」人格（220 字）；保存时尽力写回 `data_v4.db` 的 persona，并提供「恢复默认」。
+- **NapCat 断连自动重连**（新增 `NetReconnect.java`）：挂在 `KeepAlive.rescue` 每 2 分钟的体检节拍上，**不新增唤醒**；三态 `linked` / `unlinked` / `unknown`，断连判定走日志增量游标（`ECONNRESET` / `connection closed` / `心跳超时` / `登录失效` / `账号被踢` …，恢复信号是 `WebSocket connected` / `登录成功` / `已连接` / `重连成功` …），`unlinked` 粘滞；重连只打 `QqbotGuardService.ACTION_RESTART`（复用 `GuardRestart` 的 stop → start）；退避 3s → 10s → 30s → 60s → 60s，10 分钟窗口最多 5 次，到上限发严重通知提示手动处理；状态落 `state/reconnect.json`（`state` / `count` / `lastAt` / `lastReason` / `nextAt` / `givenUp`），只在状态跃迁时通知。
+
+### 变更
+
+- **系统提示词不再写死**：`AstrCfg.personaPrompt()` 与「保存人格」两条路径改读新增的 `SysPrompt.get()`，默认值仍是出厂人格，升级用户读到的还是原来那段文字。
+- **新桥 `AndroidCfg`**：新增 `QqbotCfgBridge.java`（10 个方法，全部同步返回 JSON、内部兜底不抛异常、无 lambda / 匿名类），`QqbotActivity` 注册后 JS 接口从 21 个涨到 22 个。
+- **前端继续防御式调桥**：新卡片全部走 `xfHas` / `xfCall`；老安装包缺桥时整体降级成「这个安装包还不支持（升级后可用）」，六条 FAQ 是静态文案，没装完也能看。
+- **取数时机**：新卡片不参与首页轮询，只在切到「更多」页或从折叠状态点开该组时取一次，避免后台空转。
+- `docs/BUILD.md` 的版本表、构建记账与产物名同步到 1.3.6-beta.1 / `10306`。
+
+### 说明
+
+- 全量包 `609,562,514 B`，SHA-256 `0E9ED8DE0FA52E6B3744C582BE736F388EE34CD65AD8AE193493771B47F1A140`；增量包 `26,550,159 B`，SHA-256 `AA8EB093B9CC3EDF94DFE72F04277422F548C7CB89E474DE254BD956AF5E248B`。
+- 门禁 `out/_b1361_release_gate.py` 逐项校验：包名 / `versionName` + `versionCode` / 签名 v2 + v3 与证书 / `zipalign -c 4` / dex 数量 / 关键类与 22 个桥名 / 包内 `index.html` 与源码逐字节一致 / bundle 与 scripts 资产 / 四份文档记账。
+- 设备验证（MuMu，Android 15，x86_64 + arm64 转译）：增量包覆盖安装 1.3.3-beta.5（`versionCode 10303` → `10306`）无痛升级，控制台正常加载；CDP 探测确认 `AndroidCfg` 10 个方法在、51 个新元素 id 在、故障排查 6 条、提示词读写与恢复默认往返成功（回显「已保存，人格提示词已同步进数据库」）、备份 1 份、导出配置 8,286 B、导出日志 zip 8 文件 12,134 B、非法 JSON 被拒；`state/reconnect.json` 已按预期写入 `{"state":"unknown","count":0,...,"givenUp":false}`。
+- `javac` 全量 112 个源文件 rc=0；`node --check` 两段内联脚本通过。
+- 本版未包含：需求 2（前端实时反映后端状态、CPU / 内存 / 嵌入模型运行状态展示）与需求 5 的首启权限引导（电池优化 / 自启动 / 多任务锁定），留到下一测试版。
 ## [1.3.5-beta.5] - 2026-10-29
 
 > **测试版**：这一版不新增功能，聚焦二维码多实例边界、安装包镜像压缩方式、首启解包失败清理，以及一批无障碍 / 200% 字号 / reduce 动效收口。`versionCode` 仍是 `10305`，可直接覆盖 1.3.5-beta.4 / beta.3 / beta.2 / beta.1、1.3.4 全系。

@@ -11,11 +11,11 @@
 | --- | --- |
 | 应用名 | **AstrBot烛版** |
 | 控制台标题 | **烛之控制台** |
-| 安装包 | `AstrBot-1.3.5-beta.5-arm64.apk`（`609,542,034`，约 581 MB；**自带装好的运行环境镜像，第一次部署就是解压它，全程不用联网**） |
+| 安装包 | `AstrBot-1.3.6-beta.1-arm64.apk`（`609,562,514`，约 581 MB；**自带装好的运行环境镜像，第一次部署就是解压它，全程不用联网**） |
 | 包名 | `zhuxin.astrbot`（1.2.1 及更早为 `com.termux`） |
-| 当前版本 | **v1.3.5-beta.5（测试版）**（versionCode `10305`，可直接覆盖 1.3.5-beta.4 / beta.3 / beta.2 / beta.1、1.3.4 正式版、1.3.4-beta.10 / beta.9 / beta.8 / beta.7 / beta.6 / beta.5 / beta.4 / beta.3 / beta.2 / beta.1、1.3.3 正式版、1.3.3-beta.10 … beta.1 或 1.3.2 安装） |
-| 安装包 SHA-256 | `16D416D908386D045564A5E3B7998BD557BA25EB8CC41B502A1D43639C9CA5CB` |
-| Release | [v1.3.5-beta.5](https://github.com/Zxin-Pro/astrbot-candle/releases/tag/v1.3.5-beta.5)（2026-10-29 发布；测试版，勾了 pre-release，不进 latest） |
+| 当前版本 | **v1.3.6-beta.1（测试版）**（versionCode `10306`，可直接覆盖 1.3.5 全系（含 1.3.5 正式版）、1.3.4 正式版与 1.3.4-beta.1 … beta.10、1.3.3 正式版、1.3.3-beta.10 … beta.1 或 1.3.2 安装） |
+| 安装包 SHA-256 | `0E9ED8DE0FA52E6B3744C582BE736F388EE34CD65AD8AE193493771B47F1A140` |
+| Release | [v1.3.6-beta.1](https://github.com/Zxin-Pro/astrbot-candle/releases/tag/v1.3.6-beta.1)（2026-11-04 发布；测试版，勾了 pre-release，不进 latest） |
 | 签名证书 SHA-256 | `1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953`（v2+v3） |
 | 安全重制 | 2026-10-29 全量包已替换（旧包镜像曾含运行期配置与凭据）；beta.4 与 1.3.4 均已重制，28 个旧全量包已下架，处置见 [安全重制说明](docs/SECURITY-REBUILD-b4.md) |
 | 项目地址 | [github.com/Zxin-Pro/astrbot-candle](https://github.com/Zxin-Pro/astrbot-candle) |
@@ -99,7 +99,7 @@
 1. **先卸载 1.2.1 及更早的 AstrBot烛版**。
    1.2.1 及更早的包名是 `com.termux`，1.2.2 改成了 `zhuxin.astrbot`，**不能直接覆盖安装**。卸载会清掉旧包名下的沙盒数据，请先在旧版「更多 → 备份与恢复」导出备份，装好 1.2.2（或更新版本）后再导回。
    官方 Termux / 应用商店版 / F-Droid 版与 1.2.2 起的包名不同，**不再冲突**，可以共存。
-2. 到官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的下载页（或 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest)）下载 `AstrBot-1.3.5-beta.5-arm64.apk`（只发一个包，模拟器也能直接装；文件名后缀就是版本号），传到手机，点击安装。
+2. 到官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 的下载页（或 [Releases 页面](https://github.com/Zxin-Pro/astrbot-candle/releases/latest)）下载 `AstrBot-1.3.6-beta.1-arm64.apk`（只发一个包，模拟器也能直接装；文件名后缀就是版本号），传到手机，点击安装。
 3. 安装时系统会提示「**未知来源应用**」，需要允许安装。
    - **小米 / Redmi（HyperOS）用户**：如果被拦下、提示「应用缺少隐私政策」且没有「继续安装」，
      这是小米安装器的风险提示，不是包坏了。关掉手机管家的「安装监控 / 安全守护 / 应用防护」、
@@ -410,6 +410,6 @@ open ios/AstrBotIOS.xcodeproj        # 选个 Team 就能跑模拟器
 | **MINOR**（0.X.0） | 新增功能 | 1.1.0 |
 | **PATCH**（0.0.X） | 修 bug、文案、性能 | 1.0.1 |
 
-当前版本：**versionName 1.3.5-beta.5，versionCode 10305**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本：**versionName 1.3.6-beta.1，versionCode 10306**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 版本号的唯一来源是仓库根目录的 `VERSION` 文件（内容形如 `1.0.2`），`build-ui.ps1` 打包时自动换算成 `versionCode` 写进 APK。

@@ -200,16 +200,26 @@ public class KeepAlive {
         try {
             File filesDir = c.getFilesDir();
             if (closedByUser(c) || !QqbotGuardService.enabled(c)) return;
-            if (!QqbotShell.bootstrapReady(filesDir)) return;
+            if (!QqbotShell.bootstrapReady(filesDir)) {
+                NetReconnect.unavailable(c, "Termux 环境还没就绪");
+                return;
+            }
             File qq = QqbotShell.qqbotDir(filesDir);
-            if (!new File(qq, "deploy.done").isFile()) return;
+            if (!new File(qq, "deploy.done").isFile()) {
+                NetReconnect.unavailable(c, "沙盒还没部署完");
+                return;
+            }
             // 正在部署 / 解压镜像时别插队：那会儿沙盒本来就还没起，去重启只会打断部署。
-            if (QqbotShell.pidAlive(new File(qq, "deploy.pid"), null)) return;
+            if (QqbotShell.pidAlive(new File(qq, "deploy.pid"), null)) {
+                NetReconnect.unavailable(c, "正在部署，先不判定连接");
+                return;
+            }
             File pid = new File(qq, "supervisor.pid");
             if (!QqbotShell.pidAlive(pid, "proot")) {
                 StringBuilder n = new StringBuilder();
                 boolean ok = QqbotShell.startSandbox(filesDir, n);
                 android.util.Log.i("QqbotKeepAlive", "心跳发现沙盒没在跑：" + (ok ? "已拉起" : "拉起失败 " + n));
+                NetReconnect.unavailable(c, "沙盒没在运行，暂时判定不了连接");
                 return;
             }
             int port = botPort(c);
@@ -217,7 +227,10 @@ public class KeepAlive {
             // 息屏模式下不再要求「应用处于后台」：黑屏那一刻 Activity 可能还是 RESUMED，
             // 但用户根本看不见面板，卡住的沙盒得照常救回来。阈值也一并收紧。
             boolean boost = ScreenMode.boosted(c);
-            if ((boost || background(c)) && !httpAlive(port)) {
+            // 只有这两种情形才做 HTTP 探活（用户正开着面板时不打断冷启动），
+            // 探过的结论留给下面的连接健康检查复用，同一个端口一轮只连一次。
+            boolean probe = boost || background(c);
+            if (probe && !httpAlive(port)) {
                 int failMax = boost ? FAIL_MAX_OFF : FAIL_MAX;
                 long gap = boost ? RESTART_GAP_OFF_MS : RESTART_GAP_MS;
                 SharedPreferences p = pref(c);
@@ -235,9 +248,16 @@ public class KeepAlive {
                 } else {
                     p.edit().putInt(K_FAIL, fail).apply();
                 }
+                // 端口都不通时不给定论：这既可能是被冻结，也可能是沙盒没起，
+                // 交给上面那套冻结重启与分层看门狗，我们只把状态记成 unknown。
+                NetReconnect.unavailable(c, "NapCat 端口没应答");
                 return;
             }
             pref(c).edit().putInt(K_FAIL, 0).apply();
+            // 连接健康检查（1.3.6-beta.1）：进程在、端口也通，QQ 那条长连接却可能早就断了。
+            // 这里不新增唤醒，只在已有的 2 分钟体检节拍里顺带判一次。
+            boolean napUp = probe || QqbotShell.portOpen(port, 300);
+            try { NetReconnect.check(c, napUp); } catch (Throwable ignored) {}
             QqbotShell.startWatchdog(filesDir, null);
         } catch (Throwable t) {
             android.util.Log.w("QqbotKeepAlive", "心跳自检异常：" + t);

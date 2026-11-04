@@ -3559,6 +3559,69 @@ button:active{ transform: scale(.97); transition-duration: 120ms; }
   nav .nav-thumb{ transition: none !important; scale: 1 !important; }
   button:active, .iconbtn:active, .mchip:active{ transform: none !important; scale: 1 !important; }
 }
+/* ============================================================================
+   1.3.6-beta.1 · 故障排查 / 配置与备份 / 系统提示词
+   ----------------------------------------------------------------------------
+   1) .tpitem：六条 FAQ，一行一个 button.tphd（44px 热区 + aria-expanded），
+      展开内容在 .tpbody，收起时用 hidden 真移出渲染树（跟折叠组同一套思路）。
+   2) code.cmd：等宽、可换行、整块可点即复制；360px 窄屏靠 break-all 兜底，
+      绝不允许横向滚出卡片。
+   3) .tparea：等宽 textarea，8 行高、可滚动，字数统计跟在下面的 .tpcount。
+   只加类，不动任何令牌：卡吃 --mi-card，块吃 --mi-inner，圆角吃 --btn-r / --btn-r-sm。
+   ============================================================================ */
+.tplist{ margin-top: 12px; padding: 0 14px; border-radius: var(--mi-inner); background: var(--fill-1); }
+.tpitem + .tpitem{ border-top: .5px solid var(--sep); }
+.tphd{
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; min-height: 44px; padding: 10px 0;
+  border: 0; border-radius: 0; background: none;
+  text-align: left; font-size: 13px; font-weight: 560; color: var(--label);
+}
+.tphd:active{ transform: none; background: none; }
+.tpno{ flex: none; width: 16px; font-size: 11.5px; font-weight: 600; color: var(--label-3); font-variant-numeric: tabular-nums; }
+.tpt{ flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.tparw{
+  flex: none; width: 20px; height: 20px;
+  display: grid; place-items: center;
+  border-radius: 50%; background: var(--fill-2); color: var(--label-2);
+  transition: transform 220ms cubic-bezier(.22,1,.36,1);
+}
+.tparw svg{ width: 12px; height: 12px; }
+.tpitem.open .tparw{ transform: rotate(180deg); }
+.tpbody{ padding: 0 0 12px; }
+.tpbody[hidden]{ display: none; }
+.tpp{ margin: 0 0 6px; font-size: 12.5px; line-height: 1.6; color: var(--label-2); }
+.tpp:last-child{ margin-bottom: 0; }
+code.cmd{
+  display: block; margin-top: 8px; padding: 9px 11px;
+  border-radius: var(--btn-r-sm); background: var(--fill-2);
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.5;
+  color: var(--label);
+  white-space: pre-wrap; word-break: break-all;
+  -webkit-user-select: text; user-select: text;
+  cursor: pointer;
+}
+code.cmd:active{ background: color-mix(in srgb, var(--accent) 12%, var(--fill-2)); }
+code.cmd:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+.tpout{ display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; }
+.tpout code.cmd{ flex: 1 1 auto; min-width: 0; margin-top: 0; }
+.tpout button{ flex: none; }
+.tpmeta{ margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: var(--label-3); overflow-wrap: anywhere; }
+.tpfoot{ margin-top: 14px; padding-top: 12px; border-top: .5px solid var(--sep); }
+.tparea{
+  width: 100%; min-height: 168px; margin-top: 10px; padding: 10px 12px;
+  /* 字号沿用基础字段规则的 16px：低于 16px 聚焦时会被放大页面（见 input/textarea 那段） */
+  font-family: var(--mono); line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere; resize: vertical; overflow: auto;
+}
+.tpcount{
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  margin-top: 6px; font-size: 11px; color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+}
+.tpcount .bad{ color: var(--bad); }
+.cfglist{ margin-top: 10px; }
+#dlgCfgImport textarea{ min-height: 168px; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; }
 </style>
 </head>
 <body>
@@ -3911,6 +3974,7 @@ button:active{ transform: scale(.97); transition-duration: 120ms; }
       <span class="mchip" data-act="mgo" data-arg="grpNet">连接</span>
       <span class="mchip" data-act="mgo" data-arg="grpData">数据</span>
       <span class="mchip" data-act="mgo" data-arg="grpSys">系统</span>
+      <span class="mchip" data-act="mgo" data-arg="grpFix">排查</span>
     </div>
 
     <!-- 1.3.5-beta.4：两张「关于」卡置顶，默认展开、不参与折叠（用户：把关于放在更多页最上面） -->
@@ -4380,6 +4444,33 @@ button:active{ transform: scale(.97); transition-duration: 120ms; }
       </div>
     </div>
 
+    <!-- 1.3.6-beta.1 · 系统提示词（AndroidCfg.getPrompt / setPrompt / resetPrompt）：
+         改的是「烛心」人格的系统级提示词，落 state/prefs.json，并尽力同步 data_v4.db。
+         为空或超 8000 字前端先拦一道，原生侧还有同样的校验。 -->
+    <div class="card" id="pmCard">
+      <h2>系统提示词</h2>
+      <div class="hint" style="margin-top:0">这是「烛心」人格的系统级提示词，决定它怎么说话。改完在下次启动 AstrBot 时生效；为空或超过 8000 字会被拦下。</div>
+      <div id="pmBody">
+        <textarea class="tparea" id="pmText" rows="8" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="在这里修改「烛心」的系统提示词…" aria-label="系统提示词"></textarea>
+        <div class="tpcount">
+          <span id="pmState">读取中…</span>
+          <span id="pmCount">0 / 8000 字</span>
+        </div>
+        <div class="btns" style="margin-top:10px">
+          <button class="small primary" data-act="pmsave" id="pmSave">保存</button>
+          <button class="small" data-act="pmresetask" id="pmReset">恢复默认</button>
+        </div>
+        <div class="confirm" id="pmResetConfirm" style="display:none">
+          <div class="ct">恢复默认会把当前提示词换回出厂的「烛心」人格，你改过的内容不会留副本。确定吗？</div>
+          <div class="btns" style="margin-top:8px">
+            <button class="small danger" data-act="pmresetok" id="pmResetOk">确认恢复</button>
+            <button class="small" data-act="pmresetno">取消</button>
+          </div>
+        </div>
+      </div>
+      <div class="hint" id="pmUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
+
     <div class="mgroup" id="grpNet"><span class="mgh">连接与端口</span></div>
     <!-- 局域网访问（v1.1.31）：默认只监听 127.0.0.1。开关就是一个标记文件
          ~/.qqbot/state/lan.on —— 用已有的 Android.exec() 建/删，不新增桥方法。
@@ -4516,6 +4607,47 @@ button:active{ transform: scale(.97); transition-duration: 120ms; }
     
     </div>
     </div>
+    <!-- 1.3.6-beta.1 · 配置与备份（AndroidCfg）：只管 AstrBot 的核心配置文件
+         data/cmd_config.json —— 备份 / 列出 / 恢复 / 导出 / 导入。
+         所有方法同步返回 JSON 字符串、原生侧绝不抛异常；老包没有 AndroidCfg 时
+         整卡隐藏，只留一句「这个安装包还不支持（升级后可用）」。 -->
+    <div class="card" id="cfgCard">
+      <h2><span class="dot" id="d-cfg"></span>配置与备份</h2>
+      <div class="hint" style="margin-top:0">单独给 AstrBot 的核心配置（cmd_config.json）留副本：改坏了能退回上一次，换手机能导出一份带走。</div>
+      <div id="cfgBody">
+        <div class="xfrow"><span class="xfk">配置状态</span><span class="xfv" id="cfgState">读取中…</span></div>
+        <div class="xfrow"><span class="xfk">文件大小</span><span class="xfv" id="cfgSize">—</span></div>
+        <div class="xfrow"><span class="xfk">上次修改</span><span class="xfv" id="cfgMtime">—</span></div>
+        <div class="xfrow"><span class="xfk">备份份数</span><span class="xfv" id="cfgBakCount">—</span></div>
+        <div class="xfrow"><span class="xfk">上次备份</span><span class="xfv" id="cfgLastBak">—</span></div>
+        <div class="btns" style="margin-top:10px">
+          <button class="small primary" data-act="cfgbackup" id="cfgBtnBackup">立即备份</button>
+          <button class="small" data-act="cfglist" id="cfgBtnList">查看备份</button>
+        </div>
+        <div class="btns" style="margin-top:8px">
+          <button class="small" data-act="cfgexport" id="cfgBtnExport">导出配置</button>
+          <button class="small" data-act="cfgimport" id="cfgBtnImport">导入配置</button>
+        </div>
+        <div class="xflist cfglist" id="cfgBakList" style="display:none"></div>
+        <div class="confirm" id="cfgRestoreConfirm" style="display:none">
+          <div class="ct">会用备份 <b id="cfgRestoreName">—</b> 覆盖当前配置。覆盖前会自动把现在的这份再备份一次，所以还能退回来。确定恢复吗？</div>
+          <div class="btns" style="margin-top:8px">
+            <button class="small primary" data-act="cfgrestoreok" id="cfgRestoreOk">确认恢复</button>
+            <button class="small" data-act="cfgrestoreno">取消</button>
+          </div>
+        </div>
+        <div id="cfgExportOut" style="display:none">
+          <div class="tpmeta" id="cfgExportMsg">—</div>
+          <div class="tpout">
+            <code class="cmd" id="cfgExportPath" data-act="cfgcopyexport" role="button" tabindex="0"></code>
+            <button class="small" id="cfgShareExport" data-act="cfgshare" style="display:none">分享</button>
+          </div>
+        </div>
+        <div class="tpmeta">备份只保留最近 5 份，存在应用私有目录，不占手机相册。</div>
+      </div>
+      <div class="hint" id="cfgUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
+
     <!-- 备份 / 恢复（功能 50）：恢复会覆盖沙盒与配置，破坏性大，所以点「从文件恢复」
          只展开确认区，必须再点一次「确认恢复」才真调 restorePick()——WebView 里
          confirm() 不一定被实现，照抄日志页的两步确认。 -->
@@ -4637,6 +4769,116 @@ button:active{ transform: scale(.97); transition-duration: 120ms; }
       </div>
     </div>
 
+    <div class="mgroup" id="grpFix"><span class="mgh">故障排查</span></div>
+    <!-- 1.3.6-beta.1 · 故障排查：六条最常见的问题，展开就是排查顺序 + 可复制命令。
+         整卡只有底部「导出运行日志」依赖桥（AndroidCfg.exportLogs），老包没有就置灰；
+         上面六条的正文全是静态文案，不碰任何桥，没装完也能看。
+         命令都对着真实路径写过（日志在 .qqbot/cache/logs 与 .qqbot/logs，脚本在
+         $PREFIX/opt/qqbot），脚本名或目录一改，这里要同步改。 -->
+    <div class="card" id="tpCard">
+      <h2>故障排查</h2>
+      <div class="hint" style="margin-top:0">按现象找一条，展开就是排查顺序。命令点一下即复制，粘到终端里回车就能跑；命令都在这台手机的沙盒环境里测试过，不需要 root。</div>
+      <div class="tplist" id="tpList">
+        <div class="tpitem" data-q="napcat">
+          <button class="tphd" type="button" data-act="tptoggle" data-arg="napcat" aria-expanded="false" aria-controls="tpB-napcat">
+            <span class="tpno" aria-hidden="true">1</span>
+            <span class="tpt">NapCat 掉线 / QQ 未登录</span>
+            <span class="tparw" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+          </button>
+          <div class="tpbody" id="tpB-napcat" hidden>
+            <p class="tpp">先看日志尾部：出现「登录失效 / 需要重新扫码」就是掉登录了。</p>
+            <p class="tpp">回主页重新扫一次码即可；登录数据存在 NapCat 自己的目录里，重启不会丢。</p>
+            <p class="tpp">如果同时弹出风控提示，先按风控处理，别反复重启。</p>
+            <code class="cmd" data-act="tpcopy" role="button" tabindex="0">tail -n 200 ~/.qqbot/cache/logs/napcat.log</code>
+            <code class="cmd" data-act="tpcopy" role="button" tabindex="0">ls -l ~/.qqbot/state/offline ~/.qqbot/state/risk.json 2&gt;/dev/null</code>
+          </div>
+        </div>
+        <div class="tpitem" data-q="kill">
+          <button class="tphd" type="button" data-act="tptoggle" data-arg="kill" aria-expanded="false" aria-controls="tpB-kill">
+            <span class="tpno" aria-hidden="true">2</span>
+            <span class="tpt">服务被系统杀掉</span>
+            <span class="tparw" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+          </button>
+          <div class="tpbody" id="tpB-kill" hidden>
+            <p class="tpp">症状：通知还在，消息不动；「运行状态」里两个容器都是 down。</p>
+            <p class="tpp">多半是厂商省电把后台冻结了：去「更多 → 省电策略」，按机型设为「不限制」。</p>
+            <p class="tpp">要立刻恢复就点「更多 → 重启服务」，约 40–60 秒。</p>
+            <code class="cmd" data-act="tpcopy" role="button" tabindex="0">tail -n 120 ~/.qqbot/logs/supervisor.log</code>
+            <code class="cmd" data-act="tpcopy" role="button" tabindex="0">cat ~/.qqbot/supervisor.pid</code>
+          </div>
+        </div>
+        <div class="tpitem" data-q="port">
+          <button class="tphd" type="button" data-act="tptoggle" data-arg="port" aria-expanded="false" aria-controls="tpB-port">
+            <span class="tpno" aria-hidden="true">3</span>
+            <span class="tpt">端口被占用</span>
+            <span class="tparw" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+          </button>
+          <div class="tpbody" id="tpB-port" hidden>
+            <p class="tpp">先在「更多 → 连接与端口 → 端口占用」点「扫描」，看红的那个是谁占着。</p>
+            <p class="tpp">自己拉起来的进程可以在列表里直接「结束」；别人的进程只能改端口。</p>
+            <p class="tpp">改完端口点「保存并重启服务」，别再用旧端口开面板。</p>
+            <code class="cmd" data-act="tpcopy" role="button" tabindex="0">bash "$PREFIX/opt/qqbot/ports.sh" table</code>
+          </div>
+        </div>
+        <div class="tpitem" data-q="disk">
+          <button class="tphd" type="button" data-act="tptoggle" data-arg="disk" aria-expanded="false" aria-controls="tpB-disk">
+            <span class="tpno" aria-hidden="true">4</span>
+            <span class="tpt">磁盘空间不足</span>
+            <span class="tparw" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+          </button>
+          <div class="tpbody" id="tpB-disk" hidden>
+            <p class="tpp">先看「更多 → 数据与存储 → 存储占用」，它会列出最大的 10 项。</p>
+            <p class="tpp">先清缓存与 7 天以前的日志，再考虑删旧备份、旧迁移包。</p>
+            <p class="tpp">剩余空间低于 1 GB 时，部署和 apt 安装很容易半路失败。</p>
+            <code class="cmd" data-act="tpcopy" role="button" tabindex="0">df -h /data</code>
+            <code class="cmd" data-act="tpcopy" role="button" tabindex="0">du -sk ~/.qqbot/* | sort -n | tail -n 5</code>
+          </div>
+        </div>
+        <div class="tpitem" data-q="model">
+          <button class="tphd" type="button" data-act="tptoggle" data-arg="model" aria-expanded="false" aria-controls="tpB-model">
+            <span class="tpno" aria-hidden="true">5</span>
+            <span class="tpt">模型连不上 / 超时</span>
+            <span class="tparw" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+          </button>
+          <div class="tpbody" id="tpB-model" hidden>
+            <p class="tpp">先在「更多 → 模型与人格」核对地址与密钥，末尾多一个空格也会连不上。</p>
+            <p class="tpp">跑一次出网体检：DNS / 443 端口 / 代理三项，谁红了就修谁。</p>
+            <p class="tpp">用了代理的话，「下载代理」里也要填同一个地址。</p>
+            <code class="cmd" data-act="tpcopy" role="button" tabindex="0">bash "$PREFIX/opt/qqbot/diagnose.sh" netcheck --text</code>
+            <code class="cmd" data-act="tpcopy" role="button" tabindex="0">tail -n 80 ~/.qqbot/cache/logs/astrbot.log</code>
+          </div>
+        </div>
+        <div class="tpitem" data-q="deploy">
+          <button class="tphd" type="button" data-act="tptoggle" data-arg="deploy" aria-expanded="false" aria-controls="tpB-deploy">
+            <span class="tpno" aria-hidden="true">6</span>
+            <span class="tpt">首次部署卡住不动</span>
+            <span class="tparw" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+          </button>
+          <div class="tpbody" id="tpB-deploy" hidden>
+            <p class="tpp">部署是分步的，进度条不动先看 deploy.log 最后一行停在哪一步。</p>
+            <p class="tpp">网慢时 apt 与 pip 会长时间没有输出，超过 15 分钟再判断「卡死」。</p>
+            <p class="tpp">确实卡死就点「更多 → 维护 → 重新部署」；已下好的包会在缓存里复用。</p>
+            <code class="cmd" data-act="tpcopy" role="button" tabindex="0">tail -n 200 ~/.qqbot/logs/deploy.log</code>
+            <code class="cmd" data-act="tpcopy" role="button" tabindex="0">tail -n 80 ~/.qqbot/logs/supervisor.log</code>
+          </div>
+        </div>
+      </div>
+      <div class="tpfoot">
+        <div class="btns">
+          <button class="small" id="tpLogExport" data-act="tplogexport">导出运行日志</button>
+        </div>
+        <div id="tpLogOut" style="display:none">
+          <div class="tpmeta" id="tpLogMsg">—</div>
+          <div class="tpout" id="tpLogPathWrap" style="display:none">
+            <code class="cmd" id="tpLogPath" data-act="tpcopypath" role="button" tabindex="0"></code>
+            <button class="small" id="tpLogShare" data-act="tplogshare" style="display:none">分享</button>
+          </div>
+        </div>
+        <div class="tpmeta">日志包会打成一个 zip 放进「下载 / AstrBot烛版」，超过 20 MB 会自动截断。</div>
+      </div>
+      <div class="hint" id="tpUnavail" style="display:none">这个安装包还不支持（升级后可用）</div>
+    </div>
+
     <div class="pagefoot">
     <span class="pf1"><span class="pftitle">烛之控制台</span> · <span class="pfv" id="pfv-more">—</span></span>
     <span class="pf2">本地运行，数据不出设备</span>
@@ -4644,6 +4886,21 @@ button:active{ transform: scale(.97); transition-duration: 120ms; }
 </section>
 
 </main>
+
+<div class="dlgmask" id="dlgCfgImport">
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="cfgImpTitle">
+    <h3 id="cfgImpTitle">导入配置</h3>
+    <div class="dbody">
+      <p>把「导出配置」拿到的那份 cmd_config.json 全文粘进来。点「校验并导入」会先验 JSON 与配置段，通过了才落盘，覆盖前自动备份当前配置。</p>
+      <textarea id="cfgImportText" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder='{ "provider": { … } }' aria-label="粘贴配置 JSON"></textarea>
+      <div class="hint" id="cfgImportMsg"></div>
+    </div>
+    <div class="dfoot">
+      <button class="small" data-act="cfgimportclose">取消</button>
+      <button class="primary" id="cfgImportGo" data-act="cfgimportgo" style="flex:1">校验并导入</button>
+    </div>
+  </div>
+</div>
 
 <div class="dlgmask" id="dlgReport">
   <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="repTitle">
@@ -6563,7 +6820,13 @@ var NO_LOCK_ACTS = [
   "plugtab", "pluginstall", "plugtoggle", "plugreload", "plugremove",
   "plugconf", "plugconfsave", "plugconfclose", "plugconftgl", "pluglogfold",
   "bootopen", "chgtoggle", "wdgpin", "reportopen", "reportgo", "reportshare", "reportclose", "mgo", "msec",
-  "dailytoggle"
+  "dailytoggle",
+  /* 1.3.6-beta.1：故障排查 / 配置与备份 / 系统提示词 —— 都是只读或自愈入口，
+     部署没完成时也必须能点（「首次部署卡住」那条正是给没装完的人看的）。 */
+  "tptoggle", "tpcopy", "tpcopypath", "tplogexport", "tplogshare",
+  "cfgbackup", "cfglist", "cfgrestoreask", "cfgrestoreok", "cfgrestoreno",
+  "cfgexport", "cfgcopyexport", "cfgshare", "cfgimport", "cfgimportgo", "cfgimportclose",
+  "pmsave", "pmresetask", "pmresetok", "pmresetno"
 ];
 
 /* 这个 act 在未部署时要不要拦 */
@@ -9293,6 +9556,27 @@ document.addEventListener("click", function(ev){
   else if (act === "auto") toggleAuto();
   else if (act === "slim") toggleSlim();
   else if (act === "terminal") Android.openTerminal();
+  /* ---------- 1.3.6-beta.1：故障排查 / 配置与备份 / 系统提示词 ---------- */
+  else if (act === "tptoggle") tpToggle(arg || "");
+  else if (act === "tpcopy") tpCopy(t.textContent || "");
+  else if (act === "tpcopypath") tpCopy(CFG.logPath);
+  else if (act === "tplogexport") tpLogExport();
+  else if (act === "tplogshare") tpLogShare();
+  else if (act === "cfgbackup") cfgBackup();
+  else if (act === "cfglist") cfgList();
+  else if (act === "cfgrestoreask") cfgRestoreAsk(arg || "");
+  else if (act === "cfgrestoreok") cfgRestoreOk();
+  else if (act === "cfgrestoreno") cfgRestoreNo();
+  else if (act === "cfgexport") cfgExport();
+  else if (act === "cfgcopyexport") tpCopy(CFG.exportPath);
+  else if (act === "cfgshare") cfgShare();
+  else if (act === "cfgimport") cfgImportOpen();
+  else if (act === "cfgimportclose") cfgImportClose();
+  else if (act === "cfgimportgo") cfgImportGo();
+  else if (act === "pmsave") pmSave();
+  else if (act === "pmresetask") pmResetAsk();
+  else if (act === "pmresetok") pmResetOk();
+  else if (act === "pmresetno") pmResetNo();
   else if (act === "openurl") openExternal(arg || "");
   else if (act === "openqq") openQqGroup(arg || "");
   else if (act === "riskack") riskAck();
@@ -13055,7 +13339,9 @@ function xfOnTab2(t){
   try {
     if (t === "more"){
       /* 1.3.5-beta.4：同样只画展开组里的卡，折叠组的 paint 直接跳过 */
-      if (msecIsOpen("grpData")){ try { migPaint(); } catch (e1) {} }
+      if (msecIsOpen("grpData")){ try { migPaint(); } catch (e1) {} try { cfgPaint(); } catch (e8) {} }
+      /* 1.3.6-beta.1：系统提示词卡在「外观与模型」组，折叠着就一个字节都不读 */
+      if (msecIsOpen("grpLook")){ try { pmPaint(); } catch (e9) {} }
       if (msecIsOpen("grpUpg")){
         try { sysPaint(); } catch (e2) {}
         try { plugPaint(); } catch (e3) {}
@@ -13157,6 +13443,318 @@ function reportShare(){
   extToast(r.msg || "选一个聊天窗口发出去就行");
 }
 
+/* ===================== 1.3.6-beta.1：故障排查 / 配置与备份 / 系统提示词 =====================
+   三块 UI 共用同一个桥：window.AndroidCfg（全部同步返回 JSON 字符串、原生侧绝不抛异常）。
+   约定与前几批一致：xfHas 探测 → xfCall 取对象（异常 / 空串 / 非 JSON 一律 null）→
+   老包没有桥就把整段控件藏起来、只留一句「这个安装包还不支持」，不报错也不摆空壳。
+   打桥只发生在「更多」页可见时（extOnTab 里调），没有任何后台轮询。 */
+var CFG = { info: null, bak: [], restoreName: "", exportPath: "", logPath: "" };
+var PM = { max: 8000, defLen: 0, dirty: false };
+
+/* ---------------- 故障排查：六条可展开行 ---------------- */
+function tpToggle(arg){
+  var row = arg ? document.querySelector('#tpList .tpitem[data-q="' + arg + '"]') : null;
+  if (!row) return;
+  var open = !row.classList.contains("open");
+  row.classList.toggle("open", open);
+  var hd = row.querySelector(".tphd");
+  if (hd) hd.setAttribute("aria-expanded", open ? "true" : "false");
+  var bd = row.querySelector(".tpbody");
+  if (bd){
+    if (open) bd.removeAttribute("hidden");
+    else bd.setAttribute("hidden", "");
+  }
+}
+/* 点命令即复制：桥不在就明说，不假装成功（Android.copy 在更老的包里也没有） */
+function tpCopy(t){
+  var s = String(t == null ? "" : t).replace(/^\s+|\s+$/g, "");
+  if (!s) return;
+  var ok = false;
+  try { if (brHas("copy")){ Android.copy(s); ok = true; } } catch (e) { ok = false; }
+  extToast(ok ? "已复制" : "当前版本不支持复制，长按命令也能选中");
+}
+/* 分享统一走 AndroidShare.text(title, text)：传的是路径文本，不是文件句柄，
+   所以文案里说清「路径已发出」，别让用户以为发了整包日志 */
+function tpShare(title, path, tip){
+  if (!path){ extToast(tip || "先导出一次"); return; }
+  if (!xfHas("AndroidShare", "text")){ extToast("这个安装包还不支持分享（升级后可用）"); return; }
+  try { AndroidShare.text(title, path); } catch (e) { extToast("分享面板没打开"); }
+}
+/* 导出运行日志：AndroidCfg.exportLogs() → {ok,path,size,msg} */
+function tpLogExport(){
+  if (!xfHas("AndroidCfg", "exportLogs")){ extToast("这个安装包还不支持导出日志（升级后可用）"); return; }
+  var b = el("tpLogExport"), out = el("tpLogOut"), msg = el("tpLogMsg");
+  var wrap = el("tpLogPathWrap"), p = el("tpLogPath"), s = el("tpLogShare");
+  if (b){ b.setAttribute("disabled", "disabled"); b.textContent = "打包中…"; }
+  var r = xfCall("AndroidCfg", "exportLogs");
+  if (b){ b.removeAttribute("disabled"); b.textContent = "导出运行日志"; }
+  if (out) out.style.display = "";
+  if (!r || r.ok === false){
+    CFG.logPath = "";
+    if (msg) msg.textContent = (r && r.msg) || "导出失败，稍后再试";
+    if (wrap) wrap.style.display = "none";
+    if (s) s.style.display = "none";
+    return;
+  }
+  CFG.logPath = String(r.path || "");
+  if (msg) msg.textContent = (r.msg || "日志已导出") + (Number(r.size) > 0 ? "（" + xfSize(r.size) + "）" : "");
+  if (wrap) wrap.style.display = CFG.logPath ? "" : "none";
+  if (p) p.textContent = CFG.logPath || "—";
+  if (s) s.style.display = (CFG.logPath && xfHas("AndroidShare", "text")) ? "" : "none";
+  extToast("已导出运行日志");
+}
+function tpLogShare(){ tpShare("运行日志包", CFG.logPath, "先导出一份运行日志"); }
+
+/* ---------------- 配置与备份 ---------------- */
+function cfgPaint(){
+  var ok = xfHas("AndroidCfg", "info");
+  try { xfDegrade("cfgBody", "cfgUnavail", ok); } catch (e0) {}
+  if (!ok) return;
+  var j = xfCall("AndroidCfg", "info");
+  var st = el("cfgState"), dot = el("d-cfg");
+  if (!j || j.ok === false){
+    if (st){ st.textContent = "读取失败"; st.className = "xfv bad"; }
+    if (dot) dot.className = "dot bad";
+    if (j && j.msg) extToast(String(j.msg));
+    return;
+  }
+  CFG.info = j;
+  var has = !!j.cfgExists;
+  if (st){ st.textContent = has ? "已配置" : "未部署"; st.className = "xfv " + (has ? "ok" : "warn"); }
+  if (dot) dot.className = "dot " + (has ? "ok" : "warn");
+  xfText("cfgSize", has ? xfSize(j.size) : "—");
+  xfText("cfgMtime", has ? xfClock(j.mtime) : "—");
+  xfText("cfgBakCount", Number(j.backups || 0) > 0 ? (j.backups + " 份") : "还没有");
+  xfText("cfgLastBak", j.lastBackupAt ? String(j.lastBackupAt) : (j.lastBackup ? String(j.lastBackup) : "—"));
+}
+/* 备份列表最多画 5 行（原生侧同样只留 5 份，多的本来也不存在） */
+function cfgListPaint(items){
+  var box = el("cfgBakList");
+  if (!box) return;
+  if (!items || !items.length){
+    setHtml(box, '<div class="xfempty">还没有备份，点「立即备份」留一份</div>');
+    return;
+  }
+  var h = [], n = Math.min(items.length, 5), i;
+  for (i = 0; i < n; i++){
+    var it = items[i] || {};
+    var sub = xfSize(it.size) + (it.ver ? " · 版本 " + it.ver : "") + " · " + String(it.name || "");
+    h.push('<div class="migrow"><div class="migmain">' +
+      '<div class="migname">' + esc(it.at || it.name || "备份") + '</div>' +
+      '<div class="migsub">' + esc(sub) + '</div></div>' +
+      '<button class="small" data-act="cfgrestoreask" data-arg="' + esc(it.name || "") + '">恢复</button></div>');
+  }
+  setHtml(box, h.join(""));
+}
+function cfgList(){
+  if (!xfHas("AndroidCfg", "listBackups")){ extToast(XF_UNAVAIL); return; }
+  var box = el("cfgBakList");
+  if (box) box.style.display = "";
+  var j = xfCall("AndroidCfg", "listBackups");
+  if (!j || j.ok === false){
+    if (box) setHtml(box, '<div class="xfempty">' + esc((j && j.msg) || "读不到备份列表") + '</div>');
+    return;
+  }
+  CFG.bak = j.items || [];
+  cfgListPaint(CFG.bak);
+}
+function cfgBackup(){
+  if (!xfHas("AndroidCfg", "backupNow")){ extToast(XF_UNAVAIL); return; }
+  var b = el("cfgBtnBackup");
+  if (b){ b.setAttribute("disabled", "disabled"); b.textContent = "备份中…"; }
+  var r = xfCall("AndroidCfg", "backupNow");
+  if (b){ b.removeAttribute("disabled"); b.textContent = "立即备份"; }
+  if (!r || r.ok === false){ extToast((r && r.msg) || "备份失败，稍后再试"); return; }
+  extToast(r.msg || ("已备份 " + String(r.name || "")));
+  cfgPaint();
+  var box = el("cfgBakList");
+  if (box && box.style.display !== "none") cfgList();
+}
+function cfgRestoreAsk(name){
+  name = String(name || "");
+  if (!name) return;
+  CFG.restoreName = name;
+  var t = el("cfgRestoreName");
+  if (t) t.textContent = name;
+  var c = el("cfgRestoreConfirm");
+  if (c) c.style.display = "block";
+}
+function cfgRestoreNo(){
+  CFG.restoreName = "";
+  var c = el("cfgRestoreConfirm");
+  if (c) c.style.display = "none";
+}
+function cfgRestoreOk(){
+  var name = CFG.restoreName;
+  if (!name) return;
+  if (!xfHas("AndroidCfg", "restore")){ extToast(XF_UNAVAIL); return; }
+  var r = xfCall("AndroidCfg", "restore", name);
+  cfgRestoreNo();
+  if (!r || r.ok === false){ extToast((r && r.msg) || "恢复失败，稍后再试"); return; }
+  extToast(r.msg || "已恢复，重启 AstrBot 后生效");
+  cfgPaint();
+  if (el("cfgBakList") && el("cfgBakList").style.display !== "none") cfgList();
+}
+function cfgExport(){
+  if (!xfHas("AndroidCfg", "exportCfg")){ extToast(XF_UNAVAIL); return; }
+  var r = xfCall("AndroidCfg", "exportCfg");
+  var out = el("cfgExportOut"), msg = el("cfgExportMsg"), p = el("cfgExportPath"), s = el("cfgShareExport");
+  if (out) out.style.display = "";
+  if (!r || r.ok === false){
+    CFG.exportPath = "";
+    if (msg) msg.textContent = (r && r.msg) || "导出失败，稍后再试";
+    if (p){ p.textContent = "—"; p.style.display = "none"; }
+    if (s) s.style.display = "none";
+    return;
+  }
+  CFG.exportPath = String(r.path || "");
+  if (msg) msg.textContent = (r.msg || "已导出配置") + (Number(r.size) > 0 ? "（" + xfSize(r.size) + "）" : "");
+  if (p){ p.textContent = CFG.exportPath || "—"; p.style.display = CFG.exportPath ? "" : "none"; }
+  if (s) s.style.display = (CFG.exportPath && xfHas("AndroidShare", "text")) ? "" : "none";
+  extToast("已导出配置");
+}
+function cfgShare(){ tpShare("AstrBot 配置", CFG.exportPath, "先导出一份配置"); }
+/* 导入：弹窗里贴 JSON → importText(json)；失败把原生侧那句 msg 原样摆出来 */
+function cfgImportOpen(){
+  var d = el("dlgCfgImport");
+  if (d) d.classList.add("on");
+  var m = el("cfgImportMsg");
+  if (m) m.textContent = "粘进来后点「校验并导入」，通过了才会落盘。";
+  var t = el("cfgImportText");
+  if (t){ try { t.focus(); } catch (e) {} }
+}
+function cfgImportClose(){
+  var d = el("dlgCfgImport");
+  if (d) d.classList.remove("on");
+}
+function cfgImportGo(){
+  if (!xfHas("AndroidCfg", "importText")){ extToast(XF_UNAVAIL); return; }
+  var m = el("cfgImportMsg"), t = el("cfgImportText"), b = el("cfgImportGo");
+  var s = t ? String(t.value || "") : "";
+  if (!s.replace(/\s+/g, "")){
+    if (m) m.textContent = "内容为空，先粘贴一份 cmd_config.json";
+    return;
+  }
+  if (b){ b.setAttribute("disabled", "disabled"); b.textContent = "校验中…"; }
+  var r = xfCall("AndroidCfg", "importText", s);
+  if (b){ b.removeAttribute("disabled"); b.textContent = "校验并导入"; }
+  if (!r || r.ok === false){
+    if (m) m.textContent = (r && r.msg) ? String(r.msg) : "导入失败，稍后再试";
+    return;
+  }
+  if (m) m.textContent = "已导入，重启 AstrBot 后生效" + (r.msg ? "（" + r.msg + "）" : "");
+  extToast("已导入，重启 AstrBot 后生效");
+  cfgPaint();
+  setTimeout(function(){ try { cfgImportClose(); } catch (e) {} }, 1200);
+}
+
+/* ---------------- 系统提示词 ---------------- */
+function pmCount(){
+  var t = el("pmText"), c = el("pmCount");
+  var n = t ? String(t.value || "").length : 0;
+  if (c){
+    c.textContent = n + " / " + PM.max + " 字";
+    c.className = (n > PM.max) ? "bad" : "";
+  }
+  return n;
+}
+function pmPaint(force){
+  var ok = xfHas("AndroidCfg", "getPrompt");
+  try { xfDegrade("pmBody", "pmUnavail", ok); } catch (e0) {}
+  if (!ok) return;
+  if (!force && PM.dirty) return;
+  var j = xfCall("AndroidCfg", "getPrompt");
+  var st = el("pmState");
+  if (!j || j.ok === false){
+    if (st) st.textContent = (j && j.msg) ? String(j.msg) : "读不到提示词";
+    return;
+  }
+  PM.max = Number(j.max || 0) > 0 ? Number(j.max) : 8000;
+  PM.defLen = Number(j.defLen || 0);
+  var t = el("pmText");
+  if (t) t.value = String(j.text || "");
+  PM.dirty = false;
+  pmCount();
+  if (st) st.textContent = j.isDefault ? ("正在用出厂的「烛心」人格（" + PM.defLen + " 字）") : "已自定义";
+}
+function pmSave(){
+  if (!xfHas("AndroidCfg", "setPrompt")){ extToast(XF_UNAVAIL); return; }
+  var t = el("pmText");
+  var s = t ? String(t.value || "") : "";
+  var v = s.replace(/^\s+|\s+$/g, "");
+  if (!v){ extToast("提示词不能为空；要恢复出厂内容请点「恢复默认」"); return; }
+  if (v.length > PM.max){ extToast("太长了（上限 " + PM.max + " 字），先精简一下"); return; }
+  var b = el("pmSave");
+  if (b){ b.setAttribute("disabled", "disabled"); b.textContent = "保存中…"; }
+  var r = xfCall("AndroidCfg", "setPrompt", s);
+  if (b){ b.removeAttribute("disabled"); b.textContent = "保存"; }
+  if (!r || r.ok === false){ extToast((r && r.msg) || "保存失败，稍后再试"); return; }
+  if (t) t.value = v;
+  PM.dirty = false;
+  pmCount();
+  var st = el("pmState");
+  if (st) st.textContent = "已保存（" + Number(r.len || v.length) + " 字）";
+  extToast(r.msg || "已保存");
+}
+function pmResetAsk(){
+  var c = el("pmResetConfirm");
+  if (c) c.style.display = "block";
+}
+function pmResetNo(){
+  var c = el("pmResetConfirm");
+  if (c) c.style.display = "none";
+}
+function pmResetOk(){
+  pmResetNo();
+  if (!xfHas("AndroidCfg", "resetPrompt")){ extToast(XF_UNAVAIL); return; }
+  var r = xfCall("AndroidCfg", "resetPrompt");
+  if (!r || r.ok === false){ extToast((r && r.msg) || "恢复默认失败"); return; }
+  extToast(r.msg || "已恢复默认提示词");
+  PM.dirty = false;
+  pmPaint(true);
+}
+
+/* 开机只做「老包降级」判定，不主动打桥；字数统计挂一次 input 监听 */
+function cfgInit(){
+  try { xfDegrade("cfgBody", "cfgUnavail", xfHas("AndroidCfg", "info")); } catch (e0) {}
+  try { xfDegrade("pmBody", "pmUnavail", xfHas("AndroidCfg", "getPrompt")); } catch (e1) {}
+  try { tpInit(); } catch (e2) {}
+  try {
+    document.addEventListener("input", function(ev){
+      var t = ev.target;
+      if (!t || t.id !== "pmText") return;
+      PM.dirty = true;
+      pmCount();
+    });
+  } catch (e3) {}
+  /* 命令块是 <code role="button">（不是真按钮），回车 / 空格不会自动派发 click，
+     这里补一次——键盘和读屏用户也得能复制。 */
+  try {
+    document.addEventListener("keydown", function(ev){
+      if (ev.key !== "Enter" && ev.key !== " " && ev.key !== "Spacebar") return;
+      var t = ev.target;
+      if (!t || !t.getAttribute) return;
+      var a = t.getAttribute("data-act");
+      if (a === "tpcopy"){ ev.preventDefault(); tpCopy(t.textContent || ""); }
+      else if (a === "tpcopypath"){ ev.preventDefault(); tpCopy(CFG.logPath); }
+      else if (a === "cfgcopyexport"){ ev.preventDefault(); tpCopy(CFG.exportPath); }
+    });
+  } catch (e4) {}
+}
+/* 导出日志的按钮：桥不在就置灰 + 一行「需要升级」，六条排查本身照常可用 */
+function tpInit(){
+  var ok = xfHas("AndroidCfg", "exportLogs");
+  var b = el("tpLogExport"), h = el("tpUnavail");
+  if (b){
+    if (ok){ b.removeAttribute("disabled"); b.textContent = "导出运行日志"; }
+    else { b.setAttribute("disabled", "disabled"); b.textContent = "导出运行日志（需升级）"; }
+  }
+  if (h){
+    h.style.display = ok ? "none" : "";
+    h.textContent = ok ? "" : "导出运行日志需要新版安装包（升级后可用）；上面六条排查不受影响。";
+  }
+}
+
 /* ===================== 1.3.5-beta.4：更多页收纳（可折叠分组） =====================
    29 张卡一次性布局 + 全部卡片进场动画是「划到更多页卡一下」的主因。这里把每张卡包进
    .mgroup > .mbody > .mwrap，默认只展开第一组，其余折叠；折叠用 grid-template-rows 0fr↔1fr
@@ -13171,6 +13769,11 @@ function msecIsOpen(id){
   var g = msecGroup(id);
   if (!g) return true;              /* 没有这个组（比如置顶的关于卡）就当展开，别把取样拦掉 */
   return g.classList.contains("open");
+}
+/* 展开某个分组时补画它里面「按需取数」的卡（别的卡各自有自己的刷新时机） */
+function msecPaintGroup(id){
+  if (id === "grpLook"){ try { pmPaint(); } catch (e1) {} }
+  else if (id === "grpData"){ try { cfgPaint(); } catch (e2) {} }
 }
 function msecSetOpen(id, open, quiet){
   var g = msecGroup(id);
@@ -13195,6 +13798,9 @@ function msecSetOpen(id, open, quiet){
   }
   var btn = g.querySelector(".mgh");
   if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+  /* 1.3.6-beta.1：展开的这一刻才去取数。配置备份与系统提示词两组不像首页那样
+     常驻轮询，只在切页（xfOnTab2）时取样；从折叠点开时必须补一次，否则是空壳。 */
+  if (open){ try { msecPaintGroup(id); } catch (eP) {} }
   if (!quiet){
     var st = msecState();
     st[id] = !!open;
@@ -13314,7 +13920,8 @@ var DLG_ESC = {
   dlgQr: function(){ qrClose(); },
   dlgAstr: function(){ astrClose(); },
   dlgAstrLogin: function(){ astrLoginClose(); },
-  dlgShareLog: function(){ shlClose(); }
+  dlgShareLog: function(){ shlClose(); },
+  dlgCfgImport: function(){ cfgImportClose(); }
 };
 var DLG_OPENER = null;   /* 关窗后把焦点还给打开它的那颗按钮 */
 document.addEventListener("click", function(e){
@@ -13440,6 +14047,7 @@ setInterval(function(){
 try { upTick(); } catch (e) {}
 try { xfInit(); } catch (eXf) {}
 try { x2Init(); } catch (eX2) {}
+try { cfgInit(); } catch (eCf) {}
 try { msecInit(); } catch (eMs) {}
 try { paintFoot(); } catch (e) {}
 

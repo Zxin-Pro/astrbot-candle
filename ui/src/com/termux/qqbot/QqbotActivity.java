@@ -387,6 +387,9 @@ public class QqbotActivity extends Activity {
         web.addJavascriptInterface(new QqbotSysUpgradeBridge(this), "AndroidSysUp");
         web.addJavascriptInterface(new QqbotPluginHubBridge(this), "AndroidPlugin");
         web.addJavascriptInterface(new QqbotReportBridge(this), "AndroidReport");
+        // 1.3.6-beta.1：配置即代码（备份 / 导入导出 / 系统提示词 / 日志导出）。
+        // 页面按 window.AndroidCfg 用；老包没有这个桥时整卡显示「需要升级」。
+        web.addJavascriptInterface(new QqbotCfgBridge(this), "AndroidCfg");
         setContentView(web);
         // 通知栏点进来的 tab 要在第一次 loadUi 之前就记下来（singleTask 重入走 onNewIntent）
         pendingTab = tabOfIntent(getIntent());

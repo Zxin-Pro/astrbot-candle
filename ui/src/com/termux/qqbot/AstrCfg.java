@@ -168,7 +168,7 @@ public final class AstrCfg {
     /** 读人格提示词；还没写过就返回默认值。 */
     public static String personaPrompt(File filesDir) {
         File db = dbFile(filesDir);
-        if (!db.isFile()) return DEFAULT_PERSONA;
+        if (!db.isFile()) return SysPrompt.get(filesDir);
         SQLiteDatabase d = null;
         Cursor c = null;
         try {
@@ -184,7 +184,7 @@ public final class AstrCfg {
             try { if (c != null) c.close(); } catch (Throwable ignored) {}
             try { if (d != null) d.close(); } catch (Throwable ignored) {}
         }
-        return DEFAULT_PERSONA;
+        return SysPrompt.get(filesDir);
     }
 
     private static JSONObject findProvider(JSONObject root) {
@@ -429,7 +429,8 @@ public final class AstrCfg {
         writeText(cfg, root.toString(2));
 
         String ps = (persona == null) ? "" : persona.trim();
-        if (ps.length() == 0) ps = DEFAULT_PERSONA;
+        // 1.3.6-beta.1：界面里改过的「系统提示词」优先；没改过才用出厂人格。
+        if (ps.length() == 0) ps = SysPrompt.get(filesDir);
         upsertPersona(filesDir, ps);
     }
 
