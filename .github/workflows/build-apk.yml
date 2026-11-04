@@ -27,11 +27,6 @@ jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 60
-    env:
-      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -88,25 +83,16 @@ jobs:
           & "$env:JAVA_HOME\bin\java.exe" -jar "_sdk\apktool.jar" d "_research\base-ui.apk" -o "_apkwork" -f
           if ($LASTEXITCODE -ne 0) { throw "apktool d failed" }
 
-      - name: Prepare signing keystore
+      - name: Prepare a throwaway signing key
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          if ($env:ANDROID_KEYSTORE_BASE64) {
-            Write-Host "Using repository secret ANDROID_KEYSTORE_BASE64"
-            # 仓库里存的是 PKCS12：它能在任何平台上生成/导出，JKS 只有 JDK 自己会写。
-            # uber-apk-signer 的 --ksDebug 是按 JKS 加载的，所以这里先用 keytool 转一次。
-            # 不转会报 "Invalid keystore format"，而那一步在 CI 上不好复现。
-            $p12 = "$PWD\_research\release.p12"
-            [IO.File]::WriteAllBytes($p12, [Convert]::FromBase64String($env:ANDROID_KEYSTORE_BASE64))
-            & "$env:JAVA_HOME\bin\keytool.exe" -importkeystore -srckeystore $p12 -srcstoretype PKCS12 -srcstorepass android -destkeystore "$PWD\_research\debug.keystore" -deststoretype JKS -deststorepass android -destkeypass android -noprompt
-            if ($LASTEXITCODE -ne 0) { throw "keystore conversion failed" }
-            Remove-Item -Force $p12
-          } else {
-            Write-Host "::warning::ANDROID_KEYSTORE_BASE64 not set; generating a temporary debug keystore. This APK will NOT update over the released 1.2.2 build."
-            & "$env:JAVA_HOME\bin\keytool.exe" -genkeypair -v -keystore "$PWD\_research\debug.keystore" -storepass android -keypass android -alias androiddebugkey -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
-            if ($LASTEXITCODE -ne 0) { throw "keytool failed" }
-          }
+          # 公开仓库的 CI 只验证「源码能不能构建」，不承担发版：
+          #   * 这里生成一把一次性的调试密钥，只存在于本次 runner 上；
+          #   * 绝不注入作者本机的发布密钥，也不把任何已签名安装包上传成 artifact。
+          # 正式签名只在作者本机用自备 keystore 完成，签名材料不入库、不随 Release 分发。
+          & "$env:JAVA_HOME\bin\keytool.exe" -genkeypair -v -keystore "$PWD\_research\debug.keystore" -storepass android -keypass android -alias androiddebugkey -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+          if ($LASTEXITCODE -ne 0) { throw "keytool failed" }
 
       - name: Build UI
         shell: powershell
@@ -124,9 +110,23 @@ jobs:
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Upload APK
+      - name: Record build fingerprint (no APK leaves the runner)
+        shell: pwsh
+        run: |
+          $rows = @()
+          Get-ChildItem "AstrBot-*-${{ inputs.arch }}*.apk" | ForEach-Object {
+            $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash
+            $rows += ("{0} - {1} bytes - {2}" -f $_.Name, $_.Length, $h)
+          }
+          if ($rows.Count -eq 0) { throw "no apk produced" }
+          $rows | Set-Content -Encoding utf8 build-fingerprint.txt
+          $rows | ForEach-Object { Write-Host $_ }
+          # 产物只用来证明构建成功，跑完随 runner 销毁：不上传安装包，公开面拿不到已签名 APK。
+          Remove-Item "AstrBot-*-${{ inputs.arch }}*.apk" -Force
+
+      - name: Upload build fingerprint
         uses: actions/upload-artifact@v4
         with:
-          name: AstrBot-${{ inputs.arch }}-${{ inputs.variant }}-apk
-          path: AstrBot-*-${{ inputs.arch }}*.apk
+          name: AstrBot-${{ inputs.arch }}-${{ inputs.variant }}-fingerprint
+          path: build-fingerprint.txt
           if-no-files-found: error
