@@ -3560,7 +3560,7 @@ button:active{ transform: scale(.97); transition-duration: 120ms; }
   button:active, .iconbtn:active, .mchip:active{ transform: none !important; scale: 1 !important; }
 }
 /* ============================================================================
-   1.3.6-beta.1 · 故障排查 / 配置与备份 / 系统提示词
+   1.3.5-beta.6 · 故障排查 / 配置与备份 / 系统提示词
    ----------------------------------------------------------------------------
    1) .tpitem：六条 FAQ，一行一个 button.tphd（44px 热区 + aria-expanded），
       展开内容在 .tpbody，收起时用 hidden 真移出渲染树（跟折叠组同一套思路）。
@@ -4444,7 +4444,7 @@ code.cmd:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
       </div>
     </div>
 
-    <!-- 1.3.6-beta.1 · 系统提示词（AndroidCfg.getPrompt / setPrompt / resetPrompt）：
+    <!-- 1.3.5-beta.6 · 系统提示词（AndroidCfg.getPrompt / setPrompt / resetPrompt）：
          改的是「烛心」人格的系统级提示词，落 state/prefs.json，并尽力同步 data_v4.db。
          为空或超 8000 字前端先拦一道，原生侧还有同样的校验。 -->
     <div class="card" id="pmCard">
@@ -4607,7 +4607,7 @@ code.cmd:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
     
     </div>
     </div>
-    <!-- 1.3.6-beta.1 · 配置与备份（AndroidCfg）：只管 AstrBot 的核心配置文件
+    <!-- 1.3.5-beta.6 · 配置与备份（AndroidCfg）：只管 AstrBot 的核心配置文件
          data/cmd_config.json —— 备份 / 列出 / 恢复 / 导出 / 导入。
          所有方法同步返回 JSON 字符串、原生侧绝不抛异常；老包没有 AndroidCfg 时
          整卡隐藏，只留一句「这个安装包还不支持（升级后可用）」。 -->
@@ -4770,7 +4770,7 @@ code.cmd:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
     </div>
 
     <div class="mgroup" id="grpFix"><span class="mgh">故障排查</span></div>
-    <!-- 1.3.6-beta.1 · 故障排查：六条最常见的问题，展开就是排查顺序 + 可复制命令。
+    <!-- 1.3.5-beta.6 · 故障排查：六条最常见的问题，展开就是排查顺序 + 可复制命令。
          整卡只有底部「导出运行日志」依赖桥（AndroidCfg.exportLogs），老包没有就置灰；
          上面六条的正文全是静态文案，不碰任何桥，没装完也能看。
          命令都对着真实路径写过（日志在 .qqbot/cache/logs 与 .qqbot/logs，脚本在
@@ -6821,7 +6821,7 @@ var NO_LOCK_ACTS = [
   "plugconf", "plugconfsave", "plugconfclose", "plugconftgl", "pluglogfold",
   "bootopen", "chgtoggle", "wdgpin", "reportopen", "reportgo", "reportshare", "reportclose", "mgo", "msec",
   "dailytoggle",
-  /* 1.3.6-beta.1：故障排查 / 配置与备份 / 系统提示词 —— 都是只读或自愈入口，
+  /* 1.3.5-beta.6：故障排查 / 配置与备份 / 系统提示词 —— 都是只读或自愈入口，
      部署没完成时也必须能点（「首次部署卡住」那条正是给没装完的人看的）。 */
   "tptoggle", "tpcopy", "tpcopypath", "tplogexport", "tplogshare",
   "cfgbackup", "cfglist", "cfgrestoreask", "cfgrestoreok", "cfgrestoreno",
@@ -9556,7 +9556,7 @@ document.addEventListener("click", function(ev){
   else if (act === "auto") toggleAuto();
   else if (act === "slim") toggleSlim();
   else if (act === "terminal") Android.openTerminal();
-  /* ---------- 1.3.6-beta.1：故障排查 / 配置与备份 / 系统提示词 ---------- */
+  /* ---------- 1.3.5-beta.6：故障排查 / 配置与备份 / 系统提示词 ---------- */
   else if (act === "tptoggle") tpToggle(arg || "");
   else if (act === "tpcopy") tpCopy(t.textContent || "");
   else if (act === "tpcopypath") tpCopy(CFG.logPath);
@@ -13340,7 +13340,7 @@ function xfOnTab2(t){
     if (t === "more"){
       /* 1.3.5-beta.4：同样只画展开组里的卡，折叠组的 paint 直接跳过 */
       if (msecIsOpen("grpData")){ try { migPaint(); } catch (e1) {} try { cfgPaint(); } catch (e8) {} }
-      /* 1.3.6-beta.1：系统提示词卡在「外观与模型」组，折叠着就一个字节都不读 */
+      /* 1.3.5-beta.6：系统提示词卡在「外观与模型」组，折叠着就一个字节都不读 */
       if (msecIsOpen("grpLook")){ try { pmPaint(); } catch (e9) {} }
       if (msecIsOpen("grpUpg")){
         try { sysPaint(); } catch (e2) {}
@@ -13443,7 +13443,7 @@ function reportShare(){
   extToast(r.msg || "选一个聊天窗口发出去就行");
 }
 
-/* ===================== 1.3.6-beta.1：故障排查 / 配置与备份 / 系统提示词 =====================
+/* ===================== 1.3.5-beta.6：故障排查 / 配置与备份 / 系统提示词 =====================
    三块 UI 共用同一个桥：window.AndroidCfg（全部同步返回 JSON 字符串、原生侧绝不抛异常）。
    约定与前几批一致：xfHas 探测 → xfCall 取对象（异常 / 空串 / 非 JSON 一律 null）→
    老包没有桥就把整段控件藏起来、只留一句「这个安装包还不支持」，不报错也不摆空壳。
@@ -13798,7 +13798,7 @@ function msecSetOpen(id, open, quiet){
   }
   var btn = g.querySelector(".mgh");
   if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
-  /* 1.3.6-beta.1：展开的这一刻才去取数。配置备份与系统提示词两组不像首页那样
+  /* 1.3.5-beta.6：展开的这一刻才去取数。配置备份与系统提示词两组不像首页那样
      常驻轮询，只在切页（xfOnTab2）时取样；从折叠点开时必须补一次，否则是空壳。 */
   if (open){ try { msecPaintGroup(id); } catch (eP) {} }
   if (!quiet){

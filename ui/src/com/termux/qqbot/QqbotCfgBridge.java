@@ -20,7 +20,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 /**
- * 「配置即代码」那条线的原生侧：window.AndroidCfg（1.3.6-beta.1）。
+ * 「配置即代码」那条线的原生侧：window.AndroidCfg（1.3.5-beta.6）。
  *
  * 职责只有四件事，全部围绕 AstrBot 的两份真身文件：
  *   data/cmd_config.json  —— 核心配置（provider / dashboard / 平台 / 人格选择…）

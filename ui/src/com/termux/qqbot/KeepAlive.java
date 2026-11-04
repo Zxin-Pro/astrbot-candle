@@ -254,7 +254,7 @@ public class KeepAlive {
                 return;
             }
             pref(c).edit().putInt(K_FAIL, 0).apply();
-            // 连接健康检查（1.3.6-beta.1）：进程在、端口也通，QQ 那条长连接却可能早就断了。
+            // 连接健康检查（1.3.5-beta.6）：进程在、端口也通，QQ 那条长连接却可能早就断了。
             // 这里不新增唤醒，只在已有的 2 分钟体检节拍里顺带判一次。
             boolean napUp = probe || QqbotShell.portOpen(port, 300);
             try { NetReconnect.check(c, napUp); } catch (Throwable ignored) {}

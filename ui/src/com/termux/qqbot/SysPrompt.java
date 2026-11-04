@@ -3,7 +3,7 @@ package com.termux.app;
 import java.io.File;
 
 /**
- * 「系统层级提示词」的持久化层（1.3.6-beta.1）。
+ * 「系统层级提示词」的持久化层（1.3.5-beta.6）。
  *
  * 为什么还要单独存一份：人格提示词的真身在 data_v4.db 的 personas 表里，
  * 但那份库在沙盒跑起来以后会被 AstrBot 独占（SQLite 写锁），桥线程改不动。

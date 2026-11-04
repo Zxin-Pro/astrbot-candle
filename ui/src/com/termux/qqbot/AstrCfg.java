@@ -429,7 +429,7 @@ public final class AstrCfg {
         writeText(cfg, root.toString(2));
 
         String ps = (persona == null) ? "" : persona.trim();
-        // 1.3.6-beta.1：界面里改过的「系统提示词」优先；没改过才用出厂人格。
+        // 1.3.5-beta.6：界面里改过的「系统提示词」优先；没改过才用出厂人格。
         if (ps.length() == 0) ps = SysPrompt.get(filesDir);
         upsertPersona(filesDir, ps);
     }

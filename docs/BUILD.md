@@ -1,6 +1,6 @@
 # 从源码构建 AstrBot烛版
 
-本文说明如何从本仓库的源码重新构建出可安装的 `AstrBot-<版本>-<架构>.apk`（当前版本 1.3.6-beta.1，发布产物 `AstrBot-1.3.6-beta.1-arm64.apk`，只发这一个包）。
+本文说明如何从本仓库的源码重新构建出可安装的 `AstrBot-<版本>-<架构>.apk`（当前版本 1.3.5-beta.6，发布产物 `AstrBot-1.3.5-beta.6-arm64.apk`，只发这一个包）。
 
 > 构建过程**只能在一台配好工具链的 Windows 机器上**完成（脚本是 PowerShell + 本机 JDK）。
 > 构建不联网、不跑 Gradle，也不需要 Android Studio。
@@ -274,7 +274,7 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 
 | 版本 | 字段 | 值 |
 | --- | --- | --- |
-| **1.3.6-beta.1（当前，测试版）** | versionName / 派生 versionCode | 1.3.6-beta.1 / 10306 |
+| **1.3.5-beta.6（当前，测试版）** | versionName / 派生 versionCode | 1.3.5-beta.6 / 10305 |
 | 1.3.5-beta.5 | versionName / 派生 versionCode | 1.3.5-beta.5 / 10305 |
 | 1.3.5-beta.4 | versionName / 派生 versionCode | 1.3.5-beta.4 / 10305 |
 | 1.3.5-beta.3 | `versionName` / 派生 `versionCode` | `1.3.5-beta.3` / `10305` |
@@ -310,9 +310,9 @@ Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 并不是一个普通的 `.so`
 | 1.2.10 | `versionName` / 派生 `versionCode` | `1.2.10` / `10210` |
 | 1.2.9 | `versionName` / 派生 `versionCode` | `1.2.9` / `10209` |
 
-1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.6-beta.1-arm64.apk`，`609,562,514`（约 581 MB，镜像在 APK 里），SHA-256 `0E9ED8DE0FA52E6B3744C582BE736F388EE34CD65AD8AE193493771B47F1A140`；增量包 `AstrBot-1.3.6-beta.1-arm64-update.apk`，`26,550,159`，SHA-256 `AA8EB093B9CC3EDF94DFE72F04277422F548C7CB89E474DE254BD956AF5E248B`。1.3.6-beta.1 用本机自备的 keystore 签名（**签名材料不入库、不随 Release 分发**），`versionCode 10306`，可直接覆盖 1.3.5 全系（含 1.3.5 正式版）、1.3.4 正式版与 1.3.4 各测试版。
+1.3.1 起每版只有一个全量包。当前构建 `AstrBot-1.3.5-beta.6-arm64.apk`，`609,562,514`（约 581 MB，镜像在 APK 里），SHA-256 `97C90E420E6BD0E69C046EEEFDF34F8A5D6DE12177CDEF279EC224226AB4DFC2`；增量包 `AstrBot-1.3.5-beta.6-arm64-update.apk`，`26,550,159`，SHA-256 `DE241B014F5BB5C5F4A36FA9AD60B63622DA1A6F0E3CD03935347F08D4855B1C`。1.3.5-beta.6 用本机自备的 keystore 签名（**签名材料不入库、不随 Release 分发**），`versionCode 10305`，可直接覆盖 1.3.5 全系（含 1.3.5 正式版）、1.3.4 正式版与 1.3.4 各测试版。
 
-1.3.6-beta.1（2026-11-04）是「沙盒可维护性」版，新增 Java 类 `QqbotCfgBridge`（JS 名 `AndroidCfg`，10 个方法：`info` / `backupNow` / `listBackups` / `restore` / `exportCfg` / `importText` / `exportLogs` / `getPrompt` / `setPrompt` / `resetPrompt`，全部同步返回 JSON、内部兜底不抛异常，无 lambda / 匿名类）、`SysPrompt`（系统层级提示词存 `state/prefs.json` 的 `sysPrompt`，上限 8000 字，空值回落 `AstrCfg.DEFAULT_PERSONA`，保存时尽力写回 `data_v4.db` 的 persona）与 `NetReconnect`（NapCat 断连三态机 + 自动重连，挂在 `KeepAlive.rescue` 的 2 分钟体检上，不新增唤醒；退避 3s→10s→30s→60s→60s，10 分钟窗口最多 5 次，状态落 `state/reconnect.json`）。`AstrCfg.personaPrompt()` 与保存人格两条路径改为读 `SysPrompt.get()`；`QqbotActivity` 注册新桥后 JS 接口从 21 个涨到 22 个。界面侧 `index.html` 新增「故障排查」折叠组（6 条 FAQ + 可复制命令 + 导出运行日志）、「配置与备份」卡、「系统提示词」卡与导入弹窗，共 51 个新元素 id，全部走 `xfHas` / `xfCall` 探测，老包缺桥时整体降级为「这个安装包还不支持（升级后可用）」。产物全量 609,562,514 / 增量 26,550,159；`javac` 全量 112 个源文件 rc=0，`node --check` 两段内联脚本通过，门禁 `out/_b1361_release_gate.py` 与 MuMu（Android 15）上的 CDP 探测（桥 10 方法、51 个 id、6 条 FAQ、提示词读写往返、备份 1 份 / 导出配置 8,286 B / 导出日志 8 文件 12,134 B、非法 JSON 被拒、`reconnect.json` 落盘）全部通过。
+1.3.5-beta.6（2026-11-04）是「沙盒可维护性」版，新增 Java 类 `QqbotCfgBridge`（JS 名 `AndroidCfg`，10 个方法：`info` / `backupNow` / `listBackups` / `restore` / `exportCfg` / `importText` / `exportLogs` / `getPrompt` / `setPrompt` / `resetPrompt`，全部同步返回 JSON、内部兜底不抛异常，无 lambda / 匿名类）、`SysPrompt`（系统层级提示词存 `state/prefs.json` 的 `sysPrompt`，上限 8000 字，空值回落 `AstrCfg.DEFAULT_PERSONA`，保存时尽力写回 `data_v4.db` 的 persona）与 `NetReconnect`（NapCat 断连三态机 + 自动重连，挂在 `KeepAlive.rescue` 的 2 分钟体检上，不新增唤醒；退避 3s→10s→30s→60s→60s，10 分钟窗口最多 5 次，状态落 `state/reconnect.json`）。`AstrCfg.personaPrompt()` 与保存人格两条路径改为读 `SysPrompt.get()`；`QqbotActivity` 注册新桥后 JS 接口从 21 个涨到 22 个。界面侧 `index.html` 新增「故障排查」折叠组（6 条 FAQ + 可复制命令 + 导出运行日志）、「配置与备份」卡、「系统提示词」卡与导入弹窗，共 51 个新元素 id，全部走 `xfHas` / `xfCall` 探测，老包缺桥时整体降级为「这个安装包还不支持（升级后可用）」。产物全量 609,562,514 / 增量 26,550,159；`javac` 全量 112 个源文件 rc=0，`node --check` 两段内联脚本通过，门禁 `out/_b1361_release_gate.py` 与 MuMu（Android 15）上的 CDP 探测（桥 10 方法、51 个 id、6 条 FAQ、提示词读写往返、备份 1 份 / 导出配置 8,286 B / 导出日志 8 文件 12,134 B、非法 JSON 被拒、`reconnect.json` 落盘）全部通过。
 
 1.3.5-beta.5（2026-10-29）是二维码边界与构建链收口版，不新增功能。Java 侧 `QqbotActivity` 新增 `instanceQqReady(File)` 与 `uinAfterStart(File,File)`：只有实例目录里的 `qq` 可执行才读该实例的 NapCat 配置 / 二维码，只有当前 active 实例才回退 `/opt/QQ`；`run-napcat.sh` 在选定 QQ 目录后写 `.qqbot-start`，`loggedIn()` 只认标记之后的 per-uin 配置，mtime 相同也按未登录；主 `qrcode.png` 与 `scanQrPng()` 找到的备码按 mtime 取更新的一张，0 字节 / 超过 8 MB 跳过，读取失败返回 `read-failed`；`qrBotUp()` 增加 bot id 一致性与 trim 守卫。`ensureBundle()` 的写标记 / 重命名 / 写 `.bundle-ok` / 异常分支统一走 `bundleFail()` 删除 `.bundle-pending`，避免 `20-rootfs.sh` 白等 600 秒。构建链 `tools/ApkReplace2.java` 对 `.tar.xz` / `.zip` / ≥64 MB 条目改用 STORED（两遍流式写 size / compressedSize / CRC32），新增 `tools/verify_bundle_entry.py` 核对包内 `BUNDLE_SIZE` / `BUNDLE_ARCH` / 条目字节；正常 `-Arch` 路径仍由 `build-apk.ps1` 写 `BUNDLE_SIZE`。界面侧补 9 个弹窗 Esc、`--btn-bg` 白字对比度（浅 / 深 ≥4.55:1）、`#btnReport` 强调色、200% 字号下 nav `max-width` 与 `.lkbd` 弹性、`overflow-wrap:anywhere`、nav `role=tablist` / 方向键、`.mchip` 44px 命中区，以及 reduce 下 `.spin` 1.6s 循环、`.mwrap` 过渡并集、拖动前写回 computed transform。产物全量 `609,542,034` / 增量 `26,529,679`；全量 75/75 PASS（187.8s，含 L1 更多页 110.3ms / 首页 122.0ms），包内资产 21/21，QR fixture 13 PASS + 3 XFAIL，a11y probe 全过，`javac` 109 个源文件 rc=0。
 

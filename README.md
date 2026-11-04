@@ -11,10 +11,11 @@
 | --- | --- |
 | 应用名 | **AstrBot烛版** |
 | 控制台标题 | **烛之控制台** |
-| 安装包 | **不公开分发** —— 本仓库只发布源码；安装包由作者本地构建并签名后单独提供（构建方法见 [docs/BUILD.md](docs/BUILD.md)） |
+| 安装包 | **随 Release 发布** —— 每次发布同时上传全量包（约 581 MB）与增量包（约 25 MB），正文附字节数与 SHA-256；构建方法见 [docs/BUILD.md](docs/BUILD.md) |
 | 包名 | `zhuxin.astrbot`（1.2.1 及更早为 `com.termux`） |
-| 当前版本 | **v1.3.6-beta.1（测试版）**（versionCode `10306`，可直接覆盖 1.3.5 全系（含 1.3.5 正式版）、1.3.4 正式版与 1.3.4-beta.1 … beta.10、1.3.3 正式版、1.3.3-beta.10 … beta.1 或 1.3.2 安装） |
-| Release | [v1.3.6-beta.1](https://github.com/Zxin-Pro/astrbot-candle/releases/tag/v1.3.6-beta.1)（2026-11-04；**仅源码 tag，不含安装包资产**） |
+| 安装包哈希 | 全量包 `AstrBot-1.3.5-beta.6-arm64.apk`，`609,562,514 B`，SHA-256 `97C90E420E6BD0E69C046EEEFDF34F8A5D6DE12177CDEF279EC224226AB4DFC2`；增量包 `AstrBot-1.3.5-beta.6-arm64-update.apk`，`26,550,159 B`，SHA-256 `DE241B014F5BB5C5F4A36FA9AD60B63622DA1A6F0E3CD03935347F08D4855B1C` |
+| 当前版本 | **v1.3.5-beta.6（测试版）**（versionCode `10305`，可直接覆盖 1.3.5 全系（含 1.3.5 正式版）、1.3.4 正式版与 1.3.4-beta.1 … beta.10、1.3.3 正式版、1.3.3-beta.10 … beta.1 或 1.3.2 安装） |
+| Release | [v1.3.5-beta.6](https://github.com/Zxin-Pro/astrbot-candle/releases/tag/v1.3.5-beta.6)（2026-11-04；源码 tag + 全量包 / 增量包） |
 | 签名材料 | **不入库、不公开**：keystore 与签名证书只在作者本机，仓库历史与 Release 资产都不包含 |
 | 安全重制 | 2026-10-29 全量包已替换（旧包镜像曾含运行期配置与凭据）；beta.4 与 1.3.4 均已重制，28 个旧全量包已下架，处置见 [安全重制说明](docs/SECURITY-REBUILD-b4.md) |
 | 项目地址 | [github.com/Zxin-Pro/astrbot-candle](https://github.com/Zxin-Pro/astrbot-candle) |
@@ -67,7 +68,7 @@
 2. **注入脚本**：Termux 的 `lib/arm64-v8a/libtermux-bootstrap.so` 是一个 **ELF 头 + 内嵌 ZIP 段 + 动态段/节头表尾部** 的混合体（ELF 头 1328 字节，内嵌 ZIP 段 29388903 字节，尾部 2761 字节，文件总长 29392992 字节）。我们用一个**自己写的 Java 工具** `RepackBootstrap` 打开这个内嵌 ZIP，把 `build/` 目录下的沙盒脚本（部署流程、启停脚本、守护循环、`profile.d` 钩子）作为新条目塞进去，再按原布局写回。
    - 内嵌 ZIP 段在原始包里是**填满的**，所以要塞进新文件就必须删掉一些用不到的条目（man/info/doc 文档、C 头文件、测试二进制等），这些被删的条目部署流程永远不会执行，安全。
 3. **换回 APK**：用 `ApkReplace` 把重新打包好的 `.so` 换回 APK 的 `lib/arm64-v8a/` 下。
-4. **改包名并重新签名**：`[3c/5]` 用 `tools/reloc_bootstrap.py` 对 `libtermux-bootstrap.so` 内嵌的用户态做**原地等长改写** —— 长路径 `/data/data/<包名>/files/usr` 缩成 `/data/data/<包名>/u`、`files/home` 缩成 `/h`，由应用启动时建的符号链接（`PrefixAlias`：`files/u → files/usr`、`files/h → files/home`）解析，替换后剩余字节用 NUL 填满，`.so` 仍是 29,392,992 字节、程序头 / 节头 / 偏移一个字节都不动（这是 `dlopen` 与真机 `execve` 都能过的前提）；`[4b/5]` 用 `out/patch_manifest.py` 重写二进制 `AndroidManifest.xml` 的字符串池（package、`com.termux.RUN_COMMAND` 权限、documents/filereceiver/files authorities）；`out/patch_smali.py` 只替换不是 `com.termux.app.` 的引用（Java 类仍在 `com.termux.app` 包）。最后用 [uber-apk-signer](https://github.com/patrickfav/uber-apk-signer) 重新签名，产出可安装的 `AstrBot-<版本号>.apk`（当前版本即 `AstrBot-1.3.6-beta.1-arm64.apk`，只发这一个包）。
+4. **改包名并重新签名**：`[3c/5]` 用 `tools/reloc_bootstrap.py` 对 `libtermux-bootstrap.so` 内嵌的用户态做**原地等长改写** —— 长路径 `/data/data/<包名>/files/usr` 缩成 `/data/data/<包名>/u`、`files/home` 缩成 `/h`，由应用启动时建的符号链接（`PrefixAlias`：`files/u → files/usr`、`files/h → files/home`）解析，替换后剩余字节用 NUL 填满，`.so` 仍是 29,392,992 字节、程序头 / 节头 / 偏移一个字节都不动（这是 `dlopen` 与真机 `execve` 都能过的前提）；`[4b/5]` 用 `out/patch_manifest.py` 重写二进制 `AndroidManifest.xml` 的字符串池（package、`com.termux.RUN_COMMAND` 权限、documents/filereceiver/files authorities）；`out/patch_smali.py` 只替换不是 `com.termux.app.` 的引用（Java 类仍在 `com.termux.app` 包）。最后用 [uber-apk-signer](https://github.com/patrickfav/uber-apk-signer) 重新签名，产出可安装的 `AstrBot-<版本号>.apk`（当前版本即 `AstrBot-1.3.5-beta.6-arm64.apk`，只发这一个包）。
 5. **原生控制台**：`ui/src/` 下的 Java 源码（`com.termux.qqbot.*`）编译成 dex、转成 smali、和 `ui/assets/qqbot/index.html` 一起由 apktool 打进 APK。
 
 装到手机上以后：
@@ -98,7 +99,7 @@
 1. **先卸载 1.2.1 及更早的 AstrBot烛版**。
    1.2.1 及更早的包名是 `com.termux`，1.2.2 改成了 `zhuxin.astrbot`，**不能直接覆盖安装**。卸载会清掉旧包名下的沙盒数据，请先在旧版「更多 → 备份与恢复」导出备份，装好 1.2.2（或更新版本）后再导回。
    官方 Termux / 应用商店版 / F-Droid 版与 1.2.2 起的包名不同，**不再冲突**，可以共存。
-2. 安装包由作者在受控渠道分发（官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 下载页或作者处获取），构建方法见 [docs/BUILD.md](docs/BUILD.md)；拿到后传到手机，点击安装（只出一个包，模拟器也能直接装；文件名后缀就是版本号）。
+2. 安装包随 [GitHub Releases](https://github.com/Zxin-Pro/astrbot-candle/releases) 发布，官网 [烛心.xyz](https://xn--15t839a.xyz/#/astrbot) 下载页同步镜像；每版给一个全量包（约 581 MB，自带运行环境镜像）和一个 `-update.apk` 增量包（约 25 MB，已装旧版时覆盖安装用），模拟器也能直接装，文件名后缀就是版本号。构建方法见 [docs/BUILD.md](docs/BUILD.md)。
 3. 安装时系统会提示「**未知来源应用**」，需要允许安装。
    - **小米 / Redmi（HyperOS）用户**：如果被拦下、提示「应用缺少隐私政策」且没有「继续安装」，
      这是小米安装器的风险提示，不是包坏了。关掉手机管家的「安装监控 / 安全守护 / 应用防护」、
@@ -409,6 +410,6 @@ open ios/AstrBotIOS.xcodeproj        # 选个 Team 就能跑模拟器
 | **MINOR**（0.X.0） | 新增功能 | 1.1.0 |
 | **PATCH**（0.0.X） | 修 bug、文案、性能 | 1.0.1 |
 
-当前版本：**versionName 1.3.6-beta.1，versionCode 10306**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本：**versionName 1.3.5-beta.6，versionCode 10305**。历次变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 版本号的唯一来源是仓库根目录的 `VERSION` 文件（内容形如 `1.0.2`），`build-ui.ps1` 打包时自动换算成 `versionCode` 写进 APK。
